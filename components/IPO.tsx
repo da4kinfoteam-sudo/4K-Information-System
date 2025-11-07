@@ -1,5 +1,6 @@
+
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Training, philippineRegions } from '../constants';
+import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes, particularTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 interface IPOsProps {
@@ -7,6 +8,7 @@ interface IPOsProps {
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     subprojects: Subproject[];
     trainings: Training[];
+    onSelectIpo: (ipo: IPO) => void;
 }
 
 const defaultFormData = {
@@ -22,11 +24,13 @@ const defaultFormData = {
     registrationDate: '',
     isWomenLed: false,
     isWithinGida: false,
+    commodities: [] as Commodity[],
+    levelOfDevelopment: 1 as IPO['levelOfDevelopment'],
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);
@@ -39,7 +43,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
     type SortKeys = keyof IPO;
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
 
-    const isOtherRegisteringBody = !registeringBodyOptions.includes(formData.registeringBody);
+    const [currentCommodity, setCurrentCommodity] = useState({
+        type: '',
+        particular: '',
+        value: '',
+    });
 
     useEffect(() => {
         if (editingIpo) {
@@ -56,6 +64,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
                 registrationDate: editingIpo.registrationDate,
                 isWomenLed: editingIpo.isWomenLed,
                 isWithinGida: editingIpo.isWithinGida,
+                commodities: editingIpo.commodities || [],
+                levelOfDevelopment: editingIpo.levelOfDevelopment || 1,
             });
             if (!registeringBodyOptions.includes(editingIpo.registeringBody)) {
                 setOtherRegisteringBody(editingIpo.registeringBody);
@@ -114,10 +124,44 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
         if (type === 'checkbox') {
             const { checked } = e.target as HTMLInputElement;
             setFormData(prev => ({ ...prev, [name]: checked }));
-        } else {
+        } else if (name === 'levelOfDevelopment') {
+            setFormData(prev => ({ ...prev, levelOfDevelopment: parseInt(value, 10) as IPO['levelOfDevelopment'] }));
+        }
+         else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
     };
+    
+    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === 'type') {
+            setCurrentCommodity({ type: value, particular: '', value: '' });
+        } else {
+            setCurrentCommodity(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleAddCommodity = () => {
+        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value) {
+            alert('Please fill out all commodity fields.');
+            return;
+        }
+        const newCommodity: Commodity = {
+            type: currentCommodity.type,
+            particular: currentCommodity.particular,
+            value: parseFloat(currentCommodity.value),
+        };
+        setFormData(prev => ({ ...prev, commodities: [...prev.commodities, newCommodity] }));
+        setCurrentCommodity({ type: '', particular: '', value: '' });
+    };
+
+    const handleRemoveCommodity = (indexToRemove: number) => {
+        setFormData(prev => ({
+            ...prev,
+            commodities: prev.commodities.filter((_, index) => index !== indexToRemove),
+        }));
+    };
+
 
     const handleLocationChange = (locationString: string) => {
         const parsed = parseLocation(locationString);
@@ -163,6 +207,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
         setEditingIpo(null);
         setFormData(defaultFormData);
         setOtherRegisteringBody('');
+        setCurrentCommodity({ type: '', particular: '', value: '' });
     };
 
     const handleDeleteClick = (ipo: IPO, e: React.MouseEvent) => {
@@ -312,6 +357,66 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
                             </div>
                          </div>
                     </fieldset>
+
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
+                        <div className="space-y-2 mb-4">
+                            {formData.commodities.map((commodity, index) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                    <div>
+                                        <span className="font-semibold">{commodity.particular}</span>
+                                        <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
+                                        <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                    </div>
+                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                    <option value="">Select Type</option>
+                                    {commodityTypes.map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
+                                <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                    <option value="">Select Particular</option>
+                                    {currentCommodity.type && particularTypes[currentCommodity.type].map(item => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
+                            </div>
+                             <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Hectares'}</label>
+                                    <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                </div>
+                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                            </div>
+                        </div>
+                    </fieldset>
+
+                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Level of Development</legend>
+                        <div>
+                            <label htmlFor="levelOfDevelopment" className="block text-sm font-medium">Current Level</label>
+                            <select name="levelOfDevelopment" id="levelOfDevelopment" value={formData.levelOfDevelopment} onChange={handleInputChange} required className={commonInputClasses}>
+                                <option value={1}>Level 1</option>
+                                <option value={2}>Level 2</option>
+                                <option value={3}>Level 3</option>
+                                <option value={4}>Level 4</option>
+                                <option value={5}>Level 5</option>
+                            </select>
+                        </div>
+                    </fieldset>
                     
                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                          <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Contact Information</legend>
@@ -391,8 +496,16 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
                                                 </svg>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                                <div>{ipo.name}</div>
-                                                <div className="text-xs text-gray-400">{ipo.acronym}</div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onSelectIpo(ipo);
+                                                    }}
+                                                    className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
+                                                >
+                                                    <div>{ipo.name}</div>
+                                                    <div className="text-xs text-gray-400">{ipo.acronym}</div>
+                                                </button>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
@@ -409,7 +522,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
                                          {expandedRowId === ipo.id && (
                                             <tr className="bg-gray-50 dark:bg-gray-900/50">
                                                 <td colSpan={7} className="p-4">
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Linked Subprojects</h4>
                                                             {linkedSubprojects.length > 0 ? (
@@ -445,6 +558,25 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) =>
                                                             ) : (
                                                                 <p className="text-sm text-gray-500 dark:text-gray-400 italic">No linked trainings.</p>
                                                             )}
+                                                        </div>
+                                                        <div className="space-y-4">
+                                                            <div>
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
+                                                                {ipo.commodities && ipo.commodities.length > 0 ? (
+                                                                    <ul className="space-y-1 text-sm">
+                                                                        {ipo.commodities.map((c, i) => (
+                                                                            <li key={i} className="flex justify-between p-1 bg-white dark:bg-gray-800 rounded">
+                                                                                <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
+                                                                                <span className="font-medium">{c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
+                                                                <p className="text-sm font-semibold text-accent dark:text-green-400 bg-gray-100 dark:bg-gray-900/50 px-3 py-1 rounded-full inline-block">Level {ipo.levelOfDevelopment}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </td>

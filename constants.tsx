@@ -1,6 +1,12 @@
 import React from 'react';
 
 // Centralized Type Definitions
+export interface Commodity {
+    type: string;
+    particular: string;
+    value: number; // Hectares for crops, heads for livestock
+}
+
 export interface IPO {
     id: number;
     name: string;
@@ -15,6 +21,8 @@ export interface IPO {
     contactPerson: string;
     contactNumber: string;
     registrationDate: string;
+    commodities: Commodity[];
+    levelOfDevelopment: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface SubprojectDetail {
@@ -79,6 +87,8 @@ export interface NavLink {
     name: string;
     href: string;
 }
+
+export const commodityTypes: string[] = ['Crop Commodity', 'Livestock'];
 
 export const particularTypes: { [key: string]: string[] } = {
   'Livestock': ['Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'],
