@@ -1,5 +1,5 @@
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { Subproject, SubprojectDetail, IPO } from '../constants';
+import { Subproject, SubprojectDetail, IPO, philippineRegions } from '../constants';
 import LocationPicker from './LocationPicker';
 
 type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
@@ -23,32 +23,99 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [projectToDelete, setProjectToDelete] = useState<Subproject | null>(null);
 
+    // State for the new dynamic IPO selection flow
+    const [selectedRegion, setSelectedRegion] = useState('');
+    const [ipoSearch, setIpoSearch] = useState('');
+
+
     const defaultFormData = useMemo(() => ({
         name: '',
         location: '',
-        indigenousPeopleOrganization: ipos.length > 0 ? ipos[0].name : '',
+        indigenousPeopleOrganization: '',
         status: 'Proposed' as Subproject['status'],
         packageType: 'Package 1' as Subproject['packageType'],
         startDate: '',
         estimatedCompletionDate: '',
         actualCompletionDate: '',
         remarks: '',
-        // FIX: Add lat and lng to the default form data to satisfy the Subproject type.
-        lat: '',
-        lng: '',
-    }), [ipos]);
+        lat: 0,
+        lng: 0,
+    }), []);
 
     const [formData, setFormData] = useState(defaultFormData);
 
      useEffect(() => {
-        if (!editingSubproject) {
-            setFormData(defaultFormData);
+        if (editingSubproject) {
+            // FIX: Replaced 'project' with 'editingSubproject' which is the correct variable in this scope.
+            setFormData({
+                name: editingSubproject.name,
+                location: editingSubproject.location,
+                indigenousPeopleOrganization: editingSubproject.indigenousPeopleOrganization,
+                status: editingSubproject.status,
+                packageType: editingSubproject.packageType,
+                startDate: editingSubproject.startDate,
+                estimatedCompletionDate: editingSubproject.estimatedCompletionDate,
+                actualCompletionDate: editingSubproject.actualCompletionDate || '',
+                remarks: editingSubproject.remarks || '',
+                lat: editingSubproject.lat,
+                lng: editingSubproject.lng,
+            });
+            // FIX: Replaced 'project' with 'editingSubproject' which is the correct variable in this scope.
+            setDetailItems(editingSubproject.details.map(({ id, ...rest }) => rest));
+
+            const projectIpo = ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization);
+            if (projectIpo) {
+                setSelectedRegion(projectIpo.region);
+                setIpoSearch(projectIpo.name);
+            }
+        } else {
+             setFormData(defaultFormData);
         }
-    }, [defaultFormData, editingSubproject]);
+    }, [editingSubproject, ipos, defaultFormData]);
 
     const totalBudgetForNewProject = useMemo(() => {
-        return detailItems.reduce((acc, item) => acc + (item.pricePerUnit * item.numberOfUnits), 0);
+        return detailItems.reduce((acc, item) => acc + (Number(item.pricePerUnit) * Number(item.numberOfUnits)), 0);
     }, [detailItems]);
+
+    const filteredIpos = useMemo(() => {
+        if (!selectedRegion) return [];
+        return ipos.filter(ipo => ipo.region === selectedRegion);
+    }, [selectedRegion, ipos]);
+
+    const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const region = e.target.value;
+        setSelectedRegion(region);
+        // Reset IPO and location when region changes
+        setIpoSearch('');
+        setFormData(prev => ({
+            ...prev,
+            indigenousPeopleOrganization: '',
+            location: '',
+        }));
+    };
+
+    const handleIpoSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const searchName = e.target.value;
+        setIpoSearch(searchName);
+
+        const matchedIpo = filteredIpos.find(ipo => ipo.name === searchName);
+        if (matchedIpo) {
+            // An exact match was selected from the datalist
+            setFormData(prev => ({
+                ...prev,
+                indigenousPeopleOrganization: matchedIpo.name,
+                location: matchedIpo.location,
+            }));
+        } else {
+            // User is typing, clear location until a match is found
+             setFormData(prev => ({
+                ...prev,
+                indigenousPeopleOrganization: '',
+                location: '',
+            }));
+        }
+    };
+
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -97,19 +164,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        // FIX: Add validation for lat and lng fields.
-        if (!formData.name || !formData.location || !formData.indigenousPeopleOrganization || detailItems.length === 0 || !formData.startDate || !formData.estimatedCompletionDate || !formData.lat || !formData.lng) {
+        if (!formData.name || !formData.location || !formData.indigenousPeopleOrganization || detailItems.length === 0 || !formData.startDate || !formData.estimatedCompletionDate) {
             alert('Please fill out all required project fields and add at least one detail item.');
             return;
         }
+
+        const dummyCoords = { lat: 14.5, lng: 121.5 };
 
         if (editingSubproject) {
              const updatedSubproject: Subproject = {
                 ...editingSubproject,
                 ...formData,
-                // FIX: Parse lat and lng from string to number on submit.
-                lat: parseFloat(formData.lat),
-                lng: parseFloat(formData.lng),
+                lat: editingSubproject.lat || dummyCoords.lat,
+                lng: editingSubproject.lng || dummyCoords.lng,
                 details: detailItems.map((detail, index) => ({ ...detail, id: index + 1 })),
             };
             setSubprojects(prev => prev.map(p => p.id === editingSubproject.id ? updatedSubproject : p));
@@ -117,9 +184,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             const newSubproject: Subproject = {
                 id: subprojects.length > 0 ? Math.max(...subprojects.map(p => p.id)) + 1 : 1,
                 ...formData,
-                // FIX: Parse lat and lng from string to number on submit.
-                lat: parseFloat(formData.lat),
-                lng: parseFloat(formData.lng),
+                lat: dummyCoords.lat,
+                lng: dummyCoords.lng,
                 details: detailItems.map((detail, index) => ({ ...detail, id: index + 1 })),
             };
             setSubprojects(prev => [newSubproject, ...prev]);
@@ -131,21 +197,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleEditClick = (project: Subproject, e: React.MouseEvent) => {
         e.stopPropagation();
         setEditingSubproject(project);
-        setFormData({
-            name: project.name,
-            location: project.location,
-            indigenousPeopleOrganization: project.indigenousPeopleOrganization,
-            status: project.status,
-            packageType: project.packageType,
-            startDate: project.startDate,
-            estimatedCompletionDate: project.estimatedCompletionDate,
-            actualCompletionDate: project.actualCompletionDate || '',
-            remarks: project.remarks || '',
-            // FIX: Populate lat and lng in the form for editing, converting them to strings.
-            lat: String(project.lat),
-            lng: String(project.lng),
-        });
-        setDetailItems(project.details.map(({ id, ...rest }) => rest));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -153,6 +204,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setEditingSubproject(null);
         setFormData(defaultFormData);
         setDetailItems([]);
+        setSelectedRegion('');
+        setIpoSearch('');
     };
 
     const handleDeleteClick = (project: Subproject, e: React.MouseEvent) => {
@@ -196,6 +249,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
+    
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+
 
     return (
         <div>
@@ -222,62 +278,77 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="lg:col-span-2">
                             <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Subproject Name</label>
-                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                          <div>
                            <label htmlFor="packageType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Package Type</label>
-                            <select id="packageType" name="packageType" value={formData.packageType} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
+                            <select id="packageType" name="packageType" value={formData.packageType} onChange={handleInputChange} required className={commonInputClasses}>
                                 {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
                                     <option key={pkg} value={pkg}>{pkg}</option>
                                 ))}
                             </select>
                         </div>
-                        <div className="lg:col-span-2">
-                            <label htmlFor="indigenousPeopleOrganization" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Indigenous People Organization</label>
-                            <select name="indigenousPeopleOrganization" id="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
-                                <option value="" disabled>Select an IPO</option>
-                                {ipos.map(ipo => (
-                                    <option key={ipo.id} value={ipo.name}>{ipo.name} ({ipo.acronym})</option>
+                         <div>
+                            <label htmlFor="region" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
+                            <select name="region" id="region" value={selectedRegion} onChange={handleRegionChange} required className={commonInputClasses}>
+                                <option value="">Select a region first</option>
+                                {philippineRegions.map(region => (
+                                    <option key={region} value={region}>{region}</option>
                                 ))}
                             </select>
                         </div>
-                         <div>
+                        <div className="lg:col-span-2">
+                            <label htmlFor="ipoSearch" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Indigenous People Organization</label>
+                             <input 
+                                type="text" 
+                                name="ipoSearch" 
+                                id="ipoSearch" 
+                                value={ipoSearch}
+                                onChange={handleIpoSearchChange}
+                                list="ipo-datalist"
+                                placeholder={selectedRegion ? "Type to search for an IPO" : "Select a region first"}
+                                disabled={!selectedRegion}
+                                required
+                                className={`${commonInputClasses} disabled:bg-gray-200 dark:disabled:bg-gray-600`}
+                            />
+                            <datalist id="ipo-datalist">
+                                {filteredIpos.map(ipo => (
+                                    <option key={ipo.id} value={ipo.name}>
+                                        {ipo.name} ({ipo.acronym})
+                                    </option>
+                                ))}
+                            </datalist>
+                        </div>
+                        
+                        <div className="lg:col-span-3">
+                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location (auto-filled from IPO)</label>
+                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({...prev, location: loc}))} required />
+                        </div>
+                         
+                        <div>
                            <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                            <select id="status" name="status" value={formData.status} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
+                            <select id="status" name="status" value={formData.status} onChange={handleInputChange} required className={commonInputClasses}>
                                 <option>Proposed</option>
                                 <option>Ongoing</option>
                                 <option>Completed</option>
                                 <option>Cancelled</option>
                             </select>
                         </div>
-                        <div className="lg:col-span-3">
-                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location</label>
-                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({...prev, location: loc}))} required />
-                        </div>
-                        {/* FIX: Add input fields for latitude and longitude. */}
-                        <div>
-                            <label htmlFor="lat" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Latitude</label>
-                             <input type="number" step="any" name="lat" id="lat" value={formData.lat} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
-                        </div>
-                        <div>
-                            <label htmlFor="lng" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Longitude</label>
-                             <input type="number" step="any" name="lng" id="lng" value={formData.lng} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
-                        </div>
                         <div>
                             <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
-                             <input type="date" name="startDate" id="startDate" value={formData.startDate} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                             <input type="date" name="startDate" id="startDate" value={formData.startDate} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                         <div>
                             <label htmlFor="estimatedCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Completion Date</label>
-                             <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                             <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                         <div>
                             <label htmlFor="actualCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Completion Date</label>
-                             <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                             <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
                          <div className="lg:col-span-3">
                             <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
-                            <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className={commonInputClasses} />
                         </div>
                     </div>
 

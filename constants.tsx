@@ -6,6 +6,12 @@ export interface IPO {
     name: string;
     acronym: string;
     location: string;
+    region: string;
+    indigenousCulturalCommunity: string;
+    ancestralDomainNo: string;
+    registeringBody: string;
+    isWomenLed: boolean;
+    isWithinGida: boolean;
     contactPerson: string;
     contactNumber: string;
     registrationDate: string;
@@ -78,6 +84,25 @@ export const philippineLocations: { [key: string]: any } = {
     }
   }
 };
+
+export const philippineRegions: string[] = [
+    'National Capital Region (NCR)',
+    'Cordillera Administrative Region (CAR)',
+    'Ilocos Region (Region I)',
+    'Cagayan Valley (Region II)',
+    'Central Luzon (Region III)',
+    'CALABARZON (Region IV-A)',
+    'MIMAROPA (Region IV-B)',
+    'Bicol Region (Region V)',
+    'Western Visayas (Region VI)',
+    'Central Visayas (Region VII)',
+    'Zamboanga Peninsula (Region IX)',
+    'Northern Mindanao (Region X)',
+    'Davao Region (Region XI)',
+    'SOCCSKSARGEN (Region XII)',
+    'Caraga (Region XIII)',
+    'Negros Island Region (NIR)',
+];
 
 
 export const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => (

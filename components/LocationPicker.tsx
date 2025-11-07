@@ -9,7 +9,7 @@ interface LocationPickerProps {
 
 const regions = Object.keys(philippineLocations);
 
-const parseLocation = (location: string): { region: string; province: string; municipality: string; barangay: string } => {
+export const parseLocation = (location: string): { region: string; province: string; municipality: string; barangay: string } => {
     if (!location || location === "Online") {
         return { region: location === "Online" ? "Online" : "", province: "", municipality: "", barangay: "" };
     }

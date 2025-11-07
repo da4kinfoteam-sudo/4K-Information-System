@@ -1,5 +1,5 @@
-import React, { useState, FormEvent } from 'react';
-import { Training, IPO } from '../constants';
+import React, { useState, FormEvent, useMemo } from 'react';
+import { Training, IPO, philippineRegions } from '../constants';
 import LocationPicker from './LocationPicker';
 
 interface TrainingsProps {
@@ -22,6 +22,12 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [editingTraining, setEditingTraining] = useState<Training | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [trainingToDelete, setTrainingToDelete] = useState<Training | null>(null);
+    const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
+
+    const filteredIposForSelection = useMemo(() => {
+        if (ipoRegionFilter === 'All') return ipos;
+        return ipos.filter(ipo => ipo.region === ipoRegionFilter);
+    }, [ipoRegionFilter, ipos]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -133,15 +139,26 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                         </div>
                          <div className="md:col-span-2">
                             <label htmlFor="participatingIpos" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Participating IPOs</label>
+                            <div className="flex items-center gap-4 mt-1">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
+                                 <select 
+                                     value={ipoRegionFilter} 
+                                     onChange={(e) => setIpoRegionFilter(e.target.value)}
+                                     className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                                 >
+                                    <option value="All">All Regions</option>
+                                    {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
                              <select
                                 multiple
                                 name="participatingIpos"
                                 id="participatingIpos"
                                 value={formData.participatingIpos}
                                 onChange={handleIpoSelectChange}
-                                className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
+                                className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
                             >
-                                {ipos.map(ipo => (
+                                {filteredIposForSelection.map(ipo => (
                                     <option key={ipo.id} value={ipo.name}>{ipo.name} ({ipo.acronym})</option>
                                 ))}
                             </select>
