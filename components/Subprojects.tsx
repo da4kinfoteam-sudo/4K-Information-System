@@ -1,5 +1,5 @@
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { Subproject, SubprojectDetail, IPO, philippineRegions } from '../constants';
+import { Subproject, SubprojectDetail, IPO, philippineRegions, particularTypes } from '../constants';
 import LocationPicker from './LocationPicker';
 
 type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
@@ -13,7 +13,9 @@ interface SubprojectsProps {
 const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects }) => {
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [currentDetail, setCurrentDetail] = useState({
+        type: '',
         particulars: '',
+        deliveryDate: '',
         unitOfMeasure: 'pcs' as SubprojectDetail['unitOfMeasure'],
         pricePerUnit: '',
         numberOfUnits: '',
@@ -185,22 +187,30 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setCurrentDetail(prev => ({ ...prev, [name]: value }));
+        if (name === 'type') {
+            setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
+        } else {
+            setCurrentDetail(prev => ({ ...prev, [name]: value }));
+        }
     };
     
     const handleAddDetail = () => {
-        if (!currentDetail.particulars || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
-            alert('Please fill out all detail fields.');
+        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
+            alert('Please fill out all detail fields, including type, item, and delivery date.');
             return;
         }
         setDetailItems(prev => [...prev, {
+            type: currentDetail.type,
             particulars: currentDetail.particulars,
+            deliveryDate: currentDetail.deliveryDate,
             unitOfMeasure: currentDetail.unitOfMeasure,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
         }]);
         setCurrentDetail({
+            type: '',
             particulars: '',
+            deliveryDate: '',
             unitOfMeasure: 'pcs',
             pricePerUnit: '',
             numberOfUnits: '',
@@ -214,7 +224,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleEditParticular = (indexToEdit: number) => {
         const itemToEdit = detailItems[indexToEdit];
         setCurrentDetail({
+            type: itemToEdit.type,
             particulars: itemToEdit.particulars,
+            deliveryDate: itemToEdit.deliveryDate,
             unitOfMeasure: itemToEdit.unitOfMeasure,
             pricePerUnit: String(itemToEdit.pricePerUnit),
             numberOfUnits: String(itemToEdit.numberOfUnits),
@@ -424,11 +436,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         <div className="space-y-2 mb-4">
                             {detailItems.map((item, index) => (
                                 <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                    <div className="text-sm">
+                                    <div className="text-sm flex-grow">
                                         <span className="font-semibold">{item.particulars}</span>
-                                        <span className="text-gray-500 dark:text-gray-400"> ({item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)})</span>
+                                        <span className="text-gray-500 dark:text-gray-400"> ({item.type})</span>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-4 ml-4">
                                        <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
                                         <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
@@ -441,10 +454,28 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             ))}
                         </div>
                          {/* Inputs for new detail */}
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                             <div className="md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particulars</label>
-                                <input type="text" name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                    <option value="">Select a type</option>
+                                    {Object.keys(particularTypes).map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
+                            </div>
+                             <div className="md:col-span-2">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
+                                <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                    <option value="">Select an item</option>
+                                    {currentDetail.type && particularTypes[currentDetail.type].map(item => (
+                                        <option key={item} value={item}>{item}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
+                                <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                             </div>
                              <div>
                                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
@@ -459,7 +490,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
                                 <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                             </div>
-                             <div className="flex items-center gap-2">
+                             <div className="flex items-center gap-2 col-span-2 md:col-span-1">
                                 <div className="flex-1">
                                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
                                     <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
@@ -564,7 +595,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             <thead className="bg-gray-100 dark:bg-gray-700 text-xs uppercase">
                                                                 <tr>
                                                                     <th className="px-4 py-2 text-left">Particulars</th>
-                                                                    <th className="px-4 py-2 text-right">Price/Unit</th>
+                                                                    <th className="px-4 py-2 text-left">Type</th>
+                                                                    <th className="px-4 py-2 text-left">Delivery Date</th>
                                                                     <th className="px-4 py-2 text-right"># of Units</th>
                                                                     <th className="px-4 py-2 text-right">Subtotal</th>
                                                                 </tr>
@@ -572,8 +604,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             <tbody className="text-sm">
                                                                 {project.details.map(detail => (
                                                                     <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
-                                                                        <td className="px-4 py-2">{detail.particulars}</td>
-                                                                        <td className="px-4 py-2 text-right">{formatCurrency(detail.pricePerUnit)}</td>
+                                                                        <td className="px-4 py-2 font-medium">{detail.particulars}</td>
+                                                                        <td className="px-4 py-2">{detail.type}</td>
+                                                                        <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
                                                                         <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
                                                                         <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
                                                                     </tr>

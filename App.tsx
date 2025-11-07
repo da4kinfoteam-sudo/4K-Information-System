@@ -29,8 +29,8 @@ const initialSubprojects: Subproject[] = [
         lat: 14.5333,
         lng: 121.3167,
         details: [
-            { id: 1, particulars: 'Cement (40kg bags)', unitOfMeasure: 'pcs', pricePerUnit: 250, numberOfUnits: 10000 },
-            { id: 2, particulars: 'Skilled Labor', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
+            { id: 1, type: 'Infrastructure', particulars: 'Cement', deliveryDate: '2022-02-01', unitOfMeasure: 'pcs', pricePerUnit: 250, numberOfUnits: 10000 },
+            { id: 2, type: 'Infrastructure', particulars: 'Skilled Labor', deliveryDate: '2022-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
         ] 
     },
     { 
@@ -47,9 +47,9 @@ const initialSubprojects: Subproject[] = [
         lat: 14.5779,
         lng: 121.2625,
         details: [
-            { id: 1, particulars: 'Gravel and Sand', unitOfMeasure: 'lot', pricePerUnit: 3000000, numberOfUnits: 1 },
-            { id: 2, particulars: 'Heavy Equipment Rental', unitOfMeasure: 'lot', pricePerUnit: 2000000, numberOfUnits: 1 },
-            { id: 3, particulars: 'Project Management', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
+            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2023-03-15', unitOfMeasure: 'lot', pricePerUnit: 3000000, numberOfUnits: 1 },
+            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2023-03-20', unitOfMeasure: 'lot', pricePerUnit: 2000000, numberOfUnits: 1 },
+            { id: 3, type: 'Others', particulars: 'Project Management', deliveryDate: '2023-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
         ]
     },
      { 
@@ -66,8 +66,8 @@ const initialSubprojects: Subproject[] = [
         lat: 14.7744,
         lng: 121.6315,
         details: [
-            { id: 1, particulars: 'Coffee Seedlings', unitOfMeasure: 'pcs', pricePerUnit: 50, numberOfUnits: 50000 },
-            { id: 2, particulars: 'Processing Equipment', unitOfMeasure: 'unit', pricePerUnit: 700000, numberOfUnits: 1 },
+            { id: 1, type: 'Crop Commodity', particulars: 'Coffee Seedlings', deliveryDate: '2024-08-15', unitOfMeasure: 'pcs', pricePerUnit: 50, numberOfUnits: 50000 },
+            { id: 2, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2024-09-01', unitOfMeasure: 'unit', pricePerUnit: 700000, numberOfUnits: 1 },
         ]
     },
     { 
@@ -84,9 +84,9 @@ const initialSubprojects: Subproject[] = [
         lat: 14.6191,
         lng: 121.3653,
         details: [
-            { id: 1, particulars: 'Pipes and Fittings', unitOfMeasure: 'lot', pricePerUnit: 2100000, numberOfUnits: 1 },
-            { id: 2, particulars: 'Water Pump', unitOfMeasure: 'unit', pricePerUnit: 1000000, numberOfUnits: 1 },
-            { id: 3, particulars: 'Installation Labor', unitOfMeasure: 'lot', pricePerUnit: 1000000, numberOfUnits: 1 },
+            { id: 1, type: 'Infrastructure', particulars: 'Pipes and Fittings', deliveryDate: '2023-07-01', unitOfMeasure: 'lot', pricePerUnit: 2100000, numberOfUnits: 1 },
+            { id: 2, type: 'Equipment', particulars: 'Water Pump', deliveryDate: '2023-07-05', unitOfMeasure: 'unit', pricePerUnit: 1000000, numberOfUnits: 1 },
+            { id: 3, type: 'Infrastructure', particulars: 'Installation Labor', deliveryDate: '2023-07-10', unitOfMeasure: 'lot', pricePerUnit: 1000000, numberOfUnits: 1 },
         ]
     },
 ];

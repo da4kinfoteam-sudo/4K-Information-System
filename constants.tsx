@@ -19,7 +19,9 @@ export interface IPO {
 
 export interface SubprojectDetail {
     id: number;
+    type: string;
     particulars: string;
+    deliveryDate: string;
     unitOfMeasure: 'pcs' | 'kgs' | 'unit' | 'lot';
     pricePerUnit: number;
     numberOfUnits: number;
@@ -64,6 +66,15 @@ export interface NavLink {
     name: string;
     href: string;
 }
+
+export const particularTypes: { [key: string]: string[] } = {
+  'Livestock': ['Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'],
+  'Crop Commodity': ['Rice Seeds', 'Corn Seeds', 'Fertilizer', 'Pesticides', 'Coffee Seedlings'],
+  'Equipment': ['Tractor', 'Water Pump', 'Thresher', 'Harvester', 'Processing Equipment'],
+  'Infrastructure': ['Cement', 'Gravel and Sand', 'Pipes and Fittings', 'Skilled Labor', 'Installation Labor'],
+  'Others': ['Project Management', 'Heavy Equipment Rental', 'Training Materials']
+};
+
 
 export const philippineLocations: { [key: string]: any } = {
   "Online": {},
