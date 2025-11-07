@@ -1,11 +1,14 @@
+
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, IPO, philippineRegions, trainingComponents } from '../constants';
-import LocationPicker from './LocationPicker';
+import LocationPicker, { parseLocation } from './LocationPicker';
 
 interface TrainingsProps {
     ipos: IPO[];
     trainings: Training[];
     setTrainings: React.Dispatch<React.SetStateAction<Training[]>>;
+    onSelectIpo: (ipo: IPO) => void;
 }
 
 const defaultFormData = {
@@ -21,7 +24,7 @@ const defaultFormData = {
     component: trainingComponents[0],
 };
 
-const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrainings }) => {
+const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrainings, onSelectIpo }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [editingTraining, setEditingTraining] = useState<Training | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -41,8 +44,8 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     }, [formData.component]);
 
     const filteredIposForSelection = useMemo(() => {
-        if (ipoRegionFilter === 'All') return ipos;
-        return ipos.filter(ipo => ipo.region === ipoRegionFilter);
+        const filtered = ipoRegionFilter === 'All' ? ipos : ipos.filter(ipo => ipo.region === ipoRegionFilter);
+        return filtered.sort((a,b) => a.name.localeCompare(b.name));
     }, [ipoRegionFilter, ipos]);
 
     const processedTrainings = useMemo(() => {
@@ -309,9 +312,14 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                     onChange={handleIpoSelectChange}
                                     className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
                                 >
-                                    {filteredIposForSelection.map(ipo => (
-                                        <option key={ipo.id} value={ipo.name}>{ipo.name} ({ipo.acronym})</option>
-                                    ))}
+                                    {filteredIposForSelection.map(ipo => {
+                                        const { province } = parseLocation(ipo.location);
+                                        return (
+                                            <option key={ipo.id} value={ipo.name}>
+                                                {`${ipo.name} (${ipo.acronym}) - ${province} - Level ${ipo.levelOfDevelopment}`}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple organizations.</p>
                             </div>
@@ -400,11 +408,23 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
                                                         {training.participatingIpos.length > 0 ? (
                                                             <div className="flex flex-wrap gap-2">
-                                                                {training.participatingIpos.map(ipoName => (
-                                                                    <span key={ipoName} className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                                                                        {ipoName}
-                                                                    </span>
-                                                                ))}
+                                                                {training.participatingIpos.map(ipoName => {
+                                                                    const ipo = ipos.find(i => i.name === ipoName);
+                                                                    return (
+                                                                        <button
+                                                                            key={ipoName}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (ipo) onSelectIpo(ipo);
+                                                                            }}
+                                                                            className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed"
+                                                                            disabled={!ipo}
+                                                                            title={ipo ? `View details for ${ipoName}` : `${ipoName} (details not found)`}
+                                                                        >
+                                                                            {ipoName}
+                                                                        </button>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         ) : (
                                                             <p className="text-sm text-gray-500 dark:text-gray-400 italic">No participating IPOs listed.</p>

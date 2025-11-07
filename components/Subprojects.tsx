@@ -1,3 +1,4 @@
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Subproject, SubprojectDetail, IPO, philippineRegions, particularTypes } from '../constants';
 import LocationPicker from './LocationPicker';
@@ -8,9 +9,10 @@ interface SubprojectsProps {
     ipos: IPO[];
     subprojects: Subproject[];
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+    onSelectIpo: (ipo: IPO) => void;
 }
 
-const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects }) => {
+const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, onSelectIpo }) => {
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [currentDetail, setCurrentDetail] = useState({
         type: '',
@@ -576,7 +578,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{project.name}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.packageType}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const ipo = ipos.find(i => i.name === project.indigenousPeopleOrganization);
+                                                    if (ipo) onSelectIpo(ipo);
+                                                }}
+                                                className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
+                                                title={`View details for ${project.indigenousPeopleOrganization}`}
+                                            >
+                                                {project.indigenousPeopleOrganization}
+                                            </button>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(project.startDate)} - {formatDate(project.estimatedCompletionDate)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">{formatCurrency(calculateTotalBudget(project.details))}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={getStatusBadge(project.status)}>{project.status}</span></td>

@@ -189,6 +189,7 @@ const App: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
+    const [previousPage, setPreviousPage] = useState<string | null>(null);
     
     const [ipos, setIpos] = useState<IPO[]>(initialIpos);
     const [subprojects, setSubprojects] = useState<Subproject[]>(initialSubprojects);
@@ -209,12 +210,6 @@ const App: React.FC = () => {
             localStorage.setItem('isDarkMode', 'false');
         }
     }, [isDarkMode]);
-    
-    useEffect(() => {
-        if (currentPage !== '/ipo') {
-            setSelectedIpo(null);
-        }
-    }, [currentPage]);
 
     const toggleDarkMode = () => {
         setIsDarkMode(prev => !prev);
@@ -223,6 +218,36 @@ const App: React.FC = () => {
     const toggleSidebar = () => {
         setIsSidebarOpen(prev => !prev);
     };
+    
+    const handleNavigation = (page: string) => {
+        setSelectedIpo(null);
+        setPreviousPage(null);
+        setCurrentPage(page);
+    };
+    
+    const handleSelectIpo = (ipo: IPO) => {
+        setPreviousPage(currentPage);
+        setSelectedIpo(ipo);
+    };
+
+    const handleBackFromIpoDetail = () => {
+        setSelectedIpo(null);
+        if (previousPage) {
+            setCurrentPage(previousPage);
+        } else {
+            setCurrentPage('/ipo'); // Fallback
+        }
+        setPreviousPage(null);
+    };
+
+    const getPageName = (path: string | null): string => {
+        switch(path) {
+            case '/subprojects': return 'Subprojects';
+            case '/trainings': return 'Trainings';
+            case '/ipo': return 'IPO List';
+            default: return 'IPO List';
+        }
+    }
 
     const renderPage = () => {
         switch (currentPage) {
@@ -234,26 +259,17 @@ const App: React.FC = () => {
                             activities={activities}
                         />;
             case '/subprojects':
-                return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} />;
+                return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} onSelectIpo={handleSelectIpo} />;
             case '/ipo':
-                return selectedIpo ? (
-                    <IPODetail 
-                        ipo={selectedIpo}
-                        subprojects={subprojects.filter(p => p.indigenousPeopleOrganization === selectedIpo.name)}
-                        trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
-                        onBack={() => setSelectedIpo(null)}
-                    />
-                ) : (
-                    <IPOs 
-                        ipos={ipos} 
-                        setIpos={setIpos} 
-                        subprojects={subprojects} 
-                        trainings={trainings} 
-                        onSelectIpo={setSelectedIpo} 
-                    />
-                );
+                return <IPOs 
+                    ipos={ipos} 
+                    setIpos={setIpos} 
+                    subprojects={subprojects} 
+                    trainings={trainings} 
+                    onSelectIpo={handleSelectIpo} 
+                />;
             case '/trainings':
-                return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} />;
+                return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} onSelectIpo={handleSelectIpo} />;
             default:
                 return (
                     <div className="text-center p-10 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
@@ -270,7 +286,7 @@ const App: React.FC = () => {
                 isOpen={isSidebarOpen} 
                 closeSidebar={() => setIsSidebarOpen(false)}
                 currentPage={currentPage}
-                setCurrentPage={setCurrentPage} 
+                setCurrentPage={handleNavigation} 
             />
             
             <div className="flex-1 flex flex-col overflow-hidden">
@@ -280,7 +296,17 @@ const App: React.FC = () => {
                     isDarkMode={isDarkMode} 
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
-                    {renderPage()}
+                    {selectedIpo ? (
+                        <IPODetail 
+                            ipo={selectedIpo}
+                            subprojects={subprojects.filter(p => p.indigenousPeopleOrganization === selectedIpo.name)}
+                            trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
+                            onBack={handleBackFromIpoDetail}
+                            previousPageName={getPageName(previousPage)}
+                        />
+                    ) : (
+                        renderPage()
+                    )}
                 </main>
                 <footer className="text-center p-4 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
                     System maintained by the DA 4K NPMO

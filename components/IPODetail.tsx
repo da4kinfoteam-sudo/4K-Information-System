@@ -7,6 +7,7 @@ interface IPODetailProps {
     subprojects: Subproject[];
     trainings: Training[];
     onBack: () => void;
+    previousPageName: string;
 }
 
 const formatDate = (dateString?: string) => {
@@ -36,7 +37,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName }) => {
 
     const calculateTotalBudget = (details: Subproject['details']) => {
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
@@ -54,7 +55,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                     className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                    Back to IPO List
+                    Back to {previousPageName}
                 </button>
             </header>
 
