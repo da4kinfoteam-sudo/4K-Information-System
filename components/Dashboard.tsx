@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, philippineRegions } from '../constants';
 import { Subproject, IPO, Training, Activity } from '../constants';
 import GanttChart from './GanttChart';
 
@@ -20,7 +20,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ subprojects, trainings }) => {
     // Initialize map
     useEffect(() => {
         if (mapContainerRef.current && !mapRef.current) {
-            mapRef.current = L.map(mapContainerRef.current).setView([14.65, 121.4], 9); // Centered on Rizal/Quezon area
+            mapRef.current = L.map(mapContainerRef.current).setView([12.8797, 121.7740], 6); // Centered on Philippines
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(mapRef.current);
@@ -67,6 +67,13 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ subprojects, trainings }) => {
                     markersRef.current.push(marker);
                 }
             });
+
+            if (markersRef.current.length > 0) {
+                const group = new L.featureGroup(markersRef.current);
+                mapRef.current.fitBounds(group.getBounds().pad(0.2));
+            } else {
+                 mapRef.current.setView([12.8797, 121.7740], 6); // Default view if no markers
+            }
         }
     }, [subprojects, trainings]);
 
@@ -109,6 +116,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, activities }) => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
+    const [selectedRegion, setSelectedRegion] = useState<string>('All');
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
 
     const availableYears = useMemo(() => {
@@ -121,17 +129,42 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, act
     }, [subprojects, ipos, trainings, activities]);
     
     const filteredData = useMemo(() => {
-        if (selectedYear === 'All') {
-            return { subprojects, ipos, trainings, activities };
-        }
-        const year = parseInt(selectedYear);
-        return {
-            subprojects: subprojects.filter(p => new Date(p.startDate).getFullYear() === year),
-            ipos: ipos.filter(i => new Date(i.registrationDate).getFullYear() === year),
-            trainings: trainings.filter(t => new Date(t.date).getFullYear() === year),
-            activities: activities.filter(a => new Date(a.date).getFullYear() === year),
+        // 1. Filter by Year first
+        let yearFiltered = {
+            subprojects: selectedYear === 'All' ? subprojects : subprojects.filter(p => new Date(p.startDate).getFullYear() === parseInt(selectedYear)),
+            ipos: selectedYear === 'All' ? ipos : ipos.filter(i => new Date(i.registrationDate).getFullYear() === parseInt(selectedYear)),
+            trainings: selectedYear === 'All' ? trainings : trainings.filter(t => new Date(t.date).getFullYear() === parseInt(selectedYear)),
+            activities: selectedYear === 'All' ? activities : activities.filter(a => new Date(a.date).getFullYear() === parseInt(selectedYear)),
         };
-    }, [selectedYear, subprojects, ipos, trainings, activities]);
+
+        // 2. Then Filter by Region
+        if (selectedRegion === 'All') {
+            return yearFiltered;
+        }
+
+        if (selectedRegion === 'Online') {
+            return {
+                subprojects: [],
+                ipos: [],
+                trainings: yearFiltered.trainings.filter(t => t.location === 'Online'),
+                activities: yearFiltered.activities,
+            }
+        }
+        
+        const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
+
+        const regionFilteredSubprojects = yearFiltered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization));
+        const regionFilteredIpos = yearFiltered.ipos.filter(i => i.region === selectedRegion);
+        const regionFilteredTrainings = yearFiltered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName)));
+
+        return {
+            subprojects: regionFilteredSubprojects,
+            ipos: regionFilteredIpos,
+            trainings: regionFilteredTrainings,
+            activities: yearFiltered.activities,
+        };
+
+    }, [selectedYear, selectedRegion, subprojects, ipos, trainings, activities]);
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
@@ -230,19 +263,36 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, act
             )}
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">4K Information System Overview</h2>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Filter by Year:</label>
-                    <select 
-                        id="year-filter"
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(e.target.value)}
-                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                    >
-                        <option value="All">All Years</option>
-                        {availableYears.map(year => (
-                            <option key={year} value={year}>{year}</option>
-                        ))}
-                    </select>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                     <div className="flex items-center gap-2">
+                        <label htmlFor="region-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Region:</label>
+                        <select 
+                            id="region-filter"
+                            value={selectedRegion}
+                            onChange={(e) => setSelectedRegion(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Regions</option>
+                            <option value="Online">Online</option>
+                            {philippineRegions.map(region => (
+                                <option key={region} value={region}>{region}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                        <select 
+                            id="year-filter"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Years</option>
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">

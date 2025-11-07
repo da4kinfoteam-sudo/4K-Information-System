@@ -1,4 +1,4 @@
-import React, { useState, FormEvent, useMemo } from 'react';
+import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, IPO, philippineRegions, trainingComponents } from '../constants';
 import LocationPicker from './LocationPicker';
 
@@ -33,6 +33,12 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     type SortKeys = keyof Training | 'totalParticipants';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+    useEffect(() => {
+        if (formData.component === 'Program Management') {
+            setFormData(prev => ({ ...prev, participatingIpos: [] }));
+        }
+    }, [formData.component]);
 
     const filteredIposForSelection = useMemo(() => {
         if (ipoRegionFilter === 'All') return ipos;
@@ -272,26 +278,30 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     </fieldset>
 
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Description & Linked IPOs</legend>
-                        <div className="space-y-4">
-                             <div>
-                                <label htmlFor="description" className="block text-sm font-medium">Description</label>
-                                <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
-                            </div>
-                             <div>
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Description</legend>
+                        <div>
+                            <label htmlFor="description" className="block text-sm font-medium">Description</label>
+                            <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
+                        </div>
+                    </fieldset>
+                    
+                    {formData.component !== 'Program Management' && (
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
+                            <div>
                                 <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
                                 <div className="flex items-center gap-4 mt-1">
                                     <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
-                                     <select 
-                                         value={ipoRegionFilter} 
-                                         onChange={(e) => setIpoRegionFilter(e.target.value)}
-                                         className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                                     >
+                                    <select 
+                                        value={ipoRegionFilter} 
+                                        onChange={(e) => setIpoRegionFilter(e.target.value)}
+                                        className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                                    >
                                         <option value="All">All Regions</option>
                                         {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                     </select>
                                 </div>
-                                 <select
+                                <select
                                     multiple
                                     name="participatingIpos"
                                     id="participatingIpos"
@@ -305,8 +315,9 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 </select>
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple organizations.</p>
                             </div>
-                        </div>
-                    </fieldset>
+                        </fieldset>
+                    )}
+
 
                     <div className="flex justify-end gap-4 pt-2">
                         {editingTraining && (
