@@ -83,8 +83,8 @@ export interface NavLink {
 export const particularTypes: { [key: string]: string[] } = {
   'Livestock': ['Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'],
   'Crop Commodity': ['Rice Seeds', 'Corn Seeds', 'Fertilizer', 'Pesticides', 'Coffee Seedlings'],
-  'Equipment': ['Tractor', 'Water Pump', 'Thresher', 'Harvester', 'Processing Equipment'],
-  'Infrastructure': ['Cement', 'Gravel and Sand', 'Pipes and Fittings', 'Skilled Labor', 'Installation Labor'],
+  'Equipment': ['Tractor', 'Water Pump', 'Thresher', 'Harvester', 'Processing Equipment', 'Floating cages'],
+  'Infrastructure': ['Cement', 'Gravel and Sand', 'Pipes and Fittings', 'Skilled Labor', 'Installation Labor', 'Processing Shed', 'Warehouse', 'Storage unit'],
   'Others': ['Project Management', 'Heavy Equipment Rental', 'Training Materials']
 };
 
@@ -98,6 +98,20 @@ export const philippineLocations: { [key: string]: any } = {
     },
     "Quezon": {
       "General Nakar": ["Macaingalan"]
+    }
+  },
+  "Davao Region (Region XI)": {
+    "Davao del Sur": {
+      "Davao City": ["Marilog"]
+    },
+    "Davao Occidental": {
+      "Malita": ["Buhangin"]
+    },
+    "Davao de Oro": {
+      "New Bataan": ["Camanlangan"]
+    },
+    "Davao del Norte": {
+      "Island Garden City of Samal": ["Adecor"]
     }
   },
   "National Capital Region (NCR)": {

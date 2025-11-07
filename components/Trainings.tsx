@@ -32,6 +32,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
     type SortKeys = keyof Training | 'totalParticipants';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
+    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
     const filteredIposForSelection = useMemo(() => {
         if (ipoRegionFilter === 'All') return ipos;
@@ -90,6 +91,10 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             direction = 'descending';
         }
         setSortConfig({ key, direction });
+    };
+    
+    const handleToggleRow = (trainingId: number) => {
+        setExpandedRowId(prevId => (prevId === trainingId ? null : trainingId));
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -344,6 +349,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
+                                <th scope="col" className="w-12 px-4 py-3"></th>
                                 <SortableHeader sortKey="name" label="Name" />
                                 <SortableHeader sortKey="date" label="Date" />
                                 <SortableHeader sortKey="component" label="Component" />
@@ -354,17 +360,50 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {processedTrainings.map((training) => (
-                                <tr key={training.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">{training.name}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(training.date)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.component}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.participantsMale + training.participantsFemale}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(training.trainingExpenses)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button onClick={() => handleEditClick(training)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
-                                        <button onClick={() => handleDeleteClick(training)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
-                                    </td>
-                                </tr>
+                                <React.Fragment key={training.id}>
+                                    <tr onClick={() => handleToggleRow(training.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === training.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">{training.name}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(training.date)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.component}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.participantsMale + training.participantsFemale}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(training.trainingExpenses)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button onClick={(e) => { e.stopPropagation(); handleEditClick(training); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(training); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                        </td>
+                                    </tr>
+                                     {expandedRowId === training.id && (
+                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                            <td colSpan={7} className="p-4">
+                                                <div className="space-y-4">
+                                                     <div>
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Description</h4>
+                                                        <p className="text-sm text-gray-600 dark:text-gray-300">{training.description || 'No description provided.'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
+                                                        {training.participatingIpos.length > 0 ? (
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {training.participatingIpos.map(ipoName => (
+                                                                    <span key={ipoName} className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                                                        {ipoName}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No participating IPOs listed.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>

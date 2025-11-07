@@ -12,6 +12,10 @@ const initialIpos: IPO[] = [
     { id: 2, name: 'Pinugay Upland Farmers Org.', acronym: 'PUFO', location: 'Brgy. Pinugay, Baras, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat', ancestralDomainNo: 'AD-67890', registeringBody: 'DOLE', isWomenLed: false, isWithinGida: true, contactPerson: 'Maria Clara', contactNumber: '09181234567', registrationDate: '2022-03-15' },
     { id: 3, name: 'Macaingalan IP Farmers Assoc.', acronym: 'MIPFA', location: 'Brgy. Macaingalan, General Nakar, Quezon', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Agta', ancestralDomainNo: 'AD-54321', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, contactPerson: 'Pedro Penduko', contactNumber: '09191234567', registrationDate: '2022-08-10' },
     { id: 4, name: 'Daraitan Farmers Cooperative', acronym: 'DAFACO', location: 'Brgy. Daraitan, Tanay, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat-Remontado', ancestralDomainNo: 'AD-09876', registeringBody: 'National Commission on Indigenous Peoples', isWomenLed: true, isWithinGida: false, contactPerson: 'Gabriela Silang', contactNumber: '09201234567', registrationDate: '2023-01-30' },
+    { id: 5, name: 'Marilog District Coffee Growers Association', acronym: 'MDCGA', location: 'Brgy. Marilog, Davao City, Davao del Sur', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Bagobo Tagabawa', ancestralDomainNo: 'AD-DVO-1101', registeringBody: 'CDA', isWomenLed: true, isWithinGida: true, contactPerson: 'Bae Liza Saway', contactNumber: '09172345678', registrationDate: '2022-04-12' },
+    { id: 6, name: 'Malita Cacao Farmers Cooperative', acronym: 'MCFC', location: 'Brgy. Buhangin, Malita, Davao Occidental', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Blaan', ancestralDomainNo: 'AD-DVO-1102', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, contactPerson: 'Datu Isidro Inda', contactNumber: '09182345678', registrationDate: '2021-11-20' },
+    { id: 7, name: 'New Bataan Banana Growers Association', acronym: 'NBGA', location: 'Brgy. Camanlangan, New Bataan, Davao de Oro', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Mansaka', ancestralDomainNo: 'AD-DVO-1103', registeringBody: 'DOLE', isWomenLed: false, isWithinGida: false, contactPerson: 'Mario Agpawa', contactNumber: '09202345678', registrationDate: '2023-02-28' },
+    { id: 8, name: 'Samal Island Seaweeds Planters Org.', acronym: 'SISPO', location: 'Brgy. Adecor, Island Garden City of Samal, Davao del Norte', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Sama', ancestralDomainNo: 'AD-DVO-1104', registeringBody: 'SEC', isWomenLed: true, isWithinGida: false, contactPerson: 'Fatima M. Santos', contactNumber: '09212345678', registrationDate: '2022-09-05' },
 ];
 
 const initialSubprojects: Subproject[] = [
@@ -87,6 +91,78 @@ const initialSubprojects: Subproject[] = [
             { id: 1, type: 'Infrastructure', particulars: 'Pipes and Fittings', deliveryDate: '2023-07-01', unitOfMeasure: 'lot', pricePerUnit: 2100000, numberOfUnits: 1 },
             { id: 2, type: 'Equipment', particulars: 'Water Pump', deliveryDate: '2023-07-05', unitOfMeasure: 'unit', pricePerUnit: 1000000, numberOfUnits: 1 },
             { id: 3, type: 'Infrastructure', particulars: 'Installation Labor', deliveryDate: '2023-07-10', unitOfMeasure: 'lot', pricePerUnit: 1000000, numberOfUnits: 1 },
+        ]
+    },
+    { 
+        id: 5, 
+        name: 'Arabica Coffee Processing Facility', 
+        location: 'Brgy. Marilog, Davao City, Davao del Sur', 
+        indigenousPeopleOrganization: 'Marilog District Coffee Growers Association', 
+        status: 'Ongoing',
+        packageType: 'Package 2',
+        startDate: '2023-05-10',
+        estimatedCompletionDate: '2024-05-10',
+        actualCompletionDate: '',
+        remarks: 'Construction of processing building is 50% complete.',
+        lat: 7.5139,
+        lng: 125.2672,
+        details: [
+            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2023-08-01', unitOfMeasure: 'unit', pricePerUnit: 350000, numberOfUnits: 2 },
+            { id: 2, type: 'Infrastructure', particulars: 'Processing Shed', deliveryDate: '2023-05-20', unitOfMeasure: 'lot', pricePerUnit: 1200000, numberOfUnits: 1 },
+        ] 
+    },
+    { 
+        id: 6, 
+        name: 'Cacao Fermentation and Drying Facility', 
+        location: 'Brgy. Buhangin, Malita, Davao Occidental', 
+        indigenousPeopleOrganization: 'Malita Cacao Farmers Cooperative', 
+        status: 'Completed',
+        packageType: 'Package 2',
+        startDate: '2022-01-20',
+        estimatedCompletionDate: '2022-10-31',
+        actualCompletionDate: '2022-09-15',
+        remarks: 'Turned over to the IPO and is now fully operational.',
+        lat: 6.4039,
+        lng: 125.6111,
+        details: [
+            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2022-03-01', unitOfMeasure: 'unit', pricePerUnit: 500000, numberOfUnits: 1 },
+            { id: 2, type: 'Infrastructure', particulars: 'Warehouse', deliveryDate: '2022-02-01', unitOfMeasure: 'lot', pricePerUnit: 800000, numberOfUnits: 1 },
+        ]
+    },
+    { 
+        id: 7, 
+        name: 'Rehabilitation of Banana Farm-to-Market Road', 
+        location: 'Brgy. Camanlangan, New Bataan, Davao de Oro', 
+        indigenousPeopleOrganization: 'New Bataan Banana Growers Association', 
+        status: 'Proposed',
+        packageType: 'Package 3',
+        startDate: '2024-09-01',
+        estimatedCompletionDate: '2025-09-01',
+        actualCompletionDate: '',
+        remarks: 'For validation and approval by the regional office.',
+        lat: 7.5303,
+        lng: 126.1558,
+        details: [
+            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2024-09-15', unitOfMeasure: 'lot', pricePerUnit: 4000000, numberOfUnits: 1 },
+            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2024-09-20', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
+        ]
+    },
+    { 
+        id: 8, 
+        name: 'Seaweed Nursery and Post-Harvest Facility', 
+        location: 'Brgy. Adecor, Island Garden City of Samal, Davao del Norte', 
+        indigenousPeopleOrganization: 'Samal Island Seaweeds Planters Org.', 
+        status: 'Ongoing',
+        packageType: 'Package 1',
+        startDate: '2023-07-01',
+        estimatedCompletionDate: '2024-07-01',
+        actualCompletionDate: '',
+        remarks: 'Nursery establishment complete. Awaiting materials for drying facility.',
+        lat: 7.0781,
+        lng: 125.7197,
+        details: [
+            { id: 1, type: 'Equipment', particulars: 'Floating cages', deliveryDate: '2023-07-15', unitOfMeasure: 'unit', pricePerUnit: 10000, numberOfUnits: 50 },
+            { id: 2, type: 'Infrastructure', particulars: 'Storage unit', deliveryDate: '2023-08-01', unitOfMeasure: 'lot', pricePerUnit: 300000, numberOfUnits: 1 },
         ]
     },
 ];
