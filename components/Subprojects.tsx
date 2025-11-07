@@ -1,0 +1,442 @@
+import React, { useState, FormEvent, useMemo, useEffect } from 'react';
+import { Subproject, SubprojectDetail, IPO } from '../constants';
+import LocationPicker from './LocationPicker';
+
+type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
+
+interface SubprojectsProps {
+    ipos: IPO[];
+    subprojects: Subproject[];
+    setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+}
+
+const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects }) => {
+    const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
+    const [currentDetail, setCurrentDetail] = useState({
+        particulars: '',
+        unitOfMeasure: 'pcs' as SubprojectDetail['unitOfMeasure'],
+        pricePerUnit: '',
+        numberOfUnits: '',
+    });
+    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [projectToDelete, setProjectToDelete] = useState<Subproject | null>(null);
+
+    const defaultFormData = useMemo(() => ({
+        name: '',
+        location: '',
+        indigenousPeopleOrganization: ipos.length > 0 ? ipos[0].name : '',
+        status: 'Proposed' as Subproject['status'],
+        packageType: 'Package 1' as Subproject['packageType'],
+        startDate: '',
+        estimatedCompletionDate: '',
+        actualCompletionDate: '',
+        remarks: '',
+        // FIX: Add lat and lng to the default form data to satisfy the Subproject type.
+        lat: '',
+        lng: '',
+    }), [ipos]);
+
+    const [formData, setFormData] = useState(defaultFormData);
+
+     useEffect(() => {
+        if (!editingSubproject) {
+            setFormData(defaultFormData);
+        }
+    }, [defaultFormData, editingSubproject]);
+
+    const totalBudgetForNewProject = useMemo(() => {
+        return detailItems.reduce((acc, item) => acc + (item.pricePerUnit * item.numberOfUnits), 0);
+    }, [detailItems]);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setCurrentDetail(prev => ({ ...prev, [name]: value }));
+    };
+    
+    const handleAddDetail = () => {
+        if (!currentDetail.particulars || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
+            alert('Please fill out all detail fields.');
+            return;
+        }
+        setDetailItems(prev => [...prev, {
+            particulars: currentDetail.particulars,
+            unitOfMeasure: currentDetail.unitOfMeasure,
+            pricePerUnit: parseFloat(currentDetail.pricePerUnit),
+            numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
+        }]);
+        setCurrentDetail({
+            particulars: '',
+            unitOfMeasure: 'pcs',
+            pricePerUnit: '',
+            numberOfUnits: '',
+        });
+    };
+    
+    const handleRemoveDetail = (indexToRemove: number) => {
+        setDetailItems(prev => prev.filter((_, index) => index !== indexToRemove));
+    };
+
+    const handleEditParticular = (indexToEdit: number) => {
+        const itemToEdit = detailItems[indexToEdit];
+        setCurrentDetail({
+            particulars: itemToEdit.particulars,
+            unitOfMeasure: itemToEdit.unitOfMeasure,
+            pricePerUnit: String(itemToEdit.pricePerUnit),
+            numberOfUnits: String(itemToEdit.numberOfUnits),
+        });
+        handleRemoveDetail(indexToEdit);
+    };
+
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        // FIX: Add validation for lat and lng fields.
+        if (!formData.name || !formData.location || !formData.indigenousPeopleOrganization || detailItems.length === 0 || !formData.startDate || !formData.estimatedCompletionDate || !formData.lat || !formData.lng) {
+            alert('Please fill out all required project fields and add at least one detail item.');
+            return;
+        }
+
+        if (editingSubproject) {
+             const updatedSubproject: Subproject = {
+                ...editingSubproject,
+                ...formData,
+                // FIX: Parse lat and lng from string to number on submit.
+                lat: parseFloat(formData.lat),
+                lng: parseFloat(formData.lng),
+                details: detailItems.map((detail, index) => ({ ...detail, id: index + 1 })),
+            };
+            setSubprojects(prev => prev.map(p => p.id === editingSubproject.id ? updatedSubproject : p));
+        } else {
+            const newSubproject: Subproject = {
+                id: subprojects.length > 0 ? Math.max(...subprojects.map(p => p.id)) + 1 : 1,
+                ...formData,
+                // FIX: Parse lat and lng from string to number on submit.
+                lat: parseFloat(formData.lat),
+                lng: parseFloat(formData.lng),
+                details: detailItems.map((detail, index) => ({ ...detail, id: index + 1 })),
+            };
+            setSubprojects(prev => [newSubproject, ...prev]);
+        }
+        
+        handleCancelEdit();
+    };
+    
+    const handleEditClick = (project: Subproject, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingSubproject(project);
+        setFormData({
+            name: project.name,
+            location: project.location,
+            indigenousPeopleOrganization: project.indigenousPeopleOrganization,
+            status: project.status,
+            packageType: project.packageType,
+            startDate: project.startDate,
+            estimatedCompletionDate: project.estimatedCompletionDate,
+            actualCompletionDate: project.actualCompletionDate || '',
+            remarks: project.remarks || '',
+            // FIX: Populate lat and lng in the form for editing, converting them to strings.
+            lat: String(project.lat),
+            lng: String(project.lng),
+        });
+        setDetailItems(project.details.map(({ id, ...rest }) => rest));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingSubproject(null);
+        setFormData(defaultFormData);
+        setDetailItems([]);
+    };
+
+    const handleDeleteClick = (project: Subproject, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setProjectToDelete(project);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = () => {
+        if (projectToDelete) {
+            setSubprojects(prev => prev.filter(p => p.id !== projectToDelete.id));
+            setIsDeleteModalOpen(false);
+            setProjectToDelete(null);
+        }
+    };
+    
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    }
+    
+    const calculateTotalBudget = (details: SubprojectDetail[]) => {
+        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    }
+
+    const getStatusBadge = (status: Subproject['status']) => {
+        const baseClasses = "px-3 py-1 text-xs font-semibold rounded-full";
+        switch (status) {
+            case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+            case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+            case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+            case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+            default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        }
+    }
+
+    const handleToggleRow = (projectId: number) => {
+        setExpandedRowId(prevId => (prevId === projectId ? null : projectId));
+    };
+
+    const formatDate = (dateString?: string) => {
+        if (!dateString) return 'N/A';
+        return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    };
+
+    return (
+        <div>
+            <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">Subprojects Management</h2>
+            
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
+                        <p className="my-4">Are you sure you want to delete the project "{projectToDelete?.name}"? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Form Section */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">{editingSubproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    {/* Main Project Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="lg:col-span-2">
+                            <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Subproject Name</label>
+                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                         <div>
+                           <label htmlFor="packageType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Package Type</label>
+                            <select id="packageType" name="packageType" value={formData.packageType} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
+                                {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
+                                    <option key={pkg} value={pkg}>{pkg}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="lg:col-span-2">
+                            <label htmlFor="indigenousPeopleOrganization" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Indigenous People Organization</label>
+                            <select name="indigenousPeopleOrganization" id="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
+                                <option value="" disabled>Select an IPO</option>
+                                {ipos.map(ipo => (
+                                    <option key={ipo.id} value={ipo.name}>{ipo.name} ({ipo.acronym})</option>
+                                ))}
+                            </select>
+                        </div>
+                         <div>
+                           <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                            <select id="status" name="status" value={formData.status} onChange={handleInputChange} required className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm rounded-md">
+                                <option>Proposed</option>
+                                <option>Ongoing</option>
+                                <option>Completed</option>
+                                <option>Cancelled</option>
+                            </select>
+                        </div>
+                        <div className="lg:col-span-3">
+                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location</label>
+                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({...prev, location: loc}))} required />
+                        </div>
+                        {/* FIX: Add input fields for latitude and longitude. */}
+                        <div>
+                            <label htmlFor="lat" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Latitude</label>
+                             <input type="number" step="any" name="lat" id="lat" value={formData.lat} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                        <div>
+                            <label htmlFor="lng" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Longitude</label>
+                             <input type="number" step="any" name="lng" id="lng" value={formData.lng} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                        <div>
+                            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                             <input type="date" name="startDate" id="startDate" value={formData.startDate} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                        <div>
+                            <label htmlFor="estimatedCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Completion Date</label>
+                             <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                        <div>
+                            <label htmlFor="actualCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Completion Date</label>
+                             <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                         <div className="lg:col-span-3">
+                            <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
+                            <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                        </div>
+                    </div>
+
+                    {/* Nested Form for Details */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+                        <h4 className="text-lg font-medium text-gray-800 dark:text-white mb-2">Project Details / Budget Breakdown</h4>
+                        {/* List of added details */}
+                        <div className="space-y-2 mb-4">
+                            {detailItems.map((item, index) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
+                                    <div className="text-sm">
+                                        <span className="font-semibold">{item.particulars}</span>
+                                        <span className="text-gray-500 dark:text-gray-400"> ({item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)})</span>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                       <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
+                                        <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                        </button>
+                                        <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                         {/* Inputs for new detail */}
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particulars</label>
+                                <input type="text" name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                            </div>
+                             <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
+                                <select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                    <option>pcs</option>
+                                    <option>kgs</option>
+                                    <option>unit</option>
+                                    <option>lot</option>
+                                </select>
+                            </div>
+                             <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
+                                <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                            </div>
+                             <div className="flex items-center gap-2">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
+                                    <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                </div>
+                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="text-lg font-bold">
+                            Total Budget: <span className="text-accent dark:text-green-400">{formatCurrency(totalBudgetForNewProject)}</span>
+                        </div>
+                        <div className="flex gap-4">
+                            {editingSubproject && (
+                                <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                    Cancel
+                                </button>
+                            )}
+                            <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                                {editingSubproject ? 'Update Subproject' : 'Add Subproject'}
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            {/* Table Section */}
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects List</h3>
+                 <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th scope="col" className="w-12"></th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Project Name</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Package</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">IPO</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Timeline</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Budget</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {subprojects.map((project) => (
+                                <React.Fragment key={project.id}>
+                                    <tr onClick={() => handleToggleRow(project.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === project.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{project.name}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.packageType}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(project.startDate)} - {formatDate(project.estimatedCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">{formatCurrency(calculateTotalBudget(project.details))}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={getStatusBadge(project.status)}>{project.status}</span></td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button onClick={(e) => handleEditClick(project, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                            <button onClick={(e) => handleDeleteClick(project, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                        </td>
+                                    </tr>
+                                    {expandedRowId === project.id && (
+                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                            <td colSpan={8} className="p-0">
+                                                <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                    <div className="lg:col-span-2">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget Details</h4>
+                                                        <table className="min-w-full">
+                                                            <thead className="bg-gray-100 dark:bg-gray-700 text-xs uppercase">
+                                                                <tr>
+                                                                    <th className="px-4 py-2 text-left">Particulars</th>
+                                                                    <th className="px-4 py-2 text-right">Price/Unit</th>
+                                                                    <th className="px-4 py-2 text-right"># of Units</th>
+                                                                    <th className="px-4 py-2 text-right">Subtotal</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="text-sm">
+                                                                {project.details.map(detail => (
+                                                                    <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
+                                                                        <td className="px-4 py-2">{detail.particulars}</td>
+                                                                        <td className="px-4 py-2 text-right">{formatCurrency(detail.pricePerUnit)}</td>
+                                                                        <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
+                                                                        <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Additional Info</h4>
+                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Actual Completion:</span> {formatDate(project.actualCompletionDate)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300 italic bg-gray-100 dark:bg-gray-800/50 p-3 rounded-md">{project.remarks || 'No remarks provided.'}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+export default Subprojects;
