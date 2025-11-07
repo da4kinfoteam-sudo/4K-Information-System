@@ -151,7 +151,7 @@ const App: React.FC = () => {
             case '/subprojects':
                 return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} />;
             case '/ipo':
-                return <IPOs ipos={ipos} setIpos={setIpos} />;
+                return <IPOs ipos={ipos} setIpos={setIpos} subprojects={subprojects} trainings={trainings} />;
             case '/trainings':
                 return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} />;
             default:

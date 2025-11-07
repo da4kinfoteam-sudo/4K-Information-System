@@ -23,9 +23,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [projectToDelete, setProjectToDelete] = useState<Subproject | null>(null);
 
-    // State for the new dynamic IPO selection flow
     const [selectedRegion, setSelectedRegion] = useState('');
     const [ipoSearch, setIpoSearch] = useState('');
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
+    const [packageFilter, setPackageFilter] = useState('All');
+    type SortKeys = keyof Subproject | 'budget';
+    const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
 
 
     const defaultFormData = useMemo(() => ({
@@ -46,7 +51,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
      useEffect(() => {
         if (editingSubproject) {
-            // FIX: Replaced 'project' with 'editingSubproject' which is the correct variable in this scope.
             setFormData({
                 name: editingSubproject.name,
                 location: editingSubproject.location,
@@ -60,7 +64,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 lat: editingSubproject.lat,
                 lng: editingSubproject.lng,
             });
-            // FIX: Replaced 'project' with 'editingSubproject' which is the correct variable in this scope.
             setDetailItems(editingSubproject.details.map(({ id, ...rest }) => rest));
 
             const projectIpo = ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization);
@@ -82,10 +85,70 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         return ipos.filter(ipo => ipo.region === selectedRegion);
     }, [selectedRegion, ipos]);
 
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    }
+    
+    const calculateTotalBudget = (details: SubprojectDetail[]) => {
+        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    }
+
+    const processedSubprojects = useMemo(() => {
+        let filteredProjects = [...subprojects];
+
+        if (statusFilter !== 'All') {
+            filteredProjects = filteredProjects.filter(p => p.status === statusFilter);
+        }
+        if (packageFilter !== 'All') {
+            filteredProjects = filteredProjects.filter(p => p.packageType === packageFilter);
+        }
+
+        if (searchTerm) {
+            const lowercasedSearchTerm = searchTerm.toLowerCase();
+            filteredProjects = filteredProjects.filter(p =>
+                p.name.toLowerCase().includes(lowercasedSearchTerm) ||
+                p.indigenousPeopleOrganization.toLowerCase().includes(lowercasedSearchTerm) ||
+                p.location.toLowerCase().includes(lowercasedSearchTerm)
+            );
+        }
+
+        if (sortConfig !== null) {
+            filteredProjects.sort((a, b) => {
+                let aValue: any;
+                let bValue: any;
+
+                if (sortConfig.key === 'budget') {
+                    aValue = calculateTotalBudget(a.details);
+                    bValue = calculateTotalBudget(b.details);
+                } else {
+                    aValue = a[sortConfig.key as keyof Subproject];
+                    bValue = b[sortConfig.key as keyof Subproject];
+                }
+                
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+
+        return filteredProjects;
+    }, [subprojects, searchTerm, statusFilter, packageFilter, sortConfig]);
+
+    const requestSort = (key: SortKeys) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
+
     const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const region = e.target.value;
         setSelectedRegion(region);
-        // Reset IPO and location when region changes
         setIpoSearch('');
         setFormData(prev => ({
             ...prev,
@@ -100,14 +163,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
         const matchedIpo = filteredIpos.find(ipo => ipo.name === searchName);
         if (matchedIpo) {
-            // An exact match was selected from the datalist
             setFormData(prev => ({
                 ...prev,
                 indigenousPeopleOrganization: matchedIpo.name,
                 location: matchedIpo.location,
             }));
         } else {
-            // User is typing, clear location until a match is found
              setFormData(prev => ({
                 ...prev,
                 indigenousPeopleOrganization: '',
@@ -222,14 +283,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
     };
     
-    const formatCurrency = (amount: number) => {
-      return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-    }
-    
-    const calculateTotalBudget = (details: SubprojectDetail[]) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
-    }
-
     const getStatusBadge = (status: Subproject['status']) => {
         const baseClasses = "px-3 py-1 text-xs font-semibold rounded-full";
         switch (status) {
@@ -252,6 +305,18 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
+    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
+      const isSorted = sortConfig?.key === sortKey;
+      const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
+      return (
+        <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
+            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+              <span>{label}</span>
+              <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
+            </button>
+        </th>
+      )
+    }
 
     return (
         <div>
@@ -425,22 +490,52 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             {/* Table Section */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                  <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects List</h3>
+                 
+                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
+                    <input
+                        type="text"
+                        placeholder="Search by name, IPO, or location..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
+                    />
+                    <div className="flex items-center gap-2">
+                       <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
+                        <select id="statusFilter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                            <option value="All">All</option>
+                            <option value="Proposed">Proposed</option>
+                            <option value="Ongoing">Ongoing</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="packageFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Package:</label>
+                        <select id="packageFilter" value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                             <option value="All">All</option>
+                            {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
+                                <option key={pkg} value={pkg}>{pkg}</option>
+                            ))}
+                        </select>
+                    </div>
+                 </div>
+
                  <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th scope="col" className="w-12"></th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Project Name</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Package</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">IPO</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Timeline</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Budget</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <SortableHeader sortKey="name" label="Project Name" />
+                                <SortableHeader sortKey="packageType" label="Package" />
+                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" />
+                                <SortableHeader sortKey="startDate" label="Timeline" />
+                                <SortableHeader sortKey="budget" label="Total Budget" />
+                                <SortableHeader sortKey="status" label="Status" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {subprojects.map((project) => (
+                            {processedSubprojects.map((project) => (
                                 <React.Fragment key={project.id}>
                                     <tr onClick={() => handleToggleRow(project.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-4 py-4 text-gray-400">

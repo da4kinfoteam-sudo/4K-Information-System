@@ -1,10 +1,12 @@
-import React, { useState, FormEvent, useEffect } from 'react';
-import { IPO } from '../constants';
+import React, { useState, FormEvent, useEffect, useMemo } from 'react';
+import { IPO, Subproject, Training, philippineRegions } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 interface IPOsProps {
     ipos: IPO[];
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
+    subprojects: Subproject[];
+    trainings: Training[];
 }
 
 const defaultFormData = {
@@ -24,12 +26,18 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
+    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+    const [searchTerm, setSearchTerm] = useState('');
+    const [regionFilter, setRegionFilter] = useState('All');
+    type SortKeys = keyof IPO;
+    const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
 
     const isOtherRegisteringBody = !registeringBodyOptions.includes(formData.registeringBody);
 
@@ -56,6 +64,48 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
             }
         }
     }, [editingIpo]);
+
+    const processedIpos = useMemo(() => {
+        let filteredIpos = [...ipos];
+
+        if (regionFilter !== 'All') {
+            filteredIpos = filteredIpos.filter(ipo => ipo.region === regionFilter);
+        }
+
+        if (searchTerm) {
+            const lowercasedSearchTerm = searchTerm.toLowerCase();
+            filteredIpos = filteredIpos.filter(ipo =>
+                ipo.name.toLowerCase().includes(lowercasedSearchTerm) ||
+                ipo.acronym.toLowerCase().includes(lowercasedSearchTerm) ||
+                ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
+                ipo.location.toLowerCase().includes(lowercasedSearchTerm)
+            );
+        }
+
+        if (sortConfig !== null) {
+            filteredIpos.sort((a, b) => {
+                const aValue = a[sortConfig.key];
+                const bValue = b[sortConfig.key];
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+
+        return filteredIpos;
+    }, [ipos, searchTerm, regionFilter, sortConfig]);
+    
+    const requestSort = (key: SortKeys) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
 
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -103,7 +153,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
         handleCancelEdit();
     };
 
-    const handleEditClick = (ipo: IPO) => {
+    const handleEditClick = (ipo: IPO, e: React.MouseEvent) => {
+        e.stopPropagation();
         setEditingIpo(ipo);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -114,7 +165,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
         setOtherRegisteringBody('');
     };
 
-    const handleDeleteClick = (ipo: IPO) => {
+    const handleDeleteClick = (ipo: IPO, e: React.MouseEvent) => {
+        e.stopPropagation();
         setIpoToDelete(ipo);
         setIsDeleteModalOpen(true);
     };
@@ -132,7 +184,43 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
+    const handleToggleRow = (ipoId: number) => {
+        setExpandedRowId(prevId => (prevId === ipoId ? null : ipoId));
+    };
+
+    const formatCurrency = (amount: number) => {
+      return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    }
+    
+    const calculateTotalBudget = (details: Subproject['details']) => {
+        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    }
+
+    const getStatusBadge = (status: Subproject['status']) => {
+        const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+        switch (status) {
+            case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+            case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+            case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+            case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+            default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        }
+    }
+
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+    
+    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
+      const isSorted = sortConfig?.key === sortKey;
+      const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
+      return (
+        <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
+            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+              <span>{label}</span>
+              <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
+            </button>
+        </th>
+      )
+    }
 
     return (
         <div>
@@ -256,38 +344,115 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos }) => {
             {/* Table Section */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">IPO List</h3>
+                
+                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
+                    <input
+                        type="text"
+                        placeholder="Search by name, contact, or location..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
+                    />
+                    <div className="flex items-center gap-2">
+                       <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                        <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                            <option value="All">All Regions</option>
+                            {philippineRegions.map(region => (
+                                <option key={region} value={region}>{region}</option>
+                            ))}
+                        </select>
+                    </div>
+                 </div>
+
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Registered</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Registering Body</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Contact Person</th>
+                                <th scope="col" className="w-12"></th>
+                                <SortableHeader sortKey="name" label="Name" />
+                                <SortableHeader sortKey="region" label="Region" />
+                                <SortableHeader sortKey="registrationDate" label="Registered" />
+                                <SortableHeader sortKey="registeringBody" label="Registering Body" />
+                                <SortableHeader sortKey="contactPerson" label="Contact Person" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {ipos.map((ipo) => (
-                                <tr key={ipo.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                        <div>{ipo.name}</div>
-                                        <div className="text-xs text-gray-400">{ipo.acronym}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.registeringBody}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                        <div>{ipo.contactPerson}</div>
-                                        <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button onClick={() => handleEditClick(ipo)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
-                                        <button onClick={() => handleDeleteClick(ipo)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {processedIpos.map((ipo) => {
+                                const linkedSubprojects = subprojects.filter(p => p.indigenousPeopleOrganization === ipo.name);
+                                const linkedTrainings = trainings.filter(t => t.participatingIpos.includes(ipo.name));
+                                
+                                return (
+                                    <React.Fragment key={ipo.id}>
+                                        <tr onClick={() => handleToggleRow(ipo.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                            <td className="px-4 py-4 text-gray-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === ipo.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                </svg>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                                <div>{ipo.name}</div>
+                                                <div className="text-xs text-gray-400">{ipo.acronym}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.registeringBody}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                                <div>{ipo.contactPerson}</div>
+                                                <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                                <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                            </td>
+                                        </tr>
+                                         {expandedRowId === ipo.id && (
+                                            <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                                <td colSpan={7} className="p-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Linked Subprojects</h4>
+                                                            {linkedSubprojects.length > 0 ? (
+                                                                <ul className="space-y-2">
+                                                                    {linkedSubprojects.map(p => (
+                                                                        <li key={p.id} className="text-sm p-2 bg-white dark:bg-gray-800 rounded-md shadow-sm">
+                                                                            <div className="flex justify-between items-center">
+                                                                               <span className="font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
+                                                                               <span className={getStatusBadge(p.status)}>{p.status}</span>
+                                                                            </div>
+                                                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Budget: {formatCurrency(calculateTotalBudget(p.details))}</div>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : (
+                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No linked subprojects.</p>
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Linked Trainings</h4>
+                                                            {linkedTrainings.length > 0 ? (
+                                                                <ul className="space-y-2">
+                                                                    {linkedTrainings.map(t => (
+                                                                        <li key={t.id} className="text-sm p-2 bg-white dark:bg-gray-800 rounded-md shadow-sm">
+                                                                           <div className="flex justify-between items-center">
+                                                                              <span className="font-medium text-gray-800 dark:text-gray-100">{t.name}</span>
+                                                                              <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(t.date)}</span>
+                                                                           </div>
+                                                                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Facilitator: {t.facilitator}</div>
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : (
+                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No linked trainings.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

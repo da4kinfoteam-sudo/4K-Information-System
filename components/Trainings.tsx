@@ -24,10 +24,59 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [trainingToDelete, setTrainingToDelete] = useState<Training | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
 
+    const [searchTerm, setSearchTerm] = useState('');
+    const [tableRegionFilter, setTableRegionFilter] = useState('All');
+    type SortKeys = keyof Training;
+    const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
+
     const filteredIposForSelection = useMemo(() => {
         if (ipoRegionFilter === 'All') return ipos;
         return ipos.filter(ipo => ipo.region === ipoRegionFilter);
     }, [ipoRegionFilter, ipos]);
+
+    const processedTrainings = useMemo(() => {
+        let filteredTrainings = [...trainings];
+        
+        if (tableRegionFilter !== 'All') {
+            const iposInRegion = new Set(ipos.filter(ipo => ipo.region === tableRegionFilter).map(ipo => ipo.name));
+            filteredTrainings = filteredTrainings.filter(training =>
+                training.participatingIpos.some(ipoName => iposInRegion.has(ipoName)) || (training.location === 'Online' && tableRegionFilter === 'Online')
+            );
+        }
+
+        if (searchTerm) {
+            const lowercasedSearchTerm = searchTerm.toLowerCase();
+            filteredTrainings = filteredTrainings.filter(t =>
+                t.name.toLowerCase().includes(lowercasedSearchTerm) ||
+                t.location.toLowerCase().includes(lowercasedSearchTerm) ||
+                t.facilitator.toLowerCase().includes(lowercasedSearchTerm) ||
+                t.description.toLowerCase().includes(lowercasedSearchTerm)
+            );
+        }
+
+        if (sortConfig !== null) {
+            filteredTrainings.sort((a, b) => {
+                const aValue = a[sortConfig.key];
+                const bValue = b[sortConfig.key];
+                if (aValue < bValue) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (aValue > bValue) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return filteredTrainings;
+    }, [trainings, searchTerm, tableRegionFilter, sortConfig, ipos]);
+
+    const requestSort = (key: SortKeys) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -95,6 +144,21 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+
+    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
+      const isSorted = sortConfig?.key === sortKey;
+      const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
+      return (
+        <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
+            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
+              <span>{label}</span>
+              <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
+            </button>
+        </th>
+      )
+    }
+
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">Trainings Management</h2>
@@ -119,23 +183,23 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
                             <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Training Name</label>
-                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                         <div>
                             <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-                            <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                          <div className="md:col-span-2">
                              <label htmlFor="facilitator" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Facilitator / Speaker</label>
-                            <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} required className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                         <div className="md:col-span-2">
                             <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location</label>
-                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required />
+                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required allowOnline={true} />
                         </div>
                          <div className="md:col-span-2">
                             <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
-                            <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm" />
+                            <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
                         </div>
                          <div className="md:col-span-2">
                             <label htmlFor="participatingIpos" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Participating IPOs</label>
@@ -181,19 +245,40 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             {/* Table Section */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Trainings List</h3>
+
+                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
+                    <input
+                        type="text"
+                        placeholder="Search by name, location, facilitator..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
+                    />
+                    <div className="flex items-center gap-2">
+                       <label htmlFor="tableRegionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                        <select id="tableRegionFilter" value={tableRegionFilter} onChange={(e) => setTableRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                            <option value="All">All Regions</option>
+                            <option value="Online">Online</option>
+                            {philippineRegions.map(region => (
+                                <option key={region} value={region}>{region}</option>
+                            ))}
+                        </select>
+                    </div>
+                 </div>
+
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Location</th>
+                                <SortableHeader sortKey="name" label="Name" />
+                                <SortableHeader sortKey="date" label="Date" />
+                                <SortableHeader sortKey="location" label="Location" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Participating IPOs</th>
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {trainings.map((training) => (
+                            {processedTrainings.map((training) => (
                                 <tr key={training.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                     <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">{training.name}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(training.date)}</td>

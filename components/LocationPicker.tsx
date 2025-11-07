@@ -5,9 +5,10 @@ interface LocationPickerProps {
     value: string;
     onChange: (value: string) => void;
     required?: boolean;
+    allowOnline?: boolean;
 }
 
-const regions = Object.keys(philippineLocations);
+const allRegions = Object.keys(philippineLocations);
 
 export const parseLocation = (location: string): { region: string; province: string; municipality: string; barangay: string } => {
     if (!location || location === "Online") {
@@ -27,7 +28,7 @@ export const parseLocation = (location: string): { region: string; province: str
     }
     
     let region = "";
-    for (const reg of regions) {
+    for (const reg of allRegions) {
         if (philippineLocations[reg] && Object.keys(philippineLocations[reg]).includes(province)) {
             region = reg;
             break;
@@ -37,11 +38,18 @@ export const parseLocation = (location: string): { region: string; province: str
     return { region, province, municipality, barangay };
 };
 
-const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, required = false }) => {
+const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, required = false, allowOnline = false }) => {
     const [selectedRegion, setSelectedRegion] = useState('');
     const [selectedProvince, setSelectedProvince] = useState('');
     const [selectedMunicipality, setSelectedMunicipality] = useState('');
     const [selectedBarangay, setSelectedBarangay] = useState('');
+
+    const regions = useMemo(() => {
+        if (allowOnline) {
+            return allRegions;
+        }
+        return allRegions.filter(r => r !== 'Online');
+    }, [allowOnline]);
 
     useEffect(() => {
         const { region, province, municipality, barangay } = parseLocation(value);
