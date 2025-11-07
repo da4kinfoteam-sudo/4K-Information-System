@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail } from '../constants';
 import { Subproject, IPO, Training, Activity } from '../constants';
+import GanttChart from './GanttChart';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -255,6 +256,11 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, act
             <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Intervention Locations</h3>
                 <MapDisplay subprojects={filteredData.subprojects} trainings={filteredData.trainings} />
+            </div>
+
+            <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects Timeline</h3>
+                <GanttChart subprojects={filteredData.subprojects} />
             </div>
 
             <div className="mt-10">

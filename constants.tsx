@@ -43,6 +43,15 @@ export interface Subproject {
     lng: number;
 }
 
+export type TrainingComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
+
+export const trainingComponents: TrainingComponentType[] = [
+    'Social Preparation',
+    'Production and Livelihood',
+    'Marketing and Enterprise',
+    'Program Management'
+];
+
 export interface Training {
     id: number;
     name: string;
@@ -53,6 +62,10 @@ export interface Training {
     participatingIpos: string[];
     lat?: number;
     lng?: number;
+    participantsMale: number;
+    participantsFemale: number;
+    trainingExpenses: number;
+    component: TrainingComponentType;
 }
 
 export interface Activity {
