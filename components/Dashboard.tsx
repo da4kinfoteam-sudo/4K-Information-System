@@ -107,6 +107,13 @@ const calculateTotalBudget = (details: SubprojectDetail[]) => {
     return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
 }
 
+const FinancialsIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+);
+
+
 interface DashboardProps {
     subprojects: Subproject[];
     ipos: IPO[];
@@ -173,6 +180,18 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, act
         ];
         return combined.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
     }, [filteredData]);
+
+    const totalFinancials = useMemo(() => {
+        const subprojectTotal = filteredData.subprojects.reduce((sum, project) => {
+            return sum + calculateTotalBudget(project.details);
+        }, 0);
+
+        const trainingTotal = filteredData.trainings.reduce((sum, training) => {
+            return sum + (training.trainingExpenses || 0) + (training.otherExpenses || 0);
+        }, 0);
+
+        return subprojectTotal + trainingTotal;
+    }, [filteredData.subprojects, filteredData.trainings]);
 
 
     const completedProjectsCount = filteredData.subprojects.filter(p => p.status === 'Completed').length;
@@ -295,10 +314,11 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, act
                     </div>
                 </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <StatCard title="Total Invested" value={formatCurrency(totalFinancials)} icon={<FinancialsIcon />} color="text-purple-500" />
+                <StatCard title="Subprojects" value={filteredData.subprojects.length.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-500" />
                 <StatCard title="Trainings" value={filteredData.trainings.length.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-500" />
                 <StatCard title="IPOs" value={filteredData.ipos.length.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" />
-                <StatCard title="Subprojects" value={filteredData.subprojects.length.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-500" />
                 <StatCard title="Completed Subprojects" value={completedProjectsCount.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-teal-500" />
                 <StatCard title="Other Activities" value={filteredData.activities.length.toString()} icon={<ActivitiesIcon className="h-8 w-8" />} color="text-red-500" />
             </div>

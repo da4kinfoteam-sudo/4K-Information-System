@@ -60,6 +60,23 @@ export const trainingComponents: TrainingComponentType[] = [
     'Program Management'
 ];
 
+export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
+export type FundType = typeof fundTypes[number];
+
+export const tiers = ['Tier 1', 'Tier 2'] as const;
+export type Tier = typeof tiers[number];
+
+export const months = [
+    'January', 'February', 'March', 'April', 'May', 'June', 
+    'July', 'August', 'September', 'October', 'November', 'December'
+] as const;
+export type Month = typeof months[number];
+
+export interface Disbursement {
+    month: Month;
+    amount: number;
+}
+
 export interface Training {
     id: number;
     name: string;
@@ -74,6 +91,12 @@ export interface Training {
     participantsFemale: number;
     trainingExpenses: number;
     component: TrainingComponentType;
+    otherExpenses?: number;
+    fundingYear?: number;
+    fundType?: FundType;
+    tier?: Tier;
+    monthOfObligation?: Month;
+    disbursementSchedule?: Disbursement[];
 }
 
 export interface Activity {
