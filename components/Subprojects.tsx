@@ -35,6 +35,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [packageFilter, setPackageFilter] = useState('All');
     type SortKeys = keyof Subproject | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
+    const [activeTab, setActiveTab] = useState<'info' | 'timeline' | 'budget'>('info');
 
 
     const defaultFormData = useMemo(() => ({
@@ -272,6 +273,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleEditClick = (project: Subproject, e: React.MouseEvent) => {
         e.stopPropagation();
         setEditingSubproject(project);
+        setActiveTab('info');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -281,6 +283,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setDetailItems([]);
         setSelectedRegion('');
         setIpoSearch('');
+        setActiveTab('info');
     };
 
     const handleDeleteClick = (project: Subproject, e: React.MouseEvent) => {
@@ -331,6 +334,23 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         </th>
       )
     }
+    
+    const TabButton: React.FC<{ tabName: typeof activeTab; label: string; }> = ({ tabName, label }) => {
+        const isActive = activeTab === tabName;
+        return (
+            <button
+                type="button"
+                onClick={() => setActiveTab(tabName)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
+                    ${isActive
+                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    }
 
     return (
         <div>
@@ -352,157 +372,179 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             {/* Form Section */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">{editingSubproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* Main Project Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div className="lg:col-span-2">
-                            <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Subproject Name</label>
-                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                         <div>
-                           <label htmlFor="packageType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Package Type</label>
-                            <select id="packageType" name="packageType" value={formData.packageType} onChange={handleInputChange} required className={commonInputClasses}>
-                                {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
-                                    <option key={pkg} value={pkg}>{pkg}</option>
-                                ))}
-                            </select>
-                        </div>
-                         <div>
-                            <label htmlFor="region" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
-                            <select name="region" id="region" value={selectedRegion} onChange={handleRegionChange} required className={commonInputClasses}>
-                                <option value="">Select a region first</option>
-                                {philippineRegions.map(region => (
-                                    <option key={region} value={region}>{region}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="lg:col-span-2">
-                            <label htmlFor="ipoSearch" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Indigenous People Organization</label>
-                             <input 
-                                type="text" 
-                                name="ipoSearch" 
-                                id="ipoSearch" 
-                                value={ipoSearch}
-                                onChange={handleIpoSearchChange}
-                                list="ipo-datalist"
-                                placeholder={selectedRegion ? "Type to search for an IPO" : "Select a region first"}
-                                disabled={!selectedRegion}
-                                required
-                                className={`${commonInputClasses} disabled:bg-gray-200 dark:disabled:bg-gray-600`}
-                            />
-                            <datalist id="ipo-datalist">
-                                {filteredIpos.map(ipo => (
-                                    <option key={ipo.id} value={ipo.name}>
-                                        {ipo.name} ({ipo.acronym})
-                                    </option>
-                                ))}
-                            </datalist>
-                        </div>
-                        
-                        <div className="lg:col-span-3">
-                            <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location (auto-filled from IPO)</label>
-                            <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({...prev, location: loc}))} required />
-                        </div>
+                <form onSubmit={handleSubmit}>
+                    <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                        <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                            <TabButton tabName="info" label="Project Information" />
+                            <TabButton tabName="timeline" label="Timeline & Remarks" />
+                            <TabButton tabName="budget" label="Budget Breakdown" />
+                        </nav>
+                    </div>
+
+                    <div className="min-h-[300px]">
+                         {activeTab === 'info' && (
+                             <div className="space-y-6 animate-fadeIn">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="lg:col-span-2">
+                                        <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Subproject Name</label>
+                                        <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="packageType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Package Type</label>
+                                        <select id="packageType" name="packageType" value={formData.packageType} onChange={handleInputChange} required className={commonInputClasses}>
+                                            {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
+                                                <option key={pkg} value={pkg}>{pkg}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                                        <select id="status" name="status" value={formData.status} onChange={handleInputChange} required className={commonInputClasses}>
+                                            <option>Proposed</option>
+                                            <option>Ongoing</option>
+                                            <option>Completed</option>
+                                            <option>Cancelled</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                     <div>
+                                        <label htmlFor="region" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
+                                        <select name="region" id="region" value={selectedRegion} onChange={handleRegionChange} required className={commonInputClasses}>
+                                            <option value="">Select a region first</option>
+                                            {philippineRegions.map(region => (
+                                                <option key={region} value={region}>{region}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="lg:col-span-2">
+                                        <label htmlFor="ipoSearch" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Indigenous People Organization</label>
+                                        <input 
+                                            type="text" 
+                                            name="ipoSearch" 
+                                            id="ipoSearch" 
+                                            value={ipoSearch}
+                                            onChange={handleIpoSearchChange}
+                                            list="ipo-datalist"
+                                            placeholder={selectedRegion ? "Type to search for an IPO" : "Select a region first"}
+                                            disabled={!selectedRegion}
+                                            required
+                                            className={`${commonInputClasses} disabled:bg-gray-200 dark:disabled:bg-gray-600`}
+                                        />
+                                        <datalist id="ipo-datalist">
+                                            {filteredIpos.map(ipo => (
+                                                <option key={ipo.id} value={ipo.name}>
+                                                    {ipo.name} ({ipo.acronym})
+                                                </option>
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Location (auto-filled from IPO)</label>
+                                    <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({...prev, location: loc}))} required />
+                                </div>
+                             </div>
+                         )}
+
+                         {activeTab === 'timeline' && (
+                             <div className="space-y-6 animate-fadeIn">
+                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                     <div>
+                                        <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                                        <input type="date" name="startDate" id="startDate" value={formData.startDate} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="estimatedCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Completion Date</label>
+                                        <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="actualCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Completion Date</label>
+                                        <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                 </div>
+                                 <div>
+                                    <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
+                                    <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={5} className={commonInputClasses} />
+                                </div>
+                             </div>
+                         )}
                          
-                        <div>
-                           <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                            <select id="status" name="status" value={formData.status} onChange={handleInputChange} required className={commonInputClasses}>
-                                <option>Proposed</option>
-                                <option>Ongoing</option>
-                                <option>Completed</option>
-                                <option>Cancelled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
-                             <input type="date" name="startDate" id="startDate" value={formData.startDate} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label htmlFor="estimatedCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Estimated Completion Date</label>
-                             <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label htmlFor="actualCompletionDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Completion Date</label>
-                             <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className={commonInputClasses} />
-                        </div>
-                         <div className="lg:col-span-3">
-                            <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
-                            <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className={commonInputClasses} />
-                        </div>
-                    </div>
-
-                    {/* Nested Form for Details */}
-                    <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
-                        <h4 className="text-lg font-medium text-gray-800 dark:text-white mb-2">Project Details / Budget Breakdown</h4>
-                        {/* List of added details */}
-                        <div className="space-y-2 mb-4">
-                            {detailItems.map((item, index) => (
-                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                    <div className="text-sm flex-grow">
-                                        <span className="font-semibold">{item.particulars}</span>
-                                        <span className="text-gray-500 dark:text-gray-400"> ({item.type})</span>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
+                         {activeTab === 'budget' && (
+                             <div className="space-y-6 animate-fadeIn">
+                                 <h4 className="text-lg font-medium text-gray-800 dark:text-white">Project Details / Items</h4>
+                                 <div className="space-y-2 mb-4">
+                                    {detailItems.length === 0 && (
+                                        <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No budget items added yet.</p>
+                                    )}
+                                    {detailItems.map((item, index) => (
+                                        <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
+                                            <div className="text-sm flex-grow">
+                                                <span className="font-semibold">{item.particulars}</span>
+                                                <span className="text-gray-500 dark:text-gray-400"> ({item.type})</span>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
+                                            </div>
+                                            <div className="flex items-center gap-4 ml-4">
+                                            <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
+                                                <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                </button>
+                                                <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                        <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                            <option value="">Select a type</option>
+                                            {Object.keys(particularTypes).map(type => (
+                                                <option key={type} value={type}>{type}</option>
+                                            ))}
+                                        </select>
                                     </div>
-                                    <div className="flex items-center gap-4 ml-4">
-                                       <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
-                                        <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                        </button>
-                                        <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
+                                        <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                            <option value="">Select an item</option>
+                                            {currentDetail.type && particularTypes[currentDetail.type].map(item => (
+                                                <option key={item} value={item}>{item}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
+                                        <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
+                                        <select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                            <option>pcs</option>
+                                            <option>kgs</option>
+                                            <option>unit</option>
+                                            <option>lot</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
+                                        <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                    </div>
+                                    <div className="flex items-center gap-2 col-span-2 md:col-span-1">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
+                                            <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        </div>
+                                        <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                         {/* Inputs for new detail */}
-                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-                            <div className="md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
-                                <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                    <option value="">Select a type</option>
-                                    {Object.keys(particularTypes).map(type => (
-                                        <option key={type} value={type}>{type}</option>
-                                    ))}
-                                </select>
-                            </div>
-                             <div className="md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
-                                <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
-                                    <option value="">Select an item</option>
-                                    {currentDetail.type && particularTypes[currentDetail.type].map(item => (
-                                        <option key={item} value={item}>{item}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
-                                <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                            </div>
-                             <div>
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
-                                <select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                    <option>pcs</option>
-                                    <option>kgs</option>
-                                    <option>unit</option>
-                                    <option>lot</option>
-                                </select>
-                            </div>
-                             <div>
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
-                                <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                            </div>
-                             <div className="flex items-center gap-2 col-span-2 md:col-span-1">
-                                <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
-                                    <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                                </div>
-                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
-                            </div>
-                        </div>
+                             </div>
+                         )}
                     </div>
-
-                    <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
+                    
+                    <div className="flex justify-between items-center pt-4 mt-6 border-t border-gray-200 dark:border-gray-700">
                         <div className="text-lg font-bold">
                             Total Budget: <span className="text-accent dark:text-green-400">{formatCurrency(totalBudgetForNewProject)}</span>
                         </div>

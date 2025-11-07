@@ -1,6 +1,8 @@
 
-import React from 'react';
-import { IPO, Subproject, Training } from '../constants';
+import React, { useState, useEffect, FormEvent } from 'react';
+import { IPO, Subproject, Training, Commodity, commodityTypes, particularTypes } from '../constants';
+import LocationPicker, { parseLocation } from './LocationPicker';
+
 
 interface IPODetailProps {
     ipo: IPO;
@@ -8,12 +10,16 @@ interface IPODetailProps {
     trainings: Training[];
     onBack: () => void;
     previousPageName: string;
+    onUpdateIpo: (updatedIpo: IPO) => void;
 }
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    // Ensure date is parsed as UTC to avoid timezone issues
+    const date = new Date(dateString + 'T00:00:00Z');
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 };
+
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
@@ -37,26 +43,292 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName }) => {
+const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
+
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
+    const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [currentCommodity, setCurrentCommodity] = useState({ type: '', particular: '', value: '' });
+    
+    useEffect(() => {
+        // Reset form state if the viewed IPO changes or when exiting edit mode
+        const isOther = !registeringBodyOptions.includes(ipo.registeringBody);
+        const registrationBodyValue = isOther ? 'Others' : ipo.registeringBody;
+        
+        setEditedIpo({
+            ...ipo,
+            registeringBody: registrationBodyValue
+        });
+
+        if (isOther) {
+            setOtherRegisteringBody(ipo.registeringBody);
+        } else {
+            setOtherRegisteringBody('');
+        }
+    }, [ipo, isEditing]);
+
+
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+    };
+
+    const handleSubmit = (e: FormEvent) => {
+        e.preventDefault();
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleConfirmSave = () => {
+        const finalRegisteringBody = editedIpo.registeringBody === 'Others' ? otherRegisteringBody : editedIpo.registeringBody;
+        onUpdateIpo({ ...editedIpo, registeringBody: finalRegisteringBody });
+        setIsConfirmModalOpen(false);
+        setIsEditing(false);
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value, type } = e.target;
+        
+        if (type === 'checkbox') {
+            const { checked } = e.target as HTMLInputElement;
+            setEditedIpo(prev => ({ ...prev, [name]: checked }));
+        } else if (name === 'levelOfDevelopment') {
+            setEditedIpo(prev => ({ ...prev, levelOfDevelopment: parseInt(value, 10) as IPO['levelOfDevelopment'] }));
+        } else {
+            setEditedIpo(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleLocationChange = (locationString: string) => {
+        const parsed = parseLocation(locationString);
+        setEditedIpo(prev => ({
+            ...prev,
+            location: locationString,
+            region: parsed.region,
+        }));
+    };
+
+    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === 'type') {
+            setCurrentCommodity({ type: value, particular: '', value: '' });
+        } else {
+            setCurrentCommodity(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleAddCommodity = () => {
+        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value) {
+            alert('Please fill out all commodity fields.');
+            return;
+        }
+        const newCommodity: Commodity = {
+            type: currentCommodity.type,
+            particular: currentCommodity.particular,
+            value: parseFloat(currentCommodity.value),
+        };
+        setEditedIpo(prev => ({ ...prev, commodities: [...prev.commodities, newCommodity] }));
+        setCurrentCommodity({ type: '', particular: '', value: '' });
+    };
+
+    const handleRemoveCommodity = (indexToRemove: number) => {
+        setEditedIpo(prev => ({
+            ...prev,
+            commodities: prev.commodities.filter((_, index) => index !== indexToRemove),
+        }));
+    };
 
     const calculateTotalBudget = (details: Subproject['details']) => {
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     }
+    
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+
+
+    if (isEditing) {
+        return (
+             <div className="space-y-6">
+                 {isConfirmModalOpen && (
+                    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Changes</h3>
+                            <p className="my-4 text-gray-600 dark:text-gray-300">Are you sure you want to save these changes?</p>
+                            <div className="flex justify-end gap-4 mt-6">
+                                <button onClick={() => setIsConfirmModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                                <button onClick={handleConfirmSave} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Confirm</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing: {ipo.name}</h1>
+                 <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div className="md:col-span-2">
+                                <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
+                                <input type="text" name="name" id="name" value={editedIpo.name} onChange={handleInputChange} required className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="acronym" className="block text-sm font-medium">Acronym</label>
+                                <input type="text" name="acronym" id="acronym" value={editedIpo.acronym} onChange={handleInputChange} required className={commonInputClasses} />
+                            </div>
+                             <div>
+                                <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
+                                <input type="text" name="indigenousCulturalCommunity" id="indigenousCulturalCommunity" value={editedIpo.indigenousCulturalCommunity} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Domain</legend>
+                         <div className="space-y-4">
+                            <div>
+                                <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
+                                <LocationPicker value={editedIpo.location} onChange={handleLocationChange} required />
+                            </div>
+                            <div>
+                                <label htmlFor="ancestralDomainNo" className="block text-sm font-medium">Ancestral Domain No.</label>
+                                <input type="text" name="ancestralDomainNo" id="ancestralDomainNo" value={editedIpo.ancestralDomainNo} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                         </div>
+                    </fieldset>
+                    
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Registration & Classification</legend>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                              <div>
+                                <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
+                                <select name="registeringBody" id="registeringBody" value={editedIpo.registeringBody} onChange={handleInputChange} required className={commonInputClasses}>
+                                    {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    <option value="Others">Others</option>
+                                </select>
+                             </div>
+                             {editedIpo.registeringBody === 'Others' && (
+                                <div>
+                                    <label htmlFor="otherRegisteringBody" className="block text-sm font-medium">Please Specify</label>
+                                    <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
+                                </div>
+                             )}
+                              <div className={editedIpo.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
+                                <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
+                                <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate} onChange={handleInputChange} required className={commonInputClasses} />
+                            </div>
+                            <div className="md:col-span-2 flex items-center space-x-8 pt-2">
+                                 <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
+                                    <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={editedIpo.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <span>Women-led</span>
+                                </label>
+                                <label htmlFor="isWithinGida" className="flex items-center gap-2 text-sm font-medium">
+                                    <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={editedIpo.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <span>Within GIDA area</span>
+                                </label>
+                            </div>
+                         </div>
+                    </fieldset>
+
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
+                        <div className="space-y-2 mb-4">
+                            {editedIpo.commodities.map((commodity, index) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                    <div>
+                                        <span className="font-semibold">{commodity.particular}</span>
+                                        <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
+                                        <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                    </div>
+                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                            {/* Commodity Inputs... */}
+                             <div>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                    <option value="">Select Type</option>
+                                    {commodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
+                                <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                    <option value="">Select Particular</option>
+                                    {currentCommodity.type && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
+                                </select>
+                            </div>
+                             <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Hectares'}</label>
+                                    <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                </div>
+                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Level of Development</legend>
+                        <div>
+                            <label htmlFor="levelOfDevelopment" className="block text-sm font-medium">Current Level</label>
+                            <select name="levelOfDevelopment" id="levelOfDevelopment" value={editedIpo.levelOfDevelopment} onChange={handleInputChange} required className={commonInputClasses}>
+                                <option value={1}>Level 1</option> <option value={2}>Level 2</option> <option value={3}>Level 3</option> <option value={4}>Level 4</option> <option value={5}>Level 5</option>
+                            </select>
+                        </div>
+                    </fieldset>
+
+                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Contact Information</legend>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div>
+                                <label htmlFor="contactPerson" className="block text-sm font-medium">Contact Person</label>
+                                <input type="text" name="contactPerson" id="contactPerson" value={editedIpo.contactPerson} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
+                                <input type="text" name="contactNumber" id="contactNumber" value={editedIpo.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                        </div>
+                    </fieldset>
+
+                    <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                            Save Changes
+                        </button>
+                    </div>
+                 </form>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-8">
-            <header className="flex items-center justify-between">
+            <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{ipo.name} ({ipo.acronym})</h1>
                     <p className="text-md text-gray-500 dark:text-gray-400">{ipo.location}</p>
                 </div>
-                <button
-                    onClick={onBack}
-                    className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                    Back to {previousPageName}
-                </button>
+                <div className="flex items-center gap-4">
+                     <button
+                        onClick={() => setIsEditing(true)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95"
+                    >
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                        Edit IPO
+                    </button>
+                    <button
+                        onClick={onBack}
+                        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        Back to {previousPageName}
+                    </button>
+                </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

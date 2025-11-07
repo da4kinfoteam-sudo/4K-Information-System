@@ -240,6 +240,11 @@ const App: React.FC = () => {
         setPreviousPage(null);
     };
 
+    const handleUpdateIpo = (updatedIpo: IPO) => {
+        setIpos(prevIpos => prevIpos.map(i => i.id === updatedIpo.id ? updatedIpo : i));
+        setSelectedIpo(updatedIpo);
+    };
+
     const getPageName = (path: string | null): string => {
         switch(path) {
             case '/subprojects': return 'Subprojects';
@@ -303,6 +308,7 @@ const App: React.FC = () => {
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
                             onBack={handleBackFromIpoDetail}
                             previousPageName={getPageName(previousPage)}
+                            onUpdateIpo={handleUpdateIpo}
                         />
                     ) : (
                         renderPage()
