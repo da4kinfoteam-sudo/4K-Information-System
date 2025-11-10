@@ -3,6 +3,9 @@ import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes, particularTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
+// Declare XLSX to inform TypeScript about the global variable from the script tag
+declare const XLSX: any;
+
 interface IPOsProps {
     ipos: IPO[];
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
@@ -37,6 +40,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [regionFilter, setRegionFilter] = useState('All');
@@ -267,6 +271,123 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
       )
     }
 
+    const handleDownloadTemplate = () => {
+        const headers = [
+            'name', 'acronym', 'location', 'indigenousCulturalCommunity', 
+            'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida',
+            'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
+            'levelOfDevelopment'
+        ];
+        
+        const exampleData = [{
+            name: 'Sample Farmers Association',
+            acronym: 'SFA',
+            location: 'Brgy. Sample, Sample City, Sample Province',
+            indigenousCulturalCommunity: 'Sample Tribe',
+            ancestralDomainNo: 'AD-12345',
+            registeringBody: 'CDA',
+            isWomenLed: 'TRUE',
+            isWithinGida: 'FALSE',
+            contactPerson: 'Juan Dela Cruz',
+            contactNumber: '09171234567',
+            registrationDate: '2023-01-15',
+            commodities: '[{"type":"Crop Commodity","particular":"Rice Seeds","value":50}]',
+            levelOfDevelopment: 2
+        }];
+
+        const instructions = [
+            ["Column", "Description"],
+            ["name", "Full name of the IPO. (Required)"],
+            ["acronym", "Acronym of the IPO. (Required)"],
+            ["location", "Full location, formatted as 'Barangay, Municipality, Province'. (Required)"],
+            ["indigenousCulturalCommunity", "The name of the indigenous cultural community."],
+            ["ancestralDomainNo", "The ancestral domain number, if any."],
+            ["registeringBody", "e.g., SEC, DOLE, CDA, National Commission on Indigenous Peoples."],
+            ["isWomenLed", "Enter TRUE or FALSE."],
+            ["isWithinGida", "Enter TRUE or FALSE."],
+            ["contactPerson", "Name of the contact person."],
+            ["contactNumber", "Contact phone number."],
+            ["registrationDate", "Date in YYYY-MM-DD format. (Required)"],
+            ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100}]'. Use '[]' for none.`],
+            ["levelOfDevelopment", "A number from 1 to 5."]
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
+        
+        XLSX.utils.book_append_sheet(wb, ws_data, "IPO Data");
+        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+
+        XLSX.writeFile(wb, "IPO_Upload_Template.xlsx");
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
+                
+                const newIpos: IPO[] = jsonData.map((row, index) => {
+                    // Basic validation
+                    if (!row.name || !row.acronym || !row.location || !row.registrationDate) {
+                        throw new Error(`Row ${index + 2} is missing required fields (name, acronym, location, registrationDate).`);
+                    }
+
+                    let commodities: Commodity[];
+                    try {
+                        commodities = typeof row.commodities === 'string' ? JSON.parse(row.commodities) : [];
+                    } catch {
+                        console.warn(`Row ${index + 2}: Invalid JSON in 'commodities' column. Defaulting to empty.`);
+                        commodities = [];
+                    }
+
+                    currentMaxId++;
+                    const { region } = parseLocation(row.location);
+
+                    return {
+                        id: currentMaxId,
+                        name: String(row.name),
+                        acronym: String(row.acronym),
+                        location: String(row.location),
+                        region: region,
+                        indigenousCulturalCommunity: String(row.indigenousCulturalCommunity || ''),
+                        ancestralDomainNo: String(row.ancestralDomainNo || ''),
+                        registeringBody: String(row.registeringBody || ''),
+                        isWomenLed: String(row.isWomenLed).toUpperCase() === 'TRUE',
+                        isWithinGida: String(row.isWithinGida).toUpperCase() === 'TRUE',
+                        contactPerson: String(row.contactPerson || ''),
+                        contactNumber: String(row.contactNumber || ''),
+                        registrationDate: String(row.registrationDate),
+                        commodities: commodities,
+                        levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
+                    };
+                }).filter(Boolean); // Filter out any nulls from failed parsing
+
+                setIpos(prev => [...prev, ...newIpos]);
+                alert(`${newIpos.length} IPO(s) imported successfully!`);
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                // Reset file input value
+                if(e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">IPO Management</h2>
@@ -450,22 +571,46 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">IPO List</h3>
                 
-                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
-                    <input
-                        type="text"
-                        placeholder="Search by name, contact, or location..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
-                    />
+                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                        <input
+                            type="text"
+                            placeholder="Search by name, contact, or location..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`w-full md:w-auto ${commonInputClasses} mt-0`}
+                        />
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                            <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Regions</option>
+                                {philippineRegions.map(region => (
+                                    <option key={region} value={region}>{region}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
                     <div className="flex items-center gap-2">
-                       <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                        <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                            <option value="All">All Regions</option>
-                            {philippineRegions.map(region => (
-                                <option key={region} value={region}>{region}</option>
-                            ))}
-                        </select>
+                        <button 
+                            onClick={handleDownloadTemplate}
+                            className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                        >
+                            Download Template
+                        </button>
+                        <label 
+                            htmlFor="ipo-upload" 
+                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                            {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                        </label>
+                        <input 
+                            id="ipo-upload" 
+                            type="file" 
+                            className="hidden" 
+                            onChange={handleFileUpload} 
+                            accept=".xlsx, .xls"
+                            disabled={isUploading}
+                        />
                     </div>
                  </div>
 
