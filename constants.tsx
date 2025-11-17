@@ -1,10 +1,19 @@
+
+
 import React from 'react';
 
 // Centralized Type Definitions
+export interface HistoryEntry {
+    date: string;
+    event: string;
+    user: string;
+}
+
 export interface Commodity {
     type: string;
     particular: string;
     value: number; // Hectares for crops, heads for livestock
+    isScad?: boolean;
 }
 
 export interface IPO {
@@ -18,12 +27,18 @@ export interface IPO {
     registeringBody: string;
     isWomenLed: boolean;
     isWithinGida: boolean;
+    isWithinElcac: boolean;
+    isWithScad: boolean;
     contactPerson: string;
     contactNumber: string;
     registrationDate: string;
     commodities: Commodity[];
     levelOfDevelopment: 1 | 2 | 3 | 4 | 5;
+    history?: HistoryEntry[];
 }
+
+export const objectCodes = ['MOOE', 'CO', 'PS'] as const;
+export type ObjectCode = typeof objectCodes[number];
 
 export interface SubprojectDetail {
     id: number;
@@ -33,7 +48,16 @@ export interface SubprojectDetail {
     unitOfMeasure: 'pcs' | 'kgs' | 'unit' | 'lot';
     pricePerUnit: number;
     numberOfUnits: number;
+    objectCode: ObjectCode;
+    obligationMonth: string;
+    disbursementMonth: string;
 }
+
+export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
+export type FundType = typeof fundTypes[number];
+
+export const tiers = ['Tier 1', 'Tier 2'] as const;
+export type Tier = typeof tiers[number];
 
 export interface Subproject {
     id: number;
@@ -49,6 +73,10 @@ export interface Subproject {
     remarks?: string;
     lat: number;
     lng: number;
+    history?: HistoryEntry[];
+    fundingYear?: number;
+    fundType?: FundType;
+    tier?: Tier;
 }
 
 export type TrainingComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
@@ -59,12 +87,6 @@ export const trainingComponents: TrainingComponentType[] = [
     'Marketing and Enterprise',
     'Program Management'
 ];
-
-export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
-export type FundType = typeof fundTypes[number];
-
-export const tiers = ['Tier 1', 'Tier 2'] as const;
-export type Tier = typeof tiers[number];
 
 export const months = [
     'January', 'February', 'March', 'April', 'May', 'June', 
@@ -211,6 +233,7 @@ export const IpoIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const navigationLinks: NavLink[] = [
     { name: 'Homepage', href: '/' },
+    { name: 'Dashboards', href: '/dashboards' },
     { name: 'Subprojects', href: '/subprojects' },
     { name: 'Trainings', href: '/trainings' },
     { name: 'Other Activities', href: '/other-activities' },

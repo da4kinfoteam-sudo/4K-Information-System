@@ -12,6 +12,7 @@ interface IPOsProps {
     subprojects: Subproject[];
     trainings: Training[];
     onSelectIpo: (ipo: IPO) => void;
+    onSelectSubproject: (subproject: Subproject) => void;
 }
 
 const defaultFormData = {
@@ -27,13 +28,15 @@ const defaultFormData = {
     registrationDate: '',
     isWomenLed: false,
     isWithinGida: false,
+    isWithinElcac: false,
+    isWithScad: false,
     commodities: [] as Commodity[],
     levelOfDevelopment: 1 as IPO['levelOfDevelopment'],
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo, onSelectSubproject }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);
@@ -44,14 +47,41 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
     const [searchTerm, setSearchTerm] = useState('');
     const [regionFilter, setRegionFilter] = useState('All');
-    type SortKeys = keyof IPO;
+    const [commodityFilter, setCommodityFilter] = useState('All');
+    const [flagFilter, setFlagFilter] = useState({ womenLed: false, withinGida: false, withinElcac: false, withScad: false });
+    type SortKeys = keyof IPO | 'totalInvested';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
 
     const [currentCommodity, setCurrentCommodity] = useState({
         type: '',
         particular: '',
         value: '',
+        isScad: false,
     });
+
+    const calculateTotalInvestment = useMemo(() => {
+        const investmentMap = new Map<string, number>();
+
+        // Calculate from subprojects
+        subprojects.forEach(sp => {
+            if (sp.status === 'Completed') {
+                const budget = sp.details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+                const currentInvestment = investmentMap.get(sp.indigenousPeopleOrganization) || 0;
+                investmentMap.set(sp.indigenousPeopleOrganization, currentInvestment + budget);
+            }
+        });
+
+        // Calculate from trainings
+        trainings.forEach(t => {
+            const cost = t.trainingExpenses + (t.otherExpenses || 0);
+            t.participatingIpos.forEach(ipoName => {
+                const currentInvestment = investmentMap.get(ipoName) || 0;
+                investmentMap.set(ipoName, currentInvestment + cost);
+            });
+        });
+
+        return (ipoName: string) => investmentMap.get(ipoName) || 0;
+    }, [subprojects, trainings]);
 
     useEffect(() => {
         if (editingIpo) {
@@ -68,6 +98,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                 registrationDate: editingIpo.registrationDate,
                 isWomenLed: editingIpo.isWomenLed,
                 isWithinGida: editingIpo.isWithinGida,
+                isWithinElcac: editingIpo.isWithinElcac,
+                isWithScad: editingIpo.isWithScad,
                 commodities: editingIpo.commodities || [],
                 levelOfDevelopment: editingIpo.levelOfDevelopment || 1,
             });
@@ -78,12 +110,39 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             }
         }
     }, [editingIpo]);
+    
+    const allCommodities = useMemo(() => {
+        const commoditySet = new Set<string>();
+        ipos.forEach(ipo => {
+            ipo.commodities.forEach(c => commoditySet.add(c.particular));
+        });
+        return Array.from(commoditySet).sort();
+    }, [ipos]);
 
     const processedIpos = useMemo(() => {
         let filteredIpos = [...ipos];
 
         if (regionFilter !== 'All') {
             filteredIpos = filteredIpos.filter(ipo => ipo.region === regionFilter);
+        }
+        
+        if (flagFilter.womenLed) {
+            filteredIpos = filteredIpos.filter(ipo => ipo.isWomenLed);
+        }
+        if (flagFilter.withinGida) {
+            filteredIpos = filteredIpos.filter(ipo => ipo.isWithinGida);
+        }
+        if (flagFilter.withinElcac) {
+            filteredIpos = filteredIpos.filter(ipo => ipo.isWithinElcac);
+        }
+        if (flagFilter.withScad) {
+            filteredIpos = filteredIpos.filter(ipo => ipo.isWithScad);
+        }
+
+        if (commodityFilter !== 'All') {
+            filteredIpos = filteredIpos.filter(ipo => 
+                ipo.commodities.some(c => c.particular === commodityFilter)
+            );
         }
 
         if (searchTerm) {
@@ -98,8 +157,17 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
         if (sortConfig !== null) {
             filteredIpos.sort((a, b) => {
-                const aValue = a[sortConfig.key];
-                const bValue = b[sortConfig.key];
+                let aValue: any;
+                let bValue: any;
+
+                if (sortConfig.key === 'totalInvested') {
+                    aValue = calculateTotalInvestment(a.name);
+                    bValue = calculateTotalInvestment(b.name);
+                } else {
+                    aValue = a[sortConfig.key as keyof IPO];
+                    bValue = b[sortConfig.key as keyof IPO];
+                }
+                
                 if (aValue < bValue) {
                     return sortConfig.direction === 'ascending' ? -1 : 1;
                 }
@@ -111,7 +179,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         }
 
         return filteredIpos;
-    }, [ipos, searchTerm, regionFilter, sortConfig]);
+    }, [ipos, searchTerm, regionFilter, sortConfig, commodityFilter, flagFilter, calculateTotalInvestment]);
     
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -119,6 +187,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             direction = 'descending';
         }
         setSortConfig({ key, direction });
+    };
+
+    const handleFlagFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, checked } = e.target;
+        setFlagFilter(prev => ({ ...prev, [name]: checked }));
     };
 
 
@@ -137,9 +210,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
     };
     
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        if (name === 'type') {
-            setCurrentCommodity({ type: value, particular: '', value: '' });
+        const { name, value, type } = e.target;
+
+        if (type === 'checkbox') {
+            const { checked } = e.target as HTMLInputElement;
+            setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
+        } else if (name === 'type') {
+            setCurrentCommodity({ type: value, particular: '', value: '', isScad: false });
         } else {
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
@@ -154,15 +231,27 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             type: currentCommodity.type,
             particular: currentCommodity.particular,
             value: parseFloat(currentCommodity.value),
+            isScad: currentCommodity.isScad,
         };
-        setFormData(prev => ({ ...prev, commodities: [...prev.commodities, newCommodity] }));
-        setCurrentCommodity({ type: '', particular: '', value: '' });
+
+        const updatedCommodities = [...formData.commodities, newCommodity];
+        const hasScad = updatedCommodities.some(c => c.isScad);
+
+        setFormData(prev => ({ 
+            ...prev, 
+            commodities: updatedCommodities,
+            isWithScad: hasScad,
+        }));
+        setCurrentCommodity({ type: '', particular: '', value: '', isScad: false });
     };
 
     const handleRemoveCommodity = (indexToRemove: number) => {
+        const updatedCommodities = formData.commodities.filter((_, index) => index !== indexToRemove);
+        const hasScad = updatedCommodities.some(c => c.isScad);
         setFormData(prev => ({
             ...prev,
-            commodities: prev.commodities.filter((_, index) => index !== indexToRemove),
+            commodities: updatedCommodities,
+            isWithScad: hasScad,
         }));
     };
 
@@ -211,7 +300,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         setEditingIpo(null);
         setFormData(defaultFormData);
         setOtherRegisteringBody('');
-        setCurrentCommodity({ type: '', particular: '', value: '' });
+        setCurrentCommodity({ type: '', particular: '', value: '', isScad: false });
     };
 
     const handleDeleteClick = (ipo: IPO, e: React.MouseEvent) => {
@@ -271,10 +360,36 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
       )
     }
 
+    const handleDownloadReport = () => {
+        const dataToExport = processedIpos.map(ipo => ({
+            'Name': ipo.name,
+            'Acronym': ipo.acronym,
+            'Location': ipo.location,
+            'Region': ipo.region,
+            'ICC': ipo.indigenousCulturalCommunity,
+            'AD No.': ipo.ancestralDomainNo,
+            'Registering Body': ipo.registeringBody,
+            'Women-Led': ipo.isWomenLed ? 'Yes' : 'No',
+            'GIDA': ipo.isWithinGida ? 'Yes' : 'No',
+            'ELCAC': ipo.isWithinElcac ? 'Yes' : 'No',
+            'With SCAD': ipo.isWithScad ? 'Yes' : 'No',
+            'Contact Person': ipo.contactPerson,
+            'Contact Number': ipo.contactNumber,
+            'Registration Date': ipo.registrationDate,
+            'Commodities': JSON.stringify(ipo.commodities),
+            'Level of Development': ipo.levelOfDevelopment
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "IPO Report");
+        XLSX.writeFile(wb, "IPO_Report.xlsx");
+    };
+
     const handleDownloadTemplate = () => {
         const headers = [
             'name', 'acronym', 'location', 'indigenousCulturalCommunity', 
-            'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida',
+            'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida', 'isWithinElcac', 'isWithScad',
             'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
             'levelOfDevelopment'
         ];
@@ -288,10 +403,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             registeringBody: 'CDA',
             isWomenLed: 'TRUE',
             isWithinGida: 'FALSE',
+            isWithinElcac: 'TRUE',
+            isWithScad: 'TRUE',
             contactPerson: 'Juan Dela Cruz',
             contactNumber: '09171234567',
             registrationDate: '2023-01-15',
-            commodities: '[{"type":"Crop Commodity","particular":"Rice Seeds","value":50}]',
+            commodities: '[{"type":"Crop Commodity","particular":"Rice Seeds","value":50,"isScad":true}]',
             levelOfDevelopment: 2
         }];
 
@@ -305,10 +422,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             ["registeringBody", "e.g., SEC, DOLE, CDA, National Commission on Indigenous Peoples."],
             ["isWomenLed", "Enter TRUE or FALSE."],
             ["isWithinGida", "Enter TRUE or FALSE."],
+            ["isWithinElcac", "Enter TRUE or FALSE."],
+            ["isWithScad", "Enter TRUE or FALSE. Note: This will be auto-recalculated based on commodities upon upload to ensure consistency."],
             ["contactPerson", "Name of the contact person."],
             ["contactNumber", "Contact phone number."],
             ["registrationDate", "Date in YYYY-MM-DD format. (Required)"],
-            ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100}]'. Use '[]' for none.`],
+            ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number,"isScad":boolean}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100,"isScad":false}]'. Use '[]' for none.`],
             ["levelOfDevelopment", "A number from 1 to 5."]
         ];
 
@@ -354,6 +473,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
                     currentMaxId++;
                     const { region } = parseLocation(row.location);
+                    const isWithScad = commodities.some(c => c.isScad);
 
                     return {
                         id: currentMaxId,
@@ -366,6 +486,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                         registeringBody: String(row.registeringBody || ''),
                         isWomenLed: String(row.isWomenLed).toUpperCase() === 'TRUE',
                         isWithinGida: String(row.isWithinGida).toUpperCase() === 'TRUE',
+                        isWithinElcac: String(row.isWithinElcac).toUpperCase() === 'TRUE',
+                        isWithScad: isWithScad,
                         contactPerson: String(row.contactPerson || ''),
                         contactNumber: String(row.contactNumber || ''),
                         registrationDate: String(row.registrationDate),
@@ -412,8 +534,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div className="md:col-span-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="md:col-span-2">
                                 <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
                                 <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
                             </div>
@@ -421,17 +543,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <label htmlFor="acronym" className="block text-sm font-medium">Acronym</label>
                                 <input type="text" name="acronym" id="acronym" value={formData.acronym} onChange={handleInputChange} required className={commonInputClasses} />
                             </div>
-                             <div>
+                             <div className="md:col-span-3">
                                 <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
                                 <input type="text" name="indigenousCulturalCommunity" id="indigenousCulturalCommunity" value={formData.indigenousCulturalCommunity} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
-                        </div>
-                    </fieldset>
-                    
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Domain</legend>
-                         <div className="space-y-4">
-                            <div>
+
+                            <div className="md:col-span-3">
                                 <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
                                 <LocationPicker 
                                     value={formData.location} 
@@ -439,17 +556,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                     required 
                                 />
                             </div>
-                            <div>
+                            <div className="md:col-span-3">
                                 <label htmlFor="ancestralDomainNo" className="block text-sm font-medium">Ancestral Domain No.</label>
                                 <input type="text" name="ancestralDomainNo" id="ancestralDomainNo" value={formData.ancestralDomainNo} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
-                         </div>
-                    </fieldset>
-                    
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Registration & Classification</legend>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                              <div>
+
+                            <div>
                                 <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
                                 <select name="registeringBody" id="registeringBody" value={formData.registeringBody} onChange={handleInputChange} required className={commonInputClasses}>
                                     {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -462,11 +574,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                     <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
                                 </div>
                              )}
-                              <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
+                             <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
                                 <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
                                 <input type="date" name="registrationDate" id="registrationDate" value={formData.registrationDate} onChange={handleInputChange} required className={commonInputClasses} />
                             </div>
-                            <div className="md:col-span-2 flex items-center space-x-8 pt-2">
+
+                             <div>
+                                <label htmlFor="contactPerson" className="block text-sm font-medium">Contact Person</label>
+                                <input type="text" name="contactPerson" id="contactPerson" value={formData.contactPerson} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
+                                <input type="text" name="contactNumber" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            
+                            <div className="md:col-span-3 flex items-center flex-wrap gap-x-8 gap-y-2 pt-2">
                                  <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
                                     <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={formData.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
                                     <span>Women-led</span>
@@ -475,8 +597,16 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                     <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={formData.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
                                     <span>Within GIDA area</span>
                                 </label>
+                                <label htmlFor="isWithinElcac" className="flex items-center gap-2 text-sm font-medium">
+                                    <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={formData.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <span>Within ELCAC area</span>
+                                </label>
+                                <label htmlFor="isWithScad" className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
+                                    <input type="checkbox" name="isWithScad" id="isWithScad" checked={formData.isWithScad} onChange={handleInputChange} disabled className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <span>With SCAD</span>
+                                </label>
                             </div>
-                         </div>
+                        </div>
                     </fieldset>
 
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
@@ -484,10 +614,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                         <div className="space-y-2 mb-4">
                             {formData.commodities.map((commodity, index) => (
                                 <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
-                                    <div>
+                                    <div className="flex items-center gap-2">
                                         <span className="font-semibold">{commodity.particular}</span>
                                         <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                         <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                        {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
                                     </div>
                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -523,6 +654,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                             </div>
                         </div>
+                         <div className="mt-2">
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                                <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                <span>SCAD commodity</span>
+                            </label>
+                        </div>
                     </fieldset>
 
                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
@@ -538,21 +675,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             </select>
                         </div>
                     </fieldset>
-                    
-                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Contact Information</legend>
-                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             <div>
-                                <label htmlFor="contactPerson" className="block text-sm font-medium">Contact Person</label>
-                                <input type="text" name="contactPerson" id="contactPerson" value={formData.contactPerson} onChange={handleInputChange} className={commonInputClasses} />
-                            </div>
-                            <div>
-                                <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
-                                <input type="text" name="contactNumber" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
-                            </div>
-                        </div>
-                    </fieldset>
-
 
                     <div className="flex justify-end gap-4 pt-2">
                         {editingIpo && (
@@ -571,46 +693,82 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">IPO List</h3>
                 
-                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                        <input
-                            type="text"
-                            placeholder="Search by name, contact, or location..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`w-full md:w-auto ${commonInputClasses} mt-0`}
-                        />
+                 <div className="mb-4 flex flex-col gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                            <input
+                                type="text"
+                                placeholder="Search by name, contact, or location..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={`w-full md:w-auto ${commonInputClasses} mt-0`}
+                            />
+                            <div className="flex items-center gap-2">
+                               <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                                <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                    <option value="All">All Regions</option>
+                                    {philippineRegions.map(region => (
+                                        <option key={region} value={region}>{region}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <label htmlFor="commodityFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Commodity:</label>
+                                <select id="commodityFilter" value={commodityFilter} onChange={(e) => setCommodityFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                    <option value="All">All</option>
+                                    {allCommodities.map(commodity => (
+                                        <option key={commodity} value={commodity}>{commodity}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
                         <div className="flex items-center gap-2">
-                           <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                            <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All Regions</option>
-                                {philippineRegions.map(region => (
-                                    <option key={region} value={region}>{region}</option>
-                                ))}
-                            </select>
+                             <button 
+                                onClick={handleDownloadReport}
+                                className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                            >
+                                Download Report
+                            </button>
+                            <button 
+                                onClick={handleDownloadTemplate}
+                                className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                            >
+                                Download Template
+                            </button>
+                            <label 
+                                htmlFor="ipo-upload" 
+                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}
+                            >
+                                {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                            </label>
+                            <input 
+                                id="ipo-upload" 
+                                type="file" 
+                                className="hidden" 
+                                onChange={handleFileUpload} 
+                                accept=".xlsx, .xls"
+                                disabled={isUploading}
+                            />
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button 
-                            onClick={handleDownloadTemplate}
-                            className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
-                        >
-                            Download Template
-                        </button>
-                        <label 
-                            htmlFor="ipo-upload" 
-                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                            {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                     <div className="flex items-center gap-x-6 gap-y-2 flex-wrap pt-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Flags:</span>
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <input type="checkbox" name="womenLed" checked={flagFilter.womenLed} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                            Women-led
                         </label>
-                        <input 
-                            id="ipo-upload" 
-                            type="file" 
-                            className="hidden" 
-                            onChange={handleFileUpload} 
-                            accept=".xlsx, .xls"
-                            disabled={isUploading}
-                        />
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <input type="checkbox" name="withinGida" checked={flagFilter.withinGida} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                            Within GIDA
+                        </label>
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                            <input type="checkbox" name="withinElcac" checked={flagFilter.withinElcac} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                            Within ELCAC
+                        </label>
+                         <label className="flex items-center gap-2 text-sm font-medium">
+                            <input type="checkbox" name="withScad" checked={flagFilter.withScad} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                            With SCAD
+                        </label>
                     </div>
                  </div>
 
@@ -622,8 +780,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <SortableHeader sortKey="name" label="Name" />
                                 <SortableHeader sortKey="region" label="Region" />
                                 <SortableHeader sortKey="registrationDate" label="Registered" />
-                                <SortableHeader sortKey="registeringBody" label="Registering Body" />
                                 <SortableHeader sortKey="contactPerson" label="Contact Person" />
+                                <SortableHeader sortKey="totalInvested" label="Total Invested" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
@@ -631,6 +789,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             {processedIpos.map((ipo) => {
                                 const linkedSubprojects = subprojects.filter(p => p.indigenousPeopleOrganization === ipo.name);
                                 const linkedTrainings = trainings.filter(t => t.participatingIpos.includes(ipo.name));
+                                const totalInvestment = calculateTotalInvestment(ipo.name);
                                 
                                 return (
                                     <React.Fragment key={ipo.id}>
@@ -654,10 +813,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.registeringBody}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                                 <div>{ipo.contactPerson}</div>
                                                 <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">
+                                                {formatCurrency(totalInvestment)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                                 <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
@@ -669,13 +830,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                 <td colSpan={7} className="p-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                                         <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Linked Subprojects</h4>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Subprojects</h4>
                                                             {linkedSubprojects.length > 0 ? (
                                                                 <ul className="space-y-2">
                                                                     {linkedSubprojects.map(p => (
                                                                         <li key={p.id} className="text-sm p-2 bg-white dark:bg-gray-800 rounded-md shadow-sm">
                                                                             <div className="flex justify-between items-center">
-                                                                               <span className="font-medium text-gray-800 dark:text-gray-100">{p.name}</span>
+                                                                               <button 
+                                                                                    onClick={(e) => { e.stopPropagation(); onSelectSubproject(p); }}
+                                                                                    className="font-medium text-gray-800 dark:text-gray-100 hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
+                                                                                >
+                                                                                    {p.name}
+                                                                                </button>
                                                                                <span className={getStatusBadge(p.status)}>{p.status}</span>
                                                                             </div>
                                                                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Budget: {formatCurrency(calculateTotalBudget(p.details))}</div>
@@ -687,7 +853,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                             )}
                                                         </div>
                                                         <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Linked Trainings</h4>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Trainings</h4>
                                                             {linkedTrainings.length > 0 ? (
                                                                 <ul className="space-y-2">
                                                                     {linkedTrainings.map(t => (
@@ -710,8 +876,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                                 {ipo.commodities && ipo.commodities.length > 0 ? (
                                                                     <ul className="space-y-1 text-sm">
                                                                         {ipo.commodities.map((c, i) => (
-                                                                            <li key={i} className="flex justify-between p-1 bg-white dark:bg-gray-800 rounded">
-                                                                                <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
+                                                                            <li key={i} className="flex justify-between items-center p-1 bg-white dark:bg-gray-800 rounded">
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
+                                                                                    {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
+                                                                                </div>
                                                                                 <span className="font-medium">{c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}</span>
                                                                             </li>
                                                                         ))}

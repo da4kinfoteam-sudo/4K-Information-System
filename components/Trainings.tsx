@@ -1,5 +1,4 @@
 
-
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 // FIX: Added FundType and Tier to imports to be used for type assertions.
 import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, months, Disbursement, Month, FundType, Tier } from '../constants';
@@ -148,12 +147,15 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         setExpandedRowId(prevId => (prevId === trainingId ? null : trainingId));
     };
 
+    // FIX: Addressed error "Property 'value' does not exist on type 'unknown'" by ensuring correct
+    // type handling for the event target. `e.currentTarget` provides the correctly typed element.
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value, type } = e.target;
-        const isNumberInput = type === 'number';
+        const { name, value } = e.currentTarget;
+        const isNumberInput = 'type' in e.currentTarget && e.currentTarget.type === 'number';
+
         setFormData(prev => ({ 
             ...prev, 
-            [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
+            [name]: isNumberInput ? (value === '' ? 0 : parseFloat(value)) : value 
         }));
     };
     

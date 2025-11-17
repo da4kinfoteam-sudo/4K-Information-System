@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -6,20 +7,70 @@ import Dashboard from './components/Dashboard';
 import Subprojects from './components/Subprojects';
 import IPOs from './components/IPO';
 import IPODetail from './components/IPODetail';
+import SubprojectDetail from './components/SubprojectDetail';
+import { IPO, Subproject, Training, Activity, HistoryEntry, fundTypes, tiers } from './constants';
+import DashboardsPage from './components/DashboardsPage';
+// FIX: Import TrainingsComponent to resolve "Cannot find name 'TrainingsComponent'" error.
 import TrainingsComponent from './components/Trainings';
-import { IPO, Subproject, Training, Activity } from './constants';
 
 const initialIpos: IPO[] = [
-    { id: 1, name: 'San Isidro Farmers Association', acronym: 'SIFA', location: 'Brgy. San Isidro, Tanay, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat-Remontado', ancestralDomainNo: 'AD-12345', registeringBody: 'SEC', isWomenLed: true, isWithinGida: false, contactPerson: 'Juan Dela Cruz', contactNumber: '09171234567', registrationDate: '2021-05-20', commodities: [{ type: 'Crop Commodity', particular: 'Rice Seeds', value: 50 }], levelOfDevelopment: 3 },
-    { id: 2, name: 'Pinugay Upland Farmers Org.', acronym: 'PUFO', location: 'Brgy. Pinugay, Baras, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat', ancestralDomainNo: 'AD-67890', registeringBody: 'DOLE', isWomenLed: false, isWithinGida: true, contactPerson: 'Maria Clara', contactNumber: '09181234567', registrationDate: '2022-03-15', commodities: [{ type: 'Livestock', particular: 'Goats', value: 100 }], levelOfDevelopment: 2 },
-    { id: 3, name: 'Macaingalan IP Farmers Assoc.', acronym: 'MIPFA', location: 'Brgy. Macaingalan, General Nakar, Quezon', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Agta', ancestralDomainNo: 'AD-54321', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, contactPerson: 'Pedro Penduko', contactNumber: '09191234567', registrationDate: '2022-08-10', commodities: [{ type: 'Crop Commodity', particular: 'Coffee Seedlings', value: 15 }], levelOfDevelopment: 1 },
-    { id: 4, name: 'Daraitan Farmers Cooperative', acronym: 'DAFACO', location: 'Brgy. Daraitan, Tanay, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat-Remontado', ancestralDomainNo: 'AD-09876', registeringBody: 'National Commission on Indigenous Peoples', isWomenLed: true, isWithinGida: false, contactPerson: 'Gabriela Silang', contactNumber: '09201234567', registrationDate: '2023-01-30', commodities: [], levelOfDevelopment: 1 },
-    { id: 5, name: 'Marilog District Coffee Growers Association', acronym: 'MDCGA', location: 'Brgy. Marilog, Davao City, Davao del Sur', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Bagobo Tagabawa', ancestralDomainNo: 'AD-DVO-1101', registeringBody: 'CDA', isWomenLed: true, isWithinGida: true, contactPerson: 'Bae Liza Saway', contactNumber: '09172345678', registrationDate: '2022-04-12', commodities: [{ type: 'Crop Commodity', particular: 'Coffee Seedlings', value: 100 }], levelOfDevelopment: 4 },
-    { id: 6, name: 'Malita Cacao Farmers Cooperative', acronym: 'MCFC', location: 'Brgy. Buhangin, Malita, Davao Occidental', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Blaan', ancestralDomainNo: 'AD-DVO-1102', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, contactPerson: 'Datu Isidro Inda', contactNumber: '09182345678', registrationDate: '2021-11-20', commodities: [], levelOfDevelopment: 2 },
-    { id: 7, name: 'New Bataan Banana Growers Association', acronym: 'NBGA', location: 'Brgy. Camanlangan, New Bataan, Davao de Oro', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Mansaka', ancestralDomainNo: 'AD-DVO-1103', registeringBody: 'DOLE', isWomenLed: false, isWithinGida: false, contactPerson: 'Mario Agpawa', contactNumber: '09202345678', registrationDate: '2023-02-28', commodities: [], levelOfDevelopment: 1 },
-    { id: 8, name: 'Samal Island Seaweeds Planters Org.', acronym: 'SISPO', location: 'Brgy. Adecor, Island Garden City of Samal, Davao del Norte', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Sama', ancestralDomainNo: 'AD-DVO-1104', registeringBody: 'SEC', isWomenLed: true, isWithinGida: false, contactPerson: 'Fatima M. Santos', contactNumber: '09212345678', registrationDate: '2022-09-05', commodities: [], levelOfDevelopment: 1 },
+    { 
+        id: 1, 
+        name: 'San Isidro Farmers Association', 
+        acronym: 'SIFA', 
+        location: 'Brgy. San Isidro, Tanay, Rizal', 
+        region: 'CALABARZON (Region IV-A)', 
+        indigenousCulturalCommunity: 'Dumagat-Remontado', 
+        ancestralDomainNo: 'AD-12345', 
+        registeringBody: 'SEC', 
+        isWomenLed: true, 
+        isWithinGida: false, 
+        isWithinElcac: false,
+        isWithScad: true,
+        contactPerson: 'Juan Dela Cruz', 
+        contactNumber: '09171234567', 
+        registrationDate: '2021-05-20', 
+        commodities: [{ type: 'Crop Commodity', particular: 'Rice Seeds', value: 50, isScad: true }], 
+        levelOfDevelopment: 3,
+        history: [
+            { date: '2024-02-01', user: 'J. Smith', event: "Contact person changed to 'Juan Dela Cruz'." },
+            { date: '2023-08-15', user: 'A. Rivera', event: "Level of Development updated from 2 to 3." },
+            { date: '2022-11-20', user: 'A. Rivera', event: "Added commodity: Rice Seeds (50 value)." },
+            { date: '2021-05-20', user: 'System', event: 'IPO profile created.' },
+        ]
+    },
+    { 
+        id: 2, 
+        name: 'Pinugay Upland Farmers Org.', 
+        acronym: 'PUFO', 
+        location: 'Brgy. Pinugay, Baras, Rizal', 
+        region: 'CALABARZON (Region IV-A)', 
+        indigenousCulturalCommunity: 'Dumagat', 
+        ancestralDomainNo: 'AD-67890', 
+        registeringBody: 'DOLE', 
+        isWomenLed: false, 
+        isWithinGida: true, 
+        isWithinElcac: false,
+        isWithScad: false,
+        contactPerson: 'Maria Clara', 
+        contactNumber: '09181234567', 
+        registrationDate: '2022-03-15', 
+        commodities: [{ type: 'Livestock', particular: 'Goats', value: 100, isScad: false }], 
+        levelOfDevelopment: 2,
+        history: [
+            { date: '2023-05-05', user: 'M. Garcia', event: "Updated location to 'Brgy. Pinugay, Baras, Rizal'." },
+            { date: '2022-03-15', user: 'System', event: 'IPO profile created.' },
+        ]
+    },
+    { id: 3, name: 'Macaingalan IP Farmers Assoc.', acronym: 'MIPFA', location: 'Brgy. Macaingalan, General Nakar, Quezon', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Agta', ancestralDomainNo: 'AD-54321', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, isWithinElcac: true, isWithScad: true, contactPerson: 'Pedro Penduko', contactNumber: '09191234567', registrationDate: '2022-08-10', commodities: [{ type: 'Crop Commodity', particular: 'Coffee Seedlings', value: 15, isScad: true }], levelOfDevelopment: 1 },
+    { id: 4, name: 'Daraitan Farmers Cooperative', acronym: 'DAFACO', location: 'Brgy. Daraitan, Tanay, Rizal', region: 'CALABARZON (Region IV-A)', indigenousCulturalCommunity: 'Dumagat-Remontado', ancestralDomainNo: 'AD-09876', registeringBody: 'National Commission on Indigenous Peoples', isWomenLed: true, isWithinGida: false, isWithinElcac: false, isWithScad: false, contactPerson: 'Gabriela Silang', contactNumber: '09201234567', registrationDate: '2023-01-30', commodities: [], levelOfDevelopment: 1 },
+    { id: 5, name: 'Marilog District Coffee Growers Association', acronym: 'MDCGA', location: 'Brgy. Marilog, Davao City, Davao del Sur', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Bagobo Tagabawa', ancestralDomainNo: 'AD-DVO-1101', registeringBody: 'CDA', isWomenLed: true, isWithinGida: true, isWithinElcac: true, isWithScad: true, contactPerson: 'Bae Liza Saway', contactNumber: '09172345678', registrationDate: '2022-04-12', commodities: [{ type: 'Crop Commodity', particular: 'Coffee Seedlings', value: 100, isScad: true }], levelOfDevelopment: 4 },
+    { id: 6, name: 'Malita Cacao Farmers Cooperative', acronym: 'MCFC', location: 'Brgy. Buhangin, Malita, Davao Occidental', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Blaan', ancestralDomainNo: 'AD-DVO-1102', registeringBody: 'CDA', isWomenLed: false, isWithinGida: true, isWithinElcac: false, isWithScad: false, contactPerson: 'Datu Isidro Inda', contactNumber: '09182345678', registrationDate: '2021-11-20', commodities: [], levelOfDevelopment: 2 },
+    { id: 7, name: 'New Bataan Banana Growers Association', acronym: 'NBGA', location: 'Brgy. Camanlangan, New Bataan, Davao de Oro', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Mansaka', ancestralDomainNo: 'AD-DVO-1103', registeringBody: 'DOLE', isWomenLed: false, isWithinGida: false, isWithinElcac: false, isWithScad: false, contactPerson: 'Mario Agpawa', contactNumber: '09202345678', registrationDate: '2023-02-28', commodities: [], levelOfDevelopment: 1 },
+    { id: 8, name: 'Samal Island Seaweeds Planters Org.', acronym: 'SISPO', location: 'Brgy. Adecor, Island Garden City of Samal, Davao del Norte', region: 'Davao Region (Region XI)', indigenousCulturalCommunity: 'Sama', ancestralDomainNo: 'AD-DVO-1104', registeringBody: 'SEC', isWomenLed: true, isWithinGida: false, isWithinElcac: false, isWithScad: false, contactPerson: 'Fatima M. Santos', contactNumber: '09212345678', registrationDate: '2022-09-05', commodities: [], levelOfDevelopment: 1 },
 ];
 
+// FIX: Added missing properties (objectCode, obligationMonth, disbursementMonth) to all SubprojectDetail objects to match the type definition.
 const initialSubprojects: Subproject[] = [
     { 
         id: 1, 
@@ -34,10 +85,19 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Completed ahead of schedule. All systems functioning optimally.',
         lat: 14.5333,
         lng: 121.3167,
+        fundingYear: 2022,
+        fundType: 'Current',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Infrastructure', particulars: 'Cement', deliveryDate: '2022-02-01', unitOfMeasure: 'pcs', pricePerUnit: 250, numberOfUnits: 10000 },
-            { id: 2, type: 'Infrastructure', particulars: 'Skilled Labor', deliveryDate: '2022-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
-        ] 
+            { id: 1, type: 'Infrastructure', particulars: 'Cement', deliveryDate: '2022-02-01', unitOfMeasure: 'pcs', pricePerUnit: 250, numberOfUnits: 10000, objectCode: 'CO', obligationMonth: '2022-01-20', disbursementMonth: '2022-02-15' },
+            { id: 2, type: 'Infrastructure', particulars: 'Skilled Labor', deliveryDate: '2022-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1, objectCode: 'MOOE', obligationMonth: '2022-02-20', disbursementMonth: '2022-03-15' },
+        ],
+        history: [
+            { date: '2022-11-30', user: 'J. Smith', event: "Status updated from 'Ongoing' to 'Completed'." },
+            { date: '2022-03-01', user: 'A. Rivera', event: "All skilled labor has been mobilized." },
+            { date: '2022-02-01', user: 'A. Rivera', event: "Cement delivery completed." },
+            { date: '2022-01-15', user: 'System', event: 'Subproject created.' },
+        ]
     },
     { 
         id: 2, 
@@ -52,10 +112,17 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Slight delay due to weather conditions in Q4 2023.',
         lat: 14.5779,
         lng: 121.2625,
+        fundingYear: 2023,
+        fundType: 'Continuing',
+        tier: 'Tier 2',
         details: [
-            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2023-03-15', unitOfMeasure: 'lot', pricePerUnit: 3000000, numberOfUnits: 1 },
-            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2023-03-20', unitOfMeasure: 'lot', pricePerUnit: 2000000, numberOfUnits: 1 },
-            { id: 3, type: 'Others', particulars: 'Project Management', deliveryDate: '2023-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
+            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2023-03-15', unitOfMeasure: 'lot', pricePerUnit: 3000000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2023-03-05', disbursementMonth: '2023-03-20' },
+            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2023-03-20', unitOfMeasure: 'lot', pricePerUnit: 2000000, numberOfUnits: 1, objectCode: 'MOOE', obligationMonth: '2023-03-10', disbursementMonth: '2023-03-25' },
+            { id: 3, type: 'Others', particulars: 'Project Management', deliveryDate: '2023-03-01', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1, objectCode: 'MOOE', obligationMonth: '2023-03-01', disbursementMonth: '2023-03-10' },
+        ],
+        history: [
+            { date: '2023-03-15', user: 'M. Garcia', event: "Gravel and Sand delivered." },
+            { date: '2023-03-01', user: 'System', event: 'Subproject created.' },
         ]
     },
      { 
@@ -71,10 +138,14 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Awaiting final approval of budget.',
         lat: 14.7744,
         lng: 121.6315,
+        fundingYear: 2024,
+        fundType: 'Insertion',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Crop Commodity', particulars: 'Coffee Seedlings', deliveryDate: '2024-08-15', unitOfMeasure: 'pcs', pricePerUnit: 50, numberOfUnits: 50000 },
-            { id: 2, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2024-09-01', unitOfMeasure: 'unit', pricePerUnit: 700000, numberOfUnits: 1 },
-        ]
+            { id: 1, type: 'Crop Commodity', particulars: 'Coffee Seedlings', deliveryDate: '2024-08-15', unitOfMeasure: 'pcs', pricePerUnit: 50, numberOfUnits: 50000, objectCode: 'MOOE', obligationMonth: '2024-08-01', disbursementMonth: '2024-08-20' },
+            { id: 2, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2024-09-01', unitOfMeasure: 'unit', pricePerUnit: 700000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2024-08-20', disbursementMonth: '2024-09-10' },
+        ],
+        history: [{ date: '2024-06-01', user: 'System', event: 'Subproject created.' }]
     },
     { 
         id: 4, 
@@ -89,11 +160,15 @@ const initialSubprojects: Subproject[] = [
         remarks: 'On track, currently in phase 2 of implementation.',
         lat: 14.6191,
         lng: 121.3653,
+        fundingYear: 2023,
+        fundType: 'Current',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Infrastructure', particulars: 'Pipes and Fittings', deliveryDate: '2023-07-01', unitOfMeasure: 'lot', pricePerUnit: 2100000, numberOfUnits: 1 },
-            { id: 2, type: 'Equipment', particulars: 'Water Pump', deliveryDate: '2023-07-05', unitOfMeasure: 'unit', pricePerUnit: 1000000, numberOfUnits: 1 },
-            { id: 3, type: 'Infrastructure', particulars: 'Installation Labor', deliveryDate: '2023-07-10', unitOfMeasure: 'lot', pricePerUnit: 1000000, numberOfUnits: 1 },
-        ]
+            { id: 1, type: 'Infrastructure', particulars: 'Pipes and Fittings', deliveryDate: '2023-07-01', unitOfMeasure: 'lot', pricePerUnit: 2100000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2023-06-25', disbursementMonth: '2023-07-10' },
+            { id: 2, type: 'Equipment', particulars: 'Water Pump', deliveryDate: '2023-07-05', unitOfMeasure: 'unit', pricePerUnit: 1000000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2023-06-28', disbursementMonth: '2023-07-12' },
+            { id: 3, type: 'Infrastructure', particulars: 'Installation Labor', deliveryDate: '2023-07-10', unitOfMeasure: 'lot', pricePerUnit: 1000000, numberOfUnits: 1, objectCode: 'MOOE', obligationMonth: '2023-07-01', disbursementMonth: '2023-07-15' },
+        ],
+        history: [{ date: '2023-06-20', user: 'System', event: 'Subproject created.' }]
     },
     { 
         id: 5, 
@@ -108,10 +183,14 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Construction of processing building is 50% complete.',
         lat: 7.5139,
         lng: 125.2672,
+        fundingYear: 2023,
+        fundType: 'Current',
+        tier: 'Tier 2',
         details: [
-            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2023-08-01', unitOfMeasure: 'unit', pricePerUnit: 350000, numberOfUnits: 2 },
-            { id: 2, type: 'Infrastructure', particulars: 'Processing Shed', deliveryDate: '2023-05-20', unitOfMeasure: 'lot', pricePerUnit: 1200000, numberOfUnits: 1 },
-        ] 
+            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2023-08-01', unitOfMeasure: 'unit', pricePerUnit: 350000, numberOfUnits: 2, objectCode: 'CO', obligationMonth: '2023-07-20', disbursementMonth: '2023-08-10' },
+            { id: 2, type: 'Infrastructure', particulars: 'Processing Shed', deliveryDate: '2023-05-20', unitOfMeasure: 'lot', pricePerUnit: 1200000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2023-05-15', disbursementMonth: '2023-05-30' },
+        ],
+        history: [{ date: '2023-05-10', user: 'System', event: 'Subproject created.' }]
     },
     { 
         id: 6, 
@@ -126,9 +205,16 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Turned over to the IPO and is now fully operational.',
         lat: 6.4039,
         lng: 125.6111,
+        fundingYear: 2022,
+        fundType: 'Current',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2022-03-01', unitOfMeasure: 'unit', pricePerUnit: 500000, numberOfUnits: 1 },
-            { id: 2, type: 'Infrastructure', particulars: 'Warehouse', deliveryDate: '2022-02-01', unitOfMeasure: 'lot', pricePerUnit: 800000, numberOfUnits: 1 },
+            { id: 1, type: 'Equipment', particulars: 'Processing Equipment', deliveryDate: '2022-03-01', unitOfMeasure: 'unit', pricePerUnit: 500000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2022-02-15', disbursementMonth: '2022-03-10' },
+            { id: 2, type: 'Infrastructure', particulars: 'Warehouse', deliveryDate: '2022-02-01', unitOfMeasure: 'lot', pricePerUnit: 800000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2022-01-25', disbursementMonth: '2022-02-10' },
+        ],
+        history: [
+            { date: '2022-09-15', user: 'J. Smith', event: "Status updated from 'Ongoing' to 'Completed'." },
+            { date: '2022-01-20', user: 'System', event: 'Subproject created.' },
         ]
     },
     { 
@@ -144,10 +230,14 @@ const initialSubprojects: Subproject[] = [
         remarks: 'For validation and approval by the regional office.',
         lat: 7.5303,
         lng: 126.1558,
+        fundingYear: 2024,
+        fundType: 'Current',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2024-09-15', unitOfMeasure: 'lot', pricePerUnit: 4000000, numberOfUnits: 1 },
-            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2024-09-20', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1 },
-        ]
+            { id: 1, type: 'Infrastructure', particulars: 'Gravel and Sand', deliveryDate: '2024-09-15', unitOfMeasure: 'lot', pricePerUnit: 4000000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2024-09-05', disbursementMonth: '2024-09-20' },
+            { id: 2, type: 'Others', particulars: 'Heavy Equipment Rental', deliveryDate: '2024-09-20', unitOfMeasure: 'lot', pricePerUnit: 2500000, numberOfUnits: 1, objectCode: 'MOOE', obligationMonth: '2024-09-10', disbursementMonth: '2024-09-25' },
+        ],
+        history: [{ date: '2024-07-01', user: 'System', event: 'Subproject created.' }]
     },
     { 
         id: 8, 
@@ -162,10 +252,14 @@ const initialSubprojects: Subproject[] = [
         remarks: 'Nursery establishment complete. Awaiting materials for drying facility.',
         lat: 7.0781,
         lng: 125.7197,
+        fundingYear: 2023,
+        fundType: 'Continuing',
+        tier: 'Tier 1',
         details: [
-            { id: 1, type: 'Equipment', particulars: 'Floating cages', deliveryDate: '2023-07-15', unitOfMeasure: 'unit', pricePerUnit: 10000, numberOfUnits: 50 },
-            { id: 2, type: 'Infrastructure', particulars: 'Storage unit', deliveryDate: '2023-08-01', unitOfMeasure: 'lot', pricePerUnit: 300000, numberOfUnits: 1 },
-        ]
+            { id: 1, type: 'Equipment', particulars: 'Floating cages', deliveryDate: '2023-07-15', unitOfMeasure: 'unit', pricePerUnit: 10000, numberOfUnits: 50, objectCode: 'CO', obligationMonth: '2023-07-05', disbursementMonth: '2023-07-20' },
+            { id: 2, type: 'Infrastructure', particulars: 'Storage unit', deliveryDate: '2023-08-01', unitOfMeasure: 'lot', pricePerUnit: 300000, numberOfUnits: 1, objectCode: 'CO', obligationMonth: '2023-07-20', disbursementMonth: '2023-08-10' },
+        ],
+        history: [{ date: '2023-07-01', user: 'System', event: 'Subproject created.' }]
     },
 ];
 
@@ -189,6 +283,7 @@ const App: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
+    const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [previousPage, setPreviousPage] = useState<string | null>(null);
     
     const [ipos, setIpos] = useState<IPO[]>(initialIpos);
@@ -221,12 +316,14 @@ const App: React.FC = () => {
     
     const handleNavigation = (page: string) => {
         setSelectedIpo(null);
+        setSelectedSubproject(null);
         setPreviousPage(null);
         setCurrentPage(page);
     };
     
     const handleSelectIpo = (ipo: IPO) => {
         setPreviousPage(currentPage);
+        setSelectedSubproject(null);
         setSelectedIpo(ipo);
     };
 
@@ -240,13 +337,132 @@ const App: React.FC = () => {
         setPreviousPage(null);
     };
 
+    const handleSelectSubproject = (subproject: Subproject) => {
+        setPreviousPage(currentPage);
+        setSelectedIpo(null); // Ensure only one detail view is active
+        setSelectedSubproject(subproject);
+    };
+
+    const handleBackFromSubprojectDetail = () => {
+        const subprojectBeingViewed = selectedSubproject;
+        setSelectedSubproject(null);
+
+        if (previousPage) {
+            // If we came from an IPO detail page, we need to restore it
+            if (previousPage.startsWith('/ipo')) {
+                 const originalIpo = ipos.find(i => i.name === subprojectBeingViewed?.indigenousPeopleOrganization);
+                if (originalIpo) {
+                    setSelectedIpo(originalIpo);
+                    setCurrentPage(previousPage);
+                } else {
+                    // Fallback if IPO not found, just go to the previous page URL.
+                    setCurrentPage(previousPage);
+                }
+            } else {
+                // Otherwise, just navigate to the previous page URL (e.g., /subprojects)
+                setCurrentPage(previousPage);
+            }
+        } else {
+            // Fallback if no previous page is set.
+            setCurrentPage('/subprojects');
+        }
+        setPreviousPage(null);
+    };
+
     const handleUpdateIpo = (updatedIpo: IPO) => {
-        setIpos(prevIpos => prevIpos.map(i => i.id === updatedIpo.id ? updatedIpo : i));
-        setSelectedIpo(updatedIpo);
+        setIpos(prevIpos => {
+            const originalIpo = prevIpos.find(i => i.id === updatedIpo.id);
+            if (!originalIpo) {
+                return prevIpos;
+            }
+
+            const newHistoryEntries: HistoryEntry[] = [];
+            const currentDate = new Date().toISOString().split('T')[0];
+            const currentUser = 'System'; // Placeholder for current user
+
+            if (originalIpo.levelOfDevelopment !== updatedIpo.levelOfDevelopment) {
+                newHistoryEntries.push({
+                    date: currentDate,
+                    user: currentUser,
+                    event: `Level of Development updated from ${originalIpo.levelOfDevelopment} to ${updatedIpo.levelOfDevelopment}.`
+                });
+            }
+            if (originalIpo.name !== updatedIpo.name) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Name changed to "${updatedIpo.name}".` });
+            }
+            if (originalIpo.contactPerson !== updatedIpo.contactPerson) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Contact person changed to "${updatedIpo.contactPerson}".` });
+            }
+            if (originalIpo.location !== updatedIpo.location) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Location updated to "${updatedIpo.location}".` });
+            }
+            if (JSON.stringify(originalIpo.commodities) !== JSON.stringify(updatedIpo.commodities)) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Commodities list was updated.` });
+            }
+
+            if (newHistoryEntries.length > 0) {
+                const ipoWithNewHistory = {
+                    ...updatedIpo,
+                    history: [...newHistoryEntries, ...(updatedIpo.history || [])],
+                };
+                setSelectedIpo(ipoWithNewHistory);
+                return prevIpos.map(i => (i.id === ipoWithNewHistory.id ? ipoWithNewHistory : i));
+            }
+            
+            setSelectedIpo(updatedIpo);
+            return prevIpos.map(i => (i.id === updatedIpo.id ? updatedIpo : i));
+        });
+    };
+    
+     const handleUpdateSubproject = (updatedSubproject: Subproject) => {
+        setSubprojects(prevSubprojects => {
+            const originalSubproject = prevSubprojects.find(p => p.id === updatedSubproject.id);
+            if (!originalSubproject) {
+                return prevSubprojects;
+            }
+
+            const newHistoryEntries: HistoryEntry[] = [];
+            const currentDate = new Date().toISOString().split('T')[0];
+            const currentUser = 'System'; // Placeholder
+
+            const finalUpdatedSubproject = { ...updatedSubproject };
+
+            if (originalSubproject.status !== finalUpdatedSubproject.status) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Status updated from '${originalSubproject.status}' to '${finalUpdatedSubproject.status}'.`});
+                
+                if (finalUpdatedSubproject.status === 'Completed' && !finalUpdatedSubproject.actualCompletionDate) {
+                    finalUpdatedSubproject.actualCompletionDate = currentDate;
+                    newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Project marked as completed. Completion date set to ${currentDate}.` });
+                } else if (originalSubproject.status === 'Completed' && finalUpdatedSubproject.status !== 'Completed') {
+                    finalUpdatedSubproject.actualCompletionDate = '';
+                     newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Project status changed from 'Completed'. Completion date has been cleared.` });
+                }
+            }
+
+            if (originalSubproject.remarks !== finalUpdatedSubproject.remarks) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Remarks were updated.`});
+            }
+             if (JSON.stringify(originalSubproject.details) !== JSON.stringify(finalUpdatedSubproject.details)) {
+                newHistoryEntries.push({ date: currentDate, user: currentUser, event: `Project details were updated.` });
+            }
+
+            if (newHistoryEntries.length > 0) {
+                const projectWithHistory = {
+                    ...finalUpdatedSubproject,
+                    history: [...newHistoryEntries, ...(finalUpdatedSubproject.history || [])],
+                };
+                setSelectedSubproject(projectWithHistory);
+                return prevSubprojects.map(p => (p.id === projectWithHistory.id ? projectWithHistory : p));
+            }
+            
+            setSelectedSubproject(finalUpdatedSubproject);
+            return prevSubprojects.map(p => (p.id === finalUpdatedSubproject.id ? finalUpdatedSubproject : p));
+        });
     };
 
     const getPageName = (path: string | null): string => {
         switch(path) {
+            case '/dashboards': return 'Dashboards';
             case '/subprojects': return 'Subprojects';
             case '/trainings': return 'Trainings';
             case '/ipo': return 'IPO List';
@@ -263,15 +479,23 @@ const App: React.FC = () => {
                             trainings={trainings}
                             activities={activities}
                         />;
+            case '/dashboards':
+                return <DashboardsPage
+                            subprojects={subprojects}
+                            ipos={ipos}
+                            trainings={trainings}
+                            activities={activities}
+                        />;
             case '/subprojects':
-                return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} onSelectIpo={handleSelectIpo} />;
+                return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} onSelectIpo={handleSelectIpo} onSelectSubproject={handleSelectSubproject}/>;
             case '/ipo':
                 return <IPOs 
                     ipos={ipos} 
                     setIpos={setIpos} 
                     subprojects={subprojects} 
                     trainings={trainings} 
-                    onSelectIpo={handleSelectIpo} 
+                    onSelectIpo={handleSelectIpo}
+                    onSelectSubproject={handleSelectSubproject}
                 />;
             case '/trainings':
                 return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} onSelectIpo={handleSelectIpo} />;
@@ -284,6 +508,29 @@ const App: React.FC = () => {
                 );
         }
     };
+    
+    const renderDetailView = () => {
+        if (selectedSubproject) {
+            return <SubprojectDetail 
+                subproject={selectedSubproject}
+                onBack={handleBackFromSubprojectDetail}
+                previousPageName={getPageName(previousPage)}
+                onUpdateSubproject={handleUpdateSubproject}
+            />;
+        }
+        if (selectedIpo) {
+            return <IPODetail 
+                ipo={selectedIpo}
+                subprojects={subprojects.filter(p => p.indigenousPeopleOrganization === selectedIpo.name)}
+                trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
+                onBack={handleBackFromIpoDetail}
+                previousPageName={getPageName(previousPage)}
+                onUpdateIpo={handleUpdateIpo}
+                onSelectSubproject={handleSelectSubproject}
+            />;
+        }
+        return renderPage();
+    }
 
     return (
         <div className="flex h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-sans">
@@ -301,18 +548,7 @@ const App: React.FC = () => {
                     isDarkMode={isDarkMode} 
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
-                    {selectedIpo ? (
-                        <IPODetail 
-                            ipo={selectedIpo}
-                            subprojects={subprojects.filter(p => p.indigenousPeopleOrganization === selectedIpo.name)}
-                            trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
-                            onBack={handleBackFromIpoDetail}
-                            previousPageName={getPageName(previousPage)}
-                            onUpdateIpo={handleUpdateIpo}
-                        />
-                    ) : (
-                        renderPage()
-                    )}
+                    {renderDetailView()}
                 </main>
                 <footer className="text-center p-4 text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
                     System maintained by the DA 4K NPMO
