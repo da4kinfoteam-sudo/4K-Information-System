@@ -4,6 +4,9 @@ import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, objectCodes, ObjectCode } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
+// Declare XLSX to inform TypeScript about the global variable from the script tag
+declare const XLSX: any;
+
 interface OtherActivitiesProps {
     ipos: IPO[];
     otherActivities: OtherActivity[];
@@ -31,6 +34,7 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
     const [activityToDelete, setActivityToDelete] = useState<OtherActivity | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
     const [activeTab, setActiveTab] = useState<'details' | 'budget'>('details');
+    const [isUploading, setIsUploading] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
@@ -40,6 +44,9 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
     
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
     const [currentExpense, setCurrentExpense] = useState({
         objectCode: objectCodes[0],
         obligationMonth: '',
@@ -125,6 +132,18 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
         }
         return filtered;
     }, [otherActivities, searchTerm, componentFilter, sortConfig, tableRegionFilter, ipos]);
+
+    const paginatedActivities = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return processedActivities.slice(startIndex, startIndex + itemsPerPage);
+    }, [processedActivities, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(processedActivities.length / itemsPerPage);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, componentFilter, tableRegionFilter, sortConfig, itemsPerPage]);
+
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -287,6 +306,143 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
             </button>
         );
     }
+    
+    const handleDownloadReport = () => {
+        const dataToExport = processedActivities.map(a => ({
+            'Component': a.component,
+            'Activity Name': a.name,
+            'Date': a.date,
+            'Location': a.location,
+            'Male Participants': a.participantsMale,
+            'Female Participants': a.participantsFemale,
+            'Total Budget': a.expenses.reduce((sum, e) => sum + e.amount, 0),
+            'Participating IPOs': a.participatingIpos.join(', '),
+            'Description': a.description,
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const budgetColIndex = Object.keys(dataToExport[0] || {}).indexOf('Total Budget');
+        if (budgetColIndex !== -1) {
+            const budgetCol = XLSX.utils.encode_col(budgetColIndex);
+            for (let i = 2; i <= dataToExport.length + 1; i++) {
+                const cellAddress = budgetCol + i;
+                if(ws[cellAddress]) {
+                    ws[cellAddress].z = '"₱"#,##0.00';
+                }
+            }
+        }
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Other Activities Report");
+        XLSX.writeFile(wb, "Other_Activities_Report.xlsx");
+    };
+
+    const handleDownloadTemplate = () => {
+        const exampleData = [{
+            component: 'Social Preparation',
+            name: 'Community Needs Assessment',
+            date: '2024-02-20',
+            description: 'Assessed community needs for subproject identification.',
+            location: 'Brgy. San Isidro, Tanay, Rizal',
+            participatingIpos: 'San Isidro Farmers Association',
+            participantsMale: 20,
+            participantsFemale: 25,
+            expenses: '[{"objectCode":"MOOE","obligationMonth":"2024-02-15","disbursementMonth":"2024-02-28","amount":30000}]'
+        }];
+
+        const instructions = [
+            ["Column", "Description", "Required?"],
+            ["component", `Must be one of: ${otherActivityComponents.join(', ')}`, "Yes"],
+            ["name", `Activity name. Must be a valid option for the chosen component.`, "Yes"],
+            ["date", "Date in YYYY-MM-DD format.", "Yes"],
+            ["description", "A brief description of the activity.", "No"],
+            ["location", "Full location, formatted as 'Municipality, Province'. Or 'Online'.", "Yes"],
+            ["participatingIpos", "A comma-separated list of the EXACT, full names of existing IPOs. Leave blank if not applicable (e.g., Program Management).", "Conditional"],
+            ["participantsMale", "Number of male participants. Leave blank if not applicable.", "Conditional"],
+            ["participantsFemale", "Number of female participants. Leave blank if not applicable.", "Conditional"],
+            ["expenses", `A JSON string for expenses. Format: '[{"objectCode":"CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const ws_data = XLSX.utils.json_to_sheet(exampleData);
+        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
+        
+        XLSX.utils.book_append_sheet(wb, ws_data, "Activities Data");
+        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+        XLSX.writeFile(wb, "Other_Activities_Upload_Template.xlsx");
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                let currentMaxId = otherActivities.reduce((max, a) => Math.max(max, a.id), 0);
+                const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
+
+                const newActivities: OtherActivity[] = jsonData.map((row, index) => {
+                    const rowNum = index + 2;
+                    if (!row.component || !row.name || !row.date || !row.location) {
+                        throw new Error(`Row ${rowNum}: Missing required fields (component, name, date, location).`);
+                    }
+                    if (!otherActivityComponents.includes(row.component)) {
+                        throw new Error(`Row ${rowNum}: Invalid component "${row.component}".`);
+                    }
+                    if (!otherActivityOptions[row.component as OtherActivityComponentType].includes(row.name)) {
+                         throw new Error(`Row ${rowNum}: Invalid activity name "${row.name}" for component "${row.component}".`);
+                    }
+
+                    const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
+                    for (const ipoName of participatingIpos) {
+                        if (!existingIpoNames.has(ipoName)) {
+                            throw new Error(`Row ${rowNum}: IPO "${ipoName}" does not exist in the system.`);
+                        }
+                    }
+                    
+                    let expenses: OtherActivityExpense[];
+                    try {
+                        expenses = typeof row.expenses === 'string' ? JSON.parse(row.expenses) : [];
+                        if (!Array.isArray(expenses)) throw new Error("Expenses must be a valid JSON array.");
+                    } catch {
+                        throw new Error(`Row ${rowNum}: Invalid JSON format in 'expenses' column.`);
+                    }
+
+                    currentMaxId++;
+                    return {
+                        id: currentMaxId,
+                        component: row.component as OtherActivityComponentType,
+                        name: String(row.name),
+                        date: String(row.date),
+                        description: String(row.description || ''),
+                        location: String(row.location),
+                        participatingIpos: participatingIpos,
+                        participantsMale: Number(row.participantsMale) || 0,
+                        participantsFemale: Number(row.participantsFemale) || 0,
+                        expenses: expenses.map((exp, i) => ({ ...exp, id: Date.now() + i })),
+                    };
+                });
+
+                setOtherActivities(prev => [...prev, ...newActivities]);
+                alert(`${newActivities.length} activit(y/ies) imported successfully!`);
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                if(e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
 
     const renderListView = () => (
         <>
@@ -300,30 +456,39 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                 </button>
             </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
-                    <input
-                        type="text"
-                        placeholder="Search activities..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
-                    />
-                    <div className="flex items-center gap-2">
-                       <label htmlFor="tableRegionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                        <select id="tableRegionFilter" value={tableRegionFilter} onChange={(e) => setTableRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                            <option value="All">All Regions</option>
-                            <option value="Online">Online</option>
-                            {philippineRegions.map(region => (
-                                <option key={region} value={region}>{region}</option>
-                            ))}
-                        </select>
+                 <div className="mb-4 flex flex-col md:flex-row gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                        <input
+                            type="text"
+                            placeholder="Search activities..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`w-full md:w-auto ${commonInputClasses} mt-0`}
+                        />
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="tableRegionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                            <select id="tableRegionFilter" value={tableRegionFilter} onChange={(e) => setTableRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Regions</option>
+                                <option value="Online">Online</option>
+                                {philippineRegions.map(region => (
+                                    <option key={region} value={region}>{region}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
+                            <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Components</option>
+                                {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
                     </div>
+                    <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
-                       <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
-                        <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
-                            <option value="All">All Components</option>
-                            {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                        <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                        <input id="activity-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                     </div>
                  </div>
 
@@ -340,7 +505,7 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {processedActivities.map((activity) => {
+                            {paginatedActivities.map((activity) => {
                                 const totalActivityBudget = activity.expenses.reduce((sum, e) => sum + e.amount, 0);
                                 return (
                                 <React.Fragment key={activity.id}>
@@ -423,6 +588,35 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                             )})}
                         </tbody>
                     </table>
+                </div>
+                <div className="py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select
+                            value={itemsPerPage}
+                            onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            {[10, 20, 50, 100].map(size => (
+                                <option key={size} value={size}>{size}</option>
+                            ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                    </div>
+                     <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">
+                            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedActivities.length)} to {Math.min(currentPage * itemsPerPage, processedActivities.length)} of {processedActivities.length} entries
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Previous
+                            </button>
+                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </>

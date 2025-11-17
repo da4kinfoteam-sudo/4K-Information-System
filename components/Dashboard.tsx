@@ -10,11 +10,12 @@ import GanttChart from './GanttChart';
 declare const L: any;
 
 interface MapDisplayProps {
+    ipos: IPO[];
     subprojects: Subproject[];
     trainings: Training[];
 }
 
-const MapDisplay: React.FC<MapDisplayProps> = ({ subprojects, trainings }) => {
+const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings }) => {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapRef = useRef<any>(null); // To hold the map instance
     const markersRef = useRef<any[]>([]); // To hold the marker instances
@@ -54,6 +55,21 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ subprojects, trainings }) => {
                 iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
             });
 
+            const redIcon = new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            ipos.forEach(ipo => {
+                if (ipo.lat && ipo.lng) {
+                     const marker = L.marker([ipo.lat, ipo.lng], { icon: redIcon })
+                        .addTo(mapRef.current)
+                        .bindPopup(`<b>${ipo.name}</b><br>Type: IPO<br>Location: ${ipo.location}`);
+                    markersRef.current.push(marker);
+                }
+            });
+
             subprojects.forEach(project => {
                 const marker = L.marker([project.lat, project.lng], { icon: blueIcon })
                     .addTo(mapRef.current)
@@ -77,7 +93,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ subprojects, trainings }) => {
                  mapRef.current.setView([12.8797, 121.7740], 6); // Default view if no markers
             }
         }
-    }, [subprojects, trainings]);
+    }, [ipos, subprojects, trainings]);
 
     return <div ref={mapContainerRef} className="h-96 w-full rounded-lg z-0" />;
 };
@@ -127,6 +143,16 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedRegion, setSelectedRegion] = useState<string>('All');
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
+    const [mapFilters, setMapFilters] = useState({
+        ipos: true,
+        subprojects: true,
+        trainings: true,
+    });
+
+    const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, checked } = e.target;
+        setMapFilters(prev => ({ ...prev, [name]: checked }));
+    };
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
@@ -205,6 +231,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
 
 
     const completedProjectsCount = filteredData.subprojects.filter(p => p.status === 'Completed').length;
+    
+    const filteredIposForMap = mapFilters.ipos ? filteredData.ipos : [];
+    const filteredSubprojectsForMap = mapFilters.subprojects ? filteredData.subprojects : [];
+    const filteredTrainingsForMap = mapFilters.trainings ? filteredData.trainings : [];
 
     return (
         <div>
@@ -334,8 +364,25 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
             </div>
 
             <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Intervention Locations</h3>
-                <MapDisplay subprojects={filteredData.subprojects} trainings={filteredData.trainings} />
+                <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
+                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Map</h3>
+                    <div className="flex items-center gap-x-4 gap-y-2 text-sm">
+                        <span className="font-medium text-gray-600 dark:text-gray-300">Show:</span>
+                        <label className="flex items-center gap-2">
+                            <input type="checkbox" name="ipos" checked={mapFilters.ipos} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+                            <span className="text-red-600 dark:text-red-400 font-semibold">IPOs</span>
+                        </label>
+                         <label className="flex items-center gap-2">
+                            <input type="checkbox" name="subprojects" checked={mapFilters.subprojects} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <span className="text-blue-600 dark:text-blue-400 font-semibold">Subprojects</span>
+                        </label>
+                         <label className="flex items-center gap-2">
+                            <input type="checkbox" name="trainings" checked={mapFilters.trainings} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                            <span className="text-green-600 dark:text-green-400 font-semibold">Trainings</span>
+                        </label>
+                    </div>
+                </div>
+                <MapDisplay ipos={filteredIposForMap} subprojects={filteredSubprojectsForMap} trainings={filteredTrainingsForMap} />
             </div>
 
             <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">

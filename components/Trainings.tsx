@@ -5,6 +5,9 @@ import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, months, Disbursement, Month, FundType, Tier, TrainingComponentType } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
+// Declare XLSX to inform TypeScript about the global variable from the script tag
+declare const XLSX: any;
+
 interface TrainingsProps {
     ipos: IPO[];
     trainings: Training[];
@@ -44,6 +47,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [trainingToDelete, setTrainingToDelete] = useState<Training | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
     const [activeTab, setActiveTab] = useState<'details' | 'budget'>('details');
+    const [isUploading, setIsUploading] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
@@ -52,6 +56,9 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     useEffect(() => {
         if (formData.component === 'Program Management') {
@@ -141,6 +148,17 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         }
         return filteredTrainings;
     }, [trainings, searchTerm, tableRegionFilter, sortConfig, ipos, componentFilter]);
+    
+    const paginatedTrainings = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return processedTrainings.slice(startIndex, startIndex + itemsPerPage);
+    }, [processedTrainings, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(processedTrainings.length / itemsPerPage);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, tableRegionFilter, componentFilter, sortConfig, itemsPerPage]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -281,6 +299,153 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             </button>
         );
     }
+    
+    const handleDownloadReport = () => {
+        const dataToExport = processedTrainings.map(t => ({
+            'Training Name': t.name,
+            'Component': t.component,
+            'Date': t.date,
+            'Location': t.location,
+            'Facilitator': t.facilitator,
+            'Male Participants': t.participantsMale,
+            'Female Participants': t.participantsFemale,
+            'Total Participants': t.participantsMale + t.participantsFemale,
+            'Total Budget': (t.trainingExpenses ?? 0) + (t.otherExpenses ?? 0),
+            'Participating IPOs': t.participatingIpos.join(', '),
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const budgetColIndex = Object.keys(dataToExport[0] || {}).indexOf('Total Budget');
+        if (budgetColIndex !== -1) {
+            const budgetCol = XLSX.utils.encode_col(budgetColIndex);
+            for (let i = 2; i <= dataToExport.length + 1; i++) {
+                const cellAddress = budgetCol + i;
+                if(ws[cellAddress]) {
+                    ws[cellAddress].z = '"₱"#,##0.00';
+                }
+            }
+        }
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Trainings Report");
+        XLSX.writeFile(wb, "Trainings_Report.xlsx");
+    };
+
+    const handleDownloadTemplate = () => {
+        const exampleData = [{
+            name: 'Sample Financial Literacy Seminar',
+            date: '2024-01-15',
+            description: 'A sample seminar on financial management.',
+            location: 'Tanay, Rizal',
+            facilitator: 'Rural Bank of Tanay',
+            participatingIpos: 'San Isidro Farmers Association, Daraitan Farmers Cooperative',
+            participantsMale: 15,
+            participantsFemale: 25,
+            trainingExpenses: 50000,
+            component: 'Social Preparation',
+            otherExpenses: 0,
+            fundingYear: 2024,
+            fundType: 'Current',
+            tier: 'Tier 1',
+            monthOfObligation: 'January',
+        }];
+
+        const instructions = [
+            ["Column", "Description", "Required?"],
+            ["name", "Full name of the training activity.", "Yes"],
+            ["date", "Date in YYYY-MM-DD format.", "Yes"],
+            ["description", "A brief description of the training.", "No"],
+            ["location", "Full location, formatted as 'Municipality, Province'. Or 'Online'.", "Yes"],
+            ["facilitator", "Name of the person or organization facilitating.", "Yes"],
+            ["participatingIpos", "A comma-separated list of the EXACT, full names of existing IPOs.", "No"],
+            ["participantsMale", "Number of male participants.", "No (defaults to 0)"],
+            ["participantsFemale", "Number of female participants.", "No (defaults to 0)"],
+            ["trainingExpenses", "The main cost of the training (as a number).", "No (defaults to 0)"],
+            ["component", `Must be one of: ${trainingComponents.join(', ')}`, "Yes"],
+            ["otherExpenses", "Any other related expenses (as a number).", "No (defaults to 0)"],
+            ["fundingYear", "The funding year (e.g., 2024).", "No"],
+            ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
+            ["tier", `Must be one of: ${tiers.join(', ')}`, "No"],
+            ["monthOfObligation", `Must be one of: ${months.join(', ')}`, "No"],
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const ws_data = XLSX.utils.json_to_sheet(exampleData);
+        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
+        
+        XLSX.utils.book_append_sheet(wb, ws_data, "Trainings Data");
+        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+        XLSX.writeFile(wb, "Trainings_Upload_Template.xlsx");
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                let currentMaxId = trainings.reduce((max, t) => Math.max(max, t.id), 0);
+                const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
+
+                const newTrainings: Training[] = jsonData.map((row, index) => {
+                    const rowNum = index + 2;
+                    if (!row.name || !row.date || !row.location || !row.facilitator || !row.component) {
+                        throw new Error(`Row ${rowNum}: Missing required fields (name, date, location, facilitator, component).`);
+                    }
+                    if (!trainingComponents.includes(row.component)) {
+                        throw new Error(`Row ${rowNum}: Invalid component "${row.component}".`);
+                    }
+                    
+                    const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
+                    for (const ipoName of participatingIpos) {
+                        if (!existingIpoNames.has(ipoName)) {
+                            throw new Error(`Row ${rowNum}: IPO "${ipoName}" does not exist in the system.`);
+                        }
+                    }
+                    
+                    currentMaxId++;
+                    return {
+                        id: currentMaxId,
+                        name: String(row.name),
+                        date: String(row.date),
+                        description: String(row.description || ''),
+                        location: String(row.location),
+                        facilitator: String(row.facilitator),
+                        participatingIpos: participatingIpos,
+                        participantsMale: Number(row.participantsMale) || 0,
+                        participantsFemale: Number(row.participantsFemale) || 0,
+                        trainingExpenses: Number(row.trainingExpenses) || 0,
+                        component: row.component as TrainingComponentType,
+                        otherExpenses: Number(row.otherExpenses) || 0,
+                        fundingYear: Number(row.fundingYear) || undefined,
+                        fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
+                        tier: tiers.includes(row.tier) ? row.tier : undefined,
+                        monthOfObligation: months.includes(row.monthOfObligation) ? row.monthOfObligation : undefined,
+                        disbursementSchedule: defaultDisbursementSchedule(),
+                    };
+                });
+
+                setTrainings(prev => [...prev, ...newTrainings]);
+                alert(`${newTrainings.length} training(s) imported successfully!`);
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                if(e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
 
     const renderListView = () => (
         <>
@@ -294,30 +459,39 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 </button>
             </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                 <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
-                    <input
-                        type="text"
-                        placeholder="Search by name, component, facilitator..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className={`w-full md:w-1/3 ${commonInputClasses} mt-0`}
-                    />
-                    <div className="flex items-center gap-2">
-                       <label htmlFor="tableRegionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                        <select id="tableRegionFilter" value={tableRegionFilter} onChange={(e) => setTableRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                            <option value="All">All Regions</option>
-                            <option value="Online">Online</option>
-                            {philippineRegions.map(region => (
-                                <option key={region} value={region}>{region}</option>
-                            ))}
-                        </select>
+                 <div className="mb-4 flex flex-col md:flex-row gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                        <input
+                            type="text"
+                            placeholder="Search by name, component, facilitator..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`w-full md:w-auto ${commonInputClasses} mt-0`}
+                        />
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="tableRegionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                            <select id="tableRegionFilter" value={tableRegionFilter} onChange={(e) => setTableRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Regions</option>
+                                <option value="Online">Online</option>
+                                {philippineRegions.map(region => (
+                                    <option key={region} value={region}>{region}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
+                            <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Components</option>
+                                {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                        </div>
                     </div>
+                    <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
-                       <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
-                        <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
-                            <option value="All">All Components</option>
-                            {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                        <label htmlFor="training-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                        <input id="training-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                     </div>
                  </div>
 
@@ -335,7 +509,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {processedTrainings.map((training) => (
+                            {paginatedTrainings.map((training) => (
                                 <React.Fragment key={training.id}>
                                     <tr onClick={() => handleToggleRow(training.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-4 py-4 text-gray-400">
@@ -407,6 +581,35 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                             ))}
                         </tbody>
                     </table>
+                </div>
+                <div className="py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select
+                            value={itemsPerPage}
+                            onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            {[10, 20, 50, 100].map(size => (
+                                <option key={size} value={size}>{size}</option>
+                            ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                    </div>
+                     <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">
+                            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedTrainings.length)} to {Math.min(currentPage * itemsPerPage, processedTrainings.length)} of {processedTrainings.length} entries
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Previous
+                            </button>
+                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </>
@@ -509,31 +712,43 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                             id="participatingIpos"
                                             value={formData.participatingIpos}
                                             onChange={handleIpoSelectChange}
-                                            className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
+                                            className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-40"
                                         >
-                                            {filteredIposForSelection.map(ipo => {
-                                                const { province } = parseLocation(ipo.location);
-                                                return (
-                                                    <option key={ipo.id} value={ipo.name}>
-                                                        {`${ipo.name} (${ipo.acronym}) - ${province} - Level ${ipo.levelOfDevelopment}`}
-                                                    </option>
-                                                );
-                                            })}
+                                            {filteredIposForSelection.map(ipo => (
+                                                <option key={ipo.id} value={ipo.name}>{`${ipo.name} (${parseLocation(ipo.location).province})`}</option>
+                                            ))}
                                         </select>
-                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple organizations.</p>
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
                                     </div>
                                 </fieldset>
                             )}
                         </div>
                     )}
-                    {activeTab === 'budget' && (
+                     {activeTab === 'budget' && (
                          <div className="space-y-6">
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Details</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Details</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                      <div>
+                                        <label htmlFor="trainingExpenses" className="block text-sm font-medium">Training Expenses (PHP)</label>
+                                        <input type="number" name="trainingExpenses" id="trainingExpenses" min="0" step="0.01" value={formData.trainingExpenses} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="otherExpenses" className="block text-sm font-medium">Other Expenses (PHP)</label>
+                                        <input type="number" name="otherExpenses" id="otherExpenses" min="0" step="0.01" value={formData.otherExpenses} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label htmlFor="totalBudget" className="block text-sm font-medium">Total Budget</label>
+                                        <input type="text" name="totalBudget" id="totalBudget" value={formatCurrency(totalBudget)} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
+                                    </div>
+                                </div>
+                            </fieldset>
+                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Source</legend>
+                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
                                         <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
-                                        <input type="number" name="fundingYear" id="fundingYear" min="2000" max="2100" step="1" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} />
+                                        <input type="number" name="fundingYear" id="fundingYear" value={formData.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label htmlFor="fundType" className="block text-sm font-medium">Fund Type</label>
@@ -547,65 +762,45 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                             {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                         </select>
                                     </div>
-                                    <div>
+                                </div>
+                            </fieldset>
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Schedule</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                     <div>
                                         <label htmlFor="monthOfObligation" className="block text-sm font-medium">Month of Obligation</label>
                                         <select name="monthOfObligation" id="monthOfObligation" value={formData.monthOfObligation} onChange={handleInputChange} className={commonInputClasses}>
                                             {months.map(m => <option key={m} value={m}>{m}</option>)}
                                         </select>
                                     </div>
-                                </div>
-                            </fieldset>
-                            
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                     <div>
-                                        <label htmlFor="trainingExpenses" className="block text-sm font-medium">Training Expenses (PHP)</label>
-                                        <input type="number" name="trainingExpenses" id="trainingExpenses" min="0" step="0.01" value={formData.trainingExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="otherExpenses" className="block text-sm font-medium">Other Expenses (PHP)</label>
-                                        <input type="number" name="otherExpenses" id="otherExpenses" min="0" step="0.01" value={formData.otherExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Budget</label>
-                                        <p className="mt-1 h-10 flex items-center px-3 bg-gray-100 dark:bg-gray-800 rounded-md font-semibold text-accent dark:text-green-400">{formatCurrency(totalBudget)}</p>
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule</legend>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {formData.disbursementSchedule.map(({ month, amount }) => (
-                                        <div key={month}>
-                                            <label htmlFor={`disburse-${month}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300">{month}</label>
-                                            <input
-                                                type="number"
-                                                id={`disburse-${month}`}
-                                                name={`disburse-${month}`}
-                                                value={amount === 0 ? '' : amount}
-                                                onChange={(e) => handleDisbursementChange(month, e.target.value)}
-                                                min="0"
-                                                step="0.01"
-                                                placeholder="0.00"
-                                                className={commonInputClasses}
-                                            />
+                                     <div className="md:row-span-2">
+                                        <label className="block text-sm font-medium">Disbursement Schedule</label>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-1">
+                                            {formData.disbursementSchedule.map(({month, amount}) => (
+                                                <div key={month} className="flex items-center gap-2">
+                                                    <label htmlFor={`disburse-${month}`} className="w-20 text-sm text-gray-600 dark:text-gray-300">{month}</label>
+                                                    <input 
+                                                        type="number" 
+                                                        id={`disburse-${month}`}
+                                                        value={amount || ''}
+                                                        onChange={(e) => handleDisbursementChange(month, e.target.value)}
+                                                        className="block w-full px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm sm:text-sm"
+                                                        placeholder="0.00"
+                                                        min="0" step="0.01"
+                                                    />
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
+                                         <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                            <span className="font-semibold text-sm">Total Disbursed:</span>
+                                            <span className="font-bold text-sm">{formatCurrency(totalDisbursed)}</span>
+                                         </div>
+                                    </div>
                                 </div>
-                                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-right">
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Total Disbursed: <span className="font-bold text-lg text-gray-800 dark:text-white">{formatCurrency(totalDisbursed)}</span></p>
-                                    <p className={`text-sm ${totalDisbursed > totalBudget ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                                        Remaining Balance: <span className="font-bold text-lg">{formatCurrency(totalBudget - totalDisbursed)}</span>
-                                    </p>
-                                 </div>
                             </fieldset>
                          </div>
                     )}
                 </div>
-                
-
                 <div className="flex justify-end gap-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                     <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                         Cancel
@@ -617,7 +812,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             </form>
         </div>
     );
-
+// FIX: Add return statement to the functional component.
     return (
         <div>
             {isDeleteModalOpen && (
@@ -632,11 +827,10 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     </div>
                 </div>
             )}
-
             {view === 'list' ? renderListView() : renderFormView()}
-
         </div>
     );
 };
 
+// FIX: Add default export to resolve import error in App.tsx
 export default TrainingsComponent;

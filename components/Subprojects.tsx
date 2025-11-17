@@ -50,6 +50,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [activeTab, setActiveTab] = useState<'info' | 'breakdown'>('info');
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
 
     const defaultFormData = useMemo(() => ({
         name: '',
@@ -162,6 +165,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
         return filteredProjects;
     }, [subprojects, searchTerm, statusFilter, packageFilter, sortConfig]);
+
+    const paginatedSubprojects = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return processedSubprojects.slice(startIndex, startIndex + itemsPerPage);
+    }, [processedSubprojects, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(processedSubprojects.length / itemsPerPage);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, statusFilter, packageFilter, sortConfig, itemsPerPage]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -622,7 +636,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {processedSubprojects.map((project) => (
+                            {paginatedSubprojects.map((project) => (
                                 <React.Fragment key={project.id}>
                                     <tr onClick={() => handleToggleRow(project.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-4 py-4 text-gray-400">
@@ -717,6 +731,35 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         </tbody>
                     </table>
                  </div>
+                 <div className="py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select
+                            value={itemsPerPage}
+                            onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            {[10, 20, 50, 100].map(size => (
+                                <option key={size} value={size}>{size}</option>
+                            ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                    </div>
+                     <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">
+                            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedSubprojects.length)} to {Math.min(currentPage * itemsPerPage, processedSubprojects.length)} of {processedSubprojects.length} entries
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Previous
+                            </button>
+                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
+                                Next
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </>
     );

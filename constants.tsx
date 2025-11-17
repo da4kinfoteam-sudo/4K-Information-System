@@ -35,6 +35,8 @@ export interface IPO {
     commodities: Commodity[];
     levelOfDevelopment: 1 | 2 | 3 | 4 | 5;
     history?: HistoryEntry[];
+    lat?: number;
+    lng?: number;
 }
 
 export const objectCodes = ['MOOE', 'CO', 'PS'] as const;
@@ -276,7 +278,7 @@ export const IpoIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const navigationLinks: NavLink[] = [
     { name: 'Homepage', href: '/' },
-    { name: 'Dashboards', href: '/dashboards' },
+    { name: 'Dashboard', href: '/dashboards' },
     { name: 'Subprojects', href: '/subprojects' },
     { name: 'Trainings', href: '/trainings' },
     { name: 'Other Activities', href: '/other-activities' },
