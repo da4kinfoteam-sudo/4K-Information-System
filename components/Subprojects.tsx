@@ -48,6 +48,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     type SortKeys = keyof Subproject | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
     const [activeTab, setActiveTab] = useState<'info' | 'breakdown'>('info');
+    const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
 
     const defaultFormData = useMemo(() => ({
@@ -332,7 +333,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         e.stopPropagation();
         setEditingSubproject(project);
         setActiveTab('info');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setView('edit');
+    };
+    
+    const handleAddNewClick = () => {
+        setEditingSubproject(null);
+        setActiveTab('info');
+        setView('add');
     };
 
     const handleCancelEdit = () => {
@@ -342,6 +349,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setSelectedRegion('');
         setIpoSearch('');
         setActiveTab('info');
+        setView('list');
     };
 
     const handleDeleteClick = (project: Subproject, e: React.MouseEvent) => {
@@ -547,27 +555,181 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         reader.readAsArrayBuffer(file);
     };
 
+    const renderListView = () => (
+        <>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Subprojects Management</h2>
+                <button
+                    onClick={handleAddNewClick}
+                    className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
+                >
+                    + Add New Subproject
+                </button>
+            </div>
 
-    return (
-        <div>
-            <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">Subprojects Management</h2>
-            
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete the project "{projectToDelete?.name}"? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                 <div className="mb-4 flex flex-col gap-4">
+                    <div className="flex flex-wrap gap-4 items-center justify-between">
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                            <input
+                                type="text"
+                                placeholder="Search by name, IPO, or location..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={`w-full md:w-auto ${commonInputClasses} mt-0`}
+                            />
+                             <div className="flex items-center gap-2">
+                               <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
+                                <select id="statusFilter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                    <option value="All">All</option>
+                                    <option value="Proposed">Proposed</option>
+                                    <option value="Ongoing">Ongoing</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label htmlFor="packageFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Package:</label>
+                                <select id="packageFilter" value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                     <option value="All">All</option>
+                                    {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
+                                        <option key={pkg} value={pkg}>{pkg}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-3 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                            <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                            <input id="subproject-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                         </div>
                     </div>
-                </div>
-            )}
+                 </div>
 
-            {/* Form Section */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">{editingSubproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
+                 <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th scope="col" className="w-12"></th>
+                                <SortableHeader sortKey="name" label="Project Name" />
+                                <SortableHeader sortKey="packageType" label="Package" />
+                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" />
+                                <SortableHeader sortKey="startDate" label="Timeline" />
+                                <SortableHeader sortKey="budget" label="Total Budget" />
+                                <SortableHeader sortKey="status" label="Status" />
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {processedSubprojects.map((project) => (
+                                <React.Fragment key={project.id}>
+                                    <tr onClick={() => handleToggleRow(project.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === project.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectSubproject(project);
+                                                }}
+                                                className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
+                                                title={`View details for ${project.name}`}
+                                            >
+                                                {project.name}
+                                            </button>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.packageType}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const ipo = ipos.find(i => i.name === project.indigenousPeopleOrganization);
+                                                    if (ipo) onSelectIpo(ipo);
+                                                }}
+                                                className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
+                                                title={`View details for ${project.indigenousPeopleOrganization}`}
+                                            >
+                                                {project.indigenousPeopleOrganization}
+                                            </button>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(project.startDate)} - {formatDate(project.estimatedCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">{formatCurrency(calculateTotalBudget(project.details))}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={getStatusBadge(project.status)}>{project.status}</span></td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button onClick={(e) => handleEditClick(project, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                            <button onClick={(e) => handleDeleteClick(project, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                        </td>
+                                    </tr>
+                                    {expandedRowId === project.id && (
+                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                            <td colSpan={8} className="p-0">
+                                                <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                    <div className="lg:col-span-2">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget Details</h4>
+                                                        <table className="min-w-full">
+                                                            <thead className="bg-gray-100 dark:bg-gray-700 text-xs uppercase">
+                                                                <tr>
+                                                                    <th className="px-4 py-2 text-left">Particulars</th>
+                                                                    <th className="px-4 py-2 text-left">Obj. Code</th>
+                                                                    <th className="px-4 py-2 text-left">Obligation</th>
+                                                                    <th className="px-4 py-2 text-left">Disbursement</th>
+                                                                    <th className="px-4 py-2 text-right"># of Units</th>
+                                                                    <th className="px-4 py-2 text-right">Subtotal</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="text-sm">
+                                                                {project.details.map(detail => (
+                                                                    <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
+                                                                        <td className="px-4 py-2 font-medium">{detail.particulars}</td>
+                                                                        <td className="px-4 py-2">{detail.objectCode}</td>
+                                                                        <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
+                                                                        <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
+                                                                        <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
+                                                                        <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Additional Info</h4>
+                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Actual Completion:</span> {formatDate(project.actualCompletionDate)}</p>
+                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Funding Year:</span> {project.fundingYear ?? 'N/A'}</p>
+                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Fund Type:</span> {project.fundType ?? 'N/A'}</p>
+                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Tier:</span> {project.tier ?? 'N/A'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300 italic bg-gray-100 dark:bg-gray-800/50 p-3 rounded-md">{project.remarks || 'No remarks provided.'}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            ))}
+                        </tbody>
+                    </table>
+                 </div>
+            </div>
+        </>
+    );
+
+    const renderFormView = () => (
+         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Subproject' : 'Add New Subproject'}</h3>
+                    <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        Back to List
+                    </button>
+                </div>
                 <form onSubmit={handleSubmit}>
                     <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                         <nav className="-mb-px flex space-x-4" aria-label="Tabs">
@@ -788,161 +950,24 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     </div>
                 </form>
             </div>
+    );
 
-            {/* Table Section */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                 <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects List</h3>
-                 
-                 <div className="mb-4 flex flex-col gap-4">
-                    <div className="flex flex-wrap gap-4 items-center justify-between">
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                            <input
-                                type="text"
-                                placeholder="Search by name, IPO, or location..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className={`w-full md:w-auto ${commonInputClasses} mt-0`}
-                            />
-                             <div className="flex items-center gap-2">
-                               <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
-                                <select id="statusFilter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                    <option value="All">All</option>
-                                    <option value="Proposed">Proposed</option>
-                                    <option value="Ongoing">Ongoing</option>
-                                    <option value="Completed">Completed</option>
-                                    <option value="Cancelled">Cancelled</option>
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label htmlFor="packageFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Package:</label>
-                                <select id="packageFilter" value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                     <option value="All">All</option>
-                                    {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
-                                        <option key={pkg} value={pkg}>{pkg}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
-                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-3 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-3 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                            <input id="subproject-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+
+    return (
+        <div>
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
+                        <p className="my-4">Are you sure you want to delete the project "{projectToDelete?.name}"? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
                         </div>
                     </div>
-                 </div>
-
-                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th scope="col" className="w-12"></th>
-                                <SortableHeader sortKey="name" label="Project Name" />
-                                <SortableHeader sortKey="packageType" label="Package" />
-                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" />
-                                <SortableHeader sortKey="startDate" label="Timeline" />
-                                <SortableHeader sortKey="budget" label="Total Budget" />
-                                <SortableHeader sortKey="status" label="Status" />
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {processedSubprojects.map((project) => (
-                                <React.Fragment key={project.id}>
-                                    <tr onClick={() => handleToggleRow(project.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === project.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSelectSubproject(project);
-                                                }}
-                                                className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
-                                                title={`View details for ${project.name}`}
-                                            >
-                                                {project.name}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{project.packageType}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const ipo = ipos.find(i => i.name === project.indigenousPeopleOrganization);
-                                                    if (ipo) onSelectIpo(ipo);
-                                                }}
-                                                className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
-                                                title={`View details for ${project.indigenousPeopleOrganization}`}
-                                            >
-                                                {project.indigenousPeopleOrganization}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(project.startDate)} - {formatDate(project.estimatedCompletionDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">{formatCurrency(calculateTotalBudget(project.details))}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={getStatusBadge(project.status)}>{project.status}</span></td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button onClick={(e) => handleEditClick(project, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
-                                            <button onClick={(e) => handleDeleteClick(project, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
-                                        </td>
-                                    </tr>
-                                    {expandedRowId === project.id && (
-                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={8} className="p-0">
-                                                <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                                    <div className="lg:col-span-2">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget Details</h4>
-                                                        <table className="min-w-full">
-                                                            <thead className="bg-gray-100 dark:bg-gray-700 text-xs uppercase">
-                                                                <tr>
-                                                                    <th className="px-4 py-2 text-left">Particulars</th>
-                                                                    <th className="px-4 py-2 text-left">Obj. Code</th>
-                                                                    <th className="px-4 py-2 text-left">Obligation</th>
-                                                                    <th className="px-4 py-2 text-left">Disbursement</th>
-                                                                    <th className="px-4 py-2 text-right"># of Units</th>
-                                                                    <th className="px-4 py-2 text-right">Subtotal</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody className="text-sm">
-                                                                {project.details.map(detail => (
-                                                                    <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
-                                                                        <td className="px-4 py-2 font-medium">{detail.particulars}</td>
-                                                                        <td className="px-4 py-2">{detail.objectCode}</td>
-                                                                        <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
-                                                                        <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
-                                                                        <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
-                                                                        <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
-                                                                    </tr>
-                                                                ))}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Additional Info</h4>
-                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Actual Completion:</span> {formatDate(project.actualCompletionDate)}</p>
-                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Funding Year:</span> {project.fundingYear ?? 'N/A'}</p>
-                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Fund Type:</span> {project.fundType ?? 'N/A'}</p>
-                                                             <p className="text-sm text-gray-600 dark:text-gray-300"><span className="font-semibold">Tier:</span> {project.tier ?? 'N/A'}</p>
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-300 italic bg-gray-100 dark:bg-gray-800/50 p-3 rounded-md">{project.remarks || 'No remarks provided.'}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            ))}
-                        </tbody>
-                    </table>
-                 </div>
-            </div>
+                </div>
+            )}
+            {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );
 };

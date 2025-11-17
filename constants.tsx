@@ -121,10 +121,53 @@ export interface Training {
     disbursementSchedule?: Disbursement[];
 }
 
-export interface Activity {
+export type OtherActivityComponentType = 'Social Preparation' | 'Marketing and Enterprise' | 'Program Management';
+
+export const otherActivityComponents: OtherActivityComponentType[] = [
+    'Social Preparation',
+    'Marketing and Enterprise',
+    'Program Management'
+];
+
+export const socialPreparationActivities = [
+    'Meetings', 'Orientation', 'Profiling', 'Community Needs Assessment', 
+    'Review and Planning Workshop', 'IPO Registration Drive (RSBSA, SEC, DOLE, CDA)'
+] as const;
+
+export const marketingEnterpriseActivities = [
+    'Market Linkaging', 'Trade and Promotional Activity'
+] as const;
+
+export const programManagementActivities = [
+    'Sub-Project Monitoring', 'Performance and Budget Utilization Review (PBUR)', 'Planning and BEDS Preparation'
+] as const;
+
+export const otherActivityOptions: { [key in OtherActivityComponentType]: readonly string[] } = {
+    'Social Preparation': socialPreparationActivities,
+    'Marketing and Enterprise': marketingEnterpriseActivities,
+    'Program Management': programManagementActivities,
+};
+
+export interface OtherActivityExpense {
     id: number;
+    objectCode: ObjectCode;
+    obligationMonth: string;
+    disbursementMonth: string;
+    amount: number;
+}
+
+
+export interface OtherActivity {
+    id: number;
+    component: OtherActivityComponentType;
     name: string;
     date: string;
+    description: string;
+    location: string;
+    participatingIpos: string[]; // Empty for Program Management except Sub-Project Monitoring
+    participantsMale: number;
+    participantsFemale: number;
+    expenses: OtherActivityExpense[];
 }
 
 

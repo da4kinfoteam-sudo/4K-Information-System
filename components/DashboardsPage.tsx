@@ -1,17 +1,18 @@
 
+
 import React, { useState, useMemo } from 'react';
-import { Subproject, IPO, Training, Activity, philippineRegions } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, philippineRegions } from '../constants';
 
 interface DashboardsPageProps {
     subprojects: Subproject[];
     ipos: IPO[];
     trainings: Training[];
-    activities: Activity[];
+    otherActivities: OtherActivity[];
 }
 
 type DashboardTab = 'Physical' | 'Financial' | 'Level of Development' | 'Gender and Development';
 
-const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trainings, activities }) => {
+const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedRegion, setSelectedRegion] = useState<string>('All');
@@ -21,9 +22,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
         subprojects.forEach(p => years.add(new Date(p.startDate).getFullYear().toString()));
         ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
         trainings.forEach(t => years.add(new Date(t.date).getFullYear().toString()));
-        activities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
+        otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, ipos, trainings, activities]);
+    }, [subprojects, ipos, trainings, otherActivities]);
 
     const filteredData = useMemo(() => {
         // 1. Filter by Year first
@@ -31,7 +32,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
             subprojects: selectedYear === 'All' ? subprojects : subprojects.filter(p => new Date(p.startDate).getFullYear() === parseInt(selectedYear)),
             ipos: selectedYear === 'All' ? ipos : ipos.filter(i => new Date(i.registrationDate).getFullYear() === parseInt(selectedYear)),
             trainings: selectedYear === 'All' ? trainings : trainings.filter(t => new Date(t.date).getFullYear() === parseInt(selectedYear)),
-            activities: selectedYear === 'All' ? activities : activities.filter(a => new Date(a.date).getFullYear() === parseInt(selectedYear)),
+            otherActivities: selectedYear === 'All' ? otherActivities : otherActivities.filter(a => new Date(a.date).getFullYear() === parseInt(selectedYear)),
         };
 
         // 2. Then Filter by Region
@@ -45,6 +46,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
                 subprojects: [],
                 ipos: [],
                 trainings: yearFiltered.trainings.filter(t => t.location === 'Online'),
+                otherActivities: yearFiltered.otherActivities.filter(a => a.location === 'Online'),
             }
         }
         
@@ -53,15 +55,16 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
         const regionFilteredSubprojects = yearFiltered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization));
         const regionFilteredIpos = yearFiltered.ipos.filter(i => i.region === selectedRegion);
         const regionFilteredTrainings = yearFiltered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName)));
+        const regionFilteredOtherActivities = yearFiltered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName)));
 
         return {
             subprojects: regionFilteredSubprojects,
             ipos: regionFilteredIpos,
             trainings: regionFilteredTrainings,
-            activities: yearFiltered.activities,
+            otherActivities: regionFilteredOtherActivities,
         };
 
-    }, [selectedYear, selectedRegion, subprojects, ipos, trainings, activities]);
+    }, [selectedYear, selectedRegion, subprojects, ipos, trainings, otherActivities]);
     
     const TabButton: React.FC<{ tabName: DashboardTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;

@@ -8,10 +8,11 @@ import Subprojects from './components/Subprojects';
 import IPOs from './components/IPO';
 import IPODetail from './components/IPODetail';
 import SubprojectDetail from './components/SubprojectDetail';
-import { IPO, Subproject, Training, Activity, HistoryEntry, fundTypes, tiers } from './constants';
+import { IPO, Subproject, Training, OtherActivity, HistoryEntry, fundTypes, tiers } from './constants';
 import DashboardsPage from './components/DashboardsPage';
 // FIX: Import TrainingsComponent to resolve "Cannot find name 'TrainingsComponent'" error.
 import TrainingsComponent from './components/Trainings';
+import OtherActivitiesComponent from './components/OtherActivities';
 
 const initialIpos: IPO[] = [
     { 
@@ -271,11 +272,43 @@ const initialTrainings: Training[] = [
     { id: 5, name: 'Marketing and Linkaging Forum', date: '2024-01-20', description: 'Connecting farmers to potential buyers and markets.', location: 'Online', facilitator: 'DA-AMAS', participatingIpos: ['Macaingalan IP Farmers Assoc.', 'Daraitan Farmers Cooperative'], participantsMale: 18, participantsFemale: 22, trainingExpenses: 25000, component: 'Marketing and Enterprise' },
 ];
 
-const initialActivities: Activity[] = [
-    { id: 1, name: 'Community Consultation Meeting', date: '2022-01-15' },
-    { id: 2, name: 'Project Site Validation', date: '2022-06-30' },
-    { id: 3, name: 'Turnover Ceremony', date: '2023-11-25' },
-    { id: 4, name: 'Annual Project Review', date: '2023-12-10' },
+const initialOtherActivities: OtherActivity[] = [
+    { 
+        id: 1, 
+        component: 'Social Preparation', 
+        name: 'Community Needs Assessment', 
+        date: '2023-02-20',
+        description: 'Assessed the needs of the community to identify potential subprojects.',
+        location: 'Brgy. San Isidro, Tanay, Rizal',
+        participatingIpos: ['San Isidro Farmers Association'],
+        participantsMale: 20,
+        participantsFemale: 25,
+        expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-02-15', disbursementMonth: '2023-02-28', amount: 30000 }]
+    },
+    { 
+        id: 2, 
+        component: 'Program Management', 
+        name: 'Sub-Project Monitoring', 
+        date: '2023-10-05',
+        description: 'Monitored the ongoing Communal Irrigation System project.',
+        location: 'Brgy. San Isidro, Tanay, Rizal',
+        participatingIpos: [],
+        participantsMale: 0,
+        participantsFemale: 0,
+        expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-10-01', disbursementMonth: '2023-10-15', amount: 15000 }]
+    },
+    { 
+        id: 3, 
+        component: 'Marketing and Enterprise', 
+        name: 'Market Linkaging', 
+        date: '2024-03-15',
+        description: 'Connected coffee growers with local cafes and distributors.',
+        location: 'Brgy. Marilog, Davao City, Davao del Sur',
+        participatingIpos: ['Marilog District Coffee Growers Association'],
+        participantsMale: 15,
+        participantsFemale: 18,
+        expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2024-03-10', disbursementMonth: '2024-03-20', amount: 45000 }]
+    },
 ];
 
 const App: React.FC = () => {
@@ -289,7 +322,7 @@ const App: React.FC = () => {
     const [ipos, setIpos] = useState<IPO[]>(initialIpos);
     const [subprojects, setSubprojects] = useState<Subproject[]>(initialSubprojects);
     const [trainings, setTrainings] = useState<Training[]>(initialTrainings);
-    const [activities, setActivities] = useState<Activity[]>(initialActivities);
+    const [otherActivities, setOtherActivities] = useState<OtherActivity[]>(initialOtherActivities);
 
     useEffect(() => {
         const isDark = localStorage.getItem('isDarkMode') === 'true';
@@ -466,6 +499,7 @@ const App: React.FC = () => {
             case '/subprojects': return 'Subprojects';
             case '/trainings': return 'Trainings';
             case '/ipo': return 'IPO List';
+            case '/other-activities': return 'Other Activities';
             default: return 'IPO List';
         }
     }
@@ -477,14 +511,14 @@ const App: React.FC = () => {
                             subprojects={subprojects}
                             ipos={ipos}
                             trainings={trainings}
-                            activities={activities}
+                            otherActivities={otherActivities}
                         />;
             case '/dashboards':
                 return <DashboardsPage
                             subprojects={subprojects}
                             ipos={ipos}
                             trainings={trainings}
-                            activities={activities}
+                            otherActivities={otherActivities}
                         />;
             case '/subprojects':
                 return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} onSelectIpo={handleSelectIpo} onSelectSubproject={handleSelectSubproject}/>;
@@ -499,6 +533,8 @@ const App: React.FC = () => {
                 />;
             case '/trainings':
                 return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} onSelectIpo={handleSelectIpo} />;
+            case '/other-activities':
+                return <OtherActivitiesComponent ipos={ipos} otherActivities={otherActivities} setOtherActivities={setOtherActivities} onSelectIpo={handleSelectIpo} />;
             default:
                 return (
                     <div className="text-center p-10 bg-white dark:bg-gray-800 rounded-xl shadow-lg">

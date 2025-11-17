@@ -1,7 +1,8 @@
 
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 // FIX: Added FundType and Tier to imports to be used for type assertions.
-import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, months, Disbursement, Month, FundType, Tier } from '../constants';
+import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, months, Disbursement, Month, FundType, Tier, TrainingComponentType } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 interface TrainingsProps {
@@ -46,9 +47,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
 
     const [searchTerm, setSearchTerm] = useState('');
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
+    const [componentFilter, setComponentFilter] = useState<'All' | TrainingComponentType>('All');
     type SortKeys = keyof Training | 'totalParticipants';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
     useEffect(() => {
         if (formData.component === 'Program Management') {
@@ -98,6 +101,10 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 training.participatingIpos.some(ipoName => iposInRegion.has(ipoName)) || (training.location === 'Online' && tableRegionFilter === 'Online')
             );
         }
+        
+        if (componentFilter !== 'All') {
+            filteredTrainings = filteredTrainings.filter(t => t.component === componentFilter);
+        }
 
         if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
@@ -133,7 +140,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             });
         }
         return filteredTrainings;
-    }, [trainings, searchTerm, tableRegionFilter, sortConfig, ipos]);
+    }, [trainings, searchTerm, tableRegionFilter, sortConfig, ipos, componentFilter]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -202,13 +209,19 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
 
     const handleEditClick = (training: Training) => {
         setEditingTraining(training);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setView('edit');
+    };
+    
+    const handleAddNewClick = () => {
+        setEditingTraining(null);
+        setView('add');
     };
 
     const handleCancelEdit = () => {
         setEditingTraining(null);
         setFormData(defaultFormData);
         setActiveTab('details');
+        setView('list');
     };
 
     const handleDeleteClick = (training: Training) => {
@@ -269,228 +282,18 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         );
     }
 
-    return (
-        <div>
-            <h2 className="text-3xl font-bold mb-6 text-gray-800 dark:text-white">Trainings Management</h2>
-
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete the training "{trainingToDelete?.name}"? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Form Section */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">{editingTraining ? 'Edit Training' : 'Add New Training'}</h3>
-                <form onSubmit={handleSubmit}>
-                    <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                        <nav className="-mb-px flex space-x-4" aria-label="Tabs">
-                            <TabButton tabName="details" label="Training Details" />
-                            <TabButton tabName="budget" label="Budget & Funding" />
-                        </nav>
-                    </div>
-
-                    <div className="min-h-[400px]">
-                        {activeTab === 'details' && (
-                            <div className="space-y-6">
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                         <div className="md:col-span-2">
-                                            <label htmlFor="name" className="block text-sm font-medium">Training Name</label>
-                                            <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label htmlFor="date" className="block text-sm font-medium">Date</label>
-                                            <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
-                                        </div>
-                                         <div>
-                                            <label htmlFor="component" className="block text-sm font-medium">Component</label>
-                                            <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
-                                                {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                                            </select>
-                                        </div>
-                                         <div className="md:col-span-2">
-                                             <label htmlFor="facilitator" className="block text-sm font-medium">Facilitator / Speaker</label>
-                                            <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} required className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location</legend>
-                                     <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required allowOnline={true} />
-                                </fieldset>
-
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants</legend>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
-                                         <div>
-                                            <label htmlFor="participantsMale" className="block text-sm font-medium">Male Participants</label>
-                                            <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label htmlFor="participantsFemale" className="block text-sm font-medium">Female Participants</label>
-                                            <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                         <div>
-                                            <label htmlFor="totalParticipants" className="block text-sm font-medium">Total Participants</label>
-                                            <input type="number" name="totalParticipants" id="totalParticipants" value={totalParticipants} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Description</legend>
-                                    <div>
-                                        <label htmlFor="description" className="block text-sm font-medium">Description</label>
-                                        <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
-                                    </div>
-                                </fieldset>
-                                
-                                {formData.component !== 'Program Management' && (
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
-                                        <div>
-                                            <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
-                                            <div className="flex items-center gap-4 mt-1">
-                                                <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
-                                                <select 
-                                                    value={ipoRegionFilter} 
-                                                    onChange={(e) => setIpoRegionFilter(e.target.value)}
-                                                    className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                                                >
-                                                    <option value="All">All Regions</option>
-                                                    {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                                </select>
-                                            </div>
-                                            <select
-                                                multiple
-                                                name="participatingIpos"
-                                                id="participatingIpos"
-                                                value={formData.participatingIpos}
-                                                onChange={handleIpoSelectChange}
-                                                className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
-                                            >
-                                                {filteredIposForSelection.map(ipo => {
-                                                    const { province } = parseLocation(ipo.location);
-                                                    return (
-                                                        <option key={ipo.id} value={ipo.name}>
-                                                            {`${ipo.name} (${ipo.acronym}) - ${province} - Level ${ipo.levelOfDevelopment}`}
-                                                        </option>
-                                                    );
-                                                })}
-                                            </select>
-                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple organizations.</p>
-                                        </div>
-                                    </fieldset>
-                                )}
-                            </div>
-                        )}
-                        {activeTab === 'budget' && (
-                             <div className="space-y-6">
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Details</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                         <div>
-                                            <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
-                                            <input type="number" name="fundingYear" id="fundingYear" min="2000" max="2100" step="1" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label htmlFor="fundType" className="block text-sm font-medium">Fund Type</label>
-                                            <select name="fundType" id="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
-                                                {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label htmlFor="tier" className="block text-sm font-medium">Tier</label>
-                                            <select name="tier" id="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label htmlFor="monthOfObligation" className="block text-sm font-medium">Month of Obligation</label>
-                                            <select name="monthOfObligation" id="monthOfObligation" value={formData.monthOfObligation} onChange={handleInputChange} className={commonInputClasses}>
-                                                {months.map(m => <option key={m} value={m}>{m}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </fieldset>
-                                
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                                         <div>
-                                            <label htmlFor="trainingExpenses" className="block text-sm font-medium">Training Expenses (PHP)</label>
-                                            <input type="number" name="trainingExpenses" id="trainingExpenses" min="0" step="0.01" value={formData.trainingExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label htmlFor="otherExpenses" className="block text-sm font-medium">Other Expenses (PHP)</label>
-                                            <input type="number" name="otherExpenses" id="otherExpenses" min="0" step="0.01" value={formData.otherExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Budget</label>
-                                            <p className="mt-1 h-10 flex items-center px-3 bg-gray-100 dark:bg-gray-800 rounded-md font-semibold text-accent dark:text-green-400">{formatCurrency(totalBudget)}</p>
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule</legend>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                        {formData.disbursementSchedule.map(({ month, amount }) => (
-                                            <div key={month}>
-                                                <label htmlFor={`disburse-${month}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300">{month}</label>
-                                                <input
-                                                    type="number"
-                                                    id={`disburse-${month}`}
-                                                    name={`disburse-${month}`}
-                                                    value={amount === 0 ? '' : amount}
-                                                    onChange={(e) => handleDisbursementChange(month, e.target.value)}
-                                                    min="0"
-                                                    step="0.01"
-                                                    placeholder="0.00"
-                                                    className={commonInputClasses}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-right">
-                                        <p className="text-sm text-gray-500 dark:text-gray-400">Total Disbursed: <span className="font-bold text-lg text-gray-800 dark:text-white">{formatCurrency(totalDisbursed)}</span></p>
-                                        <p className={`text-sm ${totalDisbursed > totalBudget ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                                            Remaining Balance: <span className="font-bold text-lg">{formatCurrency(totalBudget - totalDisbursed)}</span>
-                                        </p>
-                                     </div>
-                                </fieldset>
-                             </div>
-                        )}
-                    </div>
-                    
-
-                    <div className="flex justify-end gap-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                        {editingTraining && (
-                            <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                Cancel
-                            </button>
-                        )}
-                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                            {editingTraining ? 'Update Training' : 'Add Training'}
-                        </button>
-                    </div>
-                </form>
+    const renderListView = () => (
+        <>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Trainings Management</h2>
+                <button
+                    onClick={handleAddNewClick}
+                    className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
+                >
+                    + Add New Training
+                </button>
             </div>
-
-            {/* Table Section */}
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Trainings List</h3>
-
                  <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 items-center">
                     <input
                         type="text"
@@ -509,6 +312,13 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                             ))}
                         </select>
                     </div>
+                    <div className="flex items-center gap-2">
+                       <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
+                        <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
+                            <option value="All">All Components</option>
+                            {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </div>
                  </div>
 
                 <div className="overflow-x-auto">
@@ -520,7 +330,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 <SortableHeader sortKey="date" label="Date" />
                                 <SortableHeader sortKey="component" label="Component" />
                                 <SortableHeader sortKey="totalParticipants" label="Participants" />
-                                <SortableHeader sortKey="trainingExpenses" label="Expenses" />
+                                <SortableHeader sortKey="trainingExpenses" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
@@ -599,6 +409,232 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     </table>
                 </div>
             </div>
+        </>
+    );
+
+    const renderFormView = () => (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Training' : 'Add New Training'}</h3>
+                 <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    Back to List
+                </button>
+            </div>
+            <form onSubmit={handleSubmit}>
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                        <TabButton tabName="details" label="Training Details" />
+                        <TabButton tabName="budget" label="Budget & Funding" />
+                    </nav>
+                </div>
+
+                <div className="min-h-[400px]">
+                    {activeTab === 'details' && (
+                        <div className="space-y-6">
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     <div className="md:col-span-2">
+                                        <label htmlFor="name" className="block text-sm font-medium">Training Name</label>
+                                        <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="date" className="block text-sm font-medium">Date</label>
+                                        <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                     <div>
+                                        <label htmlFor="component" className="block text-sm font-medium">Component</label>
+                                        <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
+                                            {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                     <div className="md:col-span-2">
+                                         <label htmlFor="facilitator" className="block text-sm font-medium">Facilitator / Speaker</label>
+                                        <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location</legend>
+                                 <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required allowOnline={true} />
+                            </fieldset>
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants</legend>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
+                                     <div>
+                                        <label htmlFor="participantsMale" className="block text-sm font-medium">Male Participants</label>
+                                        <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="participantsFemale" className="block text-sm font-medium">Female Participants</label>
+                                        <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                     <div>
+                                        <label htmlFor="totalParticipants" className="block text-sm font-medium">Total Participants</label>
+                                        <input type="number" name="totalParticipants" id="totalParticipants" value={totalParticipants} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Description</legend>
+                                <div>
+                                    <label htmlFor="description" className="block text-sm font-medium">Description</label>
+                                    <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
+                                </div>
+                            </fieldset>
+                            
+                            {formData.component !== 'Program Management' && (
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
+                                    <div>
+                                        <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
+                                        <div className="flex items-center gap-4 mt-1">
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
+                                            <select 
+                                                value={ipoRegionFilter} 
+                                                onChange={(e) => setIpoRegionFilter(e.target.value)}
+                                                className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                                            >
+                                                <option value="All">All Regions</option>
+                                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <select
+                                            multiple
+                                            name="participatingIpos"
+                                            id="participatingIpos"
+                                            value={formData.participatingIpos}
+                                            onChange={handleIpoSelectChange}
+                                            className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
+                                        >
+                                            {filteredIposForSelection.map(ipo => {
+                                                const { province } = parseLocation(ipo.location);
+                                                return (
+                                                    <option key={ipo.id} value={ipo.name}>
+                                                        {`${ipo.name} (${ipo.acronym}) - ${province} - Level ${ipo.levelOfDevelopment}`}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple organizations.</p>
+                                    </div>
+                                </fieldset>
+                            )}
+                        </div>
+                    )}
+                    {activeTab === 'budget' && (
+                         <div className="space-y-6">
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Details</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                     <div>
+                                        <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
+                                        <input type="number" name="fundingYear" id="fundingYear" min="2000" max="2100" step="1" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="fundType" className="block text-sm font-medium">Fund Type</label>
+                                        <select name="fundType" id="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                            {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tier" className="block text-sm font-medium">Tier</label>
+                                        <select name="tier" id="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="monthOfObligation" className="block text-sm font-medium">Month of Obligation</label>
+                                        <select name="monthOfObligation" id="monthOfObligation" value={formData.monthOfObligation} onChange={handleInputChange} className={commonInputClasses}>
+                                            {months.map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                     <div>
+                                        <label htmlFor="trainingExpenses" className="block text-sm font-medium">Training Expenses (PHP)</label>
+                                        <input type="number" name="trainingExpenses" id="trainingExpenses" min="0" step="0.01" value={formData.trainingExpenses} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="otherExpenses" className="block text-sm font-medium">Other Expenses (PHP)</label>
+                                        <input type="number" name="otherExpenses" id="otherExpenses" min="0" step="0.01" value={formData.otherExpenses} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Budget</label>
+                                        <p className="mt-1 h-10 flex items-center px-3 bg-gray-100 dark:bg-gray-800 rounded-md font-semibold text-accent dark:text-green-400">{formatCurrency(totalBudget)}</p>
+                                    </div>
+                                </div>
+                            </fieldset>
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule</legend>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {formData.disbursementSchedule.map(({ month, amount }) => (
+                                        <div key={month}>
+                                            <label htmlFor={`disburse-${month}`} className="block text-sm font-medium text-gray-700 dark:text-gray-300">{month}</label>
+                                            <input
+                                                type="number"
+                                                id={`disburse-${month}`}
+                                                name={`disburse-${month}`}
+                                                value={amount === 0 ? '' : amount}
+                                                onChange={(e) => handleDisbursementChange(month, e.target.value)}
+                                                min="0"
+                                                step="0.01"
+                                                placeholder="0.00"
+                                                className={commonInputClasses}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-right">
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Total Disbursed: <span className="font-bold text-lg text-gray-800 dark:text-white">{formatCurrency(totalDisbursed)}</span></p>
+                                    <p className={`text-sm ${totalDisbursed > totalBudget ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                        Remaining Balance: <span className="font-bold text-lg">{formatCurrency(totalBudget - totalDisbursed)}</span>
+                                    </p>
+                                 </div>
+                            </fieldset>
+                         </div>
+                    )}
+                </div>
+                
+
+                <div className="flex justify-end gap-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                        {editingTraining ? 'Update Training' : 'Add Training'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+
+    return (
+        <div>
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
+                        <p className="my-4">Are you sure you want to delete the training "{trainingToDelete?.name}"? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {view === 'list' ? renderListView() : renderFormView()}
+
         </div>
     );
 };
