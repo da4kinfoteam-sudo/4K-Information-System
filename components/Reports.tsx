@@ -31,6 +31,13 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
+    const indentClasses: { [key: number]: string } = {
+        0: '',
+        1: 'pl-6',
+        2: 'pl-10',
+        3: 'pl-14',
+    };
+
     const renderTotalsRow = (items: any[], label: string) => {
         const totals = items.reduce((acc, item) => {
             acc.totalPhysicalTarget += item.totalPhysicalTarget;
@@ -70,8 +77,17 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         );
     };
     
-    const renderSummaryRow = (items: any[], label: string, rowKey: string, isExpanded: boolean, indent = false) => {
-        if (items.length === 0) return null;
+    const renderSummaryRow = (items: any[], label: string, rowKey: string, isExpanded: boolean, indentLevel = 0) => {
+        if (items.length === 0) {
+            return (
+                <tr className="font-semibold bg-gray-50 dark:bg-gray-800/60">
+                     <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>
+                        <span className="inline-block w-5"></span> {label}
+                    </td>
+                    <td colSpan={14} className="p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500">No activities for this component.</td>
+                </tr>
+            )
+        }
         
         const totals = items.reduce((acc, item) => {
             acc.totalPhysicalTarget += item.totalPhysicalTarget;
@@ -98,7 +114,7 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         
         return (
              <tr onClick={() => toggleRow(rowKey)} className="font-semibold bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
-                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indent ? 'pl-6' : ''}`}>
+                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
                 <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalPhysicalTarget}</td>
@@ -113,12 +129,12 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         );
     };
     
-    const renderDataRow = (item: any, key: string, indent = false) => {
+    const renderDataRow = (item: any, key: string, indentLevel = 0) => {
         const totalQuarterlyPhysical = item.q1Physical + item.q2Physical + item.q3Physical + item.q4Physical;
         const totalQuarterlyFinancial = item.q1Financial + item.q2Financial + item.q3Financial + item.q4Financial;
         return (
             <tr key={key}>
-                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indent ? 'pl-10' : ''}`}>{item.indicator}</td>
+                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>{item.indicator}</td>
                 <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{item.totalPhysicalTarget}</td>
                 <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.mooeCost)}</td>
                 <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.coCost)}</td>
@@ -167,40 +183,47 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                 </thead>
                 <tbody>
                     {Object.entries(data).map(([key, componentData]) => {
-                        // Case 1: Flat list of items
+                        // Case 1: Flat list of items, now collapsible
                         if (Array.isArray(componentData)) {
+                             const isComponentExpanded = expandedRows.has(key);
                              return (
                                 <React.Fragment key={key}>
-                                    <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                                        <td colSpan={15} className="p-2 border border-gray-300 dark:border-gray-600">{key}</td>
-                                    </tr>
-                                    {componentData.length > 0 
-                                        ? componentData.map((item, index) => renderDataRow(item, `${key}-${index}`)) 
-                                        : <tr><td colSpan={15} className="p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500">No activities for this component.</td></tr>
-                                    }
+                                    {renderSummaryRow(componentData, key, key, isComponentExpanded, 0)}
+                                    {isComponentExpanded && (
+                                        componentData.length > 0 
+                                            ? componentData.map((item, index) => renderDataRow(item, `${key}-${index}`, 1)) 
+                                            : (
+                                                <tr>
+                                                    <td colSpan={15} className={`p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500 ${indentClasses[1]}`}>
+                                                        No activities for this component.
+                                                    </td>
+                                                </tr>
+                                            )
+                                    )}
                                 </React.Fragment>
                             );
                         }
                         // Case 2: Expandable group (Trainings)
                         if (componentData.isExpandable) {
+                             const isComponentExpanded = expandedRows.has(key);
                              return (
                                 <React.Fragment key={key}>
-                                    {renderSummaryRow(componentData.items, key, key, expandedRows.has(key))}
-                                    {expandedRows.has(key) && componentData.items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, true))}
+                                    {renderSummaryRow(componentData.items, key, key, isComponentExpanded, 0)}
+                                    {isComponentExpanded && componentData.items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
                                 </React.Fragment>
                             );
                         }
                         // Case 3: Nested expandable group (Subprojects)
                         if (componentData.isNestedExpandable) {
+                            const isComponentExpanded = expandedRows.has(key);
+                            const allPackageItems = Object.values(componentData.packages).flatMap((pkg: any) => pkg.items);
                              return (
                                 <React.Fragment key={key}>
-                                    <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                                        <td colSpan={15} className="p-2 border border-gray-300 dark:border-gray-600">{key}</td>
-                                    </tr>
-                                    {Object.entries(componentData.packages).map(([packageName, packageData]: [string, any]) => (
+                                    {renderSummaryRow(allPackageItems, key, key, isComponentExpanded, 0)}
+                                    {isComponentExpanded && Object.entries(componentData.packages).map(([packageName, packageData]: [string, any]) => (
                                         <React.Fragment key={packageName}>
-                                            {renderSummaryRow(packageData.items, packageName, packageName, expandedRows.has(packageName), true)}
-                                            {expandedRows.has(packageName) && packageData.items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, true))}
+                                            {renderSummaryRow(packageData.items, packageName, packageName, expandedRows.has(packageName), 1)}
+                                            {expandedRows.has(packageName) && packageData.items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, 2))}
                                         </React.Fragment>
                                     ))}
                                 </React.Fragment>
