@@ -2,7 +2,7 @@
 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 // FIX: Add FundType and Tier to imports to handle type widening.
-import { Subproject, SubprojectDetail, IPO, philippineRegions, particularTypes, objectCodes, ObjectCode, fundTypes, tiers, FundType, Tier } from '../constants';
+import { Subproject, SubprojectDetail, IPO, philippineRegions, particularTypes, objectTypes, ObjectType, fundTypes, tiers, FundType, Tier, uacsCodes } from '../constants';
 import LocationPicker from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -27,8 +27,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         unitOfMeasure: 'pcs' as SubprojectDetail['unitOfMeasure'],
         pricePerUnit: '',
         numberOfUnits: '',
-        // FIX: Add type assertion to ensure the state can hold any 'ObjectCode', not just the first value.
-        objectCode: objectCodes[0] as ObjectCode,
+        objectType: 'MOOE' as ObjectType,
+        expenseParticular: '',
+        uacsCode: '',
         obligationMonth: '',
         disbursementMonth: '',
     });
@@ -67,7 +68,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         lat: 0,
         lng: 0,
         fundingYear: new Date().getFullYear(),
-        // FIX: Widen types for fundType and tier to allow any valid value, not just the default.
         fundType: fundTypes[0] as FundType,
         tier: tiers[0] as Tier,
     }), []);
@@ -239,7 +239,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         const { name, value } = e.target;
         if (name === 'type') {
             setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
-        } else {
+        } else if (name === 'objectType') {
+            setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
+        } else if (name === 'expenseParticular') {
+            setCurrentDetail(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
+        }
+        else {
             setCurrentDetail(prev => ({ ...prev, [name]: value }));
         }
     };
@@ -250,8 +255,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             alert('Please set the project Start Date and Estimated Completion Date first.');
             return;
         }
-        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
-            alert('Please fill out all detail fields, including dates and object code.');
+        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth || !currentDetail.uacsCode) {
+            alert('Please fill out all detail fields, including UACS classification.');
             return;
         }
 
@@ -265,15 +270,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
 
         setDetailItems(prev => [...prev, {
-            type: currentDetail.type,
-            particulars: currentDetail.particulars,
-            deliveryDate: currentDetail.deliveryDate,
-            unitOfMeasure: currentDetail.unitOfMeasure,
+            ...currentDetail,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
-            objectCode: currentDetail.objectCode,
-            obligationMonth: currentDetail.obligationMonth,
-            disbursementMonth: currentDetail.disbursementMonth,
         }]);
         setCurrentDetail({
             type: '',
@@ -282,7 +281,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             unitOfMeasure: 'pcs',
             pricePerUnit: '',
             numberOfUnits: '',
-            objectCode: objectCodes[0],
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
             obligationMonth: '',
             disbursementMonth: '',
         });
@@ -295,15 +296,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleEditParticular = (indexToEdit: number) => {
         const itemToEdit = detailItems[indexToEdit];
         setCurrentDetail({
-            type: itemToEdit.type,
-            particulars: itemToEdit.particulars,
-            deliveryDate: itemToEdit.deliveryDate,
-            unitOfMeasure: itemToEdit.unitOfMeasure,
+            ...itemToEdit,
             pricePerUnit: String(itemToEdit.pricePerUnit),
             numberOfUnits: String(itemToEdit.numberOfUnits),
-            objectCode: itemToEdit.objectCode,
-            obligationMonth: itemToEdit.obligationMonth,
-            disbursementMonth: itemToEdit.disbursementMonth,
         });
         handleRemoveDetail(indexToEdit);
     };
@@ -476,7 +471,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             startDate: '2024-01-01',
             estimatedCompletionDate: '2024-12-31',
             remarks: 'Initial planning phase.',
-            details: '[{"type":"Infrastructure","particulars":"Gravel and Sand","deliveryDate":"2024-02-15","unitOfMeasure":"lot","pricePerUnit":500000,"numberOfUnits":1,"objectCode":"CO","obligationMonth":"2024-01-20","disbursementMonth":"2024-03-01"}]'
+            details: '[{"type":"Infrastructure","particulars":"Gravel and Sand","deliveryDate":"2024-02-15","unitOfMeasure":"lot","pricePerUnit":500000,"numberOfUnits":1,"objectType":"CO","expenseParticular":"Buildings and Other Structures","uacsCode":"10604020-00","obligationMonth":"2024-01-20","disbursementMonth":"2024-03-01"}]'
         }];
 
         const instructions = [
@@ -487,7 +482,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             ["startDate", "Date in YYYY-MM-DD format.", "Yes"],
             ["estimatedCompletionDate", "Date in YYYY-MM-DD format.", "Yes"],
             ["remarks", "Any relevant remarks about the project.", "No"],
-            ["details", `A JSON string for project breakdown. Format: '[{"type":"Type","particulars":"Name", "deliveryDate":"YYYY-MM-DD", "unitOfMeasure":"unit", "pricePerUnit":Number, "numberOfUnits":Number, "objectCode":"CO", "obligationMonth":"YYYY-MM-DD", "disbursementMonth":"YYYY-MM-DD"}]'. Use '[]' if empty.`, "Yes"],
+            ["details", `A JSON string for project breakdown with UACS. See template for exact format. Use '[]' if empty.`, "Yes"],
         ];
 
         const wb = XLSX.utils.book_new();
@@ -688,7 +683,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             <thead className="bg-gray-100 dark:bg-gray-700 text-xs uppercase">
                                                                 <tr>
                                                                     <th className="px-4 py-2 text-left">Particulars</th>
-                                                                    <th className="px-4 py-2 text-left">Obj. Code</th>
+                                                                    <th className="px-4 py-2 text-left">UACS Code</th>
                                                                     <th className="px-4 py-2 text-left">Obligation</th>
                                                                     <th className="px-4 py-2 text-left">Disbursement</th>
                                                                     <th className="px-4 py-2 text-right"># of Units</th>
@@ -699,7 +694,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                                 {project.details.map(detail => (
                                                                     <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
                                                                         <td className="px-4 py-2 font-medium">{detail.particulars}</td>
-                                                                        <td className="px-4 py-2">{detail.objectCode}</td>
+                                                                        <td className="px-4 py-2">{detail.uacsCode}</td>
                                                                         <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
                                                                         <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
                                                                         <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
@@ -901,7 +896,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
                                                 <div className="text-sm flex-grow">
                                                     <span className="font-semibold">{item.particulars}</span>
-                                                    <span className="text-gray-500 dark:text-gray-400"> ({item.type} - {item.objectCode})</span>
+                                                    <span className="text-gray-500 dark:text-gray-400"> ({item.type} - {item.objectType})</span>
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
                                                 </div>
                                                 <div className="flex items-center gap-4 ml-4">
@@ -918,16 +913,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                                         <div className="lg:col-span-2">
-                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Type</label>
                                             <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                                <option value="">Select a type</option>
+                                                <option value="">Select an item type</option>
                                                 {Object.keys(particularTypes).map(type => (
                                                     <option key={type} value={type}>{type}</option>
                                                 ))}
                                             </select>
                                         </div>
                                         <div className="lg:col-span-2">
-                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Particulars</label>
                                             <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
                                                 <option value="">Select an item</option>
                                                 {currentDetail.type && particularTypes[currentDetail.type].map(item => (
@@ -935,17 +930,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                 ))}
                                             </select>
                                         </div>
+
+                                        <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
+                                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
+                                        </div>
                                         
                                          <div>
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
                                             <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                                             {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
-                                        </div>
-                                         <div>
-                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label>
-                                            <select name="objectCode" value={currentDetail.objectCode} onChange={(e) => handleDetailChange(e as React.ChangeEvent<HTMLSelectElement>)} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                                {objectCodes.map(code => <option key={code} value={code}>{code}</option>)}
-                                            </select>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>

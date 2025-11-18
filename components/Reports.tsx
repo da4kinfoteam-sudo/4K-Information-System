@@ -1,10 +1,11 @@
-
+// FIX: Ensure React and hooks are imported correctly to resolve multiple 'useState' and 'useMemo' not found errors.
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, IPO, philippineRegions, months, tiers, fundTypes } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, philippineRegions, months, tiers, fundTypes, uacsCodes } from '../constants';
 
 // Declare XLSX to inform TypeScript about the global variable
 declare const XLSX: any;
 
+// FIX: Define missing ReportsProps interface for component props.
 interface ReportsProps {
     ipos: IPO[];
     subprojects: Subproject[];
@@ -12,7 +13,268 @@ interface ReportsProps {
     otherActivities: OtherActivity[];
 }
 
+// FIX: Define missing ReportTab type for component state.
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'BAR1';
+
+const findUacsDescription = (uacsCode: string): string => {
+    for (const objectType in uacsCodes) {
+        // FIX: Corrected syntax for 'for...in' loop. 'the' is not a valid keyword.
+        for (const particular in uacsCodes[objectType as keyof typeof uacsCodes]) {
+            // @ts-ignore
+            if (uacsCodes[objectType][particular][uacsCode]) {
+                // @ts-ignore
+                return uacsCodes[objectType][particular][uacsCode];
+            }
+        }
+    }
+    return 'Description not found';
+};
+
+const formatCurrency = (amount: number) => {
+    const value = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    // The user wants the PHP sign, so we no longer strip it.
+    return value;
+};
+
+const ActivityRow: React.FC<{
+    activity: any;
+    allUacsCodes: string[];
+    indentLevel: number;
+    dataCellClass: string;
+    indentClasses: string[];
+}> = ({ activity, allUacsCodes, indentLevel, dataCellClass, indentClasses }) => {
+    return (
+        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>{activity.name}</td>
+            {allUacsCodes.map((code: string) => (
+                <td key={code} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
+            ))}
+            <td className={`${dataCellClass} font-semibold text-right whitespace-nowrap`}>{activity.totalMOOE > 0 ? formatCurrency(activity.totalMOOE) : ''}</td>
+            <td className={`${dataCellClass} font-semibold text-right whitespace-nowrap`}>{activity.totalCO > 0 ? formatCurrency(activity.totalCO) : ''}</td>
+            <td className={`${dataCellClass} font-bold bg-gray-50 dark:bg-gray-700/30 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrency(activity.totalMOOE + activity.totalCO) : ''}</td>
+        </tr>
+    );
+};
+
+const SummaryRow: React.FC<{
+    items: any[];
+    label: string;
+    rowKey: string;
+    isExpanded: boolean;
+    indentLevel: number;
+    allUacsCodes: string[];
+    toggleRow: (key: string) => void;
+    dataCellClass: string;
+    indentClasses: string[];
+}> = ({ items, label, rowKey, isExpanded, indentLevel, allUacsCodes, toggleRow, dataCellClass, indentClasses }) => {
+    if (!items || items.length === 0) {
+        return (
+             <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
+                <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
+                     <span className="inline-block w-5 text-center"></span> {label}
+                </td>
+                <td colSpan={allUacsCodes.length + 3} className={`${dataCellClass} text-center italic text-gray-500`}>No activities for this item.</td>
+            </tr>
+        );
+    }
+
+    const summary = useMemo(() => items.reduce((acc, item) => {
+        acc.totalMOOE += item.totalMOOE;
+        acc.totalCO += item.totalCO;
+        allUacsCodes.forEach((code: string) => {
+            acc.uacsValues[code] = (acc.uacsValues[code] || 0) + item.uacsValues[code];
+        });
+        return acc;
+    }, { totalMOOE: 0, totalCO: 0, uacsValues: allUacsCodes.reduce((acc: any, code: string) => ({...acc, [code]: 0}), {}) }), [items, allUacsCodes]);
+    
+    const numberCellClass = `${dataCellClass} text-right whitespace-nowrap`;
+
+    return (
+        <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
+                <span className="inline-block w-5 text-center">{isExpanded ? '−' : '+'}</span> {label}
+            </td>
+            {allUacsCodes.map((code: string) => (
+                <td key={code} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
+            ))}
+            <td className={numberCellClass}>{summary.totalMOOE > 0 ? formatCurrency(summary.totalMOOE) : ''}</td>
+            <td className={numberCellClass}>{summary.totalCO > 0 ? formatCurrency(summary.totalCO) : ''}</td>
+            <td className={numberCellClass}>{(summary.totalMOOE + summary.totalCO) > 0 ? formatCurrency(summary.totalMOOE + summary.totalCO) : ''}</td>
+        </tr>
+    );
+};
+
+
+const BPFormsReport: React.FC<{ data: any }> = ({ data }) => {
+    const [expandedRows, setExpandedRows] = useState(new Set<string>());
+    const { headers, rows, allUacsCodes } = data;
+
+    if (!headers || !rows || !allUacsCodes) return null;
+
+    const toggleRow = (key: string) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(key)) newSet.delete(key);
+            else newSet.add(key);
+            return newSet;
+        });
+    };
+
+    const grandTotals = useMemo(() => {
+        const allActivities: any[] = [];
+        Object.values(rows).forEach((componentData: any) => {
+            if (Array.isArray(componentData)) {
+                allActivities.push(...componentData);
+            } else if (componentData.isNestedExpandable) {
+                Object.values(componentData.packages).forEach((pkg: any) => {
+                    allActivities.push(...pkg.items);
+                });
+            }
+        });
+
+        return allActivities.reduce((acc, item) => {
+            acc.totalMOOE += item.totalMOOE;
+            acc.totalCO += item.totalCO;
+            allUacsCodes.forEach((code: string) => {
+                acc.uacsValues[code] = (acc.uacsValues[code] || 0) + (item.uacsValues[code] || 0);
+            });
+            return acc;
+        }, {
+            totalMOOE: 0,
+            totalCO: 0,
+            uacsValues: allUacsCodes.reduce((acc: any, code: string) => ({...acc, [code]: 0}), {})
+        });
+    }, [rows, allUacsCodes]);
+
+
+    const mooeParticulars = Object.keys(headers.MOOE);
+    const coParticulars = Object.keys(headers.CO);
+    const mooeUacsCount = mooeParticulars.reduce((sum, p) => sum + headers.MOOE[p].length, 0);
+    const coUacsCount = coParticulars.reduce((sum, p) => sum + headers.CO[p].length, 0);
+
+    const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
+    const borderClass = "border border-gray-300 dark:border-gray-600";
+    const headerCellClass = `p-1 ${borderClass} text-center align-middle`;
+    const dataCellClass = `p-1 ${borderClass}`;
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-xs">
+                <thead className="sticky top-0 z-10">
+                    <tr className="bg-gray-200 dark:bg-gray-800">
+                        <th rowSpan={3} className={`${headerCellClass} min-w-[300px]`}>Program/Activity/Project</th>
+                        {mooeUacsCount > 0 && <th colSpan={mooeUacsCount} className={`${headerCellClass}`}>MOOE</th>}
+                        {coUacsCount > 0 && <th colSpan={coUacsCount} className={`${headerCellClass}`}>CO</th>}
+                        <th colSpan={3} rowSpan={2} className={`${headerCellClass}`}>Totals</th>
+                    </tr>
+                    <tr className="bg-gray-100 dark:bg-gray-700/80">
+                        {mooeParticulars.map(p => <th key={p} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                        {coParticulars.map(p => <th key={p} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                    </tr>
+                    <tr className="bg-gray-50 dark:bg-gray-700/50">
+                        {mooeParticulars.flatMap(p => headers.MOOE[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                        {coParticulars.flatMap(p => headers.CO[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                        <th className={`${headerCellClass}`}>MOOE</th>
+                        <th className={`${headerCellClass}`}>CO</th>
+                        <th className={`${headerCellClass}`}>Grand Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {Object.entries(rows).map(([componentName, componentData]) => {
+                        const isComponentExpanded = expandedRows.has(componentName);
+                        if (Array.isArray(componentData)) {
+                             return (
+                                <React.Fragment key={componentName}>
+                                    <SummaryRow 
+                                        items={componentData}
+                                        label={componentName}
+                                        rowKey={componentName}
+                                        isExpanded={isComponentExpanded}
+                                        indentLevel={0}
+                                        allUacsCodes={allUacsCodes}
+                                        toggleRow={toggleRow}
+                                        dataCellClass={dataCellClass}
+                                        indentClasses={indentClasses}
+                                    />
+                                    {isComponentExpanded && componentData.map((act, i) => (
+                                        <ActivityRow 
+                                            key={`${componentName}-${i}`}
+                                            activity={act}
+                                            allUacsCodes={allUacsCodes}
+                                            indentLevel={1}
+                                            dataCellClass={dataCellClass}
+                                            indentClasses={indentClasses}
+                                        />
+                                    ))}
+                                </React.Fragment>
+                            );
+                        }
+                        if ((componentData as any).isNestedExpandable) {
+                             const allPackageActivities = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
+                             return (
+                                <React.Fragment key={componentName}>
+                                    <SummaryRow 
+                                        items={allPackageActivities}
+                                        label={componentName}
+                                        rowKey={componentName}
+                                        isExpanded={isComponentExpanded}
+                                        indentLevel={0}
+                                        allUacsCodes={allUacsCodes}
+                                        toggleRow={toggleRow}
+                                        dataCellClass={dataCellClass}
+                                        indentClasses={indentClasses}
+                                    />
+                                    {isComponentExpanded && Object.entries((componentData as any).packages).map(([pkgName, pkgData]: [string, any]) => {
+                                        const isPkgExpanded = expandedRows.has(pkgName);
+                                        return (
+                                            <React.Fragment key={pkgName}>
+                                                <SummaryRow 
+                                                    items={pkgData.items}
+                                                    label={pkgName}
+                                                    rowKey={pkgName}
+                                                    isExpanded={isPkgExpanded}
+                                                    indentLevel={1}
+                                                    allUacsCodes={allUacsCodes}
+                                                    toggleRow={toggleRow}
+                                                    dataCellClass={dataCellClass}
+                                                    indentClasses={indentClasses}
+                                                />
+                                                {isPkgExpanded && pkgData.items.map((act: any, i: number) => (
+                                                    <ActivityRow 
+                                                        key={`${pkgName}-${i}`}
+                                                        activity={act}
+                                                        allUacsCodes={allUacsCodes}
+                                                        indentLevel={2}
+                                                        dataCellClass={dataCellClass}
+                                                        indentClasses={indentClasses}
+                                                    />
+                                                ))}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </React.Fragment>
+                             );
+                        }
+                        return null;
+                    })}
+                </tbody>
+                <tfoot>
+                    <tr className="font-bold bg-gray-200 dark:bg-gray-700">
+                        <td className={`${dataCellClass} text-left`}>GRAND TOTAL</td>
+                        {allUacsCodes.map((code: string) => (
+                            <td key={`total-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
+                                {grandTotals.uacsValues[code] > 0 ? formatCurrency(grandTotals.uacsValues[code]) : ''}
+                            </td>
+                        ))}
+                        <td className={`${dataCellClass} text-right whitespace-nowrap`}>{grandTotals.totalMOOE > 0 ? formatCurrency(grandTotals.totalMOOE) : ''}</td>
+                        <td className={`${dataCellClass} text-right whitespace-nowrap`}>{grandTotals.totalCO > 0 ? formatCurrency(grandTotals.totalCO) : ''}</td>
+                        <td className={`${dataCellClass} text-right whitespace-nowrap`}>{(grandTotals.totalMOOE + grandTotals.totalCO) > 0 ? formatCurrency(grandTotals.totalMOOE + grandTotals.totalCO) : ''}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    );
+};
 
 const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
@@ -27,8 +289,6 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
             return newSet;
         });
     };
-    
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 
     const indentClasses: { [key: number]: string } = {
         0: '',
@@ -36,6 +296,8 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         2: 'pl-10',
         3: 'pl-14',
     };
+    
+    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
 
     const renderTotalsRow = (items: any[], label: string) => {
         const totals = items.reduce((acc, item) => {
@@ -62,16 +324,16 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         const totalQuarterlyFinancial = totals.q1Financial + totals.q2Financial + totals.q3Financial + totals.q4Financial;
 
         return (
-            <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                <td className="p-2 border border-gray-300 dark:border-gray-600">{label}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalPhysicalTarget}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.mooeCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.coCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.totalCost)}</td>
-                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-center">{q || ''}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totalQuarterlyPhysical || ''}</td>
-                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-right">{q ? formatCurrency(q) : ''}</td>)}
-                 <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+            <tr className="font-bold bg-gray-200 dark:bg-gray-700">
+                <td className={`${dataCellClass}`}>{label}</td>
+                <td className={`${dataCellClass} text-center`}>{totals.totalPhysicalTarget}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.totalCost)}</td>
+                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
+                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
+                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
+                 <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
             </tr>
         );
     };
@@ -79,11 +341,11 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     const renderSummaryRow = (items: any[], label: string, rowKey: string, isExpanded: boolean, indentLevel = 0) => {
         if (items.length === 0) {
             return (
-                <tr className="font-semibold bg-gray-50 dark:bg-gray-800/60">
-                     <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>
+                <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
+                     <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={14} className="p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500">No activities for this component.</td>
+                    <td colSpan={14} className={`${dataCellClass} text-center italic text-gray-500`}>No activities for this component.</td>
                 </tr>
             )
         }
@@ -112,18 +374,18 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         const totalQuarterlyFinancial = totals.q1Financial + totals.q2Financial + totals.q3Financial + totals.q4Financial;
         
         return (
-             <tr onClick={() => toggleRow(rowKey)} className="font-semibold bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
-                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>
+             <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
+                <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalPhysicalTarget}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.mooeCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.coCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.totalCost)}</td>
-                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-center">{q || ''}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totalQuarterlyPhysical || ''}</td>
-                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-right">{q ? formatCurrency(q) : ''}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+                <td className={`${dataCellClass} text-center`}>{totals.totalPhysicalTarget}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.totalCost)}</td>
+                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
+                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
+                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
+                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
             </tr>
         );
     };
@@ -133,23 +395,25 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         const totalQuarterlyFinancial = item.q1Financial + item.q2Financial + item.q3Financial + item.q4Financial;
         return (
             <tr key={key}>
-                <td className={`p-2 border border-gray-300 dark:border-gray-600 ${indentClasses[indentLevel]}`}>{item.indicator}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{item.totalPhysicalTarget}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.mooeCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.coCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.totalCost)}</td>
-                {[item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-center">{q || ''}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totalQuarterlyPhysical || ''}</td>
-                {[item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-right">{q ? formatCurrency(q) : ''}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+                <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>{item.indicator}</td>
+                <td className={`${dataCellClass} text-center`}>{item.totalPhysicalTarget}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.totalCost)}</td>
+                {[item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
+                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
+                {[item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
+                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
             </tr>
         )
     };
 
     const grandTotals = useMemo(() => Object.values(data).flatMap(component => {
         if (Array.isArray(component)) return component;
-        if (component.isExpandable) return component.items;
-        if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
+        // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
+        if ((component as any).isExpandable) return (component as any).items;
+        // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
+        if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
         return [];
     }), [data]);
 
@@ -158,26 +422,26 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
             <table className="min-w-full border-collapse text-xs">
                 <thead className="bg-gray-200 dark:bg-gray-700">
                     <tr>
-                        <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom">Indicator</th>
-                        <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Target</th>
-                        <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Quarterly Physical Target</th>
-                        <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Quarterly Financial Target (PHP)</th>
+                        <th rowSpan={2} className="p-1 border border-gray-300 dark:border-gray-600 align-bottom">Program/Activity/Project</th>
+                        <th colSpan={4} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total Target</th>
+                        <th colSpan={5} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Quarterly Physical Target</th>
+                        <th colSpan={5} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Quarterly Financial Target (PHP)</th>
                     </tr>
                     <tr>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Physical</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">MOOE (PHP)</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">CO (PHP)</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total (PHP)</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Physical</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">MOOE (PHP)</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">CO (PHP)</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total (PHP)</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
+                        <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -195,23 +459,25 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                             );
                         }
                         // Case 2: Expandable group (Trainings)
-                        if (componentData.isExpandable) {
+                        // FIX: Cast 'componentData' to 'any' to access properties on what is inferred as 'unknown'.
+                        if ((componentData as any).isExpandable) {
                              const isComponentExpanded = expandedRows.has(key);
                              return (
                                 <React.Fragment key={key}>
-                                    {renderSummaryRow(componentData.items, key, key, isComponentExpanded, 0)}
-                                    {isComponentExpanded && componentData.items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
+                                    {renderSummaryRow((componentData as any).items, key, key, isComponentExpanded, 0)}
+                                    {isComponentExpanded && (componentData as any).items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
                                 </React.Fragment>
                             );
                         }
                         // Case 3: Nested expandable group (Subprojects)
-                        if (componentData.isNestedExpandable) {
+                        // FIX: Cast 'componentData' to 'any' to access properties on what is inferred as 'unknown'.
+                        if ((componentData as any).isNestedExpandable) {
                             const isComponentExpanded = expandedRows.has(key);
-                            const allPackageItems = Object.values(componentData.packages).flatMap((pkg: any) => pkg.items);
+                            const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
                              return (
                                 <React.Fragment key={key}>
                                     {renderSummaryRow(allPackageItems, key, key, isComponentExpanded, 0)}
-                                    {isComponentExpanded && Object.entries(componentData.packages).map(([packageName, packageData]: [string, any]) => (
+                                    {isComponentExpanded && Object.entries((componentData as any).packages).map(([packageName, packageData]: [string, any]) => (
                                         <React.Fragment key={packageName}>
                                             {renderSummaryRow(packageData.items, packageName, packageName, expandedRows.has(packageName), 1)}
                                             {expandedRows.has(packageName) && packageData.items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, 2))}
@@ -291,6 +557,105 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             otherActivities: filtered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
         };
     }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
+    
+    const bpFormsProcessedData = useMemo(() => {
+        // 1. Build Header Structure & Flat UACS list from constants for a consistent layout
+        const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
+        const allUacsCodes: string[] = [];
+        
+        for (const objectType of Object.keys(uacsCodes)) {
+            for (const particular of Object.keys(uacsCodes[objectType as keyof typeof uacsCodes])) {
+                const codes = Object.keys(uacsCodes[objectType as keyof typeof uacsCodes][particular]);
+                headers[objectType as keyof typeof headers][particular] = codes;
+                allUacsCodes.push(...codes);
+            }
+        }
+
+        // 2. Gather all expense line items from filtered data
+        const lineItems: any[] = [];
+        filteredData.subprojects.forEach(sp => {
+            sp.details.forEach(d => {
+                lineItems.push({
+                    component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
+                    objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits
+                });
+            });
+        });
+        filteredData.trainings.forEach(t => {
+            t.expenses.forEach(e => {
+                lineItems.push({
+                    component: t.component, activityName: t.name,
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
+                });
+            });
+        });
+        filteredData.otherActivities.forEach(oa => {
+            oa.expenses.forEach(e => {
+                lineItems.push({
+                    component: oa.component, activityName: oa.name,
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
+                });
+            });
+        });
+
+        // 3. Process line items into a hierarchical row structure
+        const initialUacsValues = allUacsCodes.reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
+        const groupedData: { [key: string]: any } = {
+            'Social Preparation': [], 
+            'Production and Livelihood': { isNestedExpandable: true, packages: {} },
+            'Marketing and Enterprise': [], 
+            'Program Management': []
+        };
+        
+        lineItems.forEach(item => {
+            let targetList;
+            if (item.component === 'Production and Livelihood') {
+                const packageKey = item.packageType || 'Trainings';
+                if (!groupedData['Production and Livelihood'].packages[packageKey]) {
+                    groupedData['Production and Livelihood'].packages[packageKey] = { items: [] };
+                }
+                targetList = groupedData['Production and Livelihood'].packages[packageKey].items;
+            } else if (groupedData[item.component]) {
+                targetList = groupedData[item.component];
+            } else {
+                return; // Skip items with components not in our structure
+            }
+
+            let activity = targetList.find((a: any) => a.name === item.activityName);
+            if (!activity) {
+                activity = { 
+                    name: item.activityName, 
+                    uacsValues: { ...initialUacsValues }, 
+                    totalMOOE: 0, 
+                    totalCO: 0 
+                };
+                targetList.push(activity);
+            }
+            
+            if(activity.uacsValues.hasOwnProperty(item.uacsCode)) {
+                activity.uacsValues[item.uacsCode] += item.amount;
+            }
+
+            if (item.objectType === 'MOOE') {
+                activity.totalMOOE += item.amount;
+            } else if (item.objectType === 'CO') {
+                activity.totalCO += item.amount;
+            }
+        });
+        
+        // Sort packages within Production and Livelihood for consistent order
+        const packageKeys = Object.keys(groupedData['Production and Livelihood'].packages);
+        packageKeys.sort((a, b) => {
+            if (a === 'Trainings') return -1;
+            if (b === 'Trainings') return 1;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        const sortedPackages: { [key: string]: any } = {};
+        for (const key of packageKeys) { sortedPackages[key] = groupedData['Production and Livelihood'].packages[key]; }
+        groupedData['Production and Livelihood'].packages = sortedPackages;
+
+        return { headers, rows: groupedData, allUacsCodes };
+    }, [filteredData]);
 
     const wfpData = useMemo(() => {
         const getQuarter = (dateStr?: string): number => {
@@ -307,8 +672,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         };
         
         filteredData.subprojects.forEach(sp => {
-            const mooeCost = sp.details.filter(d => d.objectCode === 'MOOE' || d.objectCode === 'PS').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
-            const coCost = sp.details.filter(d => d.objectCode === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
+            const mooeCost = sp.details.filter(d => d.objectType === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
+            const coCost = sp.details.filter(d => d.objectType === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
             const totalCost = mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(sp.startDate);
 
@@ -335,8 +700,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         });
 
         filteredData.trainings.forEach(t => {
-            const mooeCost = t.expenses.filter(e => e.objectCode === 'MOOE' || e.objectCode === 'PS').reduce((sum, e) => sum + e.amount, 0);
-            const coCost = t.expenses.filter(e => e.objectCode === 'CO').reduce((sum, e) => sum + e.amount, 0);
+            const mooeCost = t.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
+            const coCost = t.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
             const totalCost = mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(t.date);
 
@@ -380,8 +745,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         finalData['Production and Livelihood'].packages = sortedPackageData;
 
         filteredData.otherActivities.forEach(oa => {
-            const mooeCost = oa.expenses.filter(e => e.objectCode === 'MOOE' || e.objectCode === 'PS').reduce((sum, e) => sum + e.amount, 0);
-            const coCost = oa.expenses.filter(e => e.objectCode === 'CO').reduce((sum, e) => sum + e.amount, 0);
+            const mooeCost = oa.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
+            const coCost = oa.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
             const totalCost = mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(oa.date);
 
@@ -462,20 +827,27 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             aoa.push([component, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
             if (Array.isArray(items)) {
                 if (items.length > 0) processItems(items);
-            } else if (items.isExpandable) {
-                if(items.items.length > 0) processItems(items.items);
-            } else if (items.isNestedExpandable) {
-                Object.entries(items.packages).forEach(([packageName, packageData] : [string, any]) => {
+            // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
+            } else if ((items as any).isExpandable) {
+                // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
+                if((items as any).items.length > 0) processItems((items as any).items);
+            // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
+            } else if ((items as any).isNestedExpandable) {
+                // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
+                Object.entries((items as any).packages).forEach(([packageName, packageData] : [string, any]) => {
                     aoa.push([`  ${packageName}`, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
-                    if(packageData.items.length > 0) processItems(packageData.items);
+                    // FIX: Cast 'packageData' to 'any' to access properties on what is inferred as 'unknown'.
+                    if((packageData as any).items.length > 0) processItems((packageData as any).items);
                 });
             }
         });
 
         const grandTotals = Object.values(wfpData).flatMap(component => {
             if (Array.isArray(component)) return component;
-            if (component.isExpandable) return component.items;
-            if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
+            // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
+            if ((component as any).isExpandable) return (component as any).items;
+            // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
+            if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
             return [];
         });
 
@@ -485,6 +857,90 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
         XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedRegion}.xlsx`);
+    };
+
+    const handleDownloadBpFormsXlsx = () => {
+        const { allUacsCodes, rows } = bpFormsProcessedData;
+        
+        const flatData = [];
+        Object.entries(rows).forEach(([componentName, componentData]) => {
+            if (Array.isArray(componentData) && componentData.length > 0) {
+                componentData.forEach(activity => {
+                    const row: { [key: string]: string | number } = {
+                        'Program/Activity/Project': `${componentName} - ${activity.name}`,
+                    };
+                    allUacsCodes.forEach((code: string) => {
+                        row[code] = activity.uacsValues[code] || 0;
+                    });
+                    row['Total MOOE'] = activity.totalMOOE;
+                    row['Total CO'] = activity.totalCO;
+                    row['Grand Total'] = activity.totalMOOE + activity.totalCO;
+                    flatData.push(row);
+                });
+            } else if ((componentData as any).isNestedExpandable) {
+                Object.entries((componentData as any).packages).forEach(([pkgName, pkgData]: [string, any]) => {
+                    if (pkgData.items.length > 0) {
+                        pkgData.items.forEach((activity: any) => {
+                             const row: { [key: string]: string | number } = {
+                                'Program/Activity/Project': `${componentName} - ${pkgName} - ${activity.name}`,
+                            };
+                            allUacsCodes.forEach((code: string) => {
+                                row[code] = activity.uacsValues[code] || 0;
+                            });
+                            row['Total MOOE'] = activity.totalMOOE;
+                            row['Total CO'] = activity.totalCO;
+                            row['Grand Total'] = activity.totalMOOE + activity.totalCO;
+                            flatData.push(row);
+                        });
+                    }
+                });
+            }
+        });
+
+        // Add Grand Total
+        if (flatData.length > 0) {
+            const grandTotals = flatData.reduce((acc, row) => {
+                 allUacsCodes.forEach(code => {
+                    acc[code] = (acc[code] || 0) + (row[code] as number);
+                 });
+                 acc['Total MOOE'] += (row['Total MOOE'] as number);
+                 acc['Total CO'] += (row['Total CO'] as number);
+                 acc['Grand Total'] += (row['Grand Total'] as number);
+                 return acc;
+            }, {
+                 'Program/Activity/Project': 'GRAND TOTAL',
+                 ...allUacsCodes.reduce((acc, code) => ({...acc, [code]: 0}), {}),
+                 'Total MOOE': 0,
+                 'Total CO': 0,
+                 'Grand Total': 0,
+            });
+            flatData.push(grandTotals);
+        }
+
+        const ws = XLSX.utils.json_to_sheet(flatData);
+        
+        // Formatting currency columns
+        const currencyColumns = [...allUacsCodes, 'Total MOOE', 'Total CO', 'Grand Total'];
+        const headers = Object.keys(flatData.length > 0 ? flatData[0] : {});
+        currencyColumns.forEach(colName => {
+            const colIndex = headers.indexOf(colName);
+            if (colIndex !== -1) {
+                const colLetter = XLSX.utils.encode_col(colIndex);
+                for (let i = 2; i <= flatData.length + 1; i++) {
+                    const cellAddress = colLetter + i;
+                    if(ws[cellAddress] && ws[cellAddress].v > 0) {
+                         ws[cellAddress].t = 'n';
+                         ws[cellAddress].z = '₱#,##0.00';
+                    } else if (ws[cellAddress]) {
+                        ws[cellAddress].v = ''; // make 0 cells blank
+                    }
+                }
+            }
+        });
+        
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "BP Forms Report");
+        XLSX.writeFile(wb, `BP_Forms_Report_${selectedYear}_${selectedRegion}.xlsx`);
     };
 
     const handlePrint = () => {
@@ -530,7 +986,16 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                         <WFPTable data={wfpData} />
                     </div>
                 );
-            case 'BP Forms': return <Placeholder title="Budget Proposal (BP) Forms" />;
+            case 'BP Forms': 
+                return (
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                        <div className="flex justify-between items-center mb-4 print-hidden">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
+                             <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                        </div>
+                        <BPFormsReport data={bpFormsProcessedData} />
+                    </div>
+                );
             case 'BEDS': return <Placeholder title="Budget Execution Documents (BEDS)" />;
             case 'BAR1': return <Placeholder title="BAR1 Reports" />;
             default: return null;

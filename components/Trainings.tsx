@@ -1,9 +1,10 @@
 
 
 
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-// FIX: Add `FundType` and `Tier` to the import to resolve type errors in `defaultFormData`.
-import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, TrainingComponentType, OtherActivityExpense, objectCodes, ObjectCode, FundType, Tier } from '../constants';
+// FIX: Replace objectCodes/ObjectCode with uacsCodes, objectTypes, and ObjectType to use the full UACS system, resolving import and type errors.
+import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, TrainingComponentType, OtherActivityExpense, uacsCodes, objectTypes, ObjectType, FundType, Tier } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -52,8 +53,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     
+    // FIX: Update currentExpense state to use objectType, expenseParticular, and uacsCode for full UACS support.
     const [currentExpense, setCurrentExpense] = useState({
-        objectCode: objectCodes[0] as ObjectCode,
+        objectType: 'MOOE' as ObjectType,
+        expenseParticular: '',
+        uacsCode: '',
         obligationMonth: '',
         disbursementMonth: '',
         amount: ''
@@ -185,26 +189,38 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
     };
 
+    // FIX: Update handleExpenseChange to manage dependent UACS dropdowns.
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setCurrentExpense(prev => ({...prev, [name]: value}));
+        if (name === 'objectType') {
+            setCurrentExpense(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
+        } else if (name === 'expenseParticular') {
+            setCurrentExpense(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
+        } else {
+            setCurrentExpense(prev => ({...prev, [name]: value}));
+        }
     };
     
+    // FIX: Update handleAddExpense to create expense objects that match the OtherActivityExpense interface, including full UACS details.
     const handleAddExpense = () => {
-        if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth) {
-            alert('Please fill out all expense fields.');
+        if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
+            alert('Please fill out all expense fields, including UACS classification.');
             return;
         }
         const newExpense: OtherActivityExpense = {
             id: Date.now(),
-            objectCode: currentExpense.objectCode,
+            objectType: currentExpense.objectType,
+            expenseParticular: currentExpense.expenseParticular,
+            uacsCode: currentExpense.uacsCode,
             obligationMonth: currentExpense.obligationMonth,
             disbursementMonth: currentExpense.disbursementMonth,
             amount: parseFloat(currentExpense.amount)
         };
         setFormData(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
         setCurrentExpense({
-            objectCode: objectCodes[0],
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
             obligationMonth: '',
             disbursementMonth: '',
             amount: ''
@@ -361,7 +377,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             participantsMale: 15,
             participantsFemale: 25,
             component: 'Social Preparation',
-            expenses: '[{"objectCode":"MOOE","obligationMonth":"2024-01-10","disbursementMonth":"2024-01-25","amount":50000}]',
+            expenses: '[{"objectType":"MOOE","expenseParticular":"Training and Scholarship Expenses","uacsCode":"50202010-01","obligationMonth":"2024-01-10","disbursementMonth":"2024-01-25","amount":50000}]',
             fundingYear: 2024,
             fundType: 'Current',
             tier: 'Tier 1',
@@ -378,7 +394,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             ["participantsMale", "Number of male participants.", "No (defaults to 0)"],
             ["participantsFemale", "Number of female participants.", "No (defaults to 0)"],
             ["component", `Must be one of: ${trainingComponents.join(', ')}`, "Yes"],
-            ["expenses", `A JSON string for expenses. Format: '[{"objectCode":"CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
+            ["expenses", `A JSON string for expenses. Format: '[{"objectType":"MOOE/CO","expenseParticular":"Specific Expense","uacsCode":"UACS-CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
             ["fundingYear", "The funding year (e.g., 2024).", "No"],
             ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
             ["tier", `Must be one of: ${tiers.join(', ')}`, "No"],
@@ -592,7 +608,8 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                              <ul className="space-y-1">
                                                                 {training.expenses.map(exp => (
                                                                     <li key={exp.id} className="flex justify-between items-center p-1">
-                                                                        <span>{exp.objectCode} ({formatDate(exp.obligationMonth)})</span>
+                                                                        {/* FIX: Display expenseParticular and uacsCode instead of non-existent objectCode */}
+                                                                        <span>{exp.expenseParticular} ({exp.uacsCode})</span>
                                                                         <span className="font-medium">{formatCurrency(exp.amount)}</span>
                                                                     </li>
                                                                 ))}
@@ -790,9 +807,10 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                     {formData.expenses.length === 0 && <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No expense items added yet.</p>}
                                     {formData.expenses.map((exp) => (
                                         <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
+                                            {/* FIX: Display expense details correctly instead of non-existent objectCode. */}
                                             <div className="text-sm flex-grow">
-                                                <span className="font-semibold">{exp.objectCode}</span>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">Obligation: {formatDate(exp.obligationMonth)} | Disbursement: {formatDate(exp.disbursementMonth)}</div>
+                                                <span className="font-semibold">{exp.expenseParticular}</span>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">{exp.uacsCode} | Obligation: {formatDate(exp.obligationMonth)}</div>
                                             </div>
                                             <div className="flex items-center gap-4 ml-4">
                                                 <span className="font-semibold text-sm">{formatCurrency(exp.amount)}</span>
@@ -803,12 +821,12 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         </div>
                                     ))}
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end p-4 border-t border-gray-200 dark:border-gray-700">
-                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label>
-                                        <select name="objectCode" value={currentExpense.objectCode} onChange={handleExpenseChange} className={`${commonInputClasses} py-1.5 text-sm`}>
-                                            {objectCodes.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
+                                {/* FIX: Replace objectCode input with full UACS selection dropdowns. */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end p-4 border-t border-gray-200 dark:border-gray-700">
+                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
+                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} disabled={!currentExpense.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentExpense.expenseParticular && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>
@@ -818,7 +836,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label>
                                         <input type="date" name="disbursementMonth" value={currentExpense.disbursementMonth} onChange={handleExpenseChange} className={`${commonInputClasses} py-1.5 text-sm`} />
                                     </div>
-                                    <div className="flex items-end gap-2">
+                                    <div className="flex items-end gap-2 md:col-span-2">
                                         <div className="flex-1">
                                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount (PHP)</label>
                                             <input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} min="0" step="0.01" className={`${commonInputClasses} py-1.5 text-sm`} />

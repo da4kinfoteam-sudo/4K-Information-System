@@ -1,7 +1,7 @@
 
 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, SubprojectDetail, particularTypes, objectCodes, ObjectCode, fundTypes, tiers } from '../constants';
+import { Subproject, SubprojectDetail, particularTypes, objectTypes, ObjectType, fundTypes, tiers, uacsCodes } from '../constants';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -51,8 +51,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
         unitOfMeasure: 'pcs' as SubprojectDetail['unitOfMeasure'],
         pricePerUnit: '',
         numberOfUnits: '',
-        // FIX: Widen the type of objectCode to allow any valid ObjectCode, not just the default.
-        objectCode: objectCodes[0] as ObjectCode,
+        objectType: 'MOOE' as ObjectType,
+        expenseParticular: '',
+        uacsCode: '',
         obligationMonth: '',
         disbursementMonth: '',
     });
@@ -93,6 +94,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
         const { name, value } = e.target;
         if (name === 'type') {
             setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
+        } else if (name === 'objectType') {
+            setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
+        } else if (name === 'expenseParticular') {
+            setCurrentDetail(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
         } else {
             setCurrentDetail(prev => ({ ...prev, [name]: value }));
         }
@@ -104,8 +109,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
             alert('Please set the project Start Date and Estimated Completion Date first.');
             return;
         }
-        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
-            alert('Please fill out all detail fields.');
+        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth || !currentDetail.uacsCode) {
+            alert('Please fill out all detail fields, including UACS classification.');
             return;
         }
         const delivery = new Date(currentDetail.deliveryDate + 'T00:00:00Z');
@@ -118,17 +123,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
         }
 
         setDetailItems(prev => [...prev, {
-            type: currentDetail.type,
-            particulars: currentDetail.particulars,
-            deliveryDate: currentDetail.deliveryDate,
-            unitOfMeasure: currentDetail.unitOfMeasure,
+            ...currentDetail,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
-            objectCode: currentDetail.objectCode,
-            obligationMonth: currentDetail.obligationMonth,
-            disbursementMonth: currentDetail.disbursementMonth,
         }]);
-        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectCode: objectCodes[0], obligationMonth: '', disbursementMonth: '' });
+        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
 
     const handleRemoveDetail = (indexToRemove: number) => {
@@ -138,15 +137,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
     const handleEditParticular = (indexToEdit: number) => {
         const itemToEdit = detailItems[indexToEdit];
         setCurrentDetail({
-            type: itemToEdit.type,
-            particulars: itemToEdit.particulars,
-            deliveryDate: itemToEdit.deliveryDate,
-            unitOfMeasure: itemToEdit.unitOfMeasure,
+            ...itemToEdit,
             pricePerUnit: String(itemToEdit.pricePerUnit),
             numberOfUnits: String(itemToEdit.numberOfUnits),
-            objectCode: itemToEdit.objectCode,
-            obligationMonth: itemToEdit.obligationMonth,
-            disbursementMonth: itemToEdit.disbursementMonth,
         });
         handleRemoveDetail(indexToEdit);
     };
@@ -237,12 +230,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
                             ))}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200"}><option value="">Select item</option>{currentDetail.type && particularTypes[currentDetail.type].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select an item type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200"}><option value="">Select an item</option>{currentDetail.type && particularTypes[currentDetail.type].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                           
+                           <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
+                            </div>
+
                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label><select name="objectCode" value={currentDetail.objectCode} onChange={(e) => handleDetailChange(e as React.ChangeEvent<HTMLSelectElement>)} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select code</option>{objectCodes.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+
                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option></select></div>
                            <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                            <div className="flex-1"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
@@ -314,7 +314,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
                                     <tr>
                                         <th className="px-4 py-2 text-left">Particulars</th>
                                         <th className="px-4 py-2 text-left">Delivery Date</th>
-                                        <th className="px-4 py-2 text-left">Object Code</th>
+                                        <th className="px-4 py-2 text-left">UACS Code</th>
                                         <th className="px-4 py-2 text-left">Obligation</th>
                                         <th className="px-4 py-2 text-left">Disbursement</th>
                                         <th className="px-4 py-2 text-right"># of Units</th>
@@ -326,7 +326,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
                                         <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
                                             <td className="px-4 py-2 font-medium">{detail.particulars}</td>
                                             <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
-                                            <td className="px-4 py-2">{detail.objectCode}</td>
+                                            <td className="px-4 py-2">{detail.uacsCode}</td>
                                             <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
                                             <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
                                             <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
