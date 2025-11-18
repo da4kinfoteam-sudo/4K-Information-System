@@ -675,7 +675,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             const mooeCost = sp.details.filter(d => d.objectType === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
             const coCost = sp.details.filter(d => d.objectType === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
             const totalCost = mooeCost + coCost;
-            const physicalTargetQuarter = getQuarter(sp.startDate);
+            const physicalTargetQuarter = getQuarter(sp.estimatedCompletionDate);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             sp.details.forEach(detail => {
