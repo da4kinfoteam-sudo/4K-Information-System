@@ -1,8 +1,9 @@
 
 
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-// FIX: Added FundType and Tier to imports to be used for type assertions.
-import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, months, Disbursement, Month, FundType, Tier, TrainingComponentType } from '../constants';
+// FIX: Add `FundType` and `Tier` to the import to resolve type errors in `defaultFormData`.
+import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, TrainingComponentType, OtherActivityExpense, objectCodes, ObjectCode, FundType, Tier } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -15,9 +16,6 @@ interface TrainingsProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
-const defaultDisbursementSchedule = (): Disbursement[] => 
-    months.map(month => ({ month, amount: 0 }));
-
 const defaultFormData = {
     name: '',
     date: '',
@@ -27,17 +25,11 @@ const defaultFormData = {
     participatingIpos: [] as string[],
     participantsMale: 0,
     participantsFemale: 0,
-    trainingExpenses: 0,
     component: trainingComponents[0],
-    otherExpenses: 0,
+    expenses: [] as OtherActivityExpense[],
     fundingYear: new Date().getFullYear(),
-    // FIX: Widened the types of these properties to their respective union types.
-    // This prevents TypeScript from inferring a narrow, specific type (e.g., 'Current')
-    // and allows the state to hold any valid value from the union.
     fundType: fundTypes[0] as FundType,
     tier: tiers[0] as Tier,
-    monthOfObligation: months[0] as Month,
-    disbursementSchedule: defaultDisbursementSchedule(),
 };
 
 const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrainings, onSelectIpo }) => {
@@ -52,13 +44,20 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     const [searchTerm, setSearchTerm] = useState('');
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
     const [componentFilter, setComponentFilter] = useState<'All' | TrainingComponentType>('All');
-    type SortKeys = keyof Training | 'totalParticipants';
+    type SortKeys = keyof Training | 'totalParticipants' | 'totalBudget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    
+    const [currentExpense, setCurrentExpense] = useState({
+        objectCode: objectCodes[0] as ObjectCode,
+        obligationMonth: '',
+        disbursementMonth: '',
+        amount: ''
+    });
 
     useEffect(() => {
         if (formData.component === 'Program Management') {
@@ -77,16 +76,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 participatingIpos: editingTraining.participatingIpos,
                 participantsMale: editingTraining.participantsMale,
                 participantsFemale: editingTraining.participantsFemale,
-                trainingExpenses: editingTraining.trainingExpenses,
                 component: editingTraining.component,
-                otherExpenses: editingTraining.otherExpenses ?? 0,
+                expenses: editingTraining.expenses ?? [],
                 fundingYear: editingTraining.fundingYear ?? new Date().getFullYear(),
                 fundType: editingTraining.fundType ?? fundTypes[0],
                 tier: editingTraining.tier ?? tiers[0],
-                monthOfObligation: editingTraining.monthOfObligation ?? months[0],
-                disbursementSchedule: editingTraining.disbursementSchedule && editingTraining.disbursementSchedule.length === 12 
-                    ? editingTraining.disbursementSchedule 
-                    : defaultDisbursementSchedule(),
             });
             setActiveTab('details');
         } else {
@@ -132,7 +126,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 if (sortConfig.key === 'totalParticipants') {
                     aValue = a.participantsMale + a.participantsFemale;
                     bValue = b.participantsMale + b.participantsFemale;
-                } else {
+                } else if (sortConfig.key === 'totalBudget') {
+                    aValue = a.expenses.reduce((sum, e) => sum + e.amount, 0);
+                    bValue = b.expenses.reduce((sum, e) => sum + e.amount, 0);
+                }
+                else {
                     aValue = a[sortConfig.key as keyof Training];
                     bValue = b[sortConfig.key as keyof Training];
                 }
@@ -172,29 +170,51 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         setExpandedRowId(prevId => (prevId === trainingId ? null : trainingId));
     };
 
-    // FIX: Addressed error "Property 'value' does not exist on type 'unknown'" by ensuring correct
-    // type handling for the event target. `e.currentTarget` provides the correctly typed element.
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.currentTarget;
         const isNumberInput = 'type' in e.currentTarget && e.currentTarget.type === 'number';
 
         setFormData(prev => ({ 
             ...prev, 
-            [name]: isNumberInput ? (value === '' ? 0 : parseFloat(value)) : value 
+            [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
         }));
     };
     
-    const handleDisbursementChange = (month: Month, amount: string) => {
-        const newSchedule = formData.disbursementSchedule.map(d => 
-            d.month === month ? { ...d, amount: parseFloat(amount) || 0 } : d
-        );
-        setFormData(prev => ({ ...prev, disbursementSchedule: newSchedule }));
-    };
-
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
     };
+
+    const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setCurrentExpense(prev => ({...prev, [name]: value}));
+    };
+    
+    const handleAddExpense = () => {
+        if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth) {
+            alert('Please fill out all expense fields.');
+            return;
+        }
+        const newExpense: OtherActivityExpense = {
+            id: Date.now(),
+            objectCode: currentExpense.objectCode,
+            obligationMonth: currentExpense.obligationMonth,
+            disbursementMonth: currentExpense.disbursementMonth,
+            amount: parseFloat(currentExpense.amount)
+        };
+        setFormData(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+        setCurrentExpense({
+            objectCode: objectCodes[0],
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+    };
+
+    const handleRemoveExpense = (id: number) => {
+        setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
+    };
+
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -207,8 +227,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             ...formData,
             participantsMale: Number(formData.participantsMale) || 0,
             participantsFemale: Number(formData.participantsFemale) || 0,
-            trainingExpenses: Number(formData.trainingExpenses) || 0,
-            otherExpenses: Number(formData.otherExpenses) || 0,
             fundingYear: Number(formData.fundingYear) || new Date().getFullYear(),
         };
 
@@ -280,8 +298,9 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     }
     
     const totalParticipants = (Number(formData.participantsMale) || 0) + (Number(formData.participantsFemale) || 0);
-    const totalBudget = (Number(formData.trainingExpenses) || 0) + (Number(formData.otherExpenses) || 0);
-    const totalDisbursed = formData.disbursementSchedule.reduce((sum, item) => sum + item.amount, 0);
+    const totalBudget = useMemo(() => {
+        return formData.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    }, [formData.expenses]);
 
     const TabButton: React.FC<{ tabName: typeof activeTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -310,7 +329,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             'Male Participants': t.participantsMale,
             'Female Participants': t.participantsFemale,
             'Total Participants': t.participantsMale + t.participantsFemale,
-            'Total Budget': (t.trainingExpenses ?? 0) + (t.otherExpenses ?? 0),
+            'Total Budget': t.expenses.reduce((sum, e) => sum + e.amount, 0),
             'Participating IPOs': t.participatingIpos.join(', '),
         }));
 
@@ -341,13 +360,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             participatingIpos: 'San Isidro Farmers Association, Daraitan Farmers Cooperative',
             participantsMale: 15,
             participantsFemale: 25,
-            trainingExpenses: 50000,
             component: 'Social Preparation',
-            otherExpenses: 0,
+            expenses: '[{"objectCode":"MOOE","obligationMonth":"2024-01-10","disbursementMonth":"2024-01-25","amount":50000}]',
             fundingYear: 2024,
             fundType: 'Current',
             tier: 'Tier 1',
-            monthOfObligation: 'January',
         }];
 
         const instructions = [
@@ -360,13 +377,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
             ["participatingIpos", "A comma-separated list of the EXACT, full names of existing IPOs.", "No"],
             ["participantsMale", "Number of male participants.", "No (defaults to 0)"],
             ["participantsFemale", "Number of female participants.", "No (defaults to 0)"],
-            ["trainingExpenses", "The main cost of the training (as a number).", "No (defaults to 0)"],
             ["component", `Must be one of: ${trainingComponents.join(', ')}`, "Yes"],
-            ["otherExpenses", "Any other related expenses (as a number).", "No (defaults to 0)"],
+            ["expenses", `A JSON string for expenses. Format: '[{"objectCode":"CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
             ["fundingYear", "The funding year (e.g., 2024).", "No"],
             ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
             ["tier", `Must be one of: ${tiers.join(', ')}`, "No"],
-            ["monthOfObligation", `Must be one of: ${months.join(', ')}`, "No"],
         ];
 
         const wb = XLSX.utils.book_new();
@@ -411,6 +426,15 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                         }
                     }
                     
+                    let expenses: OtherActivityExpense[];
+                    try {
+                        expenses = typeof row.expenses === 'string' ? JSON.parse(row.expenses) : [];
+                        if (!Array.isArray(expenses)) throw new Error("Expenses must be a valid JSON array.");
+                    } catch {
+                        throw new Error(`Row ${rowNum}: Invalid JSON format in 'expenses' column.`);
+                    }
+
+
                     currentMaxId++;
                     return {
                         id: currentMaxId,
@@ -422,14 +446,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                         participatingIpos: participatingIpos,
                         participantsMale: Number(row.participantsMale) || 0,
                         participantsFemale: Number(row.participantsFemale) || 0,
-                        trainingExpenses: Number(row.trainingExpenses) || 0,
                         component: row.component as TrainingComponentType,
-                        otherExpenses: Number(row.otherExpenses) || 0,
+                        expenses: expenses.map((exp, i) => ({ ...exp, id: Date.now() + i })),
                         fundingYear: Number(row.fundingYear) || undefined,
                         fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
                         tier: tiers.includes(row.tier) ? row.tier : undefined,
-                        monthOfObligation: months.includes(row.monthOfObligation) ? row.monthOfObligation : undefined,
-                        disbursementSchedule: defaultDisbursementSchedule(),
                     };
                 });
 
@@ -504,12 +525,14 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 <SortableHeader sortKey="date" label="Date" />
                                 <SortableHeader sortKey="component" label="Component" />
                                 <SortableHeader sortKey="totalParticipants" label="Participants" />
-                                <SortableHeader sortKey="trainingExpenses" label="Budget" />
+                                <SortableHeader sortKey="totalBudget" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedTrainings.map((training) => (
+                            {paginatedTrainings.map((training) => {
+                                const totalTrainingBudget = training.expenses.reduce((sum, e) => sum + e.amount, 0);
+                                return (
                                 <React.Fragment key={training.id}>
                                     <tr onClick={() => handleToggleRow(training.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-4 py-4 text-gray-400">
@@ -521,7 +544,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(training.date)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.participantsMale + training.participantsFemale}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(training.trainingExpenses + (training.otherExpenses ?? 0))}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalTrainingBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button onClick={(e) => { e.stopPropagation(); handleEditClick(training); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
                                             <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(training); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
@@ -565,12 +588,26 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                     </div>
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Funding</h4>
-                                                        <div className="grid grid-cols-2 gap-2">
+                                                         {training.expenses.length > 0 ? (
+                                                             <ul className="space-y-1">
+                                                                {training.expenses.map(exp => (
+                                                                    <li key={exp.id} className="flex justify-between items-center p-1">
+                                                                        <span>{exp.objectCode} ({formatDate(exp.obligationMonth)})</span>
+                                                                        <span className="font-medium">{formatCurrency(exp.amount)}</span>
+                                                                    </li>
+                                                                ))}
+                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-1 pt-1 font-bold">
+                                                                    <span>Total</span>
+                                                                    <span>{formatCurrency(totalTrainingBudget)}</span>
+                                                                </li>
+                                                            </ul>
+                                                        ) : (
+                                                             <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>
+                                                        )}
+                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                                                              <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {training.fundingYear ?? 'N/A'}</p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> {training.fundType ?? 'N/A'}</p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> {training.tier ?? 'N/A'}</p>
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Month of Obligation:</strong> {training.monthOfObligation ?? 'N/A'}</p>
-                                                            <p className="col-span-2"><strong className="text-gray-500 dark:text-gray-400">Total Budget:</strong> {formatCurrency((training.trainingExpenses ?? 0) + (training.otherExpenses ?? 0))}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -578,7 +615,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         </tr>
                                     )}
                                 </React.Fragment>
-                            ))}
+                            )})}
                         </tbody>
                     </table>
                 </div>
@@ -628,7 +665,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         <TabButton tabName="details" label="Training Details" />
-                        <TabButton tabName="budget" label="Budget & Funding" />
+                        <TabButton tabName="budget" label="Training Expenses" />
                     </nav>
                 </div>
 
@@ -669,11 +706,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
                                      <div>
                                         <label htmlFor="participantsMale" className="block text-sm font-medium">Male Participants</label>
-                                        <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale} onChange={handleInputChange} className={commonInputClasses} />
+                                        <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale || ''} onChange={handleInputChange} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label htmlFor="participantsFemale" className="block text-sm font-medium">Female Participants</label>
-                                        <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale} onChange={handleInputChange} className={commonInputClasses} />
+                                        <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale || ''} onChange={handleInputChange} className={commonInputClasses} />
                                     </div>
                                      <div>
                                         <label htmlFor="totalParticipants" className="block text-sm font-medium">Total Participants</label>
@@ -727,23 +764,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                      {activeTab === 'budget' && (
                          <div className="space-y-6">
                              <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Details</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                                     <div>
-                                        <label htmlFor="trainingExpenses" className="block text-sm font-medium">Training Expenses (PHP)</label>
-                                        <input type="number" name="trainingExpenses" id="trainingExpenses" min="0" step="0.01" value={formData.trainingExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="otherExpenses" className="block text-sm font-medium">Other Expenses (PHP)</label>
-                                        <input type="number" name="otherExpenses" id="otherExpenses" min="0" step="0.01" value={formData.otherExpenses} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label htmlFor="totalBudget" className="block text-sm font-medium">Total Budget</label>
-                                        <input type="text" name="totalBudget" id="totalBudget" value={formatCurrency(totalBudget)} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
-                                    </div>
-                                </div>
-                            </fieldset>
-                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Source</legend>
                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
@@ -765,54 +785,68 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 </div>
                             </fieldset>
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Schedule</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Details</legend>
+                                 <div className="space-y-2 mb-4">
+                                    {formData.expenses.length === 0 && <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No expense items added yet.</p>}
+                                    {formData.expenses.map((exp) => (
+                                        <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
+                                            <div className="text-sm flex-grow">
+                                                <span className="font-semibold">{exp.objectCode}</span>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400">Obligation: {formatDate(exp.obligationMonth)} | Disbursement: {formatDate(exp.disbursementMonth)}</div>
+                                            </div>
+                                            <div className="flex items-center gap-4 ml-4">
+                                                <span className="font-semibold text-sm">{formatCurrency(exp.amount)}</span>
+                                                <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-gray-400 hover:text-red-500">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end p-4 border-t border-gray-200 dark:border-gray-700">
                                      <div>
-                                        <label htmlFor="monthOfObligation" className="block text-sm font-medium">Month of Obligation</label>
-                                        <select name="monthOfObligation" id="monthOfObligation" value={formData.monthOfObligation} onChange={handleInputChange} className={commonInputClasses}>
-                                            {months.map(m => <option key={m} value={m}>{m}</option>)}
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label>
+                                        <select name="objectCode" value={currentExpense.objectCode} onChange={handleExpenseChange} className={`${commonInputClasses} py-1.5 text-sm`}>
+                                            {objectCodes.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
-                                     <div className="md:row-span-2">
-                                        <label className="block text-sm font-medium">Disbursement Schedule</label>
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-1">
-                                            {formData.disbursementSchedule.map(({month, amount}) => (
-                                                <div key={month} className="flex items-center gap-2">
-                                                    <label htmlFor={`disburse-${month}`} className="w-20 text-sm text-gray-600 dark:text-gray-300">{month}</label>
-                                                    <input 
-                                                        type="number" 
-                                                        id={`disburse-${month}`}
-                                                        value={amount || ''}
-                                                        onChange={(e) => handleDisbursementChange(month, e.target.value)}
-                                                        className="block w-full px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm sm:text-sm"
-                                                        placeholder="0.00"
-                                                        min="0" step="0.01"
-                                                    />
-                                                </div>
-                                            ))}
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>
+                                        <input type="date" name="obligationMonth" value={currentExpense.obligationMonth} onChange={handleExpenseChange} className={`${commonInputClasses} py-1.5 text-sm`} />
+                                    </div>
+                                     <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label>
+                                        <input type="date" name="disbursementMonth" value={currentExpense.disbursementMonth} onChange={handleExpenseChange} className={`${commonInputClasses} py-1.5 text-sm`} />
+                                    </div>
+                                    <div className="flex items-end gap-2">
+                                        <div className="flex-1">
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount (PHP)</label>
+                                            <input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} min="0" step="0.01" className={`${commonInputClasses} py-1.5 text-sm`} />
                                         </div>
-                                         <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                                            <span className="font-semibold text-sm">Total Disbursed:</span>
-                                            <span className="font-bold text-sm">{formatCurrency(totalDisbursed)}</span>
-                                         </div>
+                                        <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                                     </div>
                                 </div>
                             </fieldset>
                          </div>
                     )}
                 </div>
-                <div className="flex justify-end gap-4 pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                        Cancel
-                    </button>
-                    <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        {editingTraining ? 'Update Training' : 'Add Training'}
-                    </button>
+                <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
+                     <div className="text-lg font-bold">
+                        Total Budget: <span className="text-accent dark:text-green-400">{formatCurrency(totalBudget)}</span>
+                    </div>
+                    <div className="flex gap-4">
+                        <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                            {editingTraining ? 'Update Training' : 'Add Training'}
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
     );
-// FIX: Add return statement to the functional component.
+
     return (
         <div>
             {isDeleteModalOpen && (
@@ -832,5 +866,4 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     );
 };
 
-// FIX: Add default export to resolve import error in App.tsx
 export default TrainingsComponent;

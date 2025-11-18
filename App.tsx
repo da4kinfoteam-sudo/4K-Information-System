@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -13,6 +14,8 @@ import DashboardsPage from './components/DashboardsPage';
 // FIX: Import TrainingsComponent to resolve "Cannot find name 'TrainingsComponent'" error.
 import TrainingsComponent from './components/Trainings';
 import OtherActivitiesComponent from './components/OtherActivities';
+import Reports from './components/Reports';
+import useLocalStorageState from './hooks/useLocalStorageState';
 
 const initialIpos: IPO[] = [
     // Original 8
@@ -55,24 +58,25 @@ const initialSubprojects: Subproject[] = [
     { id: 15, name: 'Community-based Seaweed Farming', location: 'Brgy. Pasiagan, Bongao, Tawi-Tawi', indigenousPeopleOrganization: 'Tawi-Tawi Bajau Seaweed Farmers', status: 'Cancelled', packageType: 'Package 1', startDate: '2023-03-01', estimatedCompletionDate: '2024-03-01', actualCompletionDate: '', remarks: 'Cancelled due to security concerns in the area.', lat: 5.0289, lng: 119.7731, fundingYear: 2023, fundType: 'Current', tier: 'Tier 1', details: [], history: [] },
 ];
 
+// FIX: Replaced 'trainingExpenses' with a structured 'expenses' array to match the 'Training' type definition.
 const initialTrainings: Training[] = [
     // Original 5
-    { id: 1, name: 'Financial Literacy Seminar', date: '2022-02-10', description: 'Basic financial management for farmers.', location: 'Tanay, Rizal', facilitator: 'Rural Bank of Tanay', participatingIpos: ['San Isidro Farmers Association', 'Daraitan Farmers Cooperative'], lat: 14.5986, lng: 121.2885, participantsMale: 15, participantsFemale: 25, trainingExpenses: 50000, component: 'Social Preparation' },
-    { id: 2, name: 'Sustainable Farming Practices', date: '2022-07-22', description: 'Workshop on organic farming and soil health.', location: 'Baras, Rizal', facilitator: 'DA-RFO IV-A', participatingIpos: ['Pinugay Upland Farmers Org.'], lat: 14.5308, lng: 121.2721, participantsMale: 30, participantsFemale: 10, trainingExpenses: 75000, component: 'Production and Livelihood' },
-    { id: 3, name: 'Post-Harvest Technology Workshop', date: '2023-04-18', description: 'Training on modern post-harvest techniques to reduce spoilage.', location: 'Gen. Nakar, Quezon', facilitator: 'PhilMech', participatingIpos: ['Macaingalan IP Farmers Assoc.'], lat: 14.7744, lng: 121.6315, participantsMale: 22, participantsFemale: 18, trainingExpenses: 120000, component: 'Production and Livelihood' },
-    { id: 4, name: 'Cooperative Management Training', date: '2023-09-05', description: 'Advanced course on managing a cooperative effectively.', location: 'Tanay, Rizal', facilitator: 'CDA', participatingIpos: ['San Isidro Farmers Association', 'Pinugay Upland Farmers Org.', 'Daraitan Farmers Cooperative'], lat: 14.5986, lng: 121.2885, participantsMale: 40, participantsFemale: 35, trainingExpenses: 85000, component: 'Program Management' },
-    { id: 5, name: 'Marketing and Linkaging Forum', date: '2024-01-20', description: 'Connecting farmers to potential buyers and markets.', location: 'Online', facilitator: 'DA-AMAS', participatingIpos: ['Macaingalan IP Farmers Assoc.', 'Daraitan Farmers Cooperative'], participantsMale: 18, participantsFemale: 22, trainingExpenses: 25000, component: 'Marketing and Enterprise' },
+    { id: 1, name: 'Financial Literacy Seminar', date: '2022-02-10', description: 'Basic financial management for farmers.', location: 'Tanay, Rizal', facilitator: 'Rural Bank of Tanay', participatingIpos: ['San Isidro Farmers Association', 'Daraitan Farmers Cooperative'], lat: 14.5986, lng: 121.2885, participantsMale: 15, participantsFemale: 25, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2022-02-01', disbursementMonth: '2022-02-15', amount: 50000 }], component: 'Social Preparation' },
+    { id: 2, name: 'Sustainable Farming Practices', date: '2022-07-22', description: 'Workshop on organic farming and soil health.', location: 'Baras, Rizal', facilitator: 'DA-RFO IV-A', participatingIpos: ['Pinugay Upland Farmers Org.'], lat: 14.5308, lng: 121.2721, participantsMale: 30, participantsFemale: 10, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2022-07-15', disbursementMonth: '2022-07-30', amount: 75000 }], component: 'Production and Livelihood' },
+    { id: 3, name: 'Post-Harvest Technology Workshop', date: '2023-04-18', description: 'Training on modern post-harvest techniques to reduce spoilage.', location: 'Gen. Nakar, Quezon', facilitator: 'PhilMech', participatingIpos: ['Macaingalan IP Farmers Assoc.'], lat: 14.7744, lng: 121.6315, participantsMale: 22, participantsFemale: 18, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-04-10', disbursementMonth: '2023-04-25', amount: 120000 }], component: 'Production and Livelihood' },
+    { id: 4, name: 'Cooperative Management Training', date: '2023-09-05', description: 'Advanced course on managing a cooperative effectively.', location: 'Tanay, Rizal', facilitator: 'CDA', participatingIpos: ['San Isidro Farmers Association', 'Pinugay Upland Farmers Org.', 'Daraitan Farmers Cooperative'], lat: 14.5986, lng: 121.2885, participantsMale: 40, participantsFemale: 35, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-08-25', disbursementMonth: '2023-09-10', amount: 85000 }], component: 'Program Management' },
+    { id: 5, name: 'Marketing and Linkaging Forum', date: '2024-01-20', description: 'Connecting farmers to potential buyers and markets.', location: 'Online', facilitator: 'DA-AMAS', participatingIpos: ['Macaingalan IP Farmers Assoc.', 'Daraitan Farmers Cooperative'], participantsMale: 18, participantsFemale: 22, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2024-01-10', disbursementMonth: '2024-01-25', amount: 25000 }], component: 'Marketing and Enterprise' },
     // New 10
-    { id: 6, name: 'High-Value Crops Production', date: '2022-05-15', description: 'Training on cultivating high-value crops like coffee and cacao.', location: 'Davao City', facilitator: 'DA-RFO XI', participatingIpos: ['Marilog District Coffee Growers Association', 'Malita Cacao Farmers Cooperative'], lat: 7.0645, lng: 125.607, participantsMale: 25, participantsFemale: 30, trainingExpenses: 150000, component: 'Production and Livelihood' },
-    { id: 7, name: 'Organizational Leadership', date: '2023-11-22', description: 'Developing leadership skills for IPO officers.', location: 'Malaybalay, Bukidnon', facilitator: 'LGU Lantapan', participatingIpos: ['Bukidnon Indigenous Peoples Cooperative'], lat: 8.1576, lng: 125.093, participantsMale: 10, participantsFemale: 15, trainingExpenses: 60000, component: 'Program Management' },
-    { id: 8, name: 'Traditional Weaving and Product Development', date: '2022-08-10', description: 'Enhancing skills in T\'nalak weaving and exploring new product designs.', location: 'Lake Sebu, South Cotabato', facilitator: 'DTI - Region XII', participatingIpos: ['Lake Sebu T\'boli Weavers Association'], lat: 6.2231, lng: 124.6961, participantsMale: 5, participantsFemale: 45, trainingExpenses: 95000, component: 'Marketing and Enterprise' },
-    { id: 9, name: 'Climate-Resilient Agriculture', date: '2024-02-28', description: 'Adapting farming practices to changing climate conditions.', location: 'Online', facilitator: 'PAGASA', participatingIpos: ['Apayao Isneg Community Organization', 'Ifugao Rice Terraces Farmers Guild', 'Zambales Aeta Abaca Growers Inc.'], participantsMale: 50, participantsFemale: 40, trainingExpenses: 30000, component: 'Production and Livelihood' },
-    { id: 10, name: 'Ecotourism and Site Management', date: '2023-06-12', description: 'Managing community-based ecotourism sites.', location: 'Puerto Princesa, Palawan', facilitator: 'DOT - MIMAROPA', participatingIpos: ['Palawan Tagbanua Rattan Gatherers'], lat: 9.7392, lng: 118.735, participantsMale: 20, participantsFemale: 10, trainingExpenses: 110000, component: 'Marketing and Enterprise' },
-    { id: 11, name: 'Abaca Fiber Quality Grading', date: '2023-10-03', description: 'Standardizing abaca fiber quality for better market prices.', location: 'Botolan, Zambales', facilitator: 'PhilFIDA', participatingIpos: ['Zambales Aeta Abaca Growers Inc.'], lat: 15.2933, lng: 120.0247, participantsMale: 35, participantsFemale: 15, trainingExpenses: 70000, component: 'Production and Livelihood' },
-    { id: 12, name: 'Marine Protected Area Management', date: '2023-01-25', description: 'Community-based management of marine resources.', location: 'Bongao, Tawi-Tawi', facilitator: 'BFAR', participatingIpos: ['Tawi-Tawi Bajau Seaweed Farmers', 'Samal Island Seaweeds Planters Org.'], lat: 5.0289, lng: 119.7731, participantsMale: 28, participantsFemale: 22, trainingExpenses: 130000, component: 'Social Preparation' },
-    { id: 13, name: 'Bookkeeping and Simple Accounting', date: '2022-04-20', description: 'Essential bookkeeping skills for IPO treasurers.', location: 'Online', facilitator: 'TESDA', participatingIpos: ['Bukidnon Indigenous Peoples Cooperative', 'Malita Cacao Farmers Cooperative'], participantsMale: 12, participantsFemale: 18, trainingExpenses: 20000, component: 'Program Management' },
-    { id: 14, name: 'Good Agricultural Practices (GAP) for Rice', date: '2021-09-18', description: 'Certification training for Good Agricultural Practices.', location: 'Banaue, Ifugao', facilitator: 'PhilRice', participatingIpos: ['Ifugao Rice Terraces Farmers Guild'], lat: 16.9583, lng: 121.0583, participantsMale: 40, participantsFemale: 20, trainingExpenses: 80000, component: 'Production and Livelihood' },
-    { id: 15, name: 'Project Proposal Writing', date: '2024-03-10', description: 'Workshop on how to write effective project proposals.', location: 'Quezon City', facilitator: 'DA-NPMO', participatingIpos: ['Daraitan Farmers Cooperative', 'Apayao Isneg Community Organization'], lat: 14.6760, lng: 121.0437, participantsMale: 15, participantsFemale: 15, trainingExpenses: 45000, component: 'Social Preparation' }
+    { id: 6, name: 'High-Value Crops Production', date: '2022-05-15', description: 'Training on cultivating high-value crops like coffee and cacao.', location: 'Davao City', facilitator: 'DA-RFO XI', participatingIpos: ['Marilog District Coffee Growers Association', 'Malita Cacao Farmers Cooperative'], lat: 7.0645, lng: 125.607, participantsMale: 25, participantsFemale: 30, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2022-05-01', disbursementMonth: '2022-05-20', amount: 150000 }], component: 'Production and Livelihood' },
+    { id: 7, name: 'Organizational Leadership', date: '2023-11-22', description: 'Developing leadership skills for IPO officers.', location: 'Malaybalay, Bukidnon', facilitator: 'LGU Lantapan', participatingIpos: ['Bukidnon Indigenous Peoples Cooperative'], lat: 8.1576, lng: 125.093, participantsMale: 10, participantsFemale: 15, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-11-15', disbursementMonth: '2023-11-30', amount: 60000 }], component: 'Program Management' },
+    { id: 8, name: 'Traditional Weaving and Product Development', date: '2022-08-10', description: 'Enhancing skills in T\'nalak weaving and exploring new product designs.', location: 'Lake Sebu, South Cotabato', facilitator: 'DTI - Region XII', participatingIpos: ['Lake Sebu T\'boli Weavers Association'], lat: 6.2231, lng: 124.6961, participantsMale: 5, participantsFemale: 45, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2022-08-01', disbursementMonth: '2022-08-15', amount: 95000 }], component: 'Marketing and Enterprise' },
+    { id: 9, name: 'Climate-Resilient Agriculture', date: '2024-02-28', description: 'Adapting farming practices to changing climate conditions.', location: 'Online', facilitator: 'PAGASA', participatingIpos: ['Apayao Isneg Community Organization', 'Ifugao Rice Terraces Farmers Guild', 'Zambales Aeta Abaca Growers Inc.'], participantsMale: 50, participantsFemale: 40, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2024-02-15', disbursementMonth: '2024-03-05', amount: 30000 }], component: 'Production and Livelihood' },
+    { id: 10, name: 'Ecotourism and Site Management', date: '2023-06-12', description: 'Managing community-based ecotourism sites.', location: 'Puerto Princesa, Palawan', facilitator: 'DOT - MIMAROPA', participatingIpos: ['Palawan Tagbanua Rattan Gatherers'], lat: 9.7392, lng: 118.735, participantsMale: 20, participantsFemale: 10, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-06-01', disbursementMonth: '2023-06-15', amount: 110000 }], component: 'Marketing and Enterprise' },
+    { id: 11, name: 'Abaca Fiber Quality Grading', date: '2023-10-03', description: 'Standardizing abaca fiber quality for better market prices.', location: 'Botolan, Zambales', facilitator: 'PhilFIDA', participatingIpos: ['Zambales Aeta Abaca Growers Inc.'], lat: 15.2933, lng: 120.0247, participantsMale: 35, participantsFemale: 15, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-09-25', disbursementMonth: '2023-10-10', amount: 70000 }], component: 'Production and Livelihood' },
+    { id: 12, name: 'Marine Protected Area Management', date: '2023-01-25', description: 'Community-based management of marine resources.', location: 'Bongao, Tawi-Tawi', facilitator: 'BFAR', participatingIpos: ['Tawi-Tawi Bajau Seaweed Farmers', 'Samal Island Seaweeds Planters Org.'], lat: 5.0289, lng: 119.7731, participantsMale: 28, participantsFemale: 22, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2023-01-15', disbursementMonth: '2023-01-30', amount: 130000 }], component: 'Social Preparation' },
+    { id: 13, name: 'Bookkeeping and Simple Accounting', date: '2022-04-20', description: 'Essential bookkeeping skills for IPO treasurers.', location: 'Online', facilitator: 'TESDA', participatingIpos: ['Bukidnon Indigenous Peoples Cooperative', 'Malita Cacao Farmers Cooperative'], participantsMale: 12, participantsFemale: 18, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2022-04-10', disbursementMonth: '2022-04-25', amount: 20000 }], component: 'Program Management' },
+    { id: 14, name: 'Good Agricultural Practices (GAP) for Rice', date: '2021-09-18', description: 'Certification training for Good Agricultural Practices.', location: 'Banaue, Ifugao', facilitator: 'PhilRice', participatingIpos: ['Ifugao Rice Terraces Farmers Guild'], lat: 16.9583, lng: 121.0583, participantsMale: 40, participantsFemale: 20, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2021-09-10', disbursementMonth: '2021-09-25', amount: 80000 }], component: 'Production and Livelihood' },
+    { id: 15, name: 'Project Proposal Writing', date: '2024-03-10', description: 'Workshop on how to write effective project proposals.', location: 'Quezon City', facilitator: 'DA-NPMO', participatingIpos: ['Daraitan Farmers Cooperative', 'Apayao Isneg Community Organization'], lat: 14.6760, lng: 121.0437, participantsMale: 15, participantsFemale: 15, expenses: [{ id: 1, objectCode: 'MOOE', obligationMonth: '2024-03-01', disbursementMonth: '2024-03-15', amount: 45000 }], component: 'Social Preparation' }
 ];
 
 const initialOtherActivities: OtherActivity[] = [
@@ -104,10 +108,10 @@ const App: React.FC = () => {
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [previousPage, setPreviousPage] = useState<string | null>(null);
     
-    const [ipos, setIpos] = useState<IPO[]>(initialIpos);
-    const [subprojects, setSubprojects] = useState<Subproject[]>(initialSubprojects);
-    const [trainings, setTrainings] = useState<Training[]>(initialTrainings);
-    const [otherActivities, setOtherActivities] = useState<OtherActivity[]>(initialOtherActivities);
+    const [ipos, setIpos] = useLocalStorageState<IPO[]>('ipos', initialIpos);
+    const [subprojects, setSubprojects] = useLocalStorageState<Subproject[]>('subprojects', initialSubprojects);
+    const [trainings, setTrainings] = useLocalStorageState<Training[]>('trainings', initialTrainings);
+    const [otherActivities, setOtherActivities] = useLocalStorageState<OtherActivity[]>('otherActivities', initialOtherActivities);
 
     useEffect(() => {
         const isDark = localStorage.getItem('isDarkMode') === 'true';
@@ -281,10 +285,12 @@ const App: React.FC = () => {
     const getPageName = (path: string | null): string => {
         switch(path) {
             case '/dashboards': return 'Dashboard';
+            case '/reports': return 'Reports';
             case '/subprojects': return 'Subprojects';
             case '/trainings': return 'Trainings';
             case '/ipo': return 'IPO List';
             case '/other-activities': return 'Other Activities';
+            case '/program-management': return 'Program Management';
             default: return 'IPO List';
         }
     }
@@ -305,6 +311,13 @@ const App: React.FC = () => {
                             trainings={trainings}
                             otherActivities={otherActivities}
                         />;
+            case '/reports':
+                return <Reports 
+                            ipos={ipos}
+                            subprojects={subprojects}
+                            trainings={trainings}
+                            otherActivities={otherActivities}
+                        />;
             case '/subprojects':
                 return <Subprojects ipos={ipos} subprojects={subprojects} setSubprojects={setSubprojects} onSelectIpo={handleSelectIpo} onSelectSubproject={handleSelectSubproject}/>;
             case '/ipo':
@@ -320,6 +333,13 @@ const App: React.FC = () => {
                 return <TrainingsComponent ipos={ipos} trainings={trainings} setTrainings={setTrainings} onSelectIpo={handleSelectIpo} />;
             case '/other-activities':
                 return <OtherActivitiesComponent ipos={ipos} otherActivities={otherActivities} setOtherActivities={setOtherActivities} onSelectIpo={handleSelectIpo} />;
+            case '/program-management':
+                 return (
+                    <div className="text-center p-10 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
+                        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Page Coming Soon!</h2>
+                        <p className="text-gray-500 dark:text-gray-400 mt-2">The Program Management section is under construction.</p>
+                    </div>
+                );
             default:
                 return (
                     <div className="text-center p-10 bg-white dark:bg-gray-800 rounded-xl shadow-lg">

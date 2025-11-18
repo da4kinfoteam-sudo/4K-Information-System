@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 
 // Centralized Type Definitions
@@ -96,11 +97,6 @@ export const months = [
 ] as const;
 export type Month = typeof months[number];
 
-export interface Disbursement {
-    month: Month;
-    amount: number;
-}
-
 export interface Training {
     id: number;
     name: string;
@@ -113,14 +109,11 @@ export interface Training {
     lng?: number;
     participantsMale: number;
     participantsFemale: number;
-    trainingExpenses: number;
+    expenses: OtherActivityExpense[];
     component: TrainingComponentType;
-    otherExpenses?: number;
     fundingYear?: number;
     fundType?: FundType;
     tier?: Tier;
-    monthOfObligation?: Month;
-    disbursementSchedule?: Disbursement[];
 }
 
 export type OtherActivityComponentType = 'Social Preparation' | 'Marketing and Enterprise' | 'Program Management';
@@ -176,6 +169,7 @@ export interface OtherActivity {
 export interface NavLink {
     name: string;
     href: string;
+    type?: 'separator';
 }
 
 export const commodityTypes: string[] = ['Crop Commodity', 'Livestock'];
@@ -278,9 +272,14 @@ export const IpoIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 export const navigationLinks: NavLink[] = [
     { name: 'Homepage', href: '/' },
+    { name: 'separator1', href: '#', type: 'separator' },
     { name: 'Dashboard', href: '/dashboards' },
+    { name: 'Reports', href: '/reports' },
+    { name: 'separator2', href: '#', type: 'separator' },
     { name: 'Subprojects', href: '/subprojects' },
     { name: 'Trainings', href: '/trainings' },
     { name: 'Other Activities', href: '/other-activities' },
+    { name: 'Program Management', href: '/program-management' },
+    { name: 'separator3', href: '#', type: 'separator' },
     { name: 'Indigenous Peoples Organization', href: '/ipo' },
 ];

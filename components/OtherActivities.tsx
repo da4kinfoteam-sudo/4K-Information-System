@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, objectCodes, ObjectCode } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -796,7 +797,8 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                 </div>
             </form>
         </div>
-    )};
+        )
+    };
 
     return (
         <div>

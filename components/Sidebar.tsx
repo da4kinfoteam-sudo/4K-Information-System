@@ -60,8 +60,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                 <nav className="p-4">
                     <ul>
                         {navigationLinks.map((link) => (
-                            <li key={link.name}>
-                                <NavItem link={link} />
+                             <li key={link.name}>
+                                {link.type === 'separator' ? (
+                                    <hr className="my-2 border-gray-200 dark:border-gray-700" />
+                                ) : (
+                                    <NavItem link={link} />
+                                )}
                             </li>
                         ))}
                     </ul>

@@ -512,188 +512,6 @@ const LevelOfDevelopmentDashboard: React.FC<{ ipos: IPO[] }> = ({ ipos }) => {
     );
 };
 
-const ReportsDashboard: React.FC<DashboardsPageProps> = ({ subprojects, trainings, otherActivities }) => {
-    const reportRef = useRef<HTMLDivElement>(null);
-    const wfpData = useMemo(() => {
-        const getQuarter = (dateStr: string): number => {
-            if (!dateStr) return 0;
-            const month = new Date(dateStr).getMonth();
-            return Math.floor(month / 3) + 1;
-        };
-
-        const data: { [key: string]: any[] } = {
-            'Social Preparation': [],
-            'Production and Livelihood': [],
-            'Marketing and Enterprise': [],
-            'Program Management': [],
-        };
-
-        subprojects.forEach(sp => {
-            const mooeCost = sp.details.filter(d => d.objectCode === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
-            const coCost = sp.details.filter(d => d.objectCode === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
-            const totalCost = mooeCost + coCost;
-            const isAccomplished = sp.status === 'Completed';
-            const targetQuarter = getQuarter(sp.startDate);
-            const accomplishmentQuarter = getQuarter(sp.actualCompletionDate);
-
-            data['Production and Livelihood'].push({
-                indicator: sp.name, totalPhysicalTarget: 1, mooeCost, coCost, totalCost,
-                q1Physical: targetQuarter === 1 ? 1 : 0, q2Physical: targetQuarter === 2 ? 1 : 0,
-                q3Physical: targetQuarter === 3 ? 1 : 0, q4Physical: targetQuarter === 4 ? 1 : 0,
-                totalPhysicalAccomplished: isAccomplished ? 1 : 0,
-                q1Financial: isAccomplished && accomplishmentQuarter === 1 ? totalCost : 0,
-                q2Financial: isAccomplished && accomplishmentQuarter === 2 ? totalCost : 0,
-                q3Financial: isAccomplished && accomplishmentQuarter === 3 ? totalCost : 0,
-                q4Financial: isAccomplished && accomplishmentQuarter === 4 ? totalCost : 0,
-                totalFinancialAccomplished: isAccomplished ? totalCost : 0,
-            });
-        });
-
-        trainings.forEach(t => {
-            if (!data[t.component]) return;
-            const totalCost = t.trainingExpenses || 0;
-            const isAccomplished = new Date(t.date) < new Date();
-            const quarter = getQuarter(t.date);
-
-            data[t.component].push({
-                indicator: t.name, totalPhysicalTarget: 1, mooeCost: totalCost, coCost: 0, totalCost,
-                q1Physical: quarter === 1 ? 1 : 0, q2Physical: quarter === 2 ? 1 : 0,
-                q3Physical: quarter === 3 ? 1 : 0, q4Physical: quarter === 4 ? 1 : 0,
-                totalPhysicalAccomplished: isAccomplished ? 1 : 0,
-                q1Financial: isAccomplished && quarter === 1 ? totalCost : 0,
-                q2Financial: isAccomplished && quarter === 2 ? totalCost : 0,
-                q3Financial: isAccomplished && quarter === 3 ? totalCost : 0,
-                q4Financial: isAccomplished && quarter === 4 ? totalCost : 0,
-                totalFinancialAccomplished: isAccomplished ? totalCost : 0,
-            });
-        });
-
-        otherActivities.forEach(oa => {
-            if (!data[oa.component]) return;
-            const mooeCost = oa.expenses.filter(e => e.objectCode === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
-            const coCost = oa.expenses.filter(e => e.objectCode === 'CO').reduce((sum, e) => sum + e.amount, 0);
-            const totalCost = mooeCost + coCost;
-            const isAccomplished = new Date(oa.date) < new Date();
-            const quarter = getQuarter(oa.date);
-
-            data[oa.component].push({
-                indicator: oa.name, totalPhysicalTarget: 1, mooeCost, coCost, totalCost,
-                q1Physical: quarter === 1 ? 1 : 0, q2Physical: quarter === 2 ? 1 : 0,
-                q3Physical: quarter === 3 ? 1 : 0, q4Physical: quarter === 4 ? 1 : 0,
-                totalPhysicalAccomplished: isAccomplished ? 1 : 0,
-                q1Financial: isAccomplished && quarter === 1 ? totalCost : 0,
-                q2Financial: isAccomplished && quarter === 2 ? totalCost : 0,
-                q3Financial: isAccomplished && quarter === 3 ? totalCost : 0,
-                q4Financial: isAccomplished && quarter === 4 ? totalCost : 0,
-                totalFinancialAccomplished: isAccomplished ? totalCost : 0,
-            });
-        });
-        return data;
-    }, [subprojects, trainings, otherActivities]);
-
-    const handlePrint = () => {
-        window.print();
-    };
-
-    const renderTotalsRow = (items: any[], label: string) => {
-        const totals = items.reduce((acc, item) => {
-            acc.totalPhysicalTarget += item.totalPhysicalTarget;
-            acc.mooeCost += item.mooeCost;
-            acc.coCost += item.coCost;
-            acc.totalCost += item.totalCost;
-            acc.q1Physical += item.q1Physical; acc.q2Physical += item.q2Physical;
-            acc.q3Physical += item.q3Physical; acc.q4Physical += item.q4Physical;
-            acc.totalPhysicalAccomplished += item.totalPhysicalAccomplished;
-            acc.q1Financial += item.q1Financial; acc.q2Financial += item.q2Financial;
-            acc.q3Financial += item.q3Financial; acc.q4Financial += item.q4Financial;
-            acc.totalFinancialAccomplished += item.totalFinancialAccomplished;
-            return acc;
-        }, { totalPhysicalTarget: 0, mooeCost: 0, coCost: 0, totalCost: 0, q1Physical: 0, q2Physical: 0, q3Physical: 0, q4Physical: 0, totalPhysicalAccomplished: 0, q1Financial: 0, q2Financial: 0, q3Financial: 0, q4Financial: 0, totalFinancialAccomplished: 0 });
-
-        return (
-            <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                <td className="p-2 border border-gray-300 dark:border-gray-600">{label}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalPhysicalTarget}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.mooeCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.coCost)}</td>
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(totals.totalCost)}</td>
-                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-center">{q}</td>)}
-                <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalPhysicalAccomplished}</td>
-                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial, totals.totalFinancialAccomplished].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(q)}</td>)}
-            </tr>
-        );
-    };
-
-    const grandTotals = Object.values(wfpData).flat();
-    
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-
-    return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-4 print:hidden">
-                <h3 className="text-xl font-semibold">Work and Financial Plan (WFP)</h3>
-                <button onClick={handlePrint} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download PDF</button>
-            </div>
-            <div ref={reportRef} id="wfp-report" className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-xs">
-                    <thead className="bg-gray-200 dark:bg-gray-700">
-                        <tr>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom">Indicator</th>
-                            <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Target</th>
-                            <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Physical Accomplishment</th>
-                            <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center">Financial Accomplishment (PHP)</th>
-                        </tr>
-                        <tr>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Physical</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">MOOE (PHP)</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">CO (PHP)</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total (PHP)</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {Object.entries(wfpData).map(([component, items]) => (
-                            <React.Fragment key={component}>
-                                <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                                    <td colSpan={15} className="p-2 border border-gray-300 dark:border-gray-600">{component}</td>
-                                </tr>
-                                {items.length > 0 ? items.map((item, index) => (
-                                    <tr key={index}>
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600">{item.indicator}</td>
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{item.totalPhysicalTarget}</td>
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.mooeCost)}</td>
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.coCost)}</td>
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrency(item.totalCost)}</td>
-                                        {[item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-center">{q || ''}</td>)}
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{item.totalPhysicalAccomplished || ''}</td>
-                                        {[item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial, item.totalFinancialAccomplished].map((q, i) => <td key={i} className="p-2 border border-gray-300 dark:border-gray-600 text-right">{q ? formatCurrency(q) : ''}</td>)}
-                                    </tr>
-                                )) : (
-                                    <tr><td colSpan={15} className="p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500">No activities for this component.</td></tr>
-                                )}
-                                {renderTotalsRow(items, `Total for ${component}`)}
-                            </React.Fragment>
-                        ))}
-                    </tbody>
-                    <tfoot>
-                        {renderTotalsRow(grandTotals, "GRAND TOTAL")}
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-
 interface DashboardsPageProps {
     subprojects: Subproject[];
     ipos: IPO[];
@@ -701,7 +519,7 @@ interface DashboardsPageProps {
     otherActivities: OtherActivity[];
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'Level of Development' | 'Gender and Development' | 'Reports';
+type DashboardTab = 'Physical' | 'Financial' | 'Level of Development' | 'Gender and Development';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
@@ -782,8 +600,6 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
                 return <LevelOfDevelopmentDashboard ipos={filteredData.ipos} />;
             case 'Gender and Development':
                 return <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md"><h3 className="text-xl font-semibold">Gender and Development (GAD) Dashboard</h3><p className="mt-2 text-gray-600 dark:text-gray-400">Content for GAD-related data will be displayed here.</p></div>;
-            case 'Reports':
-                 return <ReportsDashboard {...filteredData} />;
             default:
                 return null;
         }
@@ -791,29 +607,6 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
 
     return (
         <div className="dashboard-page">
-            <style>{`
-                @media print {
-                    body * {
-                        visibility: hidden;
-                    }
-                    .dashboard-page {
-                        visibility: visible;
-                    }
-                    #wfp-report, #wfp-report * {
-                        visibility: visible;
-                    }
-                    #wfp-report {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                        overflow: visible;
-                    }
-                    .print-hidden {
-                        display: none;
-                    }
-                }
-            `}</style>
              {modalData && (
                 <div 
                     className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4"
@@ -905,7 +698,6 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
                             <TabButton tabName="Financial" label="Financial" />
                             <TabButton tabName="Level of Development" label="Level of Development" />
                             <TabButton tabName="Gender and Development" label="Gender & Development" />
-                            <TabButton tabName="Reports" label="Reports" />
                         </nav>
                     </div>
                 </div>

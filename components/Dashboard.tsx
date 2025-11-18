@@ -218,7 +218,8 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
         }, 0);
 
         const trainingTotal = filteredData.trainings.reduce((sum, training) => {
-            return sum + (training.trainingExpenses || 0) + (training.otherExpenses || 0);
+            const trainingBudget = training.expenses.reduce((s, e) => s + e.amount, 0);
+            return sum + trainingBudget;
         }, 0);
 
         const otherActivitiesTotal = filteredData.otherActivities.reduce((sum, activity) => {

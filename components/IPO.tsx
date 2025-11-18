@@ -78,7 +78,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
         // Calculate from trainings
         trainings.forEach(t => {
-            const cost = t.trainingExpenses + (t.otherExpenses || 0);
+            const cost = t.expenses.reduce((s, e) => s + e.amount, 0);
             t.participatingIpos.forEach(ipoName => {
                 const currentInvestment = investmentMap.get(ipoName) || 0;
                 investmentMap.set(ipoName, currentInvestment + cost);
