@@ -29,6 +29,63 @@
   }
 }
 </script>
+<style>
+    @media print {
+      body > div#root > div > aside, /* Sidebar */
+      body > div#root > div > div > header, /* Header */
+      body > div#root > div > div > footer, /* Footer */
+      .print-hidden {
+        display: none !important;
+      }
+      
+      body > div#root > div > div > main {
+        padding: 0;
+        margin: 0;
+        overflow: visible;
+      }
+      
+      #wfp-container-for-print {
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+
+      #wfp-report, #wfp-report table {
+          width: 100%;
+          overflow: visible;
+      }
+
+      /* Make dark mode print light */
+      @page {
+          size: landscape;
+          margin: 20px;
+      }
+      html.dark {
+        color-scheme: light;
+      }
+      .dark body {
+        background-color: white !important;
+      }
+      .dark #wfp-container-for-print,
+      .dark #wfp-report table,
+      .dark #wfp-report table tr,
+      .dark #wfp-report table thead,
+      .dark #wfp-report table tbody,
+      .dark #wfp-report table tfoot {
+        background-color: white !important;
+        color: black !important;
+      }
+      .dark #wfp-report table * {
+        border-color: #ccc !important;
+      }
+      .dark .dark\:bg-gray-700, 
+      .dark .dark\:bg-gray-800\/60, 
+      .dark .dark\:bg-gray-700\/50,
+      .dark .dark\:bg-gray-200 {
+        background-color: #f3f4f6 !important; /* light gray */
+      }
+    }
+</style>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900">
     <div id="root"></div>

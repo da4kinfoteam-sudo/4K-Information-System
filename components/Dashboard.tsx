@@ -1,8 +1,7 @@
 
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, philippineRegions } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, philippineRegions, tiers, fundTypes } from '../constants';
 import { Subproject, IPO, Training, OtherActivity } from '../constants';
 import GanttChart from './GanttChart';
 
@@ -142,6 +141,8 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedRegion, setSelectedRegion] = useState<string>('All');
+    const [selectedTier, setSelectedTier] = useState<string>('All');
+    const [selectedFundType, setSelectedFundType] = useState<string>('All');
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
     const [mapFilters, setMapFilters] = useState({
         ipos: true,
@@ -156,53 +157,67 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
-        subprojects.forEach(p => years.add(new Date(p.startDate).getFullYear().toString()));
+        subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
+        trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
         ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
-        trainings.forEach(t => years.add(new Date(t.date).getFullYear().toString()));
         otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
     }, [subprojects, ipos, trainings, otherActivities]);
     
     const filteredData = useMemo(() => {
-        // 1. Filter by Year first
-        let yearFiltered = {
-            subprojects: selectedYear === 'All' ? subprojects : subprojects.filter(p => new Date(p.startDate).getFullYear() === parseInt(selectedYear)),
-            ipos: selectedYear === 'All' ? ipos : ipos.filter(i => new Date(i.registrationDate).getFullYear() === parseInt(selectedYear)),
-            trainings: selectedYear === 'All' ? trainings : trainings.filter(t => new Date(t.date).getFullYear() === parseInt(selectedYear)),
-            otherActivities: selectedYear === 'All' ? otherActivities : otherActivities.filter(a => new Date(a.date).getFullYear() === parseInt(selectedYear)),
-        };
+        let dataToFilter = { subprojects, ipos, trainings, otherActivities };
 
+        // 1. Filter by Year, Tier, Fund Type
+        if (selectedYear !== 'All') {
+            dataToFilter = {
+                subprojects: dataToFilter.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
+                ipos: dataToFilter.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear),
+                trainings: dataToFilter.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
+                otherActivities: dataToFilter.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+            };
+        }
+
+        if (selectedTier !== 'All') {
+            dataToFilter = {
+                ...dataToFilter,
+                subprojects: dataToFilter.subprojects.filter(p => p.tier === selectedTier),
+                trainings: dataToFilter.trainings.filter(t => t.tier === selectedTier),
+            };
+        }
+        
+        if (selectedFundType !== 'All') {
+            dataToFilter = {
+                ...dataToFilter,
+                subprojects: dataToFilter.subprojects.filter(p => p.fundType === selectedFundType),
+                trainings: dataToFilter.trainings.filter(t => t.fundType === selectedFundType),
+            };
+        }
+        
         // 2. Then Filter by Region
         if (selectedRegion === 'All') {
-            return yearFiltered;
+            return dataToFilter;
         }
 
         if (selectedRegion === 'Online') {
             return {
-                ...yearFiltered,
+                ...dataToFilter,
                 subprojects: [],
                 ipos: [],
-                trainings: yearFiltered.trainings.filter(t => t.location === 'Online'),
-                otherActivities: yearFiltered.otherActivities.filter(a => a.location === 'Online'),
+                trainings: dataToFilter.trainings.filter(t => t.location === 'Online'),
+                otherActivities: dataToFilter.otherActivities.filter(a => a.location === 'Online'),
             }
         }
         
         const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
 
-        const regionFilteredSubprojects = yearFiltered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization));
-        const regionFilteredIpos = yearFiltered.ipos.filter(i => i.region === selectedRegion);
-        const regionFilteredTrainings = yearFiltered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName)));
-        const regionFilteredOtherActivities = yearFiltered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName)));
-
-
         return {
-            subprojects: regionFilteredSubprojects,
-            ipos: regionFilteredIpos,
-            trainings: regionFilteredTrainings,
-            otherActivities: regionFilteredOtherActivities,
+            subprojects: dataToFilter.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
+            ipos: dataToFilter.ipos.filter(i => i.region === selectedRegion),
+            trainings: dataToFilter.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            otherActivities: dataToFilter.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
         };
 
-    }, [selectedYear, selectedRegion, subprojects, ipos, trainings, otherActivities]);
+    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
@@ -336,6 +351,34 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                             <option value="Online">Online</option>
                             {philippineRegions.map(region => (
                                 <option key={region} value={region}>{region}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                        <select 
+                            id="tier-filter"
+                            value={selectedTier}
+                            onChange={(e) => setSelectedTier(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                        <select 
+                            id="fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(ft => (
+                                <option key={ft} value={ft}>{ft}</option>
                             ))}
                         </select>
                     </div>

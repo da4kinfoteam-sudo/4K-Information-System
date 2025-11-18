@@ -1,7 +1,6 @@
 
-
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, IPO, philippineRegions, months } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, philippineRegions, months, tiers, fundTypes } from '../constants';
 
 // Declare XLSX to inform TypeScript about the global variable
 declare const XLSX: any;
@@ -189,17 +188,9 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                              return (
                                 <React.Fragment key={key}>
                                     {renderSummaryRow(componentData, key, key, isComponentExpanded, 0)}
-                                    {isComponentExpanded && (
-                                        componentData.length > 0 
-                                            ? componentData.map((item, index) => renderDataRow(item, `${key}-${index}`, 1)) 
-                                            : (
-                                                <tr>
-                                                    <td colSpan={15} className={`p-2 border border-gray-300 dark:border-gray-600 text-center italic text-gray-500 ${indentClasses[1]}`}>
-                                                        No activities for this component.
-                                                    </td>
-                                                </tr>
-                                            )
-                                    )}
+                                    {isComponentExpanded &&
+                                        componentData.map((item, index) => renderDataRow(item, `${key}-${index}`, 1))
+                                    }
                                 </React.Fragment>
                             );
                         }
@@ -244,6 +235,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedRegion, setSelectedRegion] = useState<string>('All');
+    const [selectedTier, setSelectedTier] = useState<string>('All');
+    const [selectedFundType, setSelectedFundType] = useState<string>('All');
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
@@ -254,25 +247,50 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     }, [subprojects, trainings, otherActivities]);
 
     const filteredData = useMemo(() => {
-        const yearFiltered = {
-            subprojects: selectedYear === 'All' ? subprojects : subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
-            ipos: ipos, // IPOs aren't filtered by funding year directly
-            trainings: selectedYear === 'All' ? trainings : trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-            otherActivities: selectedYear === 'All' ? otherActivities : otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+        let filtered = {
+            subprojects: subprojects,
+            ipos: ipos,
+            trainings: trainings,
+            otherActivities: otherActivities,
         };
 
+        if (selectedYear !== 'All') {
+            filtered = {
+                ...filtered,
+                subprojects: filtered.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
+                trainings: filtered.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
+                otherActivities: filtered.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+            };
+        }
+
+        if (selectedTier !== 'All') {
+            filtered = {
+                ...filtered,
+                subprojects: filtered.subprojects.filter(p => p.tier === selectedTier),
+                trainings: filtered.trainings.filter(t => t.tier === selectedTier),
+            };
+        }
+
+        if (selectedFundType !== 'All') {
+            filtered = {
+                ...filtered,
+                subprojects: filtered.subprojects.filter(p => p.fundType === selectedFundType),
+                trainings: filtered.trainings.filter(t => t.fundType === selectedFundType),
+            };
+        }
+
         if (selectedRegion === 'All') {
-            return yearFiltered;
+            return filtered;
         }
 
         const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
         return {
-            subprojects: yearFiltered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
-            ipos: yearFiltered.ipos.filter(i => i.region === selectedRegion),
-            trainings: yearFiltered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
-            otherActivities: yearFiltered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            subprojects: filtered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
+            ipos: filtered.ipos.filter(i => i.region === selectedRegion),
+            trainings: filtered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            otherActivities: filtered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
         };
-    }, [selectedYear, selectedRegion, subprojects, ipos, trainings, otherActivities]);
+    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
 
     const wfpData = useMemo(() => {
         const getQuarter = (dateStr?: string): number => {
@@ -468,6 +486,10 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
         XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedRegion}.xlsx`);
     };
+
+    const handlePrint = () => {
+        window.print();
+    };
     
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -497,10 +519,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         switch (activeTab) {
             case 'WFP':
                 return (
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-                        <div className="flex justify-between items-center mb-4">
+                    <div id="wfp-container-for-print" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                        <div className="flex justify-between items-center mb-4 print-hidden">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Work and Financial Plan (WFP)</h3>
-                            <button onClick={handleDownloadXLSX} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                            <div className="flex items-center gap-4">
+                                <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
+                                <button onClick={handleDownloadXLSX} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                            </div>
                         </div>
                         <WFPTable data={wfpData} />
                     </div>
@@ -514,7 +539,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="flex flex-wrap justify-between items-center gap-4 print-hidden">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                      <div className="flex items-center gap-2">
@@ -528,6 +553,34 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             <option value="All">All Regions</option>
                             <option value="Online">Online</option>
                             {philippineRegions.map(region => ( <option key={region} value={region}>{region}</option> ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                        <select 
+                            id="tier-filter"
+                            value={selectedTier}
+                            onChange={(e) => setSelectedTier(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                        <select 
+                            id="fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(ft => (
+                                <option key={ft} value={ft}>{ft}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="flex items-center gap-2">
@@ -545,7 +598,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md print-hidden">
                 <div className="border-b border-gray-200 dark:border-gray-700">
                     <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="WFP" label="WFP" />
