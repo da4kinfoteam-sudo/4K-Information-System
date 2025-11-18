@@ -121,6 +121,7 @@ export type Tier = typeof tiers[number];
 
 export interface Subproject {
     id: number;
+    uid: string;
     name: string;
     location: string;
     indigenousPeopleOrganization: string;

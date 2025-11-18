@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 // FIX: Replace objectCodes/ObjectCode with uacsCodes, objectTypes, and ObjectType to use the full UACS system, resolving import and type errors.
 import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, uacsCodes, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier } from '../constants';
@@ -33,7 +35,7 @@ const defaultFormData = {
     tier: tiers[0] as Tier,
 };
 
-const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherActivities, setOtherActivities, onSelectIpo }) => {
+export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherActivities, setOtherActivities, onSelectIpo }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [editingActivity, setEditingActivity] = useState<OtherActivity | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -883,5 +885,3 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
         </div>
     );
 };
-
-export default OtherActivitiesComponent;

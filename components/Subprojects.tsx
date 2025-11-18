@@ -326,6 +326,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         } else {
             const newSubproject: Subproject = {
                 id: subprojects.length > 0 ? Math.max(...subprojects.map(p => p.id)) + 1 : 1,
+                uid: `SP-${new Date().getFullYear()}-${String(subprojects.length + 1).padStart(3, '0')}`,
                 ...formData,
                 fundingYear: Number(formData.fundingYear),
                 lat: dummyCoords.lat,
@@ -460,29 +461,76 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleDownloadTemplate = () => {
         const headers = [
-            'name', 'indigenousPeopleOrganization', 'packageType', 
-            'startDate', 'estimatedCompletionDate', 'remarks', 'details'
+            'uid', 'name', 'packageType', 'indigenousPeopleOrganization', 'startDate', 'estimatedCompletionDate', 'remarks', 
+            'fundingYear', 'fundType', 'tier',
+            'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 
+            'detail_numberOfUnits', 'detail_objectType', 'detail_expenseParticular', 'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
         ];
         
         const exampleData = [{
+            uid: 'PROJ-001',
             name: 'Sample Farm-to-Market Road',
-            indigenousPeopleOrganization: 'San Isidro Farmers Association', // Must be an exact name from the IPO list
             packageType: 'Package 3',
+            indigenousPeopleOrganization: 'San Isidro Farmers Association', // Must be an exact name from the IPO list
             startDate: '2024-01-01',
             estimatedCompletionDate: '2024-12-31',
             remarks: 'Initial planning phase.',
-            details: '[{"type":"Infrastructure","particulars":"Gravel and Sand","deliveryDate":"2024-02-15","unitOfMeasure":"lot","pricePerUnit":500000,"numberOfUnits":1,"objectType":"CO","expenseParticular":"Buildings and Other Structures","uacsCode":"10604020-00","obligationMonth":"2024-01-20","disbursementMonth":"2024-03-01"}]'
+            fundingYear: 2024,
+            fundType: 'Current',
+            tier: 'Tier 1',
+            detail_type: 'Infrastructure',
+            detail_particulars: 'Gravel and Sand',
+            detail_deliveryDate: '2024-02-15',
+            detail_unitOfMeasure: 'lot',
+            detail_pricePerUnit: 500000,
+            detail_numberOfUnits: 1,
+            detail_objectType: 'CO',
+            detail_expenseParticular: 'Buildings and Other Structures',
+            detail_uacsCode: '10604020-00',
+            detail_obligationMonth: '2024-01-20',
+            detail_disbursementMonth: '2024-03-01'
+        },
+        {
+            uid: 'PROJ-001',
+            name: '', packageType: '', indigenousPeopleOrganization: '', startDate: '', estimatedCompletionDate: '', remarks: '', 
+            fundingYear: '', fundType: '', tier: '',
+            detail_type: 'Infrastructure',
+            detail_particulars: 'Skilled Labor',
+            detail_deliveryDate: '2024-03-01',
+            detail_unitOfMeasure: 'lot',
+            detail_pricePerUnit: 250000,
+            detail_numberOfUnits: 1,
+            detail_objectType: 'MOOE',
+            detail_expenseParticular: 'Professional Services',
+            detail_uacsCode: '50211990-00',
+            detail_obligationMonth: '2024-02-20',
+            detail_disbursementMonth: '2024-03-15'
         }];
 
         const instructions = [
             ["Column", "Description", "Required?"],
-            ["name", "Full name of the Subproject.", "Yes"],
-            ["indigenousPeopleOrganization", "The exact, full name of an existing IPO in the system.", "Yes"],
-            ["packageType", "e.g., 'Package 1', 'Package 2', etc.", "Yes"],
-            ["startDate", "Date in YYYY-MM-DD format.", "Yes"],
-            ["estimatedCompletionDate", "Date in YYYY-MM-DD format.", "Yes"],
+            ["uid", "A unique identifier for the project. Rows with the same UID will be grouped into one project.", "Yes"],
+            ["name", "Full name of the Subproject. Required only for the first row of a new UID.", "Conditional"],
+            ["packageType", "e.g., 'Package 1', 'Package 2', etc. Required only for the first row of a new UID.", "Conditional"],
+            ["indigenousPeopleOrganization", "The exact, full name of an existing IPO in the system. Required only for the first row of a new UID.", "Conditional"],
+            ["startDate", "Date in YYYY-MM-DD format. Required only for the first row of a new UID.", "Conditional"],
+            ["estimatedCompletionDate", "Date in YYYY-MM-DD format. Required only for the first row of a new UID.", "Conditional"],
             ["remarks", "Any relevant remarks about the project.", "No"],
-            ["details", `A JSON string for project breakdown with UACS. See template for exact format. Use '[]' if empty.`, "Yes"],
+            ["fundingYear", "The funding year (e.g., 2024).", "No"],
+            ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
+            ["tier", `Must be one of: ${tiers.join(', ')}`, "No"],
+            ["---"],
+            ["detail_type", "Type of the budget item (e.g., 'Infrastructure', 'Equipment').", "Yes"],
+            ["detail_particulars", "Specific item name (e.g., 'Cement', 'Water Pump').", "Yes"],
+            ["detail_deliveryDate", "Date in YYYY-MM-DD format.", "Yes"],
+            ["detail_unitOfMeasure", "Unit of measure (pcs, kgs, unit, lot).", "Yes"],
+            ["detail_pricePerUnit", "Price per unit (number only).", "Yes"],
+            ["detail_numberOfUnits", "Number of units (number only).", "Yes"],
+            ["detail_objectType", "Expense type (MOOE or CO).", "Yes"],
+            ["detail_expenseParticular", "The general expense category (e.g., 'Buildings and Other Structures').", "Yes"],
+            ["detail_uacsCode", "The specific UACS code for the expense.", "Yes"],
+            ["detail_obligationMonth", "Date in YYYY-MM-DD format.", "Yes"],
+            ["detail_disbursementMonth", "Date in YYYY-MM-DD format.", "Yes"],
         ];
 
         const wb = XLSX.utils.book_new();
@@ -509,50 +557,87 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-                let currentMaxId = subprojects.reduce((max, p) => Math.max(max, p.id), 0);
+                const groupedProjects = new Map<string, { projectData: Omit<Subproject, 'id' | 'details'>, detailsData: SubprojectDetailInput[] }>();
                 const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
-                
-                const newSubprojects: Subproject[] = jsonData.map((row, index) => {
+
+                // Group rows by UID
+                for (const [index, row] of jsonData.entries()) {
                     const rowNum = index + 2;
-                    // Validation
-                    if (!row.name || !row.indigenousPeopleOrganization || !row.startDate || !row.estimatedCompletionDate || !row.packageType) {
-                        throw new Error(`Row ${rowNum}: Missing required fields (name, indigenousPeopleOrganization, startDate, estimatedCompletionDate, packageType).`);
-                    }
-                    if (!existingIpoNames.has(row.indigenousPeopleOrganization)) {
-                        throw new Error(`Row ${rowNum}: IPO "${row.indigenousPeopleOrganization}" does not exist in the system.`);
+                    const uid = row.uid;
+
+                    if (!uid) {
+                        throw new Error(`Row ${rowNum}: Missing required 'uid' field.`);
                     }
 
-                    let details: SubprojectDetailInput[];
-                    try {
-                        details = typeof row.details === 'string' ? JSON.parse(row.details) : [];
-                        if (!Array.isArray(details)) throw new Error("Details must be a valid JSON array.");
-                    } catch {
-                        throw new Error(`Row ${rowNum}: Invalid JSON format in 'details' column.`);
+                    if (!groupedProjects.has(uid)) {
+                        // First time seeing this UID, create the project shell
+                        if (!row.name || !row.indigenousPeopleOrganization || !row.startDate || !row.estimatedCompletionDate || !row.packageType) {
+                            throw new Error(`Row ${rowNum}: First row for UID '${uid}' is missing required project fields (name, indigenousPeopleOrganization, startDate, estimatedCompletionDate, packageType).`);
+                        }
+                        if (!existingIpoNames.has(row.indigenousPeopleOrganization)) {
+                            throw new Error(`Row ${rowNum}: IPO "${row.indigenousPeopleOrganization}" does not exist in the system.`);
+                        }
+                        const linkedIpo = ipos.find(ipo => ipo.name === row.indigenousPeopleOrganization)!;
+                        
+                        groupedProjects.set(uid, {
+                            projectData: {
+                                uid: String(uid),
+                                name: String(row.name),
+                                packageType: String(row.packageType) as `Package ${number}`,
+                                indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
+                                startDate: String(row.startDate),
+                                estimatedCompletionDate: String(row.estimatedCompletionDate),
+                                remarks: String(row.remarks || ''),
+                                fundingYear: Number(row.fundingYear) || new Date().getFullYear(),
+                                fundType: fundTypes.includes(row.fundType) ? row.fundType : fundTypes[0],
+                                tier: tiers.includes(row.tier) ? row.tier : tiers[0],
+                                location: linkedIpo.location,
+                                status: 'Proposed',
+                                actualCompletionDate: '',
+                                lat: 14.5, // Dummy
+                                lng: 121.5, // Dummy
+                                history: [{ date: new Date().toISOString().split('T')[0], user: 'System', event: 'Subproject created via bulk upload.' }]
+                            },
+                            detailsData: []
+                        });
                     }
 
+                    // Add the detail item from the current row
+                    const detail: SubprojectDetailInput = {
+                        type: String(row.detail_type),
+                        particulars: String(row.detail_particulars),
+                        deliveryDate: String(row.detail_deliveryDate),
+                        unitOfMeasure: row.detail_unitOfMeasure as any,
+                        pricePerUnit: Number(row.detail_pricePerUnit),
+                        numberOfUnits: Number(row.detail_numberOfUnits),
+                        objectType: row.detail_objectType as ObjectType,
+                        expenseParticular: String(row.detail_expenseParticular),
+                        uacsCode: String(row.detail_uacsCode),
+                        obligationMonth: String(row.detail_obligationMonth),
+                        disbursementMonth: String(row.detail_disbursementMonth),
+                    };
+                    
+                    if (!detail.type || !detail.particulars || !detail.deliveryDate || isNaN(detail.pricePerUnit) || isNaN(detail.numberOfUnits) || !detail.uacsCode || !detail.obligationMonth || !detail.disbursementMonth) {
+                        throw new Error(`Row ${rowNum} for UID '${uid}': Missing or invalid required detail fields.`);
+                    }
+
+                    groupedProjects.get(uid)!.detailsData.push(detail);
+                }
+
+                // Convert map to final Subproject array
+                let currentMaxId = subprojects.reduce((max, p) => Math.max(max, p.id), 0);
+                const newSubprojects: Subproject[] = Array.from(groupedProjects.values()).map(group => {
                     currentMaxId++;
-                    const linkedIpo = ipos.find(ipo => ipo.name === row.indigenousPeopleOrganization)!;
-
                     return {
                         id: currentMaxId,
-                        name: String(row.name),
-                        location: linkedIpo.location, // Inherit location from IPO
-                        indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
-                        status: 'Proposed', // Default status for new uploads
-                        packageType: String(row.packageType) as `Package ${number}`,
-                        startDate: String(row.startDate),
-                        estimatedCompletionDate: String(row.estimatedCompletionDate),
-                        actualCompletionDate: '',
-                        remarks: String(row.remarks || ''),
-                        lat: 14.5, // Dummy coords
-                        lng: 121.5,
-                        details: details.map((d, i) => ({ ...d, id: i + 1 })),
-                        history: [{ date: new Date().toISOString().split('T')[0], user: 'System', event: 'Subproject created via bulk upload.' }]
+                        ...group.projectData,
+                        details: group.detailsData.map((d, i) => ({ ...d, id: i + 1 })),
                     };
                 });
 
                 setSubprojects(prev => [...prev, ...newSubprojects]);
-                alert(`${newSubprojects.length} subproject(s) imported successfully!`);
+                alert(`${newSubprojects.length} subproject(s) imported successfully from ${jsonData.length} rows!`);
+
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
                 alert(`Failed to import file. ${error.message}`);

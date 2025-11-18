@@ -292,6 +292,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Project Details</h3>
                          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                             <DetailItem label="Status" value={<span className={getStatusBadge(subproject.status)}>{subproject.status}</span>} />
+                            <DetailItem label="UID" value={subproject.uid} />
                             <DetailItem label="Package" value={subproject.packageType} />
                             <DetailItem label="IPO" value={subproject.indigenousPeopleOrganization} />
                             <DetailItem label="Start Date" value={formatDate(subproject.startDate)} />
