@@ -2,7 +2,7 @@
 
 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, objectCodes, ObjectCode } from '../constants';
+import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, objectCodes, ObjectCode, fundTypes, FundType, tiers, Tier } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -26,6 +26,9 @@ const defaultFormData = {
     participantsFemale: 0,
     component: 'Social Preparation' as OtherActivityComponentType,
     expenses: [] as OtherActivityExpense[],
+    fundingYear: new Date().getFullYear(),
+    fundType: fundTypes[0] as FundType,
+    tier: tiers[0] as Tier,
 };
 
 const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherActivities, setOtherActivities, onSelectIpo }) => {
@@ -63,6 +66,9 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                 ...editingActivity,
                 participantsMale: Number(editingActivity.participantsMale) || 0,
                 participantsFemale: Number(editingActivity.participantsFemale) || 0,
+                fundingYear: editingActivity.fundingYear ?? new Date().getFullYear(),
+                fundType: editingActivity.fundType ?? fundTypes[0],
+                tier: editingActivity.tier ?? tiers[0],
             });
              setActiveTab('details');
         } else {
@@ -218,6 +224,7 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
             participantsMale: showParticipants ? Number(formData.participantsMale) || 0 : 0,
             participantsFemale: showParticipants ? Number(formData.participantsFemale) || 0 : 0,
             participatingIpos: showIpos ? formData.participatingIpos : [],
+            fundingYear: Number(formData.fundingYear) || new Date().getFullYear(),
         };
 
         if (editingActivity) {
@@ -317,6 +324,9 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
             'Male Participants': a.participantsMale,
             'Female Participants': a.participantsFemale,
             'Total Budget': a.expenses.reduce((sum, e) => sum + e.amount, 0),
+            'Funding Year': a.fundingYear,
+            'Fund Type': a.fundType,
+            'Tier': a.tier,
             'Participating IPOs': a.participatingIpos.join(', '),
             'Description': a.description,
         }));
@@ -348,7 +358,10 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
             participatingIpos: 'San Isidro Farmers Association',
             participantsMale: 20,
             participantsFemale: 25,
-            expenses: '[{"objectCode":"MOOE","obligationMonth":"2024-02-15","disbursementMonth":"2024-02-28","amount":30000}]'
+            expenses: '[{"objectCode":"MOOE","obligationMonth":"2024-02-15","disbursementMonth":"2024-02-28","amount":30000}]',
+            fundingYear: 2024,
+            fundType: 'Current',
+            tier: 'Tier 1'
         }];
 
         const instructions = [
@@ -362,6 +375,9 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
             ["participantsMale", "Number of male participants. Leave blank if not applicable.", "Conditional"],
             ["participantsFemale", "Number of female participants. Leave blank if not applicable.", "Conditional"],
             ["expenses", `A JSON string for expenses. Format: '[{"objectCode":"CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
+            ["fundingYear", "The funding year (e.g., 2024).", "No"],
+            ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
+            ["tier", `Must be one of: ${tiers.join(', ')}`, "No"],
         ];
 
         const wb = XLSX.utils.book_new();
@@ -429,6 +445,9 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                         participantsMale: Number(row.participantsMale) || 0,
                         participantsFemale: Number(row.participantsFemale) || 0,
                         expenses: expenses.map((exp, i) => ({ ...exp, id: Date.now() + i })),
+                        fundingYear: Number(row.fundingYear) || undefined,
+                        fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
+                        tier: tiers.includes(row.tier) ? row.tier : undefined,
                     };
                 });
 
@@ -563,7 +582,7 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                                                         </div>
                                                     </div>
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget Breakdown</h4>
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Funding</h4>
                                                         {activity.expenses.length > 0 ? (
                                                              <ul className="space-y-1">
                                                                 {activity.expenses.map(exp => (
@@ -580,6 +599,11 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                                                         ) : (
                                                              <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>
                                                         )}
+                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {activity.fundingYear ?? 'N/A'}</p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> {activity.fundType ?? 'N/A'}</p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> {activity.tier ?? 'N/A'}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -640,7 +664,7 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         <TabButton tabName="details" label="Activity Details" />
-                        <TabButton tabName="budget" label="Budget" />
+                        <TabButton tabName="budget" label="Activity Expenses" />
                     </nav>
                 </div>
                 <div className="min-h-[400px]">
@@ -736,8 +760,29 @@ const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherA
                      {activeTab === 'budget' && (
                          <div className="space-y-6">
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Source</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
+                                        <input type="number" name="fundingYear" id="fundingYear" value={formData.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="fundType" className="block text-sm font-medium">Fund Type</label>
+                                        <select name="fundType" id="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                            {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label htmlFor="tier" className="block text-sm font-medium">Tier</label>
+                                        <select name="tier" id="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expense Items</legend>
-                                <div className="space-y-2 mb-4">
+                                 <div className="space-y-2 mb-4">
                                     {formData.expenses.length === 0 && <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No expense items added yet.</p>}
                                     {formData.expenses.map((exp) => (
                                         <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">

@@ -1,6 +1,5 @@
 
 
-
 import React from 'react';
 
 // Centralized Type Definitions
@@ -163,6 +162,9 @@ export interface OtherActivity {
     participantsMale: number;
     participantsFemale: number;
     expenses: OtherActivityExpense[];
+    fundingYear?: number;
+    fundType?: FundType;
+    tier?: Tier;
 }
 
 

@@ -47,7 +47,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [packageFilter, setPackageFilter] = useState('All');
     type SortKeys = keyof Subproject | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
-    const [activeTab, setActiveTab] = useState<'info' | 'breakdown'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'expenses'>('info');
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
     const [currentPage, setCurrentPage] = useState(1);
@@ -777,7 +777,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                         <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                             <TabButton tabName="info" label="Project Information" />
-                            <TabButton tabName="breakdown" label="Project Breakdown" />
+                            <TabButton tabName="expenses" label="Project Expenses" />
                         </nav>
                     </div>
 
@@ -860,24 +860,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={formData.actualCompletionDate} onChange={handleInputChange} className={commonInputClasses} />
                                      </div>
                                  )}
-                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label htmlFor="fundingYear" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Funding Year</label>
-                                        <input type="number" name="fundingYear" id="fundingYear" value={formData.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label htmlFor="fundType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
-                                        <select name="fundType" id="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
-                                            {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label htmlFor="tier" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
-                                        <select name="tier" id="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
                                  <div>
                                     <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks</label>
                                     <textarea name="remarks" id="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className={commonInputClasses} />
@@ -885,93 +867,117 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                              </div>
                          )}
                          
-                         {activeTab === 'breakdown' && (
+                         {activeTab === 'expenses' && (
                              <div className="space-y-6 animate-fadeIn">
-                                 <h4 className="text-lg font-medium text-gray-800 dark:text-white">Project Details / Items</h4>
-                                 <div className="space-y-2 mb-4">
-                                    {detailItems.length === 0 && (
-                                        <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No budget items added yet.</p>
-                                    )}
-                                    {detailItems.map((item, index) => (
-                                        <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                            <div className="text-sm flex-grow">
-                                                <span className="font-semibold">{item.particulars}</span>
-                                                <span className="text-gray-500 dark:text-gray-400"> ({item.type} - {item.objectCode})</span>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
-                                            </div>
-                                            <div className="flex items-center gap-4 ml-4">
-                                            <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
-                                                <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                                </button>
-                                                <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                </button>
-                                            </div>
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Source</legend>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label htmlFor="fundingYear" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Funding Year</label>
+                                            <input type="number" name="fundingYear" id="fundingYear" value={formData.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
                                         </div>
-                                    ))}
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                                    <div className="lg:col-span-2">
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
-                                        <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                            <option value="">Select a type</option>
-                                            {Object.keys(particularTypes).map(type => (
-                                                <option key={type} value={type}>{type}</option>
-                                            ))}
-                                        </select>
+                                        <div>
+                                            <label htmlFor="fundType" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
+                                            <select name="fundType" id="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                                {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label htmlFor="tier" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
+                                            <select name="tier" id="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div className="lg:col-span-2">
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
-                                        <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
-                                            <option value="">Select an item</option>
-                                            {currentDetail.type && particularTypes[currentDetail.type].map(item => (
-                                                <option key={item} value={item}>{item}</option>
-                                            ))}
-                                        </select>
+                                </fieldset>
+                                
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expense Items</legend>
+                                    <div className="space-y-2 mb-4">
+                                        {detailItems.length === 0 && (
+                                            <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No budget items added yet.</p>
+                                        )}
+                                        {detailItems.map((item, index) => (
+                                            <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
+                                                <div className="text-sm flex-grow">
+                                                    <span className="font-semibold">{item.particulars}</span>
+                                                    <span className="text-gray-500 dark:text-gray-400"> ({item.type} - {item.objectCode})</span>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">Delivery: {formatDate(item.deliveryDate)} | {item.numberOfUnits} {item.unitOfMeasure} @ {formatCurrency(item.pricePerUnit)}</div>
+                                                </div>
+                                                <div className="flex items-center gap-4 ml-4">
+                                                <span className="font-semibold text-sm">{formatCurrency(item.pricePerUnit * item.numberOfUnits)}</span>
+                                                    <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                    </button>
+                                                    <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                    
-                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
-                                        <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                                        {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
-                                    </div>
-                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label>
-                                        <select name="objectCode" value={currentDetail.objectCode} onChange={(e) => handleDetailChange(e as React.ChangeEvent<HTMLSelectElement>)} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                            {objectCodes.map(code => <option key={code} value={code}>{code}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>
-                                        <input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                                    </div>
-                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label>
-                                        <input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                                        <div className="lg:col-span-2">
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
+                                            <select name="type" value={currentDetail.type} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                                <option value="">Select a type</option>
+                                                {Object.keys(particularTypes).map(type => (
+                                                    <option key={type} value={type}>{type}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="lg:col-span-2">
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item</label>
+                                            <select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                                <option value="">Select an item</option>
+                                                {currentDetail.type && particularTypes[currentDetail.type].map(item => (
+                                                    <option key={item} value={item}>{item}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        
+                                         <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label>
+                                            <input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                            {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
+                                        </div>
+                                         <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Code</label>
+                                            <select name="objectCode" value={currentDetail.objectCode} onChange={(e) => handleDetailChange(e as React.ChangeEvent<HTMLSelectElement>)} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                                {objectCodes.map(code => <option key={code} value={code}>{code}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>
+                                            <input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        </div>
+                                         <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label>
+                                            <input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        </div>
 
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
-                                        <select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                            <option>pcs</option>
-                                            <option>kgs</option>
-                                            <option>unit</option>
-                                            <option>lot</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
-                                        <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
-                                    </div>
-                                    <div className="flex items-center gap-2 col-span-2">
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
-                                            <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label>
+                                            <select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                                <option>pcs</option>
+                                                <option>kgs</option>
+                                                <option>unit</option>
+                                                <option>lot</option>
+                                            </select>
                                         </div>
-                                        <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label>
+                                            <input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} min="0" step="0.01" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        </div>
+                                        <div className="flex items-center gap-2 col-span-2">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label>
+                                                <input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} min="1" step="1" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                            </div>
+                                            <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                                        </div>
                                     </div>
-                                </div>
+                                </fieldset>
                              </div>
                          )}
                     </div>
