@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -17,7 +17,7 @@ import Login from './components/Login';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
-    initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity,
+    initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
     sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList 
 } from './constants';
@@ -42,6 +42,17 @@ const AppContent: React.FC = () => {
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
     const [previousPage, setPreviousPage] = useState('/');
+
+    // Track previous user to redirect to home on login
+    const prevUserRef = useRef<User | null>(null);
+
+    useEffect(() => {
+        // If user just logged in (was null, now is set), reset to homepage
+        if (currentUser && !prevUserRef.current) {
+            setCurrentPage('/');
+        }
+        prevUserRef.current = currentUser;
+    }, [currentUser]);
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
     const toggleDarkMode = () => {
@@ -199,6 +210,7 @@ const AppContent: React.FC = () => {
                     toggleSidebar={toggleSidebar} 
                     toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
+                    setCurrentPage={setCurrentPage}
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
                     {renderPage()}

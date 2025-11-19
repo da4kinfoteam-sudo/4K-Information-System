@@ -1,11 +1,13 @@
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { SettingsIcon } from '../constants';
 
 interface HeaderProps {
     toggleSidebar: () => void;
     toggleDarkMode: () => void;
     isDarkMode: boolean;
+    setCurrentPage: (page: string) => void;
 }
 
 const SunIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -20,12 +22,32 @@ const MoonIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const UserCircleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
 
-const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMode }) => {
+const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMode, setCurrentPage }) => {
     const { currentUser, logout } = useAuth();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
 
     return (
-        <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md">
+        <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md z-20">
             <div className="flex items-center justify-between p-4">
                 {/* Mobile Menu Button */}
                 <button 
@@ -38,33 +60,63 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                     </svg>
                 </button>
                 
-                {/* Spacer to push dark mode toggle to the right */}
+                {/* Spacer to push content to the right */}
                 <div className="flex-1"></div>
 
                 <div className="flex items-center space-x-4">
                     {currentUser && (
-                        <div className="flex items-center gap-2">
-                             <div className="text-right hidden sm:block">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white">Hello, {currentUser.fullName}</p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role} | {currentUser.operatingUnit}</p>
-                            </div>
-                            <button 
-                                onClick={logout}
-                                className="text-sm text-red-600 hover:text-red-800 font-medium"
+                        <div className="relative" ref={menuRef}>
+                             <div 
+                                className="flex items-center gap-3 cursor-pointer"
+                                onClick={() => setIsMenuOpen(!isMenuOpen)}
                             >
-                                Logout
-                            </button>
+                                <div className="text-right hidden sm:block">
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white">Hello, {currentUser.fullName}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role} | {currentUser.operatingUnit}</p>
+                                </div>
+                                <button 
+                                    className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white focus:outline-none"
+                                >
+                                    <UserCircleIcon className="h-9 w-9" />
+                                </button>
+                            </div>
+
+                            {isMenuOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 ring-1 ring-black ring-opacity-5 focus:outline-none animate-fadeIn">
+                                    {/* Mobile only user info in dropdown */}
+                                    <div className="sm:hidden px-4 py-2 border-b border-gray-100 dark:border-gray-700 mb-1">
+                                        <p className="text-sm font-medium text-gray-900 dark:text-white">{currentUser.fullName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</p>
+                                    </div>
+
+                                    <button
+                                        onClick={() => { setCurrentPage('/settings'); setIsMenuOpen(false); }}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        <SettingsIcon className="h-4 w-4 mr-2" />
+                                        User Settings
+                                    </button>
+                                    <button
+                                        onClick={toggleDarkMode}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        {isDarkMode ? <SunIcon className="h-4 w-4 mr-2" /> : <MoonIcon className="h-4 w-4 mr-2" />}
+                                        {isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
+                                    </button>
+                                    <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
+                                    <button
+                                        onClick={() => { logout(); setIsMenuOpen(false); }}
+                                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                        Logout
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
-
-                    {/* Dark Mode Toggle */}
-                    <button 
-                        onClick={toggleDarkMode}
-                        className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800 focus:ring-accent"
-                        aria-label="Toggle dark mode"
-                    >
-                        {isDarkMode ? <SunIcon /> : <MoonIcon />}
-                    </button>
                 </div>
             </div>
         </header>
