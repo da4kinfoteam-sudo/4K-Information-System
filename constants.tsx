@@ -1,3 +1,4 @@
+
 // Author: AI
 // OS support: Any
 // Description: Constants and type definitions for the application
@@ -40,6 +41,15 @@ export interface IPO {
     lng?: number;
 }
 
+export interface User {
+    id: number;
+    username: string;
+    fullName: string;
+    email: string;
+    role: 'Administrator' | 'User' | 'Management';
+    operatingUnit: string;
+    password?: string; // Simple storage for this demo
+}
 
 export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
   MOOE: {
@@ -106,7 +116,6 @@ export interface SubprojectDetail {
     type: string;
     particulars: string;
     deliveryDate: string;
-    // Fix: added 'heads' to allowed types
     unitOfMeasure: 'pcs' | 'kgs' | 'unit' | 'lot' | 'heads';
     pricePerUnit: number;
     numberOfUnits: number;
@@ -142,6 +151,8 @@ export interface Subproject {
     fundingYear?: number;
     fundType?: FundType;
     tier?: Tier;
+    operatingUnit: string;
+    encodedBy: string;
 }
 
 export type TrainingComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
@@ -176,6 +187,8 @@ export interface Training {
     fundingYear?: number;
     fundType?: FundType;
     tier?: Tier;
+    operatingUnit: string;
+    encodedBy: string;
 }
 
 export type OtherActivityComponentType = 'Social Preparation' | 'Marketing and Enterprise' | 'Program Management';
@@ -230,6 +243,8 @@ export interface OtherActivity {
     fundingYear?: number;
     fundType?: FundType;
     tier?: Tier;
+    operatingUnit: string;
+    encodedBy: string;
 }
 
 
@@ -523,6 +538,8 @@ export const sampleSubprojects: Subproject[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         details: [
             { id: 1, type: "Infrastructure", particulars: "Processing Shed", deliveryDate: "2024-03-01", unitOfMeasure: "unit", pricePerUnit: 500000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Buildings and Other Structures", uacsCode: "10604020-00", obligationMonth: "2024-01-30", disbursementMonth: "2024-03-15" },
             { id: 2, type: "Equipment", particulars: "Coffee Roaster", deliveryDate: "2024-04-01", unitOfMeasure: "unit", pricePerUnit: 150000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-02-28", disbursementMonth: "2024-04-15" }
@@ -544,6 +561,8 @@ export const sampleSubprojects: Subproject[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         details: [
             { id: 1, type: "Livestock", particulars: "Goats (Breeder)", deliveryDate: "2024-03-15", unitOfMeasure: "heads", pricePerUnit: 10000, numberOfUnits: 30, objectType: "CO", expenseParticular: "Breeding Stocks", uacsCode: "10607010-00", obligationMonth: "2024-02-15", disbursementMonth: "2024-03-20" }
         ]
@@ -563,6 +582,8 @@ export const sampleSubprojects: Subproject[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 2",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         details: [
             { id: 1, type: "Equipment", particulars: "VCO Press", deliveryDate: "2024-08-01", unitOfMeasure: "unit", pricePerUnit: 80000, numberOfUnits: 2, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-07-15", disbursementMonth: "2024-08-15" }
         ]
@@ -583,6 +604,8 @@ export const sampleSubprojects: Subproject[] = [
         fundingYear: 2023,
         fundType: "Continuing",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         details: [
             { id: 1, type: "Crop Commodity", particulars: "Cacao Seedlings", deliveryDate: "2023-06-01", unitOfMeasure: "pcs", pricePerUnit: 50, numberOfUnits: 5000, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2023-05-15", disbursementMonth: "2023-06-15" }
         ]
@@ -602,6 +625,8 @@ export const sampleSubprojects: Subproject[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         details: [
             { id: 1, type: "Livestock", particulars: "Native Chicken", deliveryDate: "2024-05-01", unitOfMeasure: "heads", pricePerUnit: 500, numberOfUnits: 200, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2024-04-15", disbursementMonth: "2024-05-15" }
         ]
@@ -623,6 +648,8 @@ export const sampleTrainings: Training[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         expenses: [
             { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-02-01", disbursementMonth: "2024-02-15", amount: 45000 }
         ]
@@ -641,6 +668,8 @@ export const sampleTrainings: Training[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         expenses: [
             { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-02-20", disbursementMonth: "2024-03-10", amount: 30000 }
         ]
@@ -659,6 +688,8 @@ export const sampleTrainings: Training[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 2",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         expenses: [
             { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-07-01", disbursementMonth: "2024-07-20", amount: 50000 }
         ]
@@ -677,6 +708,8 @@ export const sampleTrainings: Training[] = [
         fundingYear: 2023,
         fundType: "Continuing",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         expenses: [
             { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2023-06-01", disbursementMonth: "2023-06-25", amount: 35000 }
         ]
@@ -695,6 +728,8 @@ export const sampleTrainings: Training[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         expenses: [
             { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-05-01", disbursementMonth: "2024-05-15", amount: 60000 }
         ]
@@ -715,6 +750,8 @@ export const sampleOtherActivities: OtherActivity[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Travelling Expenses", uacsCode: "50201010-00", obligationMonth: "2024-01-15", disbursementMonth: "2024-01-25", amount: 15000 }
         ]
@@ -732,6 +769,8 @@ export const sampleOtherActivities: OtherActivity[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 11",
+        encodedBy: "Admin User",
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Travelling Expenses", uacsCode: "50201010-00", obligationMonth: "2024-04-01", disbursementMonth: "2024-04-20", amount: 20000 }
         ]
@@ -749,6 +788,8 @@ export const sampleOtherActivities: OtherActivity[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Representation Expenses", uacsCode: "50299030-00", obligationMonth: "2024-06-01", disbursementMonth: "2024-06-15", amount: 5000 }
         ]
@@ -766,6 +807,8 @@ export const sampleOtherActivities: OtherActivity[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "RPMO 4A",
+        encodedBy: "Juan Dela Cruz",
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Office Supplies Expenses", uacsCode: "50203010-01", obligationMonth: "2024-02-01", disbursementMonth: "2024-02-20", amount: 8000 }
         ]
@@ -783,6 +826,8 @@ export const sampleOtherActivities: OtherActivity[] = [
         fundingYear: 2024,
         fundType: "Current",
         tier: "Tier 1",
+        operatingUnit: "NPMO",
+        encodedBy: "Admin User",
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Other Supplies and Materials Expenses", uacsCode: "50203990-00", obligationMonth: "2024-06-20", disbursementMonth: "2024-07-10", amount: 50000 }
         ]

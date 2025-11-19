@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { navigationLinks, NavLink, SettingsIcon } from '../constants';
 
@@ -81,7 +82,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                         }}
                         className={`flex items-center p-3 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 ${currentPage === '/settings' ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : 'font-medium'}`}
                     >
-                        <SettingsIcon className="w-6 h-6 mr-3" />
                         <span>User Settings</span>
                     </a>
                 </div>

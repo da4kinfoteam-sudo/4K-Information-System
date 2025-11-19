@@ -13,14 +13,17 @@ import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
 import Settings from './components/Settings';
+import Login from './components/Login';
 import useLocalStorageState from './hooks/useLocalStorageState';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity,
     sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList 
 } from './constants';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
+    const { currentUser } = useAuth();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
@@ -57,13 +60,7 @@ export const App: React.FC = () => {
 
     // Derived References
     const derivedUacsCodes = useMemo(() => {
-        const newCodes = JSON.parse(JSON.stringify(initialUacsCodes)); // Deep copy for base structure
-        
-        // Clear base structure to rely fully on reference list if preferred, 
-        // OR merge. Here we merge to ensure user added ones appear.
-        // To fully rely on the reference list (which is initialized with the flattened initialUacsCodes),
-        // we should reconstruct the tree from scratch.
-        
+        const newCodes = JSON.parse(JSON.stringify(initialUacsCodes)); 
         const tree: { [key: string]: { [key: string]: { [key: string]: string } } } = {};
 
         referenceUacsList.forEach(item => {
@@ -105,6 +102,9 @@ export const App: React.FC = () => {
         setSelectedIpo(null);
     };
 
+    if (!currentUser) {
+        return <Login />;
+    }
 
     const renderPage = () => {
         switch (currentPage) {
@@ -205,5 +205,13 @@ export const App: React.FC = () => {
                 </main>
             </div>
         </div>
+    );
+};
+
+export const App: React.FC = () => {
+    return (
+        <AuthProvider>
+            <AppContent />
+        </AuthProvider>
     );
 };

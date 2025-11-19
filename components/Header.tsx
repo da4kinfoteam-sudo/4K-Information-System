@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
     toggleSidebar: () => void;
@@ -21,6 +22,8 @@ const MoonIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 
 const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMode }) => {
+    const { currentUser, logout } = useAuth();
+
     return (
         <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md">
             <div className="flex items-center justify-between p-4">
@@ -38,14 +41,31 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 {/* Spacer to push dark mode toggle to the right */}
                 <div className="flex-1"></div>
 
-                {/* Dark Mode Toggle */}
-                <button 
-                    onClick={toggleDarkMode}
-                    className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800 focus:ring-accent"
-                    aria-label="Toggle dark mode"
-                >
-                    {isDarkMode ? <SunIcon /> : <MoonIcon />}
-                </button>
+                <div className="flex items-center space-x-4">
+                    {currentUser && (
+                        <div className="flex items-center gap-2">
+                             <div className="text-right hidden sm:block">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white">Hello, {currentUser.fullName}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role} | {currentUser.operatingUnit}</p>
+                            </div>
+                            <button 
+                                onClick={logout}
+                                className="text-sm text-red-600 hover:text-red-800 font-medium"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Dark Mode Toggle */}
+                    <button 
+                        onClick={toggleDarkMode}
+                        className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-gray-800 focus:ring-accent"
+                        aria-label="Toggle dark mode"
+                    >
+                        {isDarkMode ? <SunIcon /> : <MoonIcon />}
+                    </button>
+                </div>
             </div>
         </header>
     );
