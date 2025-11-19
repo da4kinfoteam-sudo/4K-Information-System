@@ -12,6 +12,7 @@ import References, { ReferenceUacs, ReferenceParticular } from './components/Ref
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
+import Settings from './components/Settings';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity,
@@ -178,6 +179,8 @@ export const App: React.FC = () => {
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
                         />;
+            case '/settings':
+                return <Settings isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
             default:
                 return <div className="p-6">Page not found</div>;
         }

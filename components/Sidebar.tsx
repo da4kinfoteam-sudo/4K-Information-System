@@ -1,5 +1,5 @@
 import React from 'react';
-import { navigationLinks, NavLink } from '../constants';
+import { navigationLinks, NavLink, SettingsIcon } from '../constants';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -37,9 +37,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
 
             {/* Sidebar */}
             <aside 
-                className={`fixed top-0 left-0 w-64 h-full bg-white dark:bg-gray-800 shadow-xl z-30 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:shadow-none ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+                className={`fixed top-0 left-0 w-64 h-full bg-white dark:bg-gray-800 shadow-xl z-30 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 md:shadow-none ${isOpen ? 'translate-x-0' : '-translate-x-full'} flex flex-col`}
             >
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col items-center text-center">
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col items-center text-center flex-shrink-0">
                     <div className="flex items-center justify-between w-full">
                          <div className="w-10"></div> {/* Spacer */}
                          <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center">
@@ -57,7 +57,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                         </button>
                     </div>
                 </div>
-                <nav className="p-4">
+                <nav className="p-4 flex-1 overflow-y-auto">
                     <ul>
                         {navigationLinks.map((link) => (
                              <li key={link.name}>
@@ -70,6 +70,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                         ))}
                     </ul>
                 </nav>
+                
+                <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                    <a 
+                        href="/settings"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage('/settings');
+                            closeSidebar();
+                        }}
+                        className={`flex items-center p-3 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 ${currentPage === '/settings' ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : 'font-medium'}`}
+                    >
+                        <SettingsIcon className="w-6 h-6 mr-3" />
+                        <span>User Settings</span>
+                    </a>
+                </div>
             </aside>
         </>
     );
