@@ -1,10 +1,6 @@
 
-
-
-
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-// FIX: Replace objectCodes/ObjectCode with uacsCodes, objectTypes, and ObjectType to use the full UACS system, resolving import and type errors.
-import { Training, IPO, philippineRegions, trainingComponents, fundTypes, tiers, TrainingComponentType, OtherActivityExpense, uacsCodes, objectTypes, ObjectType, FundType, Tier } from '../constants';
+import { Training, IPO, philippineRegions, TrainingComponentType, trainingComponents, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -15,25 +11,27 @@ interface TrainingsProps {
     trainings: Training[];
     setTrainings: React.Dispatch<React.SetStateAction<Training[]>>;
     onSelectIpo: (ipo: IPO) => void;
+    uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
-const defaultFormData = {
+const defaultFormData: Training = {
+    id: 0,
     name: '',
     date: '',
     description: '',
     location: '',
     facilitator: '',
-    participatingIpos: [] as string[],
+    participatingIpos: [],
     participantsMale: 0,
     participantsFemale: 0,
-    component: trainingComponents[0],
-    expenses: [] as OtherActivityExpense[],
+    component: 'Social Preparation',
+    expenses: [],
     fundingYear: new Date().getFullYear(),
     fundType: fundTypes[0] as FundType,
     tier: tiers[0] as Tier,
 };
 
-const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrainings, onSelectIpo }) => {
+export const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrainings, onSelectIpo, uacsCodes }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [editingTraining, setEditingTraining] = useState<Training | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -44,16 +42,15 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
 
     const [searchTerm, setSearchTerm] = useState('');
     const [tableRegionFilter, setTableRegionFilter] = useState('All');
-    const [componentFilter, setComponentFilter] = useState<'All' | TrainingComponentType>('All');
-    type SortKeys = keyof Training | 'totalParticipants' | 'totalBudget';
+    const [componentFilter, setComponentFilter] = useState<TrainingComponentType | 'All'>('All');
+    type SortKeys = keyof Training | 'totalParticipants' | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
-
+    
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
-    
-    // FIX: Update currentExpense state to use objectType, expenseParticular, and uacsCode for full UACS support.
+
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
         expenseParticular: '',
@@ -64,29 +61,17 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     });
 
     useEffect(() => {
-        if (formData.component === 'Program Management') {
-            setFormData(prev => ({ ...prev, participatingIpos: [] }));
-        }
-    }, [formData.component]);
-    
-    useEffect(() => {
         if (editingTraining) {
             setFormData({
-                name: editingTraining.name,
-                date: editingTraining.date,
-                description: editingTraining.description,
-                location: editingTraining.location,
-                facilitator: editingTraining.facilitator,
-                participatingIpos: editingTraining.participatingIpos,
-                participantsMale: editingTraining.participantsMale,
-                participantsFemale: editingTraining.participantsFemale,
-                component: editingTraining.component,
-                expenses: editingTraining.expenses ?? [],
+                ...defaultFormData,
+                ...editingTraining,
+                participantsMale: Number(editingTraining.participantsMale) || 0,
+                participantsFemale: Number(editingTraining.participantsFemale) || 0,
                 fundingYear: editingTraining.fundingYear ?? new Date().getFullYear(),
                 fundType: editingTraining.fundType ?? fundTypes[0],
                 tier: editingTraining.tier ?? tiers[0],
             });
-            setActiveTab('details');
+             setActiveTab('details');
         } else {
             setFormData(defaultFormData);
         }
@@ -98,39 +83,38 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     }, [ipoRegionFilter, ipos]);
 
     const processedTrainings = useMemo(() => {
-        let filteredTrainings = [...trainings];
-        
+        let filtered = [...trainings];
+
         if (tableRegionFilter !== 'All') {
             const iposInRegion = new Set(ipos.filter(ipo => ipo.region === tableRegionFilter).map(ipo => ipo.name));
-            filteredTrainings = filteredTrainings.filter(training =>
+            filtered = filtered.filter(training =>
                 training.participatingIpos.some(ipoName => iposInRegion.has(ipoName)) || (training.location === 'Online' && tableRegionFilter === 'Online')
             );
         }
         
         if (componentFilter !== 'All') {
-            filteredTrainings = filteredTrainings.filter(t => t.component === componentFilter);
+            filtered = filtered.filter(training => training.component === componentFilter);
         }
 
         if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
-            filteredTrainings = filteredTrainings.filter(t =>
+            filtered = filtered.filter(t =>
                 t.name.toLowerCase().includes(lowercasedSearchTerm) ||
                 t.location.toLowerCase().includes(lowercasedSearchTerm) ||
-                t.facilitator.toLowerCase().includes(lowercasedSearchTerm) ||
-                t.component.toLowerCase().includes(lowercasedSearchTerm) ||
-                t.description.toLowerCase().includes(lowercasedSearchTerm)
+                t.description.toLowerCase().includes(lowercasedSearchTerm) ||
+                t.facilitator.toLowerCase().includes(lowercasedSearchTerm)
             );
         }
 
         if (sortConfig !== null) {
-            filteredTrainings.sort((a, b) => {
+            filtered.sort((a, b) => {
                 let aValue: any;
                 let bValue: any;
 
                 if (sortConfig.key === 'totalParticipants') {
                     aValue = a.participantsMale + a.participantsFemale;
                     bValue = b.participantsMale + b.participantsFemale;
-                } else if (sortConfig.key === 'totalBudget') {
+                } else if (sortConfig.key === 'budget') {
                     aValue = a.expenses.reduce((sum, e) => sum + e.amount, 0);
                     bValue = b.expenses.reduce((sum, e) => sum + e.amount, 0);
                 }
@@ -148,9 +132,9 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 return 0;
             });
         }
-        return filteredTrainings;
-    }, [trainings, searchTerm, tableRegionFilter, sortConfig, ipos, componentFilter]);
-    
+        return filtered;
+    }, [trainings, searchTerm, componentFilter, sortConfig, tableRegionFilter, ipos]);
+
     const paginatedTrainings = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
         return processedTrainings.slice(startIndex, startIndex + itemsPerPage);
@@ -160,7 +144,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, tableRegionFilter, componentFilter, sortConfig, itemsPerPage]);
+    }, [searchTerm, componentFilter, tableRegionFilter, sortConfig, itemsPerPage]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -189,7 +173,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
     };
 
-    // FIX: Update handleExpenseChange to manage dependent UACS dropdowns.
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'objectType') {
@@ -201,7 +184,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         }
     };
     
-    // FIX: Update handleAddExpense to create expense objects that match the OtherActivityExpense interface, including full UACS details.
     const handleAddExpense = () => {
         if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
             alert('Please fill out all expense fields, including UACS classification.');
@@ -231,28 +213,20 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
     };
 
-
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        if (!formData.name || !formData.date || !formData.location || !formData.facilitator || !formData.component) {
+        if (!formData.name || !formData.date || !formData.location) {
             alert('Please fill out all required fields on the Training Details tab.');
             return;
         }
         
-        const finalFormData = {
-            ...formData,
-            participantsMale: Number(formData.participantsMale) || 0,
-            participantsFemale: Number(formData.participantsFemale) || 0,
-            fundingYear: Number(formData.fundingYear) || new Date().getFullYear(),
-        };
-
         if (editingTraining) {
-            const updatedTraining: Training = { ...editingTraining, ...finalFormData };
+            const updatedTraining: Training = { ...editingTraining, ...formData };
             setTrainings(prev => prev.map(t => t.id === editingTraining.id ? updatedTraining : t));
         } else {
             const newTraining: Training = {
+                ...formData,
                 id: trainings.length > 0 ? Math.max(...trainings.map(t => t.id)) + 1 : 1,
-                ...finalFormData,
             };
             setTrainings(prev => [newTraining, ...prev]);
         }
@@ -312,12 +286,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         </th>
       )
     }
-    
-    const totalParticipants = (Number(formData.participantsMale) || 0) + (Number(formData.participantsFemale) || 0);
+
     const totalBudget = useMemo(() => {
         return formData.expenses.reduce((sum, exp) => sum + exp.amount, 0);
     }, [formData.expenses]);
-
+    
     const TabButton: React.FC<{ tabName: typeof activeTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
         return (
@@ -336,17 +309,20 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
     }
     
     const handleDownloadReport = () => {
-        const dataToExport = processedTrainings.map(t => ({
-            'Training Name': t.name,
-            'Component': t.component,
-            'Date': t.date,
-            'Location': t.location,
-            'Facilitator': t.facilitator,
-            'Male Participants': t.participantsMale,
-            'Female Participants': t.participantsFemale,
-            'Total Participants': t.participantsMale + t.participantsFemale,
-            'Total Budget': t.expenses.reduce((sum, e) => sum + e.amount, 0),
-            'Participating IPOs': t.participatingIpos.join(', '),
+        const dataToExport = processedTrainings.map(a => ({
+            'Component': a.component,
+            'Training Name': a.name,
+            'Date': a.date,
+            'Location': a.location,
+            'Facilitator': a.facilitator,
+            'Male Participants': a.participantsMale,
+            'Female Participants': a.participantsFemale,
+            'Total Budget': a.expenses.reduce((sum, e) => sum + e.amount, 0),
+            'Funding Year': a.fundingYear,
+            'Fund Type': a.fundType,
+            'Tier': a.tier,
+            'Participating IPOs': a.participatingIpos.join(', '),
+            'Description': a.description,
         }));
 
         const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -368,32 +344,32 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
 
     const handleDownloadTemplate = () => {
         const exampleData = [{
-            name: 'Sample Financial Literacy Seminar',
-            date: '2024-01-15',
-            description: 'A sample seminar on financial management.',
-            location: 'Tanay, Rizal',
-            facilitator: 'Rural Bank of Tanay',
-            participatingIpos: 'San Isidro Farmers Association, Daraitan Farmers Cooperative',
-            participantsMale: 15,
-            participantsFemale: 25,
             component: 'Social Preparation',
-            expenses: '[{"objectType":"MOOE","expenseParticular":"Training and Scholarship Expenses","uacsCode":"50202010-01","obligationMonth":"2024-01-10","disbursementMonth":"2024-01-25","amount":50000}]',
+            name: 'Basic Leadership Training',
+            date: '2024-03-15',
+            description: 'Training on leadership skills for IPO officers.',
+            location: 'Brgy. San Isidro, Tanay, Rizal',
+            facilitator: 'John Doe',
+            participatingIpos: 'San Isidro Farmers Association',
+            participantsMale: 15,
+            participantsFemale: 20,
+            expenses: '[{"objectType":"MOOE","expenseParticular":"Training Expenses","uacsCode":"50202010-01","obligationMonth":"2024-03-01","disbursementMonth":"2024-03-20","amount":45000}]',
             fundingYear: 2024,
             fundType: 'Current',
-            tier: 'Tier 1',
+            tier: 'Tier 1'
         }];
 
         const instructions = [
             ["Column", "Description", "Required?"],
-            ["name", "Full name of the training activity.", "Yes"],
+            ["component", `Must be one of: ${trainingComponents.join(', ')}`, "Yes"],
+            ["name", "Training title/name.", "Yes"],
             ["date", "Date in YYYY-MM-DD format.", "Yes"],
             ["description", "A brief description of the training.", "No"],
             ["location", "Full location, formatted as 'Municipality, Province'. Or 'Online'.", "Yes"],
-            ["facilitator", "Name of the person or organization facilitating.", "Yes"],
-            ["participatingIpos", "A comma-separated list of the EXACT, full names of existing IPOs.", "No"],
-            ["participantsMale", "Number of male participants.", "No (defaults to 0)"],
-            ["participantsFemale", "Number of female participants.", "No (defaults to 0)"],
-            ["component", `Must be one of: ${trainingComponents.join(', ')}`, "Yes"],
+            ["facilitator", "Name of the facilitator or resource person.", "No"],
+            ["participatingIpos", "A comma-separated list of the EXACT, full names of existing IPOs.", "Yes"],
+            ["participantsMale", "Number of male participants.", "Yes"],
+            ["participantsFemale", "Number of female participants.", "Yes"],
             ["expenses", `A JSON string for expenses. Format: '[{"objectType":"MOOE/CO","expenseParticular":"Specific Expense","uacsCode":"UACS-CODE","obligationMonth":"YYYY-MM-DD","disbursementMonth":"YYYY-MM-DD","amount":Number}]'. Use '[]' if no expenses.`, "No"],
             ["fundingYear", "The funding year (e.g., 2024).", "No"],
             ["fundType", `Must be one of: ${fundTypes.join(', ')}`, "No"],
@@ -423,16 +399,13 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-                let currentMaxId = trainings.reduce((max, t) => Math.max(max, t.id), 0);
+                let currentMaxId = trainings.reduce((max, a) => Math.max(max, a.id), 0);
                 const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
 
                 const newTrainings: Training[] = jsonData.map((row, index) => {
                     const rowNum = index + 2;
-                    if (!row.name || !row.date || !row.location || !row.facilitator || !row.component) {
-                        throw new Error(`Row ${rowNum}: Missing required fields (name, date, location, facilitator, component).`);
-                    }
-                    if (!trainingComponents.includes(row.component)) {
-                        throw new Error(`Row ${rowNum}: Invalid component "${row.component}".`);
+                    if (!row.component || !row.name || !row.date || !row.location) {
+                        throw new Error(`Row ${rowNum}: Missing required fields (component, name, date, location).`);
                     }
                     
                     const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -450,19 +423,18 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                         throw new Error(`Row ${rowNum}: Invalid JSON format in 'expenses' column.`);
                     }
 
-
                     currentMaxId++;
                     return {
                         id: currentMaxId,
+                        component: row.component as TrainingComponentType,
                         name: String(row.name),
                         date: String(row.date),
                         description: String(row.description || ''),
                         location: String(row.location),
-                        facilitator: String(row.facilitator),
+                        facilitator: String(row.facilitator || ''),
                         participatingIpos: participatingIpos,
                         participantsMale: Number(row.participantsMale) || 0,
                         participantsFemale: Number(row.participantsFemale) || 0,
-                        component: row.component as TrainingComponentType,
                         expenses: expenses.map((exp, i) => ({ ...exp, id: Date.now() + i })),
                         fundingYear: Number(row.fundingYear) || undefined,
                         fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
@@ -483,7 +455,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         reader.readAsArrayBuffer(file);
     };
 
-
     const renderListView = () => (
         <>
             <div className="flex justify-between items-center mb-6">
@@ -500,7 +471,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                     <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
                         <input
                             type="text"
-                            placeholder="Search by name, component, facilitator..."
+                            placeholder="Search trainings..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className={`w-full md:w-auto ${commonInputClasses} mt-0`}
@@ -541,13 +512,14 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 <SortableHeader sortKey="date" label="Date" />
                                 <SortableHeader sortKey="component" label="Component" />
                                 <SortableHeader sortKey="totalParticipants" label="Participants" />
-                                <SortableHeader sortKey="totalBudget" label="Budget" />
+                                <SortableHeader sortKey="budget" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedTrainings.map((training) => {
                                 const totalTrainingBudget = training.expenses.reduce((sum, e) => sum + e.amount, 0);
+                                const totalParticipants = training.participantsMale + training.participantsFemale;
                                 return (
                                 <React.Fragment key={training.id}>
                                     <tr onClick={() => handleToggleRow(training.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
@@ -559,7 +531,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">{training.name}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(training.date)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.component}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{training.participantsMale + training.participantsFemale}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{totalParticipants}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalTrainingBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button onClick={(e) => { e.stopPropagation(); handleEditClick(training); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
@@ -574,10 +546,11 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Description</h4>
                                                             <p className="text-sm text-gray-600 dark:text-gray-300">{training.description || 'No description provided.'}</p>
+                                                            {training.facilitator && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Facilitator: {training.facilitator}</p>}
                                                         </div>
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
-                                                            {training.participatingIpos.length > 0 ? (
+                                                        {training.participatingIpos.length > 0 && (
+                                                            <div>
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
                                                                 <div className="flex flex-wrap gap-2">
                                                                     {training.participatingIpos.map(ipoName => {
                                                                         const ipo = ipos.find(i => i.name === ipoName);
@@ -597,10 +570,8 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                                         );
                                                                     })}
                                                                 </div>
-                                                            ) : (
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No participating IPOs listed.</p>
-                                                            )}
-                                                        </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Funding</h4>
@@ -608,7 +579,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                                              <ul className="space-y-1">
                                                                 {training.expenses.map(exp => (
                                                                     <li key={exp.id} className="flex justify-between items-center p-1">
-                                                                        {/* FIX: Display expenseParticular and uacsCode instead of non-existent objectCode */}
                                                                         <span>{exp.expenseParticular} ({exp.uacsCode})</span>
                                                                         <span className="font-medium">{formatCurrency(exp.amount)}</span>
                                                                     </li>
@@ -682,7 +652,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         <TabButton tabName="details" label="Training Details" />
-                        <TabButton tabName="budget" label="Training Expenses" />
+                        <TabButton tabName="budget" label="Expenses" />
                     </nav>
                 </div>
 
@@ -692,7 +662,13 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                     <div className="md:col-span-2">
+                                     <div>
+                                        <label htmlFor="component" className="block text-sm font-medium">Component</label>
+                                        <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
+                                            {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
                                         <label htmlFor="name" className="block text-sm font-medium">Training Name</label>
                                         <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
                                     </div>
@@ -700,15 +676,9 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         <label htmlFor="date" className="block text-sm font-medium">Date</label>
                                         <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
                                     </div>
-                                     <div>
-                                        <label htmlFor="component" className="block text-sm font-medium">Component</label>
-                                        <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
-                                            {trainingComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                     <div className="md:col-span-2">
-                                         <label htmlFor="facilitator" className="block text-sm font-medium">Facilitator / Speaker</label>
-                                        <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} required className={commonInputClasses} />
+                                    <div>
+                                        <label htmlFor="facilitator" className="block text-sm font-medium">Facilitator</label>
+                                        <input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} />
                                     </div>
                                 </div>
                             </fieldset>
@@ -731,7 +701,7 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                     </div>
                                      <div>
                                         <label htmlFor="totalParticipants" className="block text-sm font-medium">Total Participants</label>
-                                        <input type="number" name="totalParticipants" id="totalParticipants" value={totalParticipants} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
+                                        <input type="number" name="totalParticipants" id="totalParticipants" value={(Number(formData.participantsMale)||0) + (Number(formData.participantsFemale)||0)} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
                                     </div>
                                 </div>
                             </fieldset>
@@ -744,38 +714,36 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                 </div>
                             </fieldset>
                             
-                            {formData.component !== 'Program Management' && (
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
-                                    <div>
-                                        <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
-                                        <div className="flex items-center gap-4 mt-1">
-                                            <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
-                                            <select 
-                                                value={ipoRegionFilter} 
-                                                onChange={(e) => setIpoRegionFilter(e.target.value)}
-                                                className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                                            >
-                                                <option value="All">All Regions</option>
-                                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                            </select>
-                                        </div>
-                                        <select
-                                            multiple
-                                            name="participatingIpos"
-                                            id="participatingIpos"
-                                            value={formData.participatingIpos}
-                                            onChange={handleIpoSelectChange}
-                                            className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-40"
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
+                                <div>
+                                    <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
+                                    <div className="flex items-center gap-4 mt-1">
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
+                                        <select 
+                                            value={ipoRegionFilter} 
+                                            onChange={(e) => setIpoRegionFilter(e.target.value)}
+                                            className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                                         >
-                                            {filteredIposForSelection.map(ipo => (
-                                                <option key={ipo.id} value={ipo.name}>{`${ipo.name} (${parseLocation(ipo.location).province})`}</option>
-                                            ))}
+                                            <option value="All">All Regions</option>
+                                            {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                         </select>
-                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
                                     </div>
-                                </fieldset>
-                            )}
+                                    <select
+                                        multiple
+                                        name="participatingIpos"
+                                        id="participatingIpos"
+                                        value={formData.participatingIpos}
+                                        onChange={handleIpoSelectChange}
+                                        className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-40"
+                                    >
+                                        {filteredIposForSelection.map(ipo => (
+                                            <option key={ipo.id} value={ipo.name}>{`${ipo.name} (${parseLocation(ipo.location).province})`}</option>
+                                        ))}
+                                    </select>
+                                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
+                                </div>
+                            </fieldset>
                         </div>
                     )}
                      {activeTab === 'budget' && (
@@ -807,7 +775,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                     {formData.expenses.length === 0 && <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No expense items added yet.</p>}
                                     {formData.expenses.map((exp) => (
                                         <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                            {/* FIX: Display expense details correctly instead of non-existent objectCode. */}
                                             <div className="text-sm flex-grow">
                                                 <span className="font-semibold">{exp.expenseParticular}</span>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400">{exp.uacsCode} | Obligation: {formatDate(exp.obligationMonth)}</div>
@@ -821,7 +788,6 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
                                         </div>
                                     ))}
                                 </div>
-                                {/* FIX: Replace objectCode input with full UACS selection dropdowns. */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end p-4 border-t border-gray-200 dark:border-gray-700">
                                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
@@ -883,5 +849,3 @@ const TrainingsComponent: React.FC<TrainingsProps> = ({ ipos, trainings, setTrai
         </div>
     );
 };
-
-export default TrainingsComponent;

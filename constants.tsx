@@ -1,8 +1,9 @@
-
+// Author: AI
+// OS support: Any
+// Description: Constants and type definitions for the application
 
 import React from 'react';
 
-// Centralized Type Definitions
 export interface HistoryEntry {
     date: string;
     event: string;
@@ -12,7 +13,7 @@ export interface HistoryEntry {
 export interface Commodity {
     type: string;
     particular: string;
-    value: number; // Hectares for crops, heads for livestock
+    value: number; 
     isScad?: boolean;
 }
 
@@ -40,7 +41,7 @@ export interface IPO {
 }
 
 
-export const uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
+export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
   MOOE: {
     "Travelling Expenses": {
       "50201010-00": "Travelling Expenses - Local",
@@ -94,6 +95,8 @@ export const uacsCodes: { [key: string]: { [key: string]: { [key: string]: strin
   }
 };
 
+export const uacsCodes = initialUacsCodes;
+
 export const objectTypes = ['MOOE', 'CO'] as const;
 export type ObjectType = typeof objectTypes[number];
 
@@ -103,7 +106,8 @@ export interface SubprojectDetail {
     type: string;
     particulars: string;
     deliveryDate: string;
-    unitOfMeasure: 'pcs' | 'kgs' | 'unit' | 'lot';
+    // Fix: added 'heads' to allowed types
+    unitOfMeasure: 'pcs' | 'kgs' | 'unit' | 'lot' | 'heads';
     pricePerUnit: number;
     numberOfUnits: number;
     objectType: ObjectType;
@@ -219,7 +223,7 @@ export interface OtherActivity {
     date: string;
     description: string;
     location: string;
-    participatingIpos: string[]; // Empty for Program Management except Sub-Project Monitoring
+    participatingIpos: string[]; 
     participantsMale: number;
     participantsFemale: number;
     expenses: OtherActivityExpense[];
@@ -237,13 +241,15 @@ export interface NavLink {
 
 export const commodityTypes: string[] = ['Crop Commodity', 'Livestock'];
 
-export const particularTypes: { [key: string]: string[] } = {
+export const initialParticularTypes: { [key: string]: string[] } = {
   'Livestock': ['Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'],
   'Crop Commodity': ['Rice Seeds', 'Corn Seeds', 'Fertilizer', 'Pesticides', 'Coffee Seedlings'],
   'Equipment': ['Tractor', 'Water Pump', 'Thresher', 'Harvester', 'Processing Equipment', 'Floating cages'],
   'Infrastructure': ['Cement', 'Gravel and Sand', 'Pipes and Fittings', 'Skilled Labor', 'Installation Labor', 'Processing Shed', 'Warehouse', 'Storage unit'],
   'Others': ['Project Management', 'Heavy Equipment Rental', 'Training Materials']
 };
+
+export const particularTypes = initialParticularTypes;
 
 
 export const philippineLocations: { [key: string]: any } = {
@@ -342,7 +348,438 @@ export const navigationLinks: NavLink[] = [
     { name: 'Subprojects', href: '/subprojects' },
     { name: 'Trainings', href: '/trainings' },
     { name: 'Other Activities', href: '/other-activities' },
-    { name: 'Program Management', href: '/program-management' },
     { name: 'separator3', href: '#', type: 'separator' },
     { name: 'Indigenous Peoples Organization', href: '/ipo' },
+    { name: 'References', href: '/references' },
 ];
+
+
+const flattenUacs = () => {
+    const list: any[] = [];
+    let id = 1;
+    for (const objType in initialUacsCodes) {
+        for (const particular in initialUacsCodes[objType]) {
+             for (const code in initialUacsCodes[objType][particular]) {
+                 list.push({
+                     id: String(id++),
+                     objectType: objType,
+                     particular: particular,
+                     uacsCode: code,
+                     description: initialUacsCodes[objType][particular][code]
+                 });
+             }
+        }
+    }
+    return list;
+};
+
+const flattenParticulars = () => {
+    const list: any[] = [];
+    let id = 1;
+    for (const type in initialParticularTypes) {
+        initialParticularTypes[type].forEach(p => {
+            list.push({
+                id: String(id++),
+                type: type,
+                particular: p
+            });
+        });
+    }
+    return list;
+}
+
+
+export const sampleReferenceUacsList = flattenUacs();
+export const sampleReferenceParticularList = flattenParticulars();
+
+export const sampleIPOs: IPO[] = [
+    {
+        id: 1,
+        name: "Samahan ng mga Katutubong Dumagat",
+        acronym: "SKD",
+        location: "Brgy. Daraitan, Tanay, Rizal",
+        region: "CALABARZON (Region IV-A)",
+        indigenousCulturalCommunity: "Dumagat",
+        ancestralDomainNo: "R4A-RIZ-TAN-001",
+        registeringBody: "SEC",
+        isWomenLed: false,
+        isWithinGida: true,
+        isWithinElcac: false,
+        isWithScad: true,
+        contactPerson: "Juan dela Cruz",
+        contactNumber: "09171234567",
+        registrationDate: "2020-05-15",
+        commodities: [{ type: "Crop Commodity", particular: "Coffee Seedlings", value: 50, isScad: true }],
+        levelOfDevelopment: 3,
+        lat: 14.6127,
+        lng: 121.3632
+    },
+    {
+        id: 2,
+        name: "Buhangin Farmers Association",
+        acronym: "BFA",
+        location: "Brgy. Buhangin, Malita, Davao Occidental",
+        region: "Davao Region (Region XI)",
+        indigenousCulturalCommunity: "Tagakaolo",
+        ancestralDomainNo: "R11-DOC-MAL-002",
+        registeringBody: "DOLE",
+        isWomenLed: true,
+        isWithinGida: true,
+        isWithinElcac: true,
+        isWithScad: false,
+        contactPerson: "Maria Clara",
+        contactNumber: "09187654321",
+        registrationDate: "2021-08-20",
+        commodities: [{ type: "Livestock", particular: "Goats", value: 30, isScad: false }],
+        levelOfDevelopment: 2,
+        lat: 6.4125,
+        lng: 125.6115
+    },
+    {
+        id: 3,
+        name: "Macaingalan Coconut Farmers",
+        acronym: "MCF",
+        location: "Brgy. Macaingalan, General Nakar, Quezon",
+        region: "CALABARZON (Region IV-A)",
+        indigenousCulturalCommunity: "Dumagat-Remontado",
+        ancestralDomainNo: "R4A-QUE-GEN-003",
+        registeringBody: "CDA",
+        isWomenLed: false,
+        isWithinGida: true,
+        isWithinElcac: false,
+        isWithScad: true,
+        contactPerson: "Pedro Penduko",
+        contactNumber: "09191239876",
+        registrationDate: "2019-03-10",
+        commodities: [{ type: "Crop Commodity", particular: "Coconut", value: 100, isScad: true }],
+        levelOfDevelopment: 4,
+        lat: 14.7647,
+        lng: 121.6329
+    },
+    {
+        id: 4,
+        name: "Adecor Mandaya Tribe",
+        acronym: "AMT",
+        location: "Brgy. Adecor, Island Garden City of Samal, Davao del Norte",
+        region: "Davao Region (Region XI)",
+        indigenousCulturalCommunity: "Mandaya",
+        ancestralDomainNo: "R11-DNO-SAM-004",
+        registeringBody: "NCIP",
+        isWomenLed: true,
+        isWithinGida: false,
+        isWithinElcac: false,
+        isWithScad: false,
+        contactPerson: "Gabriela Silang",
+        contactNumber: "09205554444",
+        registrationDate: "2022-01-12",
+        commodities: [{ type: "Crop Commodity", particular: "Cacao", value: 20, isScad: false }],
+        levelOfDevelopment: 2,
+        lat: 7.0565,
+        lng: 125.7562
+    },
+    {
+        id: 5,
+        name: "Marilog Indigenous Women",
+        acronym: "MIW",
+        location: "Brgy. Marilog, Davao City, Davao del Sur",
+        region: "Davao Region (Region XI)",
+        indigenousCulturalCommunity: "Matigsalug",
+        ancestralDomainNo: "R11-DCS-MAR-005",
+        registeringBody: "SEC",
+        isWomenLed: true,
+        isWithinGida: true,
+        isWithinElcac: true,
+        isWithScad: true,
+        contactPerson: "Teresa Magbanua",
+        contactNumber: "09219998888",
+        registrationDate: "2023-06-30",
+        commodities: [{ type: "Livestock", particular: "Chicken", value: 200, isScad: true }],
+        levelOfDevelopment: 1,
+        lat: 7.4486,
+        lng: 125.2646
+    }
+];
+
+export const sampleSubprojects: Subproject[] = [
+    {
+        id: 1,
+        uid: "SP-2024-001",
+        name: "Coffee Processing Facility",
+        location: "Brgy. Daraitan, Tanay, Rizal",
+        indigenousPeopleOrganization: "Samahan ng mga Katutubong Dumagat",
+        status: "Ongoing",
+        packageType: "Package 1",
+        startDate: "2024-01-15",
+        estimatedCompletionDate: "2024-06-15",
+        lat: 14.6127,
+        lng: 121.3632,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        details: [
+            { id: 1, type: "Infrastructure", particulars: "Processing Shed", deliveryDate: "2024-03-01", unitOfMeasure: "unit", pricePerUnit: 500000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Buildings and Other Structures", uacsCode: "10604020-00", obligationMonth: "2024-01-30", disbursementMonth: "2024-03-15" },
+            { id: 2, type: "Equipment", particulars: "Coffee Roaster", deliveryDate: "2024-04-01", unitOfMeasure: "unit", pricePerUnit: 150000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-02-28", disbursementMonth: "2024-04-15" }
+        ]
+    },
+    {
+        id: 2,
+        uid: "SP-2024-002",
+        name: "Goat Dispersal Project",
+        location: "Brgy. Buhangin, Malita, Davao Occidental",
+        indigenousPeopleOrganization: "Buhangin Farmers Association",
+        status: "Completed",
+        actualCompletionDate: "2024-05-20",
+        packageType: "Package 2",
+        startDate: "2024-02-01",
+        estimatedCompletionDate: "2024-05-30",
+        lat: 6.4125,
+        lng: 125.6115,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        details: [
+            { id: 1, type: "Livestock", particulars: "Goats (Breeder)", deliveryDate: "2024-03-15", unitOfMeasure: "heads", pricePerUnit: 10000, numberOfUnits: 30, objectType: "CO", expenseParticular: "Breeding Stocks", uacsCode: "10607010-00", obligationMonth: "2024-02-15", disbursementMonth: "2024-03-20" }
+        ]
+    },
+    {
+        id: 3,
+        uid: "SP-2024-003",
+        name: "Virgin Coconut Oil Processing",
+        location: "Brgy. Macaingalan, General Nakar, Quezon",
+        indigenousPeopleOrganization: "Macaingalan Coconut Farmers",
+        status: "Proposed",
+        packageType: "Package 3",
+        startDate: "2024-07-01",
+        estimatedCompletionDate: "2024-12-31",
+        lat: 14.7647,
+        lng: 121.6329,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 2",
+        details: [
+            { id: 1, type: "Equipment", particulars: "VCO Press", deliveryDate: "2024-08-01", unitOfMeasure: "unit", pricePerUnit: 80000, numberOfUnits: 2, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-07-15", disbursementMonth: "2024-08-15" }
+        ]
+    },
+    {
+        id: 4,
+        uid: "SP-2023-004",
+        name: "Cacao Nursery Establishment",
+        location: "Brgy. Adecor, Island Garden City of Samal, Davao del Norte",
+        indigenousPeopleOrganization: "Adecor Mandaya Tribe",
+        status: "Cancelled",
+        packageType: "Package 1",
+        startDate: "2023-05-01",
+        estimatedCompletionDate: "2023-10-30",
+        remarks: "Cancelled due to land dispute.",
+        lat: 7.0565,
+        lng: 125.7562,
+        fundingYear: 2023,
+        fundType: "Continuing",
+        tier: "Tier 1",
+        details: [
+            { id: 1, type: "Crop Commodity", particulars: "Cacao Seedlings", deliveryDate: "2023-06-01", unitOfMeasure: "pcs", pricePerUnit: 50, numberOfUnits: 5000, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2023-05-15", disbursementMonth: "2023-06-15" }
+        ]
+    },
+    {
+        id: 5,
+        uid: "SP-2024-005",
+        name: "Native Chicken Production",
+        location: "Brgy. Marilog, Davao City, Davao del Sur",
+        indigenousPeopleOrganization: "Marilog Indigenous Women",
+        status: "Ongoing",
+        packageType: "Package 2",
+        startDate: "2024-04-01",
+        estimatedCompletionDate: "2024-09-30",
+        lat: 7.4486,
+        lng: 125.2646,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        details: [
+            { id: 1, type: "Livestock", particulars: "Native Chicken", deliveryDate: "2024-05-01", unitOfMeasure: "heads", pricePerUnit: 500, numberOfUnits: 200, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2024-04-15", disbursementMonth: "2024-05-15" }
+        ]
+    }
+];
+
+export const sampleTrainings: Training[] = [
+    {
+        id: 1,
+        name: "Organizational Management Training",
+        date: "2024-02-10",
+        description: "Training for IPO officers on leadership and management.",
+        location: "Tanay, Rizal",
+        facilitator: "DA-4K Regional Staff",
+        participatingIpos: ["Samahan ng mga Katutubong Dumagat"],
+        participantsMale: 10,
+        participantsFemale: 15,
+        component: "Social Preparation",
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+            { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-02-01", disbursementMonth: "2024-02-15", amount: 45000 }
+        ]
+    },
+    {
+        id: 2,
+        name: "Goat Raising Technology",
+        date: "2024-03-05",
+        description: "Technical training on goat production.",
+        location: "Malita, Davao Occidental",
+        facilitator: "Provincial Veterinarian Office",
+        participatingIpos: ["Buhangin Farmers Association"],
+        participantsMale: 20,
+        participantsFemale: 5,
+        component: "Production and Livelihood",
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+            { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-02-20", disbursementMonth: "2024-03-10", amount: 30000 }
+        ]
+    },
+    {
+        id: 3,
+        name: "VCO Processing Workshop",
+        date: "2024-07-15",
+        description: "Workshop on standard VCO processing methods.",
+        location: "General Nakar, Quezon",
+        facilitator: "PCA",
+        participatingIpos: ["Macaingalan Coconut Farmers"],
+        participantsMale: 12,
+        participantsFemale: 12,
+        component: "Production and Livelihood",
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 2",
+        expenses: [
+            { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-07-01", disbursementMonth: "2024-07-20", amount: 50000 }
+        ]
+    },
+    {
+        id: 4,
+        name: "Cacao Rehabilitation Training",
+        date: "2023-06-20",
+        description: "Training on rehabilitating old cacao trees.",
+        location: "Island Garden City of Samal, Davao del Norte",
+        facilitator: "DA High Value Crops",
+        participatingIpos: ["Adecor Mandaya Tribe"],
+        participantsMale: 25,
+        participantsFemale: 10,
+        component: "Production and Livelihood",
+        fundingYear: 2023,
+        fundType: "Continuing",
+        tier: "Tier 1",
+        expenses: [
+            { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2023-06-01", disbursementMonth: "2023-06-25", amount: 35000 }
+        ]
+    },
+    {
+        id: 5,
+        name: "Financial Literacy Workshop",
+        date: "2024-05-10",
+        description: "Basic bookkeeping and financial management.",
+        location: "Davao City",
+        facilitator: "Cooperative Development Authority",
+        participatingIpos: ["Marilog Indigenous Women", "Buhangin Farmers Association"],
+        participantsMale: 5,
+        participantsFemale: 25,
+        component: "Social Preparation",
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+            { id: 1, objectType: "MOOE", expenseParticular: "Training and Scholarship Expenses", uacsCode: "50202010-01", obligationMonth: "2024-05-01", disbursementMonth: "2024-05-15", amount: 60000 }
+        ]
+    }
+];
+
+export const sampleOtherActivities: OtherActivity[] = [
+    {
+        id: 1,
+        component: "Social Preparation",
+        name: "Community Needs Assessment",
+        date: "2024-01-20",
+        description: "Conducted CNA to identify priority projects.",
+        location: "Brgy. Daraitan, Tanay, Rizal",
+        participatingIpos: ["Samahan ng mga Katutubong Dumagat"],
+        participantsMale: 15,
+        participantsFemale: 20,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+             { id: 1, objectType: "MOOE", expenseParticular: "Travelling Expenses", uacsCode: "50201010-00", obligationMonth: "2024-01-15", disbursementMonth: "2024-01-25", amount: 15000 }
+        ]
+    },
+    {
+        id: 2,
+        component: "Program Management",
+        name: "Sub-Project Monitoring",
+        date: "2024-04-15",
+        description: "Monitoring of ongoing goat dispersal project.",
+        location: "Malita, Davao Occidental",
+        participatingIpos: ["Buhangin Farmers Association"],
+        participantsMale: 3,
+        participantsFemale: 2,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+             { id: 1, objectType: "MOOE", expenseParticular: "Travelling Expenses", uacsCode: "50201010-00", obligationMonth: "2024-04-01", disbursementMonth: "2024-04-20", amount: 20000 }
+        ]
+    },
+    {
+        id: 3,
+        component: "Marketing and Enterprise",
+        name: "Market Linkaging",
+        date: "2024-06-10",
+        description: "Meeting with potential buyers for coffee products.",
+        location: "Manila",
+        participatingIpos: ["Samahan ng mga Katutubong Dumagat"],
+        participantsMale: 2,
+        participantsFemale: 3,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+             { id: 1, objectType: "MOOE", expenseParticular: "Representation Expenses", uacsCode: "50299030-00", obligationMonth: "2024-06-01", disbursementMonth: "2024-06-15", amount: 5000 }
+        ]
+    },
+    {
+        id: 4,
+        component: "Social Preparation",
+        name: "IPO Registration Drive (RSBSA, SEC, DOLE, CDA)",
+        date: "2024-02-15",
+        description: "Assisted IPOs in completing registration requirements.",
+        location: "General Nakar, Quezon",
+        participatingIpos: ["Macaingalan Coconut Farmers"],
+        participantsMale: 10,
+        participantsFemale: 10,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+             { id: 1, objectType: "MOOE", expenseParticular: "Office Supplies Expenses", uacsCode: "50203010-01", obligationMonth: "2024-02-01", disbursementMonth: "2024-02-20", amount: 8000 }
+        ]
+    },
+    {
+        id: 5,
+        component: "Program Management",
+        name: "Performance and Budget Utilization Review (PBUR)",
+        date: "2024-07-05",
+        description: "Mid-year review of program performance.",
+        location: "Quezon City",
+        participatingIpos: [],
+        participantsMale: 10,
+        participantsFemale: 15,
+        fundingYear: 2024,
+        fundType: "Current",
+        tier: "Tier 1",
+        expenses: [
+             { id: 1, objectType: "MOOE", expenseParticular: "Other Supplies and Materials Expenses", uacsCode: "50203990-00", obligationMonth: "2024-06-20", disbursementMonth: "2024-07-10", amount: 50000 }
+        ]
+    }
+];
+
+// --- End of constants.tsx ---

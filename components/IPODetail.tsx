@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, FormEvent } from 'react';
-import { IPO, Subproject, Training, Commodity, commodityTypes, particularTypes } from '../constants';
+import { IPO, Subproject, Training, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 
@@ -12,6 +11,7 @@ interface IPODetailProps {
     previousPageName: string;
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
+    particularTypes: { [key: string]: string[] };
 }
 
 const formatDate = (dateString?: string) => {
@@ -46,7 +46,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, particularTypes }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');

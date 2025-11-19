@@ -1,7 +1,5 @@
-
-
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes, particularTypes } from '../constants';
+import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -14,6 +12,7 @@ interface IPOsProps {
     trainings: Training[];
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
+    particularTypes: { [key: string]: string[] };
 }
 
 const defaultFormData = {
@@ -37,7 +36,7 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo, onSelectSubproject }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo, onSelectSubproject, particularTypes }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);

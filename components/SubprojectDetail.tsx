@@ -1,13 +1,13 @@
-
-
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, SubprojectDetail, particularTypes, objectTypes, ObjectType, fundTypes, tiers, uacsCodes } from '../constants';
+import { Subproject, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers } from '../constants';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
     onBack: () => void;
     previousPageName: string;
     onUpdateSubproject: (updatedSubproject: Subproject) => void;
+    particularTypes: { [key: string]: string[] };
+    uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
 type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
@@ -40,7 +40,7 @@ const DetailItem: React.FC<{ label: string; value?: string | React.ReactNode }> 
     </div>
 );
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack, previousPageName, onUpdateSubproject }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);

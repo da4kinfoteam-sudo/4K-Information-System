@@ -1,8 +1,10 @@
 
 
+
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 // FIX: Add FundType and Tier to imports to handle type widening.
-import { Subproject, SubprojectDetail, IPO, philippineRegions, particularTypes, objectTypes, ObjectType, fundTypes, tiers, FundType, Tier, uacsCodes } from '../constants';
+import { Subproject, SubprojectDetail, IPO, philippineRegions, initialParticularTypes, objectTypes, ObjectType, fundTypes, tiers, FundType, Tier, initialUacsCodes } from '../constants';
 import LocationPicker from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -16,9 +18,11 @@ interface SubprojectsProps {
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
+    uacsCodes?: typeof initialUacsCodes;
+    particularTypes?: typeof initialParticularTypes;
 }
 
-const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, onSelectIpo, onSelectSubproject }) => {
+const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, onSelectIpo, onSelectSubproject, uacsCodes = initialUacsCodes, particularTypes = initialParticularTypes }) => {
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
     const [currentDetail, setCurrentDetail] = useState({
         type: '',

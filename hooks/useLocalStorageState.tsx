@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-function useLocalStorageState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+function useLocalStorageState<T>(key: string, defaultValue: T | (() => T)): [T, React.Dispatch<React.SetStateAction<T>>] {
     const [state, setState] = useState<T>(() => {
         try {
             const storedValue = localStorage.getItem(key);
@@ -10,8 +10,11 @@ function useLocalStorageState<T>(key: string, defaultValue: T): [T, React.Dispat
         } catch (error) {
             console.error("Error reading from localStorage", error);
         }
-        // If defaultValue is a function, call it to get the initial value
-        return typeof defaultValue === 'function' ? defaultValue() : defaultValue;
+        
+        if (typeof defaultValue === 'function') {
+            return (defaultValue as () => T)();
+        }
+        return defaultValue;
     });
 
     useEffect(() => {

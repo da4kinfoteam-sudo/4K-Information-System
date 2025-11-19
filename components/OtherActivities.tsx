@@ -1,12 +1,6 @@
 
-
-
-
-
-
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-// FIX: Replace objectCodes/ObjectCode with uacsCodes, objectTypes, and ObjectType to use the full UACS system, resolving import and type errors.
-import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, uacsCodes, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier } from '../constants';
+import { OtherActivity, IPO, philippineRegions, otherActivityComponents, otherActivityOptions, OtherActivityComponentType, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -17,6 +11,7 @@ interface OtherActivitiesProps {
     otherActivities: OtherActivity[];
     setOtherActivities: React.Dispatch<React.SetStateAction<OtherActivity[]>>;
     onSelectIpo: (ipo: IPO) => void;
+    uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
 const defaultFormData = {
@@ -35,7 +30,7 @@ const defaultFormData = {
     tier: tiers[0] as Tier,
 };
 
-export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherActivities, setOtherActivities, onSelectIpo }) => {
+export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos, otherActivities, setOtherActivities, onSelectIpo, uacsCodes }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [editingActivity, setEditingActivity] = useState<OtherActivity | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -55,7 +50,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // FIX: Update currentExpense state to use objectType, expenseParticular, and uacsCode for full UACS support.
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
         expenseParticular: '',
@@ -186,7 +180,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
     };
 
-    // FIX: Update handleExpenseChange to manage dependent UACS dropdowns.
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'objectType') {
@@ -198,7 +191,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
         }
     };
     
-    // FIX: Update handleAddExpense to create expense objects that match the OtherActivityExpense interface, including full UACS details.
     const handleAddExpense = () => {
         if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
             alert('Please fill out all expense fields, including UACS classification.');
@@ -423,8 +415,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
                 let currentMaxId = otherActivities.reduce((max, a) => Math.max(max, a.id), 0);
-                const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
-
+                
                 const newActivities: OtherActivity[] = jsonData.map((row, index) => {
                     const rowNum = index + 2;
                     if (!row.component || !row.name || !row.date || !row.location) {
@@ -435,13 +426,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                     }
                     if (!otherActivityOptions[row.component as OtherActivityComponentType].includes(row.name)) {
                          throw new Error(`Row ${rowNum}: Invalid activity name "${row.name}" for component "${row.component}".`);
-                    }
-
-                    const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
-                    for (const ipoName of participatingIpos) {
-                        if (!existingIpoNames.has(ipoName)) {
-                            throw new Error(`Row ${rowNum}: IPO "${ipoName}" does not exist in the system.`);
-                        }
                     }
                     
                     let expenses: OtherActivityExpense[];
@@ -460,7 +444,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                         date: String(row.date),
                         description: String(row.description || ''),
                         location: String(row.location),
-                        participatingIpos: participatingIpos,
+                        participatingIpos: (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean),
                         participantsMale: Number(row.participantsMale) || 0,
                         participantsFemale: Number(row.participantsFemale) || 0,
                         expenses: expenses.map((exp, i) => ({ ...exp, id: Date.now() + i })),
@@ -536,9 +520,10 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3"></th>
-                                <SortableHeader sortKey="name" label="Name of Activity" />
+                                <SortableHeader sortKey="name" label="Name" />
                                 <SortableHeader sortKey="date" label="Date" />
                                 <SortableHeader sortKey="component" label="Component" />
+                                <SortableHeader sortKey="totalParticipants" label="Participants" />
                                 <SortableHeader sortKey="budget" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -546,6 +531,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedActivities.map((activity) => {
                                 const totalActivityBudget = activity.expenses.reduce((sum, e) => sum + e.amount, 0);
+                                const totalParticipants = activity.participantsMale + activity.participantsFemale;
                                 return (
                                 <React.Fragment key={activity.id}>
                                     <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
@@ -557,6 +543,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">{activity.name}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(activity.date)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{totalParticipants > 0 ? totalParticipants : '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalActivityBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button onClick={(e) => { e.stopPropagation(); handleEditClick(activity); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
@@ -565,48 +552,44 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                     </tr>
                                      {expandedRowId === activity.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={6} className="p-4">
+                                            <td colSpan={7} className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="space-y-4">
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Description</h4>
                                                             <p className="text-sm text-gray-600 dark:text-gray-300">{activity.description || 'No description provided.'}</p>
                                                         </div>
-                                                         {activity.name !== 'Sub-Project Monitoring' && (
+                                                        {activity.participatingIpos.length > 0 && (
                                                             <div>
-                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participants</h4>
-                                                                <p className="text-sm text-gray-600 dark:text-gray-300">{activity.participantsMale + activity.participantsFemale} Total ({activity.participantsMale} Male, {activity.participantsFemale} Female)</p>
-                                                            </div>
-                                                        )}
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
-                                                            {activity.participatingIpos.length > 0 ? (
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
                                                                 <div className="flex flex-wrap gap-2">
                                                                     {activity.participatingIpos.map(ipoName => {
                                                                         const ipo = ipos.find(i => i.name === ipoName);
                                                                         return (
                                                                             <button
                                                                                 key={ipoName}
-                                                                                onClick={(e) => { e.stopPropagation(); if (ipo) onSelectIpo(ipo); }}
-                                                                                className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (ipo) onSelectIpo(ipo);
+                                                                                }}
+                                                                                className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed"
+                                                                                disabled={!ipo}
+                                                                                title={ipo ? `View details for ${ipoName}` : `${ipoName} (details not found)`}
                                                                             >
                                                                                 {ipoName}
                                                                             </button>
                                                                         );
                                                                     })}
                                                                 </div>
-                                                            ) : (
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No participating IPOs for this activity.</p>
-                                                            )}
-                                                        </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Funding</h4>
-                                                        {activity.expenses.length > 0 ? (
+                                                         {activity.expenses.length > 0 ? (
                                                              <ul className="space-y-1">
                                                                 {activity.expenses.map(exp => (
                                                                     <li key={exp.id} className="flex justify-between items-center p-1">
-                                                                        {/* FIX: Display expenseParticular and uacsCode instead of non-existent objectCode */}
                                                                         <span>{exp.expenseParticular} ({exp.uacsCode})</span>
                                                                         <span className="font-medium">{formatCurrency(exp.amount)}</span>
                                                                     </li>
@@ -620,7 +603,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                                              <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>
                                                         )}
                                                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {activity.fundingYear ?? 'N/A'}</p>
+                                                             <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {activity.fundingYear ?? 'N/A'}</p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> {activity.fundType ?? 'N/A'}</p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> {activity.tier ?? 'N/A'}</p>
                                                         </div>
@@ -667,13 +650,9 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
         </>
     );
 
-    const renderFormView = () => {
-        const showParticipants = formData.name !== 'Sub-Project Monitoring';
-        const showIpos = formData.component !== 'Program Management' || formData.name === 'Sub-Project Monitoring';
-
-        return (
+    const renderFormView = () => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Activity' : 'Add New Activity'}</h3>
                  <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
@@ -684,71 +663,80 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         <TabButton tabName="details" label="Activity Details" />
-                        <TabButton tabName="budget" label="Activity Expenses" />
+                        <TabButton tabName="budget" label="Expenses" />
                     </nav>
                 </div>
+
                 <div className="min-h-[400px]">
                     {activeTab === 'details' && (
                         <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                 <div>
-                                    <label htmlFor="component" className="block text-sm font-medium text-gray-700 dark:text-gray-300">1. Select Activity Component</label>
-                                    <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
-                                        {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">2. Select Activity Name</label>
-                                    <select name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses}>
-                                        <option value="">--Select an activity--</option>
-                                        {otherActivityOptions[formData.component].map(name => <option key={name} value={name}>{name}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     <div>
+                                        <label htmlFor="component" className="block text-sm font-medium">Component</label>
+                                        <select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>
+                                            {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label htmlFor="name" className="block text-sm font-medium">Activity Name</label>
+                                        <select name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses}>
+                                            <option value="">Select Activity</option>
+                                            {otherActivityOptions[formData.component].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                        </select>
+                                    </div>
                                     <div>
                                         <label htmlFor="date" className="block text-sm font-medium">Date</label>
                                         <input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
                                     </div>
-                                    <div className="md:col-span-2">
-                                         <label className="block text-sm font-medium">Location</label>
-                                        <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required allowOnline={true} />
+                                </div>
+                            </fieldset>
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location</legend>
+                                 <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required allowOnline={true} />
+                            </fieldset>
+
+                            {formData.name !== 'Sub-Project Monitoring' && (
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants</legend>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
+                                         <div>
+                                            <label htmlFor="participantsMale" className="block text-sm font-medium">Male Participants</label>
+                                            <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="participantsFemale" className="block text-sm font-medium">Female Participants</label>
+                                            <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                         <div>
+                                            <label htmlFor="totalParticipants" className="block text-sm font-medium">Total Participants</label>
+                                            <input type="number" name="totalParticipants" id="totalParticipants" value={(Number(formData.participantsMale)||0) + (Number(formData.participantsFemale)||0)} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800`} />
+                                        </div>
                                     </div>
-                                    <div className="md:col-span-2">
-                                        <label htmlFor="description" className="block text-sm font-medium">Description / Objective</label>
-                                        <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
-                                    </div>
+                                </fieldset>
+                            )}
+
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Description</legend>
+                                <div>
+                                    <label htmlFor="description" className="block text-sm font-medium">Description</label>
+                                    <textarea name="description" id="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
                                 </div>
                             </fieldset>
                             
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {showParticipants && (
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants</legend>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                                             <div>
-                                                <label htmlFor="participantsMale" className="block text-sm font-medium">Male</label>
-                                                <input type="number" name="participantsMale" id="participantsMale" min="0" value={formData.participantsMale} onChange={handleInputChange} className={commonInputClasses} />
-                                            </div>
-                                            <div>
-                                                <label htmlFor="participantsFemale" className="block text-sm font-medium">Female</label>
-                                                <input type="number" name="participantsFemale" id="participantsFemale" min="0" value={formData.participantsFemale} onChange={handleInputChange} className={commonInputClasses} />
-                                            </div>
-                                        </div>
-                                    </fieldset>
-                                )}
-                                 {showIpos ? (
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
-                                        <div className="flex items-center gap-4 mb-2">
-                                            <span className="text-sm text-gray-500 dark:text-gray-400">Filter:</span>
+                            {(formData.component !== 'Program Management' || formData.name === 'Sub-Project Monitoring') && (
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Linked IPOs</legend>
+                                    <div>
+                                        <label htmlFor="participatingIpos" className="block text-sm font-medium">Participating IPOs</label>
+                                        <div className="flex items-center gap-4 mt-1">
+                                            <span className="text-sm text-gray-500 dark:text-gray-400">Filter by:</span>
                                             <select 
                                                 value={ipoRegionFilter} 
                                                 onChange={(e) => setIpoRegionFilter(e.target.value)}
-                                                className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                                                className="block w-full md:w-1/3 px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                                             >
                                                 <option value="All">All Regions</option>
                                                 {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -760,28 +748,23 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                             id="participatingIpos"
                                             value={formData.participatingIpos}
                                             onChange={handleIpoSelectChange}
-                                            className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-32"
+                                            className="mt-2 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm h-40"
                                         >
                                             {filteredIposForSelection.map(ipo => (
                                                 <option key={ipo.id} value={ipo.name}>{`${ipo.name} (${parseLocation(ipo.location).province})`}</option>
                                             ))}
                                         </select>
-                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd) to select multiple.</p>
-                                    </fieldset>
-                                ) : (
-                                    <div className="border border-dashed border-gray-300 dark:border-gray-600 p-4 rounded-md flex items-center justify-center h-full">
-                                        <p className="text-sm text-center text-gray-500 dark:text-gray-400">IPOs are not applicable for this activity.</p>
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Hold Ctrl (or Cmd on Mac) to select multiple.</p>
                                     </div>
-                                )}
-                            </div>
-
+                                </fieldset>
+                            )}
                         </div>
                     )}
                      {activeTab === 'budget' && (
                          <div className="space-y-6">
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding Source</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
                                         <input type="number" name="fundingYear" id="fundingYear" value={formData.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
@@ -801,12 +784,11 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                 </div>
                             </fieldset>
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expense Items</legend>
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Details</legend>
                                  <div className="space-y-2 mb-4">
                                     {formData.expenses.length === 0 && <p className="text-sm text-center py-4 text-gray-500 dark:text-gray-400">No expense items added yet.</p>}
                                     {formData.expenses.map((exp) => (
                                         <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                            {/* FIX: Display expense details correctly instead of non-existent objectCode. */}
                                             <div className="text-sm flex-grow">
                                                 <span className="font-semibold">{exp.expenseParticular}</span>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400">{exp.uacsCode} | Obligation: {formatDate(exp.obligationMonth)}</div>
@@ -820,12 +802,11 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                                         </div>
                                     ))}
                                 </div>
-                                {/* FIX: Replace objectCode input with full UACS selection dropdowns. */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end p-4 border-t border-gray-200 dark:border-gray-700">
                                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} disabled={!currentExpense.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentExpense.expenseParticular && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
+                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{uacsCodes[currentExpense.objectType] ? Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>) : null}</select></div>
+                                        <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} disabled={!currentExpense.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentExpense.expenseParticular && uacsCodes[currentExpense.objectType] && uacsCodes[currentExpense.objectType][currentExpense.expenseParticular] && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label>
@@ -847,7 +828,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                          </div>
                     )}
                 </div>
-
                 <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">
                      <div className="text-lg font-bold">
                         Total Budget: <span className="text-accent dark:text-green-400">{formatCurrency(totalBudget)}</span>
@@ -863,8 +843,7 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                 </div>
             </form>
         </div>
-        )
-    };
+    );
 
     return (
         <div>
@@ -880,7 +859,6 @@ export const OtherActivitiesComponent: React.FC<OtherActivitiesProps> = ({ ipos,
                     </div>
                 </div>
             )}
-
             {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );
