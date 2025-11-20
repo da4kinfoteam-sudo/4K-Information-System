@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Subproject, IPO, Training, OtherActivity, philippineRegions, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, philippineRegions, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits } from '../constants';
 import { useState, useMemo, useRef } from 'react';
 import { parseLocation } from './LocationPicker';
 
@@ -619,6 +619,26 @@ const LevelOfDevelopmentDashboard: React.FC<{ ipos: IPO[] }> = ({ ipos }) => {
     );
 };
 
+const ouToRegionMap: { [key: string]: string } = {
+    'NPMO': 'National Capital Region (NCR)',
+    'RPMO CAR': 'Cordillera Administrative Region (CAR)',
+    'RPMO 1': 'Ilocos Region (Region I)',
+    'RPMO 2': 'Cagayan Valley (Region II)',
+    'RPMO 3': 'Central Luzon (Region III)',
+    'RPMO 4A': 'CALABARZON (Region IV-A)',
+    'RPMO 4B': 'MIMAROPA (Region IV-B)',
+    'RPMO 5': 'Bicol Region (Region V)',
+    'RPMO 6': 'Western Visayas (Region VI)',
+    'RPMO 7': 'Central Visayas (Region VII)',
+    'RPMO 8': 'Eastern Visayas (Region VIII)',
+    'RPMO 9': 'Zamboanga Peninsula (Region IX)',
+    'RPMO 10': 'Northern Mindanao (Region X)',
+    'RPMO 11': 'Davao Region (Region XI)',
+    'RPMO 12': 'SOCCSKSARGEN (Region XII)',
+    'RPMO 13': 'Caraga (Region XIII)',
+    'RPMO NIR': 'Negros Island Region (NIR)'
+};
+
 interface DashboardsPageProps {
     subprojects: Subproject[];
     ipos: IPO[];
@@ -631,7 +651,7 @@ type DashboardTab = 'Physical' | 'Financial' | 'Level of Development' | 'Gender 
 const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [selectedYear, setSelectedYear] = useState<string>('All');
-    const [selectedRegion, setSelectedRegion] = useState<string>('All');
+    const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
@@ -674,31 +694,21 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
             };
         }
         
-        // 2. Then Filter by Region
-        if (selectedRegion === 'All') {
+        // 2. Then Filter by Operating Unit
+        if (selectedOu === 'All') {
             return dataToFilter;
         }
 
-        if (selectedRegion === 'Online') {
-            return {
-                ...dataToFilter,
-                subprojects: [],
-                ipos: [],
-                trainings: dataToFilter.trainings.filter(t => t.location === 'Online'),
-                otherActivities: dataToFilter.otherActivities.filter(a => a.location === 'Online'),
-            }
-        }
-        
-        const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
+        const targetRegion = ouToRegionMap[selectedOu];
 
         return {
-            subprojects: dataToFilter.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
-            ipos: dataToFilter.ipos.filter(i => i.region === selectedRegion),
-            trainings: dataToFilter.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
-            otherActivities: dataToFilter.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            subprojects: dataToFilter.subprojects.filter(p => p.operatingUnit === selectedOu),
+            ipos: dataToFilter.ipos.filter(i => i.region === targetRegion),
+            trainings: dataToFilter.trainings.filter(t => t.operatingUnit === selectedOu),
+            otherActivities: dataToFilter.otherActivities.filter(a => a.operatingUnit === selectedOu),
         };
 
-    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
     
     const TabButton: React.FC<{ tabName: DashboardTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -787,17 +797,16 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
                     <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h2>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                          <div className="flex items-center gap-2">
-                            <label htmlFor="region-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Region:</label>
+                            <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Operating Unit:</label>
                             <select 
-                                id="region-filter"
-                                value={selectedRegion}
-                                onChange={(e) => setSelectedRegion(e.target.value)}
+                                id="ou-filter"
+                                value={selectedOu}
+                                onChange={(e) => setSelectedOu(e.target.value)}
                                 className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                             >
-                                <option value="All">All Regions</option>
-                                <option value="Online">Online</option>
-                                {philippineRegions.map(region => (
-                                    <option key={region} value={region}>{region}</option>
+                                <option value="All">All OUs</option>
+                                {operatingUnits.map(ou => (
+                                    <option key={ou} value={ou}>{ou}</option>
                                 ))}
                             </select>
                         </div>

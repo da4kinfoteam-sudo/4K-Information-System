@@ -45,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                          <div className="w-10"></div> {/* Spacer */}
                          <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center">
                             <img 
-                                src="https://www.da.gov.ph/wp-content/uploads/2022/07/4K-LOGO-HIGH-RES-2-1536x1536.png" 
+                                src="/logo.png" 
                                 alt="DA 4K Logo" 
                                 className="h-16 w-16 mb-2"
                             />

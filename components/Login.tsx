@@ -33,7 +33,7 @@ const Login: React.FC = () => {
             <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
                 <div className="flex flex-col items-center mb-6">
                     <img 
-                        src="https://www.da.gov.ph/wp-content/uploads/2022/07/4K-LOGO-HIGH-RES-2-1536x1536.png" 
+                        src="/logo.png" 
                         alt="DA 4K Logo" 
                         className="h-20 w-20 mb-2"
                     />

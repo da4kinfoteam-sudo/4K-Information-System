@@ -78,7 +78,6 @@ const AppContent: React.FC = () => {
 
     // Derived References
     const derivedUacsCodes = useMemo(() => {
-        const newCodes = JSON.parse(JSON.stringify(initialUacsCodes)); 
         const tree: { [key: string]: { [key: string]: { [key: string]: string } } } = {};
 
         referenceUacsList.forEach(item => {
@@ -186,6 +185,7 @@ const AppContent: React.FC = () => {
                             officeReqs={officeReqs}
                             staffingReqs={staffingReqs}
                             otherProgramExpenses={otherProgramExpenses}
+                            uacsCodes={derivedUacsCodes}
                         />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;

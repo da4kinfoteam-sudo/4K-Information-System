@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, months, tiers, fundTypes, uacsCodes } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, months, tiers, fundTypes, operatingUnits } from '../constants';
 
 // Declare XLSX to inform TypeScript about the global variable
 declare const XLSX: any;
@@ -13,36 +13,37 @@ interface ReportsProps {
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
+    uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'BAR1';
 
-const regionToOuMap: {[key:string]: string} = {
-    'National Capital Region (NCR)': 'NPMO',
-    'Cordillera Administrative Region (CAR)': 'RPMO CAR',
-    'Ilocos Region (Region I)': 'RPMO 1',
-    'Cagayan Valley (Region II)': 'RPMO 2',
-    'Central Luzon (Region III)': 'RPMO 3',
-    'CALABARZON (Region IV-A)': 'RPMO 4A',
-    'MIMAROPA (Region IV-B)': 'RPMO 4B',
-    'Bicol Region (Region V)': 'RPMO 5',
-    'Western Visayas (Region VI)': 'RPMO 6',
-    'Central Visayas (Region VII)': 'RPMO 7',
-    'Eastern Visayas (Region VIII)': 'RPMO 8',
-    'Zamboanga Peninsula (Region IX)': 'RPMO 9',
-    'Northern Mindanao (Region X)': 'RPMO 10',
-    'Davao Region (Region XI)': 'RPMO 11',
-    'SOCCSKSARGEN (Region XII)': 'RPMO 12',
-    'Caraga (Region XIII)': 'RPMO 13',
-    'Negros Island Region (NIR)': 'RPMO NIR'
+const ouToRegionMap: { [key: string]: string } = {
+    'NPMO': 'National Capital Region (NCR)',
+    'RPMO CAR': 'Cordillera Administrative Region (CAR)',
+    'RPMO 1': 'Ilocos Region (Region I)',
+    'RPMO 2': 'Cagayan Valley (Region II)',
+    'RPMO 3': 'Central Luzon (Region III)',
+    'RPMO 4A': 'CALABARZON (Region IV-A)',
+    'RPMO 4B': 'MIMAROPA (Region IV-B)',
+    'RPMO 5': 'Bicol Region (Region V)',
+    'RPMO 6': 'Western Visayas (Region VI)',
+    'RPMO 7': 'Central Visayas (Region VII)',
+    'RPMO 8': 'Eastern Visayas (Region VIII)',
+    'RPMO 9': 'Zamboanga Peninsula (Region IX)',
+    'RPMO 10': 'Northern Mindanao (Region X)',
+    'RPMO 11': 'Davao Region (Region XI)',
+    'RPMO 12': 'SOCCSKSARGEN (Region XII)',
+    'RPMO 13': 'Caraga (Region XIII)',
+    'RPMO NIR': 'Negros Island Region (NIR)'
 };
 
-const getObjectTypeByCode = (code: string): 'MOOE' | 'CO' => {
+const getObjectTypeByCode = (code: string, uacsData: any): 'MOOE' | 'CO' => {
     for (const type of ['MOOE', 'CO']) {
-        // @ts-ignore
-        for (const particular in uacsCodes[type]) {
-             // @ts-ignore
-             if (uacsCodes[type][particular][code]) return type as 'MOOE' | 'CO';
+        if (uacsData[type]) {
+             for (const particular in uacsData[type]) {
+                 if (uacsData[type][particular] && uacsData[type][particular][code]) return type as 'MOOE' | 'CO';
+            }
         }
     }
     return 'MOOE'; // Default
@@ -506,10 +507,10 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     );
 };
 
-const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses }) => {
+const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     const [selectedYear, setSelectedYear] = useState<string>('All');
-    const [selectedRegion, setSelectedRegion] = useState<string>('All');
+    const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
 
@@ -569,31 +570,33 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             };
         }
 
-        if (selectedRegion === 'All') {
+        if (selectedOu === 'All') {
             return filtered;
         }
 
-        const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
-        const targetOU = regionToOuMap[selectedRegion];
+        const targetRegion = ouToRegionMap[selectedOu];
 
         return {
-            subprojects: filtered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
-            ipos: filtered.ipos.filter(i => i.region === selectedRegion),
-            trainings: filtered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
-            otherActivities: filtered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            subprojects: filtered.subprojects.filter(p => p.operatingUnit === selectedOu),
+            ipos: filtered.ipos.filter(i => i.region === targetRegion),
+            trainings: filtered.trainings.filter(t => t.operatingUnit === selectedOu),
+            otherActivities: filtered.otherActivities.filter(a => a.operatingUnit === selectedOu),
             // Simple filter for PM items based on OU name approximation or mapped value
-            officeReqs: filtered.officeReqs.filter(i => targetOU ? i.operatingUnit === targetOU : true),
-            staffingReqs: filtered.staffingReqs.filter(i => targetOU ? i.operatingUnit === targetOU : true),
-            otherProgramExpenses: filtered.otherProgramExpenses.filter(i => targetOU ? i.operatingUnit === targetOU : true),
+            officeReqs: filtered.officeReqs.filter(i => i.operatingUnit === selectedOu),
+            staffingReqs: filtered.staffingReqs.filter(i => i.operatingUnit === selectedOu),
+            otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu),
         };
-    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
     
     const bpFormsProcessedData = useMemo(() => {
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
         const allUacsCodes: string[] = [];
         
         for (const objectType of Object.keys(uacsCodes)) {
-            for (const particular of Object.keys(uacsCodes[objectType as keyof typeof uacsCodes])) {
+            // @ts-ignore
+            if (!uacsCodes[objectType]) continue;
+            // @ts-ignore
+            for (const particular of Object.keys(uacsCodes[objectType])) {
                 // @ts-ignore
                 const codes = Object.keys(uacsCodes[objectType][particular]);
                 headers[objectType as keyof typeof headers][particular] = codes;
@@ -633,19 +636,19 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         filteredData.staffingReqs.forEach(sr => {
             lineItems.push({
                 component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
-                objectType: getObjectTypeByCode(sr.uacsCode), uacsCode: sr.uacsCode, amount: sr.annualSalary
+                objectType: getObjectTypeByCode(sr.uacsCode, uacsCodes), uacsCode: sr.uacsCode, amount: sr.annualSalary
             });
         });
         filteredData.officeReqs.forEach(or => {
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: or.equipment,
-                objectType: getObjectTypeByCode(or.uacsCode), uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
+                objectType: getObjectTypeByCode(or.uacsCode, uacsCodes), uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
             });
         });
         filteredData.otherProgramExpenses.forEach(ope => {
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: ope.particulars,
-                objectType: getObjectTypeByCode(ope.uacsCode), uacsCode: ope.uacsCode, amount: ope.amount
+                objectType: getObjectTypeByCode(ope.uacsCode, uacsCodes), uacsCode: ope.uacsCode, amount: ope.amount
             });
         });
 
@@ -720,7 +723,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         groupedData['Production and Livelihood'].packages = plSortedPackages;
 
         return { headers, rows: groupedData, allUacsCodes };
-    }, [filteredData]);
+    }, [filteredData, uacsCodes]);
 
     const wfpData = useMemo(() => {
         const getQuarter = (dateStr?: string): number => {
@@ -732,7 +735,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const finalData: { [key: string]: any } = {
             'Social Preparation': [],
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
-            'Marketing and Enterprise': [],
+            'Marketing and Enterprise': [], 
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
@@ -837,7 +840,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         // Helper for Program Management Items (Staff, Office, Other)
         const processPmItem = (items: any[], packageKey: string, isStaff = false) => {
             items.forEach(pm => {
-                const objType = getObjectTypeByCode(pm.uacsCode);
+                const objType = getObjectTypeByCode(pm.uacsCode, uacsCodes);
                 const amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
                 
                 const financialQuarter = getQuarter(pm.obligationDate);
@@ -878,7 +881,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         finalData['Production and Livelihood'].packages = sortedPLPackageData;
 
         return finalData;
-    }, [filteredData]);
+    }, [filteredData, uacsCodes]);
 
     const handleDownloadXLSX = () => {
         const aoa: (string | number | null)[][] = [
@@ -957,7 +960,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
-        XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedRegion}.xlsx`);
+        XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
 
     const handleDownloadBpFormsXlsx = () => {
@@ -1039,7 +1042,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "BP Forms Report");
-        XLSX.writeFile(wb, `BP_Forms_Report_${selectedYear}_${selectedRegion}.xlsx`);
+        XLSX.writeFile(wb, `BP_Forms_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
 
     const handlePrint = () => {
@@ -1107,16 +1110,17 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                      <div className="flex items-center gap-2">
-                        <label htmlFor="region-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Region:</label>
+                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Operating Unit:</label>
                         <select 
-                            id="region-filter"
-                            value={selectedRegion}
-                            onChange={(e) => setSelectedRegion(e.target.value)}
+                            id="ou-filter"
+                            value={selectedOu}
+                            onChange={(e) => setSelectedOu(e.target.value)}
                             className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
-                            <option value="All">All Regions</option>
-                            <option value="Online">Online</option>
-                            {philippineRegions.map(region => ( <option key={region} value={region}>{region}</option> ))}
+                            <option value="All">All OUs</option>
+                            {operatingUnits.map(ou => (
+                                <option key={ou} value={ou}>{ou}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="flex items-center gap-2">
