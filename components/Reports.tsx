@@ -1,39 +1,55 @@
-// FIX: Ensure React and hooks are imported correctly to resolve multiple 'useState' and 'useMemo' not found errors.
+
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, IPO, philippineRegions, months, tiers, fundTypes, uacsCodes } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, months, tiers, fundTypes, uacsCodes } from '../constants';
 
 // Declare XLSX to inform TypeScript about the global variable
 declare const XLSX: any;
 
-// FIX: Define missing ReportsProps interface for component props.
 interface ReportsProps {
     ipos: IPO[];
     subprojects: Subproject[];
     trainings: Training[];
     otherActivities: OtherActivity[];
+    officeReqs: OfficeRequirement[];
+    staffingReqs: StaffingRequirement[];
+    otherProgramExpenses: OtherProgramExpense[];
 }
 
-// FIX: Define missing ReportTab type for component state.
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'BAR1';
 
-const findUacsDescription = (uacsCode: string): string => {
-    for (const objectType in uacsCodes) {
-        // FIX: Corrected syntax for 'for...in' loop. 'the' is not a valid keyword.
-        for (const particular in uacsCodes[objectType as keyof typeof uacsCodes]) {
-            // @ts-ignore
-            if (uacsCodes[objectType][particular][uacsCode]) {
-                // @ts-ignore
-                return uacsCodes[objectType][particular][uacsCode];
-            }
+const regionToOuMap: {[key:string]: string} = {
+    'National Capital Region (NCR)': 'NPMO',
+    'Cordillera Administrative Region (CAR)': 'RPMO CAR',
+    'Ilocos Region (Region I)': 'RPMO 1',
+    'Cagayan Valley (Region II)': 'RPMO 2',
+    'Central Luzon (Region III)': 'RPMO 3',
+    'CALABARZON (Region IV-A)': 'RPMO 4A',
+    'MIMAROPA (Region IV-B)': 'RPMO 4B',
+    'Bicol Region (Region V)': 'RPMO 5',
+    'Western Visayas (Region VI)': 'RPMO 6',
+    'Central Visayas (Region VII)': 'RPMO 7',
+    'Eastern Visayas (Region VIII)': 'RPMO 8',
+    'Zamboanga Peninsula (Region IX)': 'RPMO 9',
+    'Northern Mindanao (Region X)': 'RPMO 10',
+    'Davao Region (Region XI)': 'RPMO 11',
+    'SOCCSKSARGEN (Region XII)': 'RPMO 12',
+    'Caraga (Region XIII)': 'RPMO 13',
+    'Negros Island Region (NIR)': 'RPMO NIR'
+};
+
+const getObjectTypeByCode = (code: string): 'MOOE' | 'CO' => {
+    for (const type of ['MOOE', 'CO']) {
+        // @ts-ignore
+        for (const particular in uacsCodes[type]) {
+             // @ts-ignore
+             if (uacsCodes[type][particular][code]) return type as 'MOOE' | 'CO';
         }
     }
-    return 'Description not found';
+    return 'MOOE'; // Default
 };
 
 const formatCurrency = (amount: number) => {
-    const value = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-    // The user wants the PHP sign, so we no longer strip it.
-    return value;
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 };
 
 const ActivityRow: React.FC<{
@@ -410,9 +426,7 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
 
     const grandTotals = useMemo(() => Object.values(data).flatMap(component => {
         if (Array.isArray(component)) return component;
-        // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
         if ((component as any).isExpandable) return (component as any).items;
-        // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
         if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
         return [];
     }), [data]);
@@ -446,7 +460,6 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                 </thead>
                 <tbody>
                     {Object.entries(data).map(([key, componentData]) => {
-                        // Case 1: Flat list of items, now collapsible
                         if (Array.isArray(componentData)) {
                              const isComponentExpanded = expandedRows.has(key);
                              return (
@@ -458,8 +471,6 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                                 </React.Fragment>
                             );
                         }
-                        // Case 2: Expandable group (Trainings)
-                        // FIX: Cast 'componentData' to 'any' to access properties on what is inferred as 'unknown'.
                         if ((componentData as any).isExpandable) {
                              const isComponentExpanded = expandedRows.has(key);
                              return (
@@ -469,8 +480,6 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                                 </React.Fragment>
                             );
                         }
-                        // Case 3: Nested expandable group (Subprojects)
-                        // FIX: Cast 'componentData' to 'any' to access properties on what is inferred as 'unknown'.
                         if ((componentData as any).isNestedExpandable) {
                             const isComponentExpanded = expandedRows.has(key);
                             const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
@@ -497,7 +506,7 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     );
 };
 
-const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities }) => {
+const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses }) => {
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedRegion, setSelectedRegion] = useState<string>('All');
@@ -509,8 +518,11 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
         trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
         otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
+        officeReqs.forEach(i => years.add(i.fundYear.toString()));
+        staffingReqs.forEach(i => years.add(i.fundYear.toString()));
+        otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, trainings, otherActivities]);
+    }, [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const filteredData = useMemo(() => {
         let filtered = {
@@ -518,6 +530,9 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             ipos: ipos,
             trainings: trainings,
             otherActivities: otherActivities,
+            officeReqs: officeReqs,
+            staffingReqs: staffingReqs,
+            otherProgramExpenses: otherProgramExpenses
         };
 
         if (selectedYear !== 'All') {
@@ -526,6 +541,9 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 subprojects: filtered.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
                 trainings: filtered.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
                 otherActivities: filtered.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+                officeReqs: filtered.officeReqs.filter(i => i.fundYear.toString() === selectedYear),
+                staffingReqs: filtered.staffingReqs.filter(i => i.fundYear.toString() === selectedYear),
+                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear),
             };
         }
 
@@ -534,6 +552,9 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 ...filtered,
                 subprojects: filtered.subprojects.filter(p => p.tier === selectedTier),
                 trainings: filtered.trainings.filter(t => t.tier === selectedTier),
+                officeReqs: filtered.officeReqs.filter(i => i.tier === selectedTier),
+                staffingReqs: filtered.staffingReqs.filter(i => i.tier === selectedTier),
+                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.tier === selectedTier),
             };
         }
 
@@ -542,6 +563,9 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 ...filtered,
                 subprojects: filtered.subprojects.filter(p => p.fundType === selectedFundType),
                 trainings: filtered.trainings.filter(t => t.fundType === selectedFundType),
+                officeReqs: filtered.officeReqs.filter(i => i.fundType === selectedFundType),
+                staffingReqs: filtered.staffingReqs.filter(i => i.fundType === selectedFundType),
+                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundType === selectedFundType),
             };
         }
 
@@ -550,28 +574,33 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         }
 
         const iposInRegionSet = new Set(ipos.filter(i => i.region === selectedRegion).map(i => i.name));
+        const targetOU = regionToOuMap[selectedRegion];
+
         return {
             subprojects: filtered.subprojects.filter(p => iposInRegionSet.has(p.indigenousPeopleOrganization)),
             ipos: filtered.ipos.filter(i => i.region === selectedRegion),
             trainings: filtered.trainings.filter(t => t.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
             otherActivities: filtered.otherActivities.filter(a => a.participatingIpos.some(ipoName => iposInRegionSet.has(ipoName))),
+            // Simple filter for PM items based on OU name approximation or mapped value
+            officeReqs: filtered.officeReqs.filter(i => targetOU ? i.operatingUnit === targetOU : true),
+            staffingReqs: filtered.staffingReqs.filter(i => targetOU ? i.operatingUnit === targetOU : true),
+            otherProgramExpenses: filtered.otherProgramExpenses.filter(i => targetOU ? i.operatingUnit === targetOU : true),
         };
-    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
+    }, [selectedYear, selectedRegion, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
     
     const bpFormsProcessedData = useMemo(() => {
-        // 1. Build Header Structure & Flat UACS list from constants for a consistent layout
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
         const allUacsCodes: string[] = [];
         
         for (const objectType of Object.keys(uacsCodes)) {
             for (const particular of Object.keys(uacsCodes[objectType as keyof typeof uacsCodes])) {
-                const codes = Object.keys(uacsCodes[objectType as keyof typeof uacsCodes][particular]);
+                // @ts-ignore
+                const codes = Object.keys(uacsCodes[objectType][particular]);
                 headers[objectType as keyof typeof headers][particular] = codes;
                 allUacsCodes.push(...codes);
             }
         }
 
-        // 2. Gather all expense line items from filtered data
         const lineItems: any[] = [];
         filteredData.subprojects.forEach(sp => {
             sp.details.forEach(d => {
@@ -583,28 +612,57 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         });
         filteredData.trainings.forEach(t => {
             t.expenses.forEach(e => {
+                // If component is Program Management, set specific package type 'Trainings'
+                const packageType = t.component === 'Program Management' ? 'Trainings' : undefined;
                 lineItems.push({
-                    component: t.component, activityName: t.name,
+                    component: t.component, packageType, activityName: t.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
                 });
             });
         });
         filteredData.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
+                 // If component is Program Management, set specific package type 'Activities'
+                const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 lineItems.push({
-                    component: oa.component, activityName: oa.name,
+                    component: oa.component, packageType, activityName: oa.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
                 });
             });
         });
+        filteredData.staffingReqs.forEach(sr => {
+            lineItems.push({
+                component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
+                objectType: getObjectTypeByCode(sr.uacsCode), uacsCode: sr.uacsCode, amount: sr.annualSalary
+            });
+        });
+        filteredData.officeReqs.forEach(or => {
+            lineItems.push({
+                component: 'Program Management', packageType: 'Office Requirements', activityName: or.equipment,
+                objectType: getObjectTypeByCode(or.uacsCode), uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
+            });
+        });
+        filteredData.otherProgramExpenses.forEach(ope => {
+            lineItems.push({
+                component: 'Program Management', packageType: 'Office Requirements', activityName: ope.particulars,
+                objectType: getObjectTypeByCode(ope.uacsCode), uacsCode: ope.uacsCode, amount: ope.amount
+            });
+        });
 
-        // 3. Process line items into a hierarchical row structure
         const initialUacsValues = allUacsCodes.reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
         const groupedData: { [key: string]: any } = {
             'Social Preparation': [], 
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
             'Marketing and Enterprise': [], 
-            'Program Management': []
+            'Program Management': { 
+                isNestedExpandable: true, 
+                packages: {
+                    'Trainings': { items: [] },
+                    'Staff Requirements': { items: [] },
+                    'Office Requirements': { items: [] },
+                    'Activities': { items: [] }
+                } 
+            }
         };
         
         lineItems.forEach(item => {
@@ -615,10 +673,17 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     groupedData['Production and Livelihood'].packages[packageKey] = { items: [] };
                 }
                 targetList = groupedData['Production and Livelihood'].packages[packageKey].items;
+            } else if (item.component === 'Program Management') {
+                 const packageKey = item.packageType || 'Activities';
+                 // Packages are pre-initialized for PM but safety check
+                 if (!groupedData['Program Management'].packages[packageKey]) {
+                    groupedData['Program Management'].packages[packageKey] = { items: [] };
+                 }
+                 targetList = groupedData['Program Management'].packages[packageKey].items;
             } else if (groupedData[item.component]) {
                 targetList = groupedData[item.component];
             } else {
-                return; // Skip items with components not in our structure
+                return; 
             }
 
             let activity = targetList.find((a: any) => a.name === item.activityName);
@@ -643,16 +708,16 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             }
         });
         
-        // Sort packages within Production and Livelihood for consistent order
-        const packageKeys = Object.keys(groupedData['Production and Livelihood'].packages);
-        packageKeys.sort((a, b) => {
+        // Sort packages within Production and Livelihood
+        const plPackageKeys = Object.keys(groupedData['Production and Livelihood'].packages);
+        plPackageKeys.sort((a, b) => {
             if (a === 'Trainings') return -1;
             if (b === 'Trainings') return 1;
             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         });
-        const sortedPackages: { [key: string]: any } = {};
-        for (const key of packageKeys) { sortedPackages[key] = groupedData['Production and Livelihood'].packages[key]; }
-        groupedData['Production and Livelihood'].packages = sortedPackages;
+        const plSortedPackages: { [key: string]: any } = {};
+        for (const key of plPackageKeys) { plSortedPackages[key] = groupedData['Production and Livelihood'].packages[key]; }
+        groupedData['Production and Livelihood'].packages = plSortedPackages;
 
         return { headers, rows: groupedData, allUacsCodes };
     }, [filteredData]);
@@ -668,7 +733,15 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             'Social Preparation': [],
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
             'Marketing and Enterprise': [],
-            'Program Management': []
+            'Program Management': { 
+                isNestedExpandable: true, 
+                packages: {
+                    'Trainings': { items: [] },
+                    'Staff Requirements': { items: [] },
+                    'Office Requirements': { items: [] },
+                    'Activities': { items: [] }
+                } 
+            }
         };
         
         filteredData.subprojects.forEach(sp => {
@@ -726,23 +799,12 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
                  }
                  finalData['Production and Livelihood'].packages[packageKey].items.push(item);
+            } else if (t.component === 'Program Management') {
+                 finalData['Program Management'].packages['Trainings'].items.push(item);
             } else if (finalData[t.component]) {
                 finalData[t.component].push(item);
             }
         });
-
-        const packageKeys = Object.keys(finalData['Production and Livelihood'].packages);
-        packageKeys.sort((a, b) => {
-            if (a === 'Trainings') return -1;
-            if (b === 'Trainings') return 1;
-            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
-
-        const sortedPackageData: { [key: string]: any } = {};
-        for (const key of packageKeys) {
-            sortedPackageData[key] = finalData['Production and Livelihood'].packages[key];
-        }
-        finalData['Production and Livelihood'].packages = sortedPackageData;
 
         filteredData.otherActivities.forEach(oa => {
             const mooeCost = oa.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
@@ -764,10 +826,56 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
             };
-             if (finalData[oa.component]) {
+            
+            if (oa.component === 'Program Management') {
+                 finalData['Program Management'].packages['Activities'].items.push(item);
+            } else if (finalData[oa.component]) {
                 finalData[oa.component].push(item);
             }
         });
+
+        // Helper for Program Management Items (Staff, Office, Other)
+        const processPmItem = (items: any[], packageKey: string, isStaff = false) => {
+            items.forEach(pm => {
+                const objType = getObjectTypeByCode(pm.uacsCode);
+                const amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                
+                const financialQuarter = getQuarter(pm.obligationDate);
+                const physicalQuarter = getQuarter(pm.obligationDate); // Simplified assumption
+
+                const item = {
+                    indicator: isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars),
+                    totalPhysicalTarget: isStaff ? 1 : (pm.numberOfUnits || 1),
+                    mooeCost: objType === 'MOOE' ? amount : 0,
+                    coCost: objType === 'CO' ? amount : 0,
+                    totalCost: amount,
+                    q1Physical: physicalQuarter === 1 ? (isStaff ? 1 : (pm.numberOfUnits || 1)) : 0,
+                    q2Physical: physicalQuarter === 2 ? (isStaff ? 1 : (pm.numberOfUnits || 1)) : 0,
+                    q3Physical: physicalQuarter === 3 ? (isStaff ? 1 : (pm.numberOfUnits || 1)) : 0,
+                    q4Physical: physicalQuarter === 4 ? (isStaff ? 1 : (pm.numberOfUnits || 1)) : 0,
+                    q1Financial: financialQuarter === 1 ? amount : 0,
+                    q2Financial: financialQuarter === 2 ? amount : 0,
+                    q3Financial: financialQuarter === 3 ? amount : 0,
+                    q4Financial: financialQuarter === 4 ? amount : 0,
+                };
+                finalData['Program Management'].packages[packageKey].items.push(item);
+            });
+        }
+
+        processPmItem(filteredData.staffingReqs, 'Staff Requirements', true);
+        processPmItem(filteredData.officeReqs, 'Office Requirements');
+        processPmItem(filteredData.otherProgramExpenses, 'Office Requirements'); // Grouped with Office as requested
+
+        // Sort PL packages
+        const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages);
+        plPackageKeys.sort((a, b) => {
+            if (a === 'Trainings') return -1;
+            if (b === 'Trainings') return 1;
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
+        const sortedPLPackageData: { [key: string]: any } = {};
+        for (const key of plPackageKeys) sortedPLPackageData[key] = finalData['Production and Livelihood'].packages[key];
+        finalData['Production and Livelihood'].packages = sortedPLPackageData;
 
         return finalData;
     }, [filteredData]);
@@ -827,16 +935,11 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             aoa.push([component, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
             if (Array.isArray(items)) {
                 if (items.length > 0) processItems(items);
-            // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
             } else if ((items as any).isExpandable) {
-                // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
                 if((items as any).items.length > 0) processItems((items as any).items);
-            // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
             } else if ((items as any).isNestedExpandable) {
-                // FIX: Cast 'items' to 'any' to access properties on what is inferred as 'unknown'.
                 Object.entries((items as any).packages).forEach(([packageName, packageData] : [string, any]) => {
                     aoa.push([`  ${packageName}`, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
-                    // FIX: Cast 'packageData' to 'any' to access properties on what is inferred as 'unknown'.
                     if((packageData as any).items.length > 0) processItems((packageData as any).items);
                 });
             }
@@ -844,9 +947,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 
         const grandTotals = Object.values(wfpData).flatMap(component => {
             if (Array.isArray(component)) return component;
-            // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
             if ((component as any).isExpandable) return (component as any).items;
-            // FIX: Cast 'component' to 'any' to access properties on what is inferred as 'unknown'.
             if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
             return [];
         });
@@ -862,10 +963,10 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     const handleDownloadBpFormsXlsx = () => {
         const { allUacsCodes, rows } = bpFormsProcessedData;
         
-        const flatData = [];
+        const flatData: any[] = [];
         Object.entries(rows).forEach(([componentName, componentData]) => {
             if (Array.isArray(componentData) && componentData.length > 0) {
-                componentData.forEach(activity => {
+                componentData.forEach((activity: any) => {
                     const row: { [key: string]: string | number } = {
                         'Program/Activity/Project': `${componentName} - ${activity.name}`,
                     };
@@ -897,7 +998,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             }
         });
 
-        // Add Grand Total
         if (flatData.length > 0) {
             const grandTotals = flatData.reduce((acc, row) => {
                  allUacsCodes.forEach(code => {
@@ -919,7 +1019,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 
         const ws = XLSX.utils.json_to_sheet(flatData);
         
-        // Formatting currency columns
         const currencyColumns = [...allUacsCodes, 'Total MOOE', 'Total CO', 'Grand Total'];
         const headers = Object.keys(flatData.length > 0 ? flatData[0] : {});
         currencyColumns.forEach(colName => {
@@ -932,7 +1031,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                          ws[cellAddress].t = 'n';
                          ws[cellAddress].z = '₱#,##0.00';
                     } else if (ws[cellAddress]) {
-                        ws[cellAddress].v = ''; // make 0 cells blank
+                        ws[cellAddress].v = ''; 
                     }
                 }
             }

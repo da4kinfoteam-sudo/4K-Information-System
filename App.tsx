@@ -178,7 +178,15 @@ const AppContent: React.FC = () => {
                             setParticularList={setReferenceParticularList}
                         />;
             case '/reports':
-                return <Reports ipos={ipos} subprojects={subprojects} trainings={trainings} otherActivities={otherActivities} />;
+                return <Reports 
+                            ipos={ipos} 
+                            subprojects={subprojects} 
+                            trainings={trainings} 
+                            otherActivities={otherActivities}
+                            officeReqs={officeReqs}
+                            staffingReqs={staffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
+                        />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;
                 return <SubprojectDetail 
