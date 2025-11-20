@@ -250,6 +250,42 @@ export interface OtherActivity {
     encodedBy: string;
 }
 
+// --- Program Management Interfaces ---
+
+export interface BaseProgramManagementItem {
+    id: number;
+    uid: string;
+    operatingUnit: string;
+    uacsCode: string;
+    obligationDate: string;
+    disbursementDate: string;
+    fundType: FundType;
+    fundYear: number;
+    tier: Tier;
+    encodedBy: string;
+}
+
+export interface OfficeRequirement extends BaseProgramManagementItem {
+    equipment: string;
+    specs: string;
+    purpose: string;
+    numberOfUnits: number;
+    pricePerUnit: number;
+}
+
+export interface StaffingRequirement extends BaseProgramManagementItem {
+    personnelPosition: string;
+    status: 'Permanent' | 'Contractual' | 'COS' | 'Job Order';
+    salaryGrade: number;
+    annualSalary: number; // Includes incentives
+    personnelType: 'Technical' | 'Administrative' | 'Support';
+}
+
+export interface OtherProgramExpense extends BaseProgramManagementItem {
+    particulars: string;
+    amount: number;
+}
+
 
 export interface NavLink {
     name: string;
@@ -369,6 +405,12 @@ export const SettingsIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+export const ManagementIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+);
+
 
 export const navigationLinks: NavLink[] = [
     { name: 'Homepage', href: '/' },
@@ -378,6 +420,7 @@ export const navigationLinks: NavLink[] = [
     { name: 'separator2', href: '#', type: 'separator' },
     { name: 'Subprojects', href: '/subprojects' },
     { name: 'Activities', href: '/activities' },
+    { name: 'Program Management', href: '/program-management' },
     { name: 'separator3', href: '#', type: 'separator' },
     { name: 'Indigenous Peoples Organization', href: '/ipo' },
     { name: 'References', href: '/references' },
@@ -849,5 +892,64 @@ export const sampleOtherActivities: OtherActivity[] = [
         expenses: [
              { id: 1, objectType: "MOOE", expenseParticular: "Other Supplies and Materials Expenses", uacsCode: "50203990-00", obligationMonth: "2024-06-20", disbursementMonth: "2024-07-10", amount: 50000 }
         ]
+    }
+];
+
+// --- Program Management Sample Data ---
+
+export const sampleOfficeRequirements: OfficeRequirement[] = [
+    {
+        id: 1,
+        uid: "OR-2024-001",
+        operatingUnit: "RPMO 4A",
+        uacsCode: "10605010-00",
+        obligationDate: "2024-01-15",
+        disbursementDate: "2024-02-01",
+        fundType: "Current",
+        fundYear: 2024,
+        tier: "Tier 1",
+        equipment: "Laptop",
+        specs: "Intel i5, 8GB RAM, 512GB SSD",
+        purpose: "For Project Monitoring Officer",
+        numberOfUnits: 2,
+        pricePerUnit: 45000,
+        encodedBy: "Juan Dela Cruz"
+    }
+];
+
+export const sampleStaffingRequirements: StaffingRequirement[] = [
+    {
+        id: 1,
+        uid: "SR-2024-001",
+        operatingUnit: "RPMO 4A",
+        uacsCode: "50101010-01",
+        obligationDate: "2024-01-01",
+        disbursementDate: "2024-01-31",
+        fundType: "Current",
+        fundYear: 2024,
+        tier: "Tier 1",
+        personnelPosition: "Project Development Officer II",
+        status: "Contractual",
+        salaryGrade: 15,
+        annualSalary: 420000,
+        personnelType: "Technical",
+        encodedBy: "Juan Dela Cruz"
+    }
+];
+
+export const sampleOtherProgramExpenses: OtherProgramExpense[] = [
+    {
+        id: 1,
+        uid: "OE-2024-001",
+        operatingUnit: "RPMO 4A",
+        uacsCode: "50203010-01",
+        obligationDate: "2024-02-10",
+        disbursementDate: "2024-02-25",
+        fundType: "Current",
+        fundYear: 2024,
+        tier: "Tier 1",
+        particulars: "Office Supplies for Q1",
+        amount: 15000,
+        encodedBy: "Juan Dela Cruz"
     }
 ];

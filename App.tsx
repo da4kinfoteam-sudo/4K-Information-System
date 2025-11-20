@@ -13,12 +13,15 @@ import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
 import Settings from './components/Settings';
 import Login from './components/Login';
+import ProgramManagement from './components/ProgramManagement';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
-    sampleReferenceUacsList, sampleReferenceParticularList 
+    sampleReferenceUacsList, sampleReferenceParticularList,
+    sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
 } from './constants';
 
 const AppContent: React.FC = () => {
@@ -33,6 +36,11 @@ const AppContent: React.FC = () => {
     const [trainings, setTrainings] = useLocalStorageState<Training[]>('trainings', sampleTrainings);
     const [otherActivities, setOtherActivities] = useLocalStorageState<OtherActivity[]>('otherActivities', sampleOtherActivities);
     
+    // Program Management States
+    const [officeReqs, setOfficeReqs] = useLocalStorageState<OfficeRequirement[]>('officeReqs', sampleOfficeRequirements);
+    const [staffingReqs, setStaffingReqs] = useLocalStorageState<StaffingRequirement[]>('staffingReqs', sampleStaffingRequirements);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useLocalStorageState<OtherProgramExpense[]>('otherProgramExpenses', sampleOtherProgramExpenses);
+
     // Reference States with Sample Defaults
     const [referenceUacsList, setReferenceUacsList] = useLocalStorageState<ReferenceUacs[]>('referenceUacsList', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useLocalStorageState<ReferenceParticular[]>('referenceParticularList', sampleReferenceParticularList);
@@ -140,6 +148,16 @@ const AppContent: React.FC = () => {
                             otherActivities={otherActivities} 
                             setOtherActivities={setOtherActivities} 
                             onSelectIpo={handleSelectIpo}
+                            uacsCodes={derivedUacsCodes}
+                        />;
+            case '/program-management':
+                return <ProgramManagement
+                            officeReqs={officeReqs}
+                            setOfficeReqs={setOfficeReqs}
+                            staffingReqs={staffingReqs}
+                            setStaffingReqs={setStaffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
+                            setOtherProgramExpenses={setOtherProgramExpenses}
                             uacsCodes={derivedUacsCodes}
                         />;
             case '/ipo':
