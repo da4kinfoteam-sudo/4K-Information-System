@@ -1,4 +1,3 @@
-
 // Author: AI
 // OS support: Any
 // Description: Constants and type definitions for the application
@@ -172,6 +171,7 @@ export type Month = typeof months[number];
 
 export interface Training {
     id: number;
+    uid?: string;
     name: string;
     date: string;
     description: string;
@@ -191,10 +191,11 @@ export interface Training {
     encodedBy: string;
 }
 
-export type OtherActivityComponentType = 'Social Preparation' | 'Marketing and Enterprise' | 'Program Management';
+export type OtherActivityComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
 
 export const otherActivityComponents: OtherActivityComponentType[] = [
     'Social Preparation',
+    'Production and Livelihood',
     'Marketing and Enterprise',
     'Program Management'
 ];
@@ -214,6 +215,7 @@ export const programManagementActivities = [
 
 export const otherActivityOptions: { [key in OtherActivityComponentType]: readonly string[] } = {
     'Social Preparation': socialPreparationActivities,
+    'Production and Livelihood': [],
     'Marketing and Enterprise': marketingEnterpriseActivities,
     'Program Management': programManagementActivities,
 };
@@ -231,6 +233,7 @@ export interface OtherActivityExpense {
 
 export interface OtherActivity {
     id: number;
+    uid?: string;
     component: OtherActivityComponentType;
     name: string;
     date: string;
@@ -266,6 +269,12 @@ export const initialParticularTypes: { [key: string]: string[] } = {
 
 export const particularTypes = initialParticularTypes;
 
+export const operatingUnits = [
+    "NPMO", "RPMO CAR", "RPMO 1", "RPMO 2", "RPMO 3", 
+    "RPMO 4A", "RPMO 4B", "RPMO 5", "RPMO 6", "RPMO 7", 
+    "RPMO 8", "RPMO 9", "RPMO 10", "RPMO 11", "RPMO 12", 
+    "RPMO 13", "RPMO NIR"
+];
 
 export const philippineLocations: { [key: string]: any } = {
   "Online": {},
@@ -368,8 +377,7 @@ export const navigationLinks: NavLink[] = [
     { name: 'Reports', href: '/reports' },
     { name: 'separator2', href: '#', type: 'separator' },
     { name: 'Subprojects', href: '/subprojects' },
-    { name: 'Trainings', href: '/trainings' },
-    { name: 'Other Activities', href: '/other-activities' },
+    { name: 'Activities', href: '/activities' },
     { name: 'separator3', href: '#', type: 'separator' },
     { name: 'Indigenous Peoples Organization', href: '/ipo' },
     { name: 'References', href: '/references' },
@@ -636,6 +644,7 @@ export const sampleSubprojects: Subproject[] = [
 export const sampleTrainings: Training[] = [
     {
         id: 1,
+        uid: "TRN-2024-001",
         name: "Organizational Management Training",
         date: "2024-02-10",
         description: "Training for IPO officers on leadership and management.",
@@ -656,6 +665,7 @@ export const sampleTrainings: Training[] = [
     },
     {
         id: 2,
+        uid: "TRN-2024-002",
         name: "Goat Raising Technology",
         date: "2024-03-05",
         description: "Technical training on goat production.",
@@ -676,6 +686,7 @@ export const sampleTrainings: Training[] = [
     },
     {
         id: 3,
+        uid: "TRN-2024-003",
         name: "VCO Processing Workshop",
         date: "2024-07-15",
         description: "Workshop on standard VCO processing methods.",
@@ -696,6 +707,7 @@ export const sampleTrainings: Training[] = [
     },
     {
         id: 4,
+        uid: "TRN-2023-004",
         name: "Cacao Rehabilitation Training",
         date: "2023-06-20",
         description: "Training on rehabilitating old cacao trees.",
@@ -716,6 +728,7 @@ export const sampleTrainings: Training[] = [
     },
     {
         id: 5,
+        uid: "TRN-2024-005",
         name: "Financial Literacy Workshop",
         date: "2024-05-10",
         description: "Basic bookkeeping and financial management.",
@@ -739,6 +752,7 @@ export const sampleTrainings: Training[] = [
 export const sampleOtherActivities: OtherActivity[] = [
     {
         id: 1,
+        uid: "ACT-2024-001",
         component: "Social Preparation",
         name: "Community Needs Assessment",
         date: "2024-01-20",
@@ -758,6 +772,7 @@ export const sampleOtherActivities: OtherActivity[] = [
     },
     {
         id: 2,
+        uid: "ACT-2024-002",
         component: "Program Management",
         name: "Sub-Project Monitoring",
         date: "2024-04-15",
@@ -777,6 +792,7 @@ export const sampleOtherActivities: OtherActivity[] = [
     },
     {
         id: 3,
+        uid: "ACT-2024-003",
         component: "Marketing and Enterprise",
         name: "Market Linkaging",
         date: "2024-06-10",
@@ -796,6 +812,7 @@ export const sampleOtherActivities: OtherActivity[] = [
     },
     {
         id: 4,
+        uid: "ACT-2024-004",
         component: "Social Preparation",
         name: "IPO Registration Drive (RSBSA, SEC, DOLE, CDA)",
         date: "2024-02-15",
@@ -815,6 +832,7 @@ export const sampleOtherActivities: OtherActivity[] = [
     },
     {
         id: 5,
+        uid: "ACT-2024-005",
         component: "Program Management",
         name: "Performance and Budget Utilization Review (PBUR)",
         date: "2024-07-05",

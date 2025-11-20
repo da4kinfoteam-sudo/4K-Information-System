@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Subproject, IPO, Training, OtherActivity, philippineRegions, tiers, fundTypes } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, philippineRegions, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon } from '../constants';
 import { useState, useMemo, useRef } from 'react';
 import { parseLocation } from './LocationPicker';
 
@@ -251,6 +251,45 @@ const ProvincialComparisonChart: React.FC<{ data: { [province: string]: { target
     );
 };
 
+const RankingList: React.FC<{ 
+    title: string; 
+    items: { name: string; count: number }[]; 
+    icon?: React.ReactNode;
+    colorClass?: string;
+}> = ({ title, items, icon, colorClass = "text-gray-900" }) => {
+    return (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-4 border-b border-gray-100 dark:border-gray-700 pb-3">
+                <div className={`p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 ${colorClass}`}>
+                    {icon}
+                </div>
+                <h4 className="font-semibold text-gray-800 dark:text-white">{title}</h4>
+            </div>
+            <div className="overflow-y-auto max-h-96 pr-2 flex-1 custom-scrollbar">
+                 <ul className="space-y-2">
+                    {items.map((item, index) => (
+                        <li key={item.name} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                                    index === 0 ? 'bg-yellow-100 text-yellow-700 ring-1 ring-yellow-400' : 
+                                    index === 1 ? 'bg-gray-200 text-gray-700 ring-1 ring-gray-400' : 
+                                    index === 2 ? 'bg-orange-100 text-orange-800 ring-1 ring-orange-400' : 
+                                    'bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400'
+                                }`}>
+                                    {index + 1}
+                                </span>
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{item.name}</span>
+                            </div>
+                            <span className={`text-sm font-bold ${colorClass}`}>{item.count}</span>
+                        </li>
+                    ))}
+                    {items.length === 0 && <li className="text-sm text-gray-500 text-center italic py-4">No data available</li>}
+                </ul>
+            </div>
+        </div>
+    );
+};
+
 // --- Physical Dashboard Tab Content ---
 const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (data: { title: string; items: ModalItem[] } | null) => void }> = ({ data, setModalData }) => {
     
@@ -414,6 +453,51 @@ const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (da
         return chartData;
     }, [data.ipos, data.subprojects, data.trainings]);
 
+    const rankingData = useMemo(() => {
+        const stats: Record<string, { ipos: Set<string>, subprojects: number, trainings: number }> = {};
+        
+        const ensureOu = (ou: string) => {
+            if (!stats[ou]) stats[ou] = { ipos: new Set(), subprojects: 0, trainings: 0 };
+            return stats[ou];
+        }
+
+        data.subprojects.forEach(sp => {
+            if (sp.operatingUnit) {
+                const s = ensureOu(sp.operatingUnit);
+                s.subprojects++;
+                s.ipos.add(sp.indigenousPeopleOrganization);
+            }
+        });
+
+        data.trainings.forEach(t => {
+            if (t.operatingUnit) {
+                const s = ensureOu(t.operatingUnit);
+                s.trainings++;
+                t.participatingIpos.forEach(ipo => s.ipos.add(ipo));
+            }
+        });
+
+        data.otherActivities.forEach(oa => {
+             if (oa.operatingUnit) {
+                const s = ensureOu(oa.operatingUnit);
+                oa.participatingIpos.forEach(ipo => s.ipos.add(ipo));
+            }
+        });
+
+        const entries = Object.entries(stats).map(([name, stat]) => ({
+            name,
+            iposCount: stat.ipos.size,
+            subprojectsCount: stat.subprojects,
+            trainingsCount: stat.trainings
+        }));
+
+        return {
+            byIpos: [...entries].sort((a, b) => b.iposCount - a.iposCount),
+            bySubprojects: [...entries].sort((a, b) => b.subprojectsCount - a.subprojectsCount),
+            byTrainings: [...entries].sort((a, b) => b.trainingsCount - a.trainingsCount),
+        };
+    }, [data]);
+
 
     const handleShowTotalIpos = () => {
         const items = data.ipos.map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
@@ -487,6 +571,30 @@ const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (da
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                     <ProvincialComparisonChart data={provincialComparisonData} />
                 </div>
+            </section>
+
+             <section aria-labelledby="ou-rankings">
+                 <h3 id="ou-rankings" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Operating Unit Rankings</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <RankingList 
+                        title="By IPOs Assisted" 
+                        items={rankingData.byIpos.map(i => ({ name: i.name, count: i.iposCount }))}
+                        colorClass="text-teal-600 dark:text-teal-400"
+                        icon={<IpoIcon className="h-5 w-5 text-teal-600 dark:text-teal-400" />}
+                    />
+                    <RankingList 
+                        title="By Subprojects" 
+                        items={rankingData.bySubprojects.map(i => ({ name: i.name, count: i.subprojectsCount }))}
+                        colorClass="text-blue-600 dark:text-blue-400"
+                        icon={<ProjectsIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+                    />
+                     <RankingList 
+                        title="By Trainings" 
+                        items={rankingData.byTrainings.map(i => ({ name: i.name, count: i.trainingsCount }))}
+                        colorClass="text-green-600 dark:text-green-400"
+                        icon={<TrainingIcon className="h-5 w-5 text-green-600 dark:text-green-400" />}
+                    />
+                 </div>
             </section>
         </div>
     );

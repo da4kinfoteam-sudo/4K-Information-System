@@ -5,8 +5,7 @@ import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import DashboardsPage from './components/DashboardsPage';
 import Subprojects from './components/Subprojects';
-import { TrainingsComponent } from './components/Trainings';
-import { OtherActivitiesComponent } from './components/OtherActivities';
+import { ActivitiesComponent } from './components/Activities';
 import IPOs from './components/IPO';
 import References, { ReferenceUacs, ReferenceParticular } from './components/References';
 import Reports from './components/Reports';
@@ -133,17 +132,11 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                         />;
-            case '/trainings':
-                return <TrainingsComponent 
+            case '/activities':
+                return <ActivitiesComponent 
                             ipos={ipos} 
-                            trainings={trainings} 
-                            setTrainings={setTrainings} 
-                            onSelectIpo={handleSelectIpo}
-                            uacsCodes={derivedUacsCodes}
-                        />;
-            case '/other-activities':
-                return <OtherActivitiesComponent 
-                            ipos={ipos} 
+                            trainings={trainings}
+                            setTrainings={setTrainings}
                             otherActivities={otherActivities} 
                             setOtherActivities={setOtherActivities} 
                             onSelectIpo={handleSelectIpo}
