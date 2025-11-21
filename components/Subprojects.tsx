@@ -293,13 +293,193 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         XLSX.writeFile(wb, "Subprojects_Report.xlsx");
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // Placeholder for file upload logic similar to Trainings.tsx
-        // Implementation would parse XLSX and update state
-        alert("File upload feature placeholder");
+    const handleDownloadTemplate = () => {
+        const headers = [
+            'uid', 'name', 'indigenousPeopleOrganization', 'location', 'status', 'packageType', 
+            'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
+            'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
+            'detail_objectType', 'detail_expenseParticular', 'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
+        ];
+
+        const exampleData = [
+            {
+                uid: 'SP-TEMP-001',
+                name: 'Sample Coffee Production',
+                indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
+                location: 'Brgy. Daraitan, Tanay, Rizal',
+                status: 'Ongoing',
+                packageType: 'Package 1',
+                startDate: '2024-01-15',
+                estimatedCompletionDate: '2024-06-15',
+                actualCompletionDate: '',
+                fundingYear: 2024,
+                fundType: 'Current',
+                tier: 'Tier 1',
+                operatingUnit: 'RPMO 4A',
+                remarks: 'Sample upload with multiple items',
+                detail_type: 'Equipment',
+                detail_particulars: 'Coffee Roaster',
+                detail_deliveryDate: '2024-03-01',
+                detail_unitOfMeasure: 'unit',
+                detail_pricePerUnit: 150000,
+                detail_numberOfUnits: 1,
+                detail_objectType: 'CO',
+                detail_expenseParticular: 'Machinery and Equipment',
+                detail_uacsCode: '10605030-00',
+                detail_obligationMonth: '2024-02-01',
+                detail_disbursementMonth: '2024-03-15'
+            },
+            {
+                uid: 'SP-TEMP-001',
+                name: 'Sample Coffee Production',
+                indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
+                location: 'Brgy. Daraitan, Tanay, Rizal',
+                status: 'Ongoing',
+                packageType: 'Package 1',
+                startDate: '2024-01-15',
+                estimatedCompletionDate: '2024-06-15',
+                actualCompletionDate: '',
+                fundingYear: 2024,
+                fundType: 'Current',
+                tier: 'Tier 1',
+                operatingUnit: 'RPMO 4A',
+                remarks: 'Sample upload with multiple items',
+                detail_type: 'Infrastructure',
+                detail_particulars: 'Coffee Processing Shed',
+                detail_deliveryDate: '2024-04-01',
+                detail_unitOfMeasure: 'unit',
+                detail_pricePerUnit: 500000,
+                detail_numberOfUnits: 1,
+                detail_objectType: 'CO',
+                detail_expenseParticular: 'Buildings and Other Structures',
+                detail_uacsCode: '10604020-00',
+                detail_obligationMonth: '2024-02-15',
+                detail_disbursementMonth: '2024-04-15'
+            }
+        ];
+
+        const instructions = [
+            ["Column", "Description"],
+            ["uid", "Unique Identifier. REQUIRED. Rows with the same UID will be grouped into one subproject."],
+            ["name", "Name of the subproject."],
+            ["indigenousPeopleOrganization", "Name of the IPO."],
+            ["location", "Location string (e.g., Brgy. X, Municipality, Province)."],
+            ["status", "Proposed, Ongoing, Completed, or Cancelled."],
+            ["packageType", "Package 1, Package 2, etc."],
+            ["startDate", "YYYY-MM-DD"],
+            ["estimatedCompletionDate", "YYYY-MM-DD"],
+            ["actualCompletionDate", "YYYY-MM-DD (Optional)"],
+            ["fundingYear", "Year (e.g., 2024)"],
+            ["fundType", "Current, Continuing, or Insertion"],
+            ["tier", "Tier 1 or Tier 2"],
+            ["operatingUnit", "e.g., RPMO 4A"],
+            ["remarks", "Optional remarks"],
+            ["detail_type", "Item Type (e.g., Equipment, Livestock, etc.)"],
+            ["detail_particulars", "Specific item name."],
+            ["detail_deliveryDate", "YYYY-MM-DD"],
+            ["detail_unitOfMeasure", "pcs, kgs, unit, lot, heads"],
+            ["detail_pricePerUnit", "Number"],
+            ["detail_numberOfUnits", "Number"],
+            ["detail_objectType", "MOOE or CO"],
+            ["detail_expenseParticular", "Expense Class"],
+            ["detail_uacsCode", "Specific UACS Code"],
+            ["detail_obligationMonth", "YYYY-MM-DD (Date of Obligation)"],
+            ["detail_disbursementMonth", "YYYY-MM-DD (Date of Disbursement)"]
+        ];
+
+        const wb = XLSX.utils.book_new();
+        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
+
+        XLSX.utils.book_append_sheet(wb, ws_data, "Subprojects Data");
+        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+
+        XLSX.writeFile(wb, "Subprojects_Upload_Template.xlsx");
     };
 
-    const handleDownloadTemplate = () => {
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                const groupedData = new Map<string, any>();
+                let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
+
+                jsonData.forEach((row, index) => {
+                    if (!row.uid) return; // Skip rows without UID
+                    
+                    if (!groupedData.has(row.uid)) {
+                        maxId++;
+                        
+                        groupedData.set(row.uid, {
+                            id: maxId,
+                            uid: String(row.uid),
+                            name: String(row.name),
+                            location: String(row.location),
+                            indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
+                            status: row.status,
+                            packageType: row.packageType,
+                            startDate: String(row.startDate),
+                            estimatedCompletionDate: String(row.estimatedCompletionDate),
+                            actualCompletionDate: row.actualCompletionDate ? String(row.actualCompletionDate) : undefined,
+                            fundingYear: Number(row.fundingYear),
+                            fundType: row.fundType,
+                            tier: row.tier,
+                            operatingUnit: row.operatingUnit,
+                            encodedBy: currentUser?.fullName || 'System Upload',
+                            remarks: row.remarks,
+                            // Mock Lat/Lng for map display since parsing assumes structure, could be enhanced with proper Geocoding
+                            lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
+                            lng: 120.9842 + (Math.random() * 0.1 - 0.05),
+                            details: []
+                        });
+                    }
+
+                    const subproject = groupedData.get(row.uid);
+                    
+                    if (row.detail_particulars) {
+                        subproject.details.push({
+                            id: Date.now() + index, // Temp ID
+                            type: row.detail_type,
+                            particulars: row.detail_particulars,
+                            deliveryDate: String(row.detail_deliveryDate),
+                            unitOfMeasure: row.detail_unitOfMeasure,
+                            pricePerUnit: Number(row.detail_pricePerUnit),
+                            numberOfUnits: Number(row.detail_numberOfUnits),
+                            objectType: row.detail_objectType,
+                            expenseParticular: row.detail_expenseParticular,
+                            uacsCode: String(row.detail_uacsCode),
+                            obligationMonth: String(row.detail_obligationMonth),
+                            disbursementMonth: String(row.detail_disbursementMonth)
+                        });
+                    }
+                });
+
+                const newSubprojects = Array.from(groupedData.values());
+                setSubprojects(prev => [...prev, ...newSubprojects]);
+                alert(`${newSubprojects.length} subprojects imported successfully!`);
+
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    const handleDownloadTemplateOld = () => {
         // Placeholder for template download
         alert("Template download placeholder");
     };
@@ -380,7 +560,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         />
                         {canViewAll && (
                             <div className="flex items-center gap-2">
-                                <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit:</label>
+                                <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
                                 <select id="ouFilter" value={ouFilter} onChange={(e) => setOuFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
                                     <option value="All">All OUs</option>
                                     {operatingUnits.map(ou => (
@@ -473,15 +653,54 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     {expandedRowId === s.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
                                             <td colSpan={8} className="p-4">
-                                                <div className="text-sm">
-                                                    <div className="grid grid-cols-2 gap-4 mb-2">
-                                                        <p><strong>Location:</strong> {s.location}</p>
-                                                        <p><strong>Package:</strong> {s.packageType}</p>
-                                                        <p><strong>Completion:</strong> {formatDate(s.estimatedCompletionDate)}</p>
-                                                        <p><strong>Fund:</strong> {s.fundType} ({s.fundingYear}) - {s.tier}</p>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
+                                                            <div className="space-y-2 text-sm">
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Timeline:</strong> <span className="text-gray-900 dark:text-gray-100">{formatDate(s.startDate)} to {formatDate(s.estimatedCompletionDate)}</span></p>
+                                                                {s.actualCompletionDate && <p><strong className="text-gray-500 dark:text-gray-400">Actual Completion:</strong> <span className="text-gray-900 dark:text-gray-100">{formatDate(s.actualCompletionDate)}</span></p>}
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        {s.remarks && (
+                                                            <div>
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
+                                                                <p className="text-sm text-gray-600 dark:text-gray-300 italic">{s.remarks}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <p className="mb-2"><strong>Encoded by:</strong> {s.encodedBy}</p>
-                                                    {s.remarks && <p className="italic text-gray-500">Remarks: {s.remarks}</p>}
+                                                    
+                                                    <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
+                                                        {s.details.length > 0 ? (
+                                                            <ul className="space-y-1">
+                                                                {s.details.map(detail => (
+                                                                    <li key={detail.id} className="flex justify-between items-start p-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
+                                                                        <div>
+                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars}</span>
+                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode} | {detail.numberOfUnits} {detail.unitOfMeasure}</span>
+                                                                        </div>
+                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</span>
+                                                                    </li>
+                                                                ))}
+                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white">
+                                                                    <span>Total</span>
+                                                                    <span>{formatCurrency(calculateTotalBudget(s.details))}</span>
+                                                                </li>
+                                                            </ul>
+                                                        ) : (
+                                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>
+                                                        )}
+                                                        
+                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundingYear ?? 'N/A'}</span></p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundType ?? 'N/A'}</span></p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> <span className="text-gray-900 dark:text-gray-100">{s.tier ?? 'N/A'}</span></p>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
@@ -530,7 +749,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     {activeTab === 'details' && (
                          <div className="space-y-6">
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} /></div>
                                     <div>
@@ -615,7 +834,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                         <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c}</option>)}</select></div>
+                                        <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                     </div>
 
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>

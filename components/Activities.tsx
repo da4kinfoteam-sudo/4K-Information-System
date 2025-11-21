@@ -626,7 +626,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                         <input type="text" placeholder="Search activities..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-auto ${commonInputClasses} mt-0`} />
                          {canViewAll && (
                             <div className="flex items-center gap-2">
-                               <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit:</label>
+                               <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
                                 <select id="ouFilter" value={ouFilter} onChange={(e) => setOuFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
                                     <option value="All">All OUs</option>
                                     {operatingUnits.map(ou => (
