@@ -6,6 +6,9 @@ import {
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 
+// Declare XLSX to inform TypeScript about the global variable from the script tag
+declare const XLSX: any;
+
 interface ProgramManagementProps {
     officeReqs: OfficeRequirement[];
     setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
@@ -42,6 +45,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const [itemToDelete, setItemToDelete] = useState<any>(null);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [view, setView] = useState<'list' | 'form'>('list');
+    const [isUploading, setIsUploading] = useState(false);
 
     // Filter State
     const [ouFilter, setOuFilter] = useState('All');
@@ -223,6 +227,204 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     };
 
+    // --- Import/Export Handlers ---
+
+    const handleDownloadReport = () => {
+        const dataToExport = currentList.map((item: any) => {
+            const common = {
+                'UID': item.uid,
+                'Operating Unit': item.operatingUnit,
+                'Fund Year': item.fundYear,
+                'Fund Type': item.fundType,
+                'Tier': item.tier,
+                'Obligation Date': item.obligationDate,
+                'Disbursement Date': item.disbursementDate,
+                'UACS Code': item.uacsCode,
+            };
+
+            if (activeTab === 'Office') {
+                return {
+                    ...common,
+                    'Equipment': item.equipment,
+                    'Specifications': item.specs,
+                    'Purpose': item.purpose,
+                    'Units': item.numberOfUnits,
+                    'Price Per Unit': item.pricePerUnit,
+                    'Total Amount': item.numberOfUnits * item.pricePerUnit
+                };
+            } else if (activeTab === 'Staffing') {
+                return {
+                    ...common,
+                    'Position': item.personnelPosition,
+                    'Status': item.status,
+                    'Salary Grade': item.salaryGrade,
+                    'Annual Salary': item.annualSalary,
+                    'Personnel Type': item.personnelType
+                };
+            } else {
+                return {
+                    ...common,
+                    'Particulars': item.particulars,
+                    'Amount': item.amount
+                };
+            }
+        });
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `${activeTab} Report`);
+        XLSX.writeFile(wb, `${activeTab}_Report.xlsx`);
+    };
+
+    const handleDownloadTemplate = () => {
+        let headers: string[] = [];
+        let exampleData: any[] = [];
+        let instructions: string[][] = [
+            ["Column", "Description"],
+            ["operatingUnit", "e.g., NPMO, RPMO 4A"],
+            ["fundYear", "YYYY"],
+            ["fundType", "Current, Continuing, Insertion"],
+            ["tier", "Tier 1, Tier 2"],
+            ["obligationDate", "YYYY-MM-DD"],
+            ["disbursementDate", "YYYY-MM-DD"],
+            ["uacsCode", "UACS Code string"]
+        ];
+
+        const commonExample = {
+            operatingUnit: 'RPMO 4A',
+            fundYear: 2024,
+            fundType: 'Current',
+            tier: 'Tier 1',
+            obligationDate: '2024-01-15',
+            disbursementDate: '2024-01-30',
+            uacsCode: '50203010-01'
+        };
+
+        if (activeTab === 'Office') {
+            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
+            exampleData = [{ ...commonExample, equipment: 'Laptop', specs: 'i5, 8GB RAM', purpose: 'For Admin', numberOfUnits: 1, pricePerUnit: 45000 }];
+            instructions.push(
+                ["equipment", "Name of equipment"],
+                ["specs", "Specifications"],
+                ["purpose", "Purpose"],
+                ["numberOfUnits", "Number"],
+                ["pricePerUnit", "Number"]
+            );
+        } else if (activeTab === 'Staffing') {
+            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'annualSalary', 'personnelType'];
+            exampleData = [{ ...commonExample, personnelPosition: 'Admin Aide', status: 'Contractual', salaryGrade: 6, annualSalary: 180000, personnelType: 'Administrative' }];
+            instructions.push(
+                ["personnelPosition", "Position Title"],
+                ["status", "Permanent, Contractual, COS, Job Order"],
+                ["salaryGrade", "Number (1-33)"],
+                ["annualSalary", "Number (Annual + Incentives)"],
+                ["personnelType", "Technical, Administrative, Support"]
+            );
+        } else {
+            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'particulars', 'amount'];
+            exampleData = [{ ...commonExample, particulars: 'Office Supplies Q1', amount: 15000 }];
+            instructions.push(
+                ["particulars", "Description"],
+                ["amount", "Number"]
+            );
+        }
+
+        const wb = XLSX.utils.book_new();
+        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
+
+        XLSX.utils.book_append_sheet(wb, ws_data, "Data Template");
+        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
+
+        XLSX.writeFile(wb, `${activeTab}_Upload_Template.xlsx`);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                const newItems: any[] = [];
+                let currentIdStart = Date.now();
+
+                jsonData.forEach((row, index) => {
+                    // Basic check
+                    if (!row.operatingUnit || !row.uacsCode) return;
+
+                    const newId = currentIdStart + index;
+                    const prefix = activeTab === 'Office' ? 'OR' : activeTab === 'Staffing' ? 'SR' : 'OE';
+                    const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${String(newId).slice(-4)}`;
+
+                    const commonData = {
+                        id: newId,
+                        uid,
+                        operatingUnit: row.operatingUnit,
+                        uacsCode: String(row.uacsCode),
+                        obligationDate: row.obligationDate ? String(row.obligationDate) : '',
+                        disbursementDate: row.disbursementDate ? String(row.disbursementDate) : '',
+                        fundType: row.fundType || 'Current',
+                        fundYear: Number(row.fundYear) || new Date().getFullYear(),
+                        tier: row.tier || 'Tier 1',
+                        encodedBy: currentUser?.fullName || 'System Upload'
+                    };
+
+                    if (activeTab === 'Office') {
+                        newItems.push({
+                            ...commonData,
+                            equipment: row.equipment || '',
+                            specs: row.specs || '',
+                            purpose: row.purpose || '',
+                            numberOfUnits: Number(row.numberOfUnits) || 0,
+                            pricePerUnit: Number(row.pricePerUnit) || 0,
+                        } as OfficeRequirement);
+                    } else if (activeTab === 'Staffing') {
+                        newItems.push({
+                            ...commonData,
+                            personnelPosition: row.personnelPosition || '',
+                            status: row.status || 'Contractual',
+                            salaryGrade: Number(row.salaryGrade) || 1,
+                            annualSalary: Number(row.annualSalary) || 0,
+                            personnelType: row.personnelType || 'Technical'
+                        } as StaffingRequirement);
+                    } else {
+                        newItems.push({
+                            ...commonData,
+                            particulars: row.particulars || '',
+                            amount: Number(row.amount) || 0
+                        } as OtherProgramExpense);
+                    }
+                });
+
+                if (activeTab === 'Office') {
+                    setOfficeReqs(prev => [...newItems, ...prev]);
+                } else if (activeTab === 'Staffing') {
+                    setStaffingReqs(prev => [...newItems, ...prev]);
+                } else {
+                    setOtherProgramExpenses(prev => [...newItems, ...prev]);
+                }
+
+                alert(`${newItems.length} records imported successfully!`);
+
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     const renderForm = () => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-6">
@@ -380,8 +582,9 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             {view === 'list' && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
                      {/* Tabs & Filters */}
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4">
+                        {/* Tabs */}
+                        <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg w-fit">
                             {(['Office', 'Staffing', 'Other'] as ActiveTab[]).map(tab => (
                                 <button
                                     key={tab}
@@ -394,17 +597,32 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                                 </button>
                             ))}
                         </div>
-                        <div className="flex gap-2">
-                             {canViewAll && (
-                                <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                    <option value="All">All OUs</option>
-                                    {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+
+                        {/* Filters & Actions */}
+                        <div className="flex flex-wrap justify-between items-center gap-4">
+                            <div className="flex gap-2">
+                                {canViewAll && (
+                                    <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                        <option value="All">All OUs</option>
+                                        {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                                    </select>
+                                )}
+                                <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                    <option value="All">All Years</option>
+                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
-                            )}
-                             <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                <option value="All">All Years</option>
-                                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                                {canEdit && (
+                                    <>
+                                        <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                                        <label htmlFor="pm-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                                        <input id="pm-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
 
