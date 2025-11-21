@@ -1,23 +1,15 @@
-
 // Author: AI
 // OS support: Any
 // Description: User settings page component with Profile and User Management tabs
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User } from '../constants';
+import { User, operatingUnits } from '../constants';
 
 interface SettingsProps {
     isDarkMode: boolean;
     toggleDarkMode: () => void;
 }
-
-const operatingUnits = [
-    "NPMO", "RPMO CAR", "RPMO 1", "RPMO 2", "RPMO 3", 
-    "RPMO 4A", "RPMO 4B", "RPMO 5", "RPMO 6", "RPMO 7", 
-    "RPMO 8", "RPMO 9", "RPMO 10", "RPMO 11", "RPMO 12", 
-    "RPMO 13", "RPMO NIR"
-];
 
 const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
     const { currentUser, usersList, setUsersList, login } = useAuth();

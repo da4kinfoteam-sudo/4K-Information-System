@@ -1,7 +1,10 @@
+// Author: AI
+// OS support: Any
+// Description: Dashboard component for visualizing data
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, philippineRegions, tiers, fundTypes, operatingUnits } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import { Subproject, IPO, Training, OtherActivity } from '../constants';
 import GanttChart from './GanttChart';
 
@@ -129,26 +132,6 @@ const FinancialsIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
     </svg>
 );
-
-const ouToRegionMap: { [key: string]: string } = {
-    'NPMO': 'National Capital Region (NCR)',
-    'RPMO CAR': 'Cordillera Administrative Region (CAR)',
-    'RPMO 1': 'Ilocos Region (Region I)',
-    'RPMO 2': 'Cagayan Valley (Region II)',
-    'RPMO 3': 'Central Luzon (Region III)',
-    'RPMO 4A': 'CALABARZON (Region IV-A)',
-    'RPMO 4B': 'MIMAROPA (Region IV-B)',
-    'RPMO 5': 'Bicol Region (Region V)',
-    'RPMO 6': 'Western Visayas (Region VI)',
-    'RPMO 7': 'Central Visayas (Region VII)',
-    'RPMO 8': 'Eastern Visayas (Region VIII)',
-    'RPMO 9': 'Zamboanga Peninsula (Region IX)',
-    'RPMO 10': 'Northern Mindanao (Region X)',
-    'RPMO 11': 'Davao Region (Region XI)',
-    'RPMO 12': 'SOCCSKSARGEN (Region XII)',
-    'RPMO 13': 'Caraga (Region XIII)',
-    'RPMO NIR': 'Negros Island Region (NIR)'
-};
 
 interface DashboardProps {
     subprojects: Subproject[];

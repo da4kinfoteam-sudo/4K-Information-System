@@ -1,6 +1,9 @@
+// Author: AI
+// OS support: Any
+// Description: DashboardsPage component for displaying various dashboard tabs
 
 import React from 'react';
-import { Subproject, IPO, Training, OtherActivity, philippineRegions, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits, ouToRegionMap } from '../constants';
 import { useState, useMemo, useRef } from 'react';
 import { parseLocation } from './LocationPicker';
 
@@ -617,26 +620,6 @@ const LevelOfDevelopmentDashboard: React.FC<{ ipos: IPO[] }> = ({ ipos }) => {
             <DoughnutChart data={ipoLodCounts} colors={lodColors} />
         </div>
     );
-};
-
-const ouToRegionMap: { [key: string]: string } = {
-    'NPMO': 'National Capital Region (NCR)',
-    'RPMO CAR': 'Cordillera Administrative Region (CAR)',
-    'RPMO 1': 'Ilocos Region (Region I)',
-    'RPMO 2': 'Cagayan Valley (Region II)',
-    'RPMO 3': 'Central Luzon (Region III)',
-    'RPMO 4A': 'CALABARZON (Region IV-A)',
-    'RPMO 4B': 'MIMAROPA (Region IV-B)',
-    'RPMO 5': 'Bicol Region (Region V)',
-    'RPMO 6': 'Western Visayas (Region VI)',
-    'RPMO 7': 'Central Visayas (Region VII)',
-    'RPMO 8': 'Eastern Visayas (Region VIII)',
-    'RPMO 9': 'Zamboanga Peninsula (Region IX)',
-    'RPMO 10': 'Northern Mindanao (Region X)',
-    'RPMO 11': 'Davao Region (Region XI)',
-    'RPMO 12': 'SOCCSKSARGEN (Region XII)',
-    'RPMO 13': 'Caraga (Region XIII)',
-    'RPMO NIR': 'Negros Island Region (NIR)'
 };
 
 interface DashboardsPageProps {
