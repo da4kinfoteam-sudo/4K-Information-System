@@ -50,6 +50,35 @@ export interface User {
     password?: string; // Simple storage for this demo
 }
 
+// --- System Management Types ---
+export interface Deadline {
+    id: number;
+    name: string;
+    date: string;
+}
+
+export interface PlanningSchedule {
+    id: number;
+    name: string;
+    startDate: string;
+    endDate: string;
+}
+
+export interface SystemSettings {
+    deadlines: Deadline[];
+    planningSchedules: PlanningSchedule[];
+}
+
+export const defaultSystemSettings: SystemSettings = {
+    deadlines: [
+        { id: 1, name: "Budget Proposal Submission", date: "2024-03-31" }
+    ],
+    planningSchedules: [
+        { id: 1, name: "Q1 Planning Workshop", startDate: "2024-01-15", endDate: "2024-01-20" },
+        { id: 2, name: "Mid-Year Assessment", startDate: "2024-06-15", endDate: "2024-06-20" }
+    ]
+};
+
 export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
   MOOE: {
     "Travelling Expenses": {

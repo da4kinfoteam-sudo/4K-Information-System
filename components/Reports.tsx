@@ -1,3 +1,4 @@
+
 // Author: AI
 // OS support: Any
 // Description: Reports component for generating various reports
@@ -73,7 +74,7 @@ const SummaryRow: React.FC<{
                 <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
                      <span className="inline-block w-5 text-center"></span> {label}
                 </td>
-                <td colSpan={allUacsCodes.length + 3} className={`${dataCellClass} text-center italic text-gray-500`}>No activities for this item.</td>
+                <td colSpan={allUacsCodes.length + 3} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this item.</td>
             </tr>
         );
     }
@@ -159,7 +160,7 @@ const BPFormsReport: React.FC<{ data: any }> = ({ data }) => {
 
     return (
         <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-xs">
+            <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
                 <thead className="sticky top-0 z-10">
                     <tr className="bg-gray-200 dark:bg-gray-800">
                         <th rowSpan={3} className={`${headerCellClass} min-w-[300px]`}>Program/Activity/Project</th>
@@ -345,7 +346,7 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                      <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={14} className={`${dataCellClass} text-center italic text-gray-500`}>No activities for this component.</td>
+                    <td colSpan={14} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
                 </tr>
             )
         }
@@ -417,7 +418,7 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
 
     return (
         <div id="wfp-report" className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-xs">
+            <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
                 <thead className="bg-gray-200 dark:bg-gray-700">
                     <tr>
                         <th rowSpan={2} className="p-1 border border-gray-300 dark:border-gray-600 align-bottom">Program/Activity/Project</th>
@@ -1052,7 +1053,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     const renderTabContent = () => {
         const Placeholder: React.FC<{ title: string }> = ({ title }) => (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-semibold">{title}</h3>
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{title}</h3>
                 <p className="mt-2 text-gray-600 dark:text-gray-400">Content for this report will be available soon.</p>
             </div>
         );
@@ -1093,12 +1094,12 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                      <div className="flex items-center gap-2">
-                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Operating Unit:</label>
+                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
                         <select 
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (
@@ -1112,7 +1113,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             id="tier-filter"
                             value={selectedTier}
                             onChange={(e) => setSelectedTier(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Tiers</option>
                             {tiers.map(tier => (
@@ -1126,7 +1127,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             id="fund-type-filter"
                             value={selectedFundType}
                             onChange={(e) => setSelectedFundType(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Fund Types</option>
                             {fundTypes.map(ft => (
@@ -1140,7 +1141,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             id="year-filter"
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Years</option>
                             {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}

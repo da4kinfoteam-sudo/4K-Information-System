@@ -1,3 +1,4 @@
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, OtherActivity, IPO, philippineRegions, OtherActivityComponentType, otherActivityComponents, otherActivityOptions, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, TrainingComponentType, operatingUnits } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -202,8 +203,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = e.currentTarget;
-        const isNumberInput = 'type' in e.currentTarget && e.currentTarget.type === 'number';
+        const target = e.currentTarget as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+        const { name, value } = target;
+        const isNumberInput = 'type' in target && target.type === 'number';
 
         setFormData(prev => ({ 
             ...prev, 
@@ -212,7 +214,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     };
     
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+        const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
     };
 

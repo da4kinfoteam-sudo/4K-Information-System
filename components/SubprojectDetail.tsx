@@ -1,8 +1,11 @@
+
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers } from '../constants';
+import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers } from '../constants';
+import LocationPicker from './LocationPicker';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
+    ipos: IPO[];
     onBack: () => void;
     previousPageName: string;
     onUpdateSubproject: (updatedSubproject: Subproject) => void;
@@ -40,9 +43,10 @@ const DetailItem: React.FC<{ label: string; value?: string | React.ReactNode }> 
     </div>
 );
 
-const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes }) => {
+const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedSubproject, setEditedSubproject] = useState(subproject);
+    const [activeTab, setActiveTab] = useState<'details' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
      const [currentDetail, setCurrentDetail] = useState({
         type: '',
@@ -63,6 +67,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
     useEffect(() => {
         setEditedSubproject(subproject);
         setDetailItems(subproject.details.map(({ id, ...rest }) => rest));
+        setActiveTab('details');
     }, [subproject, isEditing]);
 
     const totalBudget = useMemo(() => {
@@ -156,111 +161,167 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, onBack,
 
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
+    const TabButton: React.FC<{ tabName: typeof activeTab; label: string }> = ({ tabName, label }) => {
+        const isActive = activeTab === tabName;
+        return (
+            <button
+                type="button"
+                onClick={() => setActiveTab(tabName)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
+                    ${isActive
+                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    };
 
     if (isEditing) {
         return (
             <div className="space-y-6">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing: {subproject.name}</h1>
-                <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                    {/* Core Details */}
-                    <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label htmlFor="name" className="block text-sm font-medium">Subproject Name</label>
-                            <input type="text" name="name" id="name" value={editedSubproject.name} onChange={handleInputChange} required className={commonInputClasses} />
+                <div className="flex justify-between items-center mb-4">
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing: {subproject.name}</h1>
+                    <button onClick={() => setIsEditing(false)} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+                </div>
+                
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                    <form onSubmit={handleSubmit}>
+                        <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                            <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                                <TabButton tabName="details" label="Subproject Details" />
+                                <TabButton tabName="budget" label="Budget Items" />
+                            </nav>
                         </div>
-                         <div>
-                            <label htmlFor="status" className="block text-sm font-medium">Status</label>
-                            <select id="status" name="status" value={editedSubproject.status} onChange={handleInputChange} required className={commonInputClasses}>
-                                <option>Proposed</option> <option>Ongoing</option> <option>Completed</option> <option>Cancelled</option>
-                            </select>
-                        </div>
-                    </fieldset>
-                    {/* Timeline */}
-                    <fieldset className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label htmlFor="startDate" className="block text-sm font-medium">Start Date</label>
-                            <input type="date" name="startDate" id="startDate" value={editedSubproject.startDate} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label htmlFor="estimatedCompletionDate" className="block text-sm font-medium">Est. Completion</label>
-                            <input type="date" name="estimatedCompletionDate" id="estimatedCompletionDate" value={editedSubproject.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                        {editedSubproject.status === 'Completed' && (
-                             <div>
-                                <label htmlFor="actualCompletionDate" className="block text-sm font-medium">Actual Completion</label>
-                                <input type="date" name="actualCompletionDate" id="actualCompletionDate" value={editedSubproject.actualCompletionDate} onChange={handleInputChange} className={commonInputClasses} />
-                            </div>
-                        )}
-                    </fieldset>
-                    {/* Funding Details */}
-                    <fieldset className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label htmlFor="fundingYear" className="block text-sm font-medium">Funding Year</label>
-                            <input type="number" name="fundingYear" id="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} min="2000" max="2100" className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label htmlFor="fundType" className="block text-sm font-medium">Fund Type</label>
-                            <select name="fundType" id="fundType" value={editedSubproject.fundType} onChange={handleInputChange} className={commonInputClasses}>
-                                {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label htmlFor="tier" className="block text-sm font-medium">Tier</label>
-                            <select name="tier" id="tier" value={editedSubproject.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                    </fieldset>
-                    {/* Budget */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Details</legend>
-                        <div className="space-y-2 mb-4">
-                            {detailItems.map((item, index) => (
-                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md">
-                                    <span className="text-sm font-semibold">{item.particulars} ({formatCurrency(item.pricePerUnit * item.numberOfUnits)})</span>
-                                     <div className="flex items-center gap-2">
-                                        <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                        </button>
-                                        <button type="button" onClick={() => handleRemoveDetail(index)} className="text-gray-400 hover:text-red-500">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                        </button>
-                                    </div>
+                        <div className="min-h-[400px]">
+                            {activeTab === 'details' && (
+                                <div className="space-y-6">
+                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium">Subproject Name</label>
+                                                <input type="text" name="name" value={editedSubproject.name} onChange={handleInputChange} required className={commonInputClasses} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium">IPO</label>
+                                                <select name="indigenousPeopleOrganization" value={editedSubproject.indigenousPeopleOrganization} onChange={handleInputChange} required className={commonInputClasses}>
+                                                    <option value="">Select IPO</option>
+                                                    {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Status</label>
+                                                <select name="status" value={editedSubproject.status} onChange={handleInputChange} className={commonInputClasses}>
+                                                    <option value="Proposed">Proposed</option>
+                                                    <option value="Ongoing">Ongoing</option>
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Cancelled">Cancelled</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                 <label className="block text-sm font-medium">Package</label>
+                                                 <select name="packageType" value={editedSubproject.packageType} onChange={handleInputChange} className={commonInputClasses}>
+                                                    {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}
+                                                 </select>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Timeline</legend>
+                                        <div className="space-y-4">
+                                            <LocationPicker value={editedSubproject.location} onChange={(loc) => setEditedSubproject(prev => ({ ...prev, location: loc }))} required />
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={editedSubproject.startDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                                <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={editedSubproject.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                                {editedSubproject.status === 'Completed' && (
+                                                    <div><label className="block text-sm font-medium">Actual Completion</label><input type="date" name="actualCompletionDate" value={editedSubproject.actualCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div><label className="block text-sm font-medium">Year</label><input type="number" name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Type</label>
+                                                <select name="fundType" value={editedSubproject.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                                    {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Tier</label>
+                                                <select name="tier" value={editedSubproject.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                                    {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                    {/* Remarks */}
+                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Remarks</legend>
+                                        <div>
+                                            <textarea name="remarks" id="remarks" value={editedSubproject.remarks} onChange={handleInputChange} rows={4} className={commonInputClasses} />
+                                        </div>
+                                    </fieldset>
+                                 </div>
+                            )}
+                            {activeTab === 'budget' && (
+                                <div className="space-y-6">
+                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
+                                        <div className="space-y-2 mb-4">
+                                            {detailItems.map((d, index) => (
+                                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                                    <div>
+                                                        <span className="font-semibold">{d.particulars}</span>
+                                                        <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}</div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                        <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                            </button>
+                                                            <button type="button" onClick={() => handleRemoveDetail(index)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="text-right font-bold pt-2">Total: {formatCurrency(totalBudget)}</div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
+                                            <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                            <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                                            
+                                            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                                <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
+                                            </div>
+
+                                            <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
+                                            <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                            <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+
+                                            <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
+                                            <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
+                                            <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
+                                            <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                        </div>
+                                     </fieldset>
                                 </div>
-                            ))}
+                            )}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select an item type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                           <div className="lg:col-span-2"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Item Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200"}><option value="">Select an item</option>{currentDetail.type && particularTypes[currentDetail.type].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-                           
-                           <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-gray-200 dark:border-gray-700 pt-3 mt-3">
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}>{objectTypes.map(type => <option key={type} value={type}>{type}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5 text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600"}><option value="">Select UACS Code</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, desc]) => <option key={code} value={code}>{code} - {desc}</option>)}</select></div>
-                            </div>
-
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option></select></div>
-                           <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                           <div className="flex-1"><label className="block text-xs font-medium text-gray-600 dark:text-gray-400"># of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                           <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Changes</button>
                         </div>
-                         <div className="text-right font-bold mt-4">Total: {formatCurrency(totalBudget)}</div>
-                    </fieldset>
-                    {/* Remarks */}
-                    <div>
-                        <label htmlFor="remarks" className="block text-sm font-medium">Remarks</label>
-                        <textarea name="remarks" id="remarks" value={editedSubproject.remarks} onChange={handleInputChange} rows={4} className={commonInputClasses} />
-                    </div>
-                    {/* Actions */}
-                    <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                        <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Changes</button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </div>
         )
     }

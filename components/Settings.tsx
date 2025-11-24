@@ -1,19 +1,22 @@
+
 // Author: AI
 // OS support: Any
-// Description: User settings page component with Profile and User Management tabs
+// Description: User settings page component with Profile, User Management, and System Management tabs
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { User, operatingUnits } from '../constants';
+import { User, operatingUnits, SystemSettings, Deadline, PlanningSchedule } from '../constants';
 
 interface SettingsProps {
     isDarkMode: boolean;
     toggleDarkMode: () => void;
+    systemSettings: SystemSettings;
+    setSystemSettings: React.Dispatch<React.SetStateAction<SystemSettings>>;
 }
 
-const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
+const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemSettings, setSystemSettings }) => {
     const { currentUser, usersList, setUsersList, login } = useAuth();
-    const [activeTab, setActiveTab] = useState<'profile' | 'management'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'management' | 'system'>('profile');
     
     // User Management Form State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,6 +29,13 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
         operatingUnit: 'NPMO',
         password: ''
     });
+
+    // System Management Form State
+    const [deadlineForm, setDeadlineForm] = useState({ name: '', date: '' });
+    const [scheduleForm, setScheduleForm] = useState({ name: '', startDate: '', endDate: '' });
+    
+    const [editingDeadline, setEditingDeadline] = useState<Deadline | null>(null);
+    const [editingSchedule, setEditingSchedule] = useState<PlanningSchedule | null>(null);
 
     // Profile Update State
     const [profileData, setProfileData] = useState<User | null>(null);
@@ -51,7 +61,7 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
         alert("Profile updated successfully!");
     };
 
-    // CRUD Handlers
+    // CRUD Handlers for Users
     const handleAddUser = () => {
         setEditingUser(null);
         setFormData({ username: '', fullName: '', email: '', role: 'User', operatingUnit: 'NPMO', password: '' });
@@ -91,9 +101,80 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
         setIsModalOpen(false);
     };
 
+    // CRUD Handlers for System Settings
+    const handleDeadlineSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!deadlineForm.name || !deadlineForm.date) return;
+
+        if (editingDeadline) {
+            setSystemSettings(prev => ({
+                ...prev,
+                deadlines: prev.deadlines.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d)
+            }));
+            setEditingDeadline(null);
+        } else {
+            const newDeadline: Deadline = { id: Date.now(), ...deadlineForm };
+            setSystemSettings(prev => ({ ...prev, deadlines: [...prev.deadlines, newDeadline] }));
+        }
+        setDeadlineForm({ name: '', date: '' });
+    };
+
+    const handleEditDeadline = (deadline: Deadline) => {
+        setEditingDeadline(deadline);
+        setDeadlineForm({ name: deadline.name, date: deadline.date });
+    };
+
+    const handleCancelDeadlineEdit = () => {
+        setEditingDeadline(null);
+        setDeadlineForm({ name: '', date: '' });
+    };
+
+    const handleDeleteDeadline = (id: number) => {
+        setSystemSettings(prev => ({ ...prev, deadlines: prev.deadlines.filter(d => d.id !== id) }));
+        if (editingDeadline?.id === id) {
+            handleCancelDeadlineEdit();
+        }
+    };
+
+    const handleScheduleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!scheduleForm.name || !scheduleForm.startDate || !scheduleForm.endDate) return;
+
+        if (editingSchedule) {
+            setSystemSettings(prev => ({
+                ...prev,
+                planningSchedules: prev.planningSchedules.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s)
+            }));
+            setEditingSchedule(null);
+        } else {
+            const newSchedule: PlanningSchedule = { id: Date.now(), ...scheduleForm };
+            setSystemSettings(prev => ({ ...prev, planningSchedules: [...prev.planningSchedules, newSchedule] }));
+        }
+        setScheduleForm({ name: '', startDate: '', endDate: '' });
+    };
+
+    const handleEditSchedule = (schedule: PlanningSchedule) => {
+        setEditingSchedule(schedule);
+        setScheduleForm({ name: schedule.name, startDate: schedule.startDate, endDate: schedule.endDate });
+    };
+
+    const handleCancelScheduleEdit = () => {
+        setEditingSchedule(null);
+        setScheduleForm({ name: '', startDate: '', endDate: '' });
+    };
+
+    const handleDeleteSchedule = (id: number) => {
+        setSystemSettings(prev => ({ ...prev, planningSchedules: prev.planningSchedules.filter(s => s.id !== id) }));
+        if (editingSchedule?.id === id) {
+            handleCancelScheduleEdit();
+        }
+    };
+
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
     if (!profileData) return null;
+
+    const canAccessSystem = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
     return (
         <div className="max-w-6xl mx-auto animate-fadeIn">
@@ -101,7 +182,7 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
 
              <div className="bg-white dark:bg-gray-800 shadow rounded-lg mb-6">
                 <div className="border-b border-gray-200 dark:border-gray-700">
-                    <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
+                    <nav className="-mb-px flex space-x-8 px-6 overflow-x-auto" aria-label="Tabs">
                          <button
                             onClick={() => setActiveTab('profile')}
                             className={`${activeTab === 'profile' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
@@ -116,11 +197,19 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
                                 Users Management
                             </button>
                         )}
+                        {canAccessSystem && (
+                            <button
+                                onClick={() => setActiveTab('system')}
+                                className={`${activeTab === 'system' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                            >
+                                System Management
+                            </button>
+                        )}
                     </nav>
                 </div>
 
                 <div className="p-6">
-                    {activeTab === 'profile' ? (
+                    {activeTab === 'profile' && (
                          <div className="space-y-6 max-w-2xl">
                             <div>
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Personal Information</h3>
@@ -176,46 +265,156 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode }) => {
                                 </div>
                             </div>
                          </div>
-                    ) : (
-                        currentUser?.role === 'Administrator' && (
-                            <div>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-medium text-gray-900 dark:text-white">System Users</h3>
-                                    <button onClick={handleAddUser} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-accent hover:bg-opacity-90">
-                                        Add User
-                                    </button>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                        <thead className="bg-gray-50 dark:bg-gray-700">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Full Name</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Operating Unit</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    )}
+                    
+                    {activeTab === 'management' && currentUser?.role === 'Administrator' && (
+                        <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white">System Users</h3>
+                                <button onClick={handleAddUser} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-accent hover:bg-opacity-90">
+                                    Add User
+                                </button>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead className="bg-gray-50 dark:bg-gray-700">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Full Name</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Operating Unit</th>
+                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        {usersList.map(user => (
+                                            <tr key={user.id}>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{user.username}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.fullName}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.email}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.role}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.operatingUnit}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <button onClick={() => handleEditUser(user)} className="text-accent hover:text-green-900 mr-4">Edit</button>
+                                                    <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                </td>
                                             </tr>
-                                        </thead>
-                                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                            {usersList.map(user => (
-                                                <tr key={user.id}>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{user.username}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.fullName}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.email}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.role}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.operatingUnit}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                        <button onClick={() => handleEditUser(user)} className="text-accent hover:text-green-900 mr-4">Edit</button>
-                                                        <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'system' && canAccessSystem && (
+                        <div className="space-y-10">
+                            {/* Deadlines Section */}
+                            <div>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">System Deadlines</h3>
+                                <div className="flex flex-col md:flex-row gap-6">
+                                    <div className="flex-1">
+                                        <form onSubmit={handleDeadlineSubmit} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{editingDeadline ? 'Edit Deadline' : 'Add New Deadline'}</h4>
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
+                                                    <input type="text" required value={deadlineForm.name} onChange={e => setDeadlineForm({...deadlineForm, name: e.target.value})} className={commonInputClasses} />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
+                                                    <input type="date" required value={deadlineForm.date} onChange={e => setDeadlineForm({...deadlineForm, date: e.target.value})} className={commonInputClasses} />
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    {editingDeadline && (
+                                                        <button type="button" onClick={handleCancelDeadlineEdit} className="flex-1 py-2 px-4 bg-gray-300 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-400">Cancel</button>
+                                                    )}
+                                                    <button type="submit" className="flex-1 py-2 px-4 bg-accent text-white text-sm font-medium rounded-md hover:bg-opacity-90">
+                                                        {editingDeadline ? 'Update' : 'Add'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div className="flex-[2]">
+                                        {systemSettings.deadlines.length > 0 ? (
+                                            <ul className="space-y-2">
+                                                {systemSettings.deadlines.map(d => (
+                                                    <li key={d.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
+                                                        <div>
+                                                            <span className="font-medium text-gray-900 dark:text-white block">{d.name}</span>
+                                                            <span className="text-sm text-gray-500 dark:text-gray-400">{d.date}</span>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleEditDeadline(d)} className="text-accent hover:text-green-700 text-sm font-medium">Edit</button>
+                                                            <button onClick={() => handleDeleteDeadline(d.id)} className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No deadlines set.</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        )
+
+                            {/* Planning Schedules Section */}
+                            <div>
+                                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Planning Schedules</h3>
+                                <div className="flex flex-col md:flex-row gap-6">
+                                    <div className="flex-1">
+                                        <form onSubmit={handleScheduleSubmit} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}</h4>
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
+                                                    <input type="text" required value={scheduleForm.name} onChange={e => setScheduleForm({...scheduleForm, name: e.target.value})} className={commonInputClasses} />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                                                        <input type="date" required value={scheduleForm.startDate} onChange={e => setScheduleForm({...scheduleForm, startDate: e.target.value})} className={commonInputClasses} />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">End Date</label>
+                                                        <input type="date" required value={scheduleForm.endDate} onChange={e => setScheduleForm({...scheduleForm, endDate: e.target.value})} className={commonInputClasses} />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    {editingSchedule && (
+                                                        <button type="button" onClick={handleCancelScheduleEdit} className="flex-1 py-2 px-4 bg-gray-300 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-400">Cancel</button>
+                                                    )}
+                                                    <button type="submit" className="flex-1 py-2 px-4 bg-accent text-white text-sm font-medium rounded-md hover:bg-opacity-90">
+                                                        {editingSchedule ? 'Update' : 'Add'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <div className="flex-[2]">
+                                        {systemSettings.planningSchedules.length > 0 ? (
+                                            <ul className="space-y-2">
+                                                {systemSettings.planningSchedules.map(s => (
+                                                    <li key={s.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
+                                                        <div>
+                                                            <span className="font-medium text-gray-900 dark:text-white block">{s.name}</span>
+                                                            <span className="text-sm text-gray-500 dark:text-gray-400">{s.startDate} to {s.endDate}</span>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => handleEditSchedule(s)} className="text-accent hover:text-green-700 text-sm font-medium">Edit</button>
+                                                            <button onClick={() => handleDeleteSchedule(s.id)} className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : (
+                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No planning schedules set.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     )}
                 </div>
              </div>

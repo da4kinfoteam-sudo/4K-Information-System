@@ -18,7 +18,7 @@ import useLocalStorageState from './hooks/useLocalStorageState';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
-    OfficeRequirement, StaffingRequirement, OtherProgramExpense,
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
     sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList,
     sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
@@ -44,6 +44,9 @@ const AppContent: React.FC = () => {
     // Reference States with Sample Defaults
     const [referenceUacsList, setReferenceUacsList] = useLocalStorageState<ReferenceUacs[]>('referenceUacsList', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useLocalStorageState<ReferenceParticular[]>('referenceParticularList', sampleReferenceParticularList);
+
+    // System Settings State
+    const [systemSettings, setSystemSettings] = useLocalStorageState<SystemSettings>('systemSettings', defaultSystemSettings);
 
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
@@ -126,7 +129,13 @@ const AppContent: React.FC = () => {
     const renderPage = () => {
         switch (currentPage) {
             case '/':
-                return <Dashboard subprojects={subprojects} ipos={ipos} trainings={trainings} otherActivities={otherActivities} />;
+                return <Dashboard 
+                            subprojects={subprojects} 
+                            ipos={ipos} 
+                            trainings={trainings} 
+                            otherActivities={otherActivities} 
+                            systemSettings={systemSettings}
+                        />;
             case '/dashboards':
                  return <DashboardsPage subprojects={subprojects} ipos={ipos} trainings={trainings} otherActivities={otherActivities} />;
             case '/subprojects':
@@ -191,6 +200,7 @@ const AppContent: React.FC = () => {
                 if (!selectedSubproject) return <div>Select a subproject</div>;
                 return <SubprojectDetail 
                             subproject={selectedSubproject} 
+                            ipos={ipos}
                             onBack={handleBack} 
                             previousPageName={previousPage === '/' ? 'Dashboard' : previousPage.slice(1)}
                             onUpdateSubproject={(updated) => setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p))}
@@ -210,7 +220,12 @@ const AppContent: React.FC = () => {
                             particularTypes={derivedParticularTypes}
                         />;
             case '/settings':
-                return <Settings isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />;
+                return <Settings 
+                            isDarkMode={isDarkMode} 
+                            toggleDarkMode={toggleDarkMode}
+                            systemSettings={systemSettings}
+                            setSystemSettings={setSystemSettings}
+                        />;
             default:
                 return <div className="p-6">Page not found</div>;
         }

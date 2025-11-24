@@ -1,6 +1,3 @@
-// Author: AI
-// OS support: Any
-// Description: DashboardsPage component for displaying various dashboard tabs
 
 import React from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits, ouToRegionMap } from '../constants';
@@ -34,14 +31,14 @@ const AccomplishmentCard: React.FC<{ label: string; value: number; onClick?: () 
 
 
 const DoughnutChart: React.FC<{ data: Record<string, number>, colors: string[] }> = ({ data, colors }) => {
-    const total = Object.values(data).reduce((sum, value) => sum + value, 0);
+    const total = Object.values(data).reduce((sum: number, value: number) => sum + value, 0);
     if (total === 0) return <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">No data available.</p>;
 
     let cumulativePercentage = 0;
     const gradientStops = Object.entries(data)
-      .sort(([, a], [, b]) => b - a)
-      .map(([_, value], index) => {
-        const percentage = (value / total) * 100;
+      .sort(([, a], [, b]) => (b as number) - (a as number))
+      .map(([_, value]: [string, number], index) => {
+        const percentage = (value / (total as number)) * 100;
         const start = cumulativePercentage;
         const end = cumulativePercentage + percentage;
         cumulativePercentage = end;
@@ -58,7 +55,7 @@ const DoughnutChart: React.FC<{ data: Record<string, number>, colors: string[] }
             </div>
             <div className="flex-shrink-0">
                 <ul className="space-y-1 text-sm">
-                    {Object.entries(data).sort(([, a], [, b]) => b - a).map(([label, value], index) => (
+                    {Object.entries(data).sort(([, a], [, b]) => (b as number) - (a as number)).map(([label, value], index) => (
                         <li key={label} className="flex items-center">
                             <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: colors[index % colors.length] }}></span>
                             <span className="text-gray-600 dark:text-gray-300">{label}:</span>
@@ -80,7 +77,7 @@ const QuarterlyBarChart: React.FC<{
     const maxVal = Math.max(1, ...quarters.flatMap(q => [data[q].subprojects, data[q].trainings, data[q].ipos]));
     const yAxisMax = maxVal === 1 ? 2 : Math.ceil(maxVal / 1.1 / 5) * 5;
 
-    const indicators = [
+    const indicators: { key: 'subprojects' | 'ipos' | 'trainings'; label: string; color: string }[] = [
         { key: 'subprojects', label: 'Subprojects', color: 'bg-accent dark:bg-green-700' },
         { key: 'ipos', label: 'IPOs', color: 'bg-teal-400 dark:bg-teal-600' },
         { key: 'trainings', label: 'Trainings', color: 'bg-green-300 dark:bg-green-500' }
@@ -103,7 +100,7 @@ const QuarterlyBarChart: React.FC<{
                         <div key={q} className="flex-1 flex flex-col items-center justify-end">
                             <div className="flex-grow flex items-end justify-center gap-1 w-full">
                                 {indicators.map(indicator => {
-                                    const value = data[q][indicator.key as keyof typeof data[typeof q]];
+                                    const value = data[q][indicator.key];
                                     const height = yAxisMax > 0 ? (value / yAxisMax) * 100 : 0;
                                     return (
                                         <div 
@@ -132,7 +129,7 @@ const QuarterlyBarChart: React.FC<{
 const IpoEngagementChart: React.FC<{
     data: { [key: string]: number };
 }> = ({ data }) => {
-    const maxVal = Math.max(...Object.values(data));
+    const maxVal = Math.max(...(Object.values(data) as number[]));
     const yAxisMax = maxVal === 0 ? 10 : Math.ceil(maxVal / 1.1 / 5) * 5;
     const categories = Object.keys(data);
     const colors = ['bg-accent', 'bg-green-500', 'bg-teal-500', 'bg-cyan-500'];
@@ -188,14 +185,15 @@ const ProvincialComparisonChart: React.FC<{ data: { [province: string]: { target
     const MiniBarChart: React.FC<{ data: IndicatorData; maxValue: number; colors: { [key: string]: string } }> = ({ data, maxValue, colors }) => (
         <div className="flex-grow h-full flex justify-around border-l border-b border-gray-200 dark:border-gray-700 relative">
             {Object.entries(data).map(([key, value], index) => {
-                 const height = maxValue > 0 ? (value / maxValue) * 100 : 0;
+                 const val = value as number;
+                 const height = maxValue > 0 ? (val / maxValue) * 100 : 0;
                  return(
                     <div key={key} className="w-full flex flex-col items-center justify-end">
-                         <span className="text-xs font-bold text-gray-600 dark:text-gray-300 mb-0.5">{value}</span>
+                         <span className="text-xs font-bold text-gray-600 dark:text-gray-300 mb-0.5">{val}</span>
                          <div
                             className={`${colors[key]} w-3/5 rounded-t-sm hover:brightness-110 transition-all`}
                             style={{ height: `${height}%`}}
-                            title={`${indicators.find(i => i.key === key)?.label}: ${value}`}
+                            title={`${indicators.find(i => i.key === key)?.label}: ${val}`}
                         ></div>
                     </div>
                  )
@@ -207,7 +205,7 @@ const ProvincialComparisonChart: React.FC<{ data: { [province: string]: { target
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {provinces.map(province => {
                 const provinceData = data[province];
-                const maxVal = Math.max(1, ...Object.values(provinceData.targets), ...Object.values(provinceData.accomplishments));
+                const maxVal = Math.max(1, ...(Object.values(provinceData.targets) as number[]), ...(Object.values(provinceData.accomplishments) as number[]));
                 const yAxisMax = Math.ceil(maxVal / 1.1 / 5) * 5;
 
                 const indicatorColors = indicators.reduce((acc, ind) => ({...acc, [ind.key]: ind.color}), {});
@@ -780,7 +778,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trai
                     <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h2>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                          <div className="flex items-center gap-2">
-                            <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Operating Unit:</label>
+                            <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
                             <select 
                                 id="ou-filter"
                                 value={selectedOu}

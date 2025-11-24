@@ -4,7 +4,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
 import { Subproject, IPO, Training, OtherActivity } from '../constants';
 import GanttChart from './GanttChart';
 
@@ -138,9 +138,10 @@ interface DashboardProps {
     ipos: IPO[];
     trainings: Training[];
     otherActivities: OtherActivity[];
+    systemSettings: SystemSettings;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
+const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, otherActivities, systemSettings }) => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
@@ -151,6 +152,12 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
         subprojects: true,
         trainings: true,
     });
+    const [ganttFilter, setGanttFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
+    
+    // Activities Section State
+    const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
+    const [activitiesPage, setActivitiesPage] = useState(1);
+    const itemsPerPageActivities = 9;
 
     const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -218,6 +225,55 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
         ];
         return combined.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
     }, [filteredData]);
+
+    // Filtered and Paginated Activities
+    const displayedActivities = useMemo(() => {
+        let items = allActivities;
+        if (activitiesFilter === 'Subprojects') {
+            items = items.filter(a => a.type === 'Subproject');
+        } else if (activitiesFilter === 'Trainings') {
+            items = items.filter(a => a.type === 'Training');
+        }
+        return items;
+    }, [allActivities, activitiesFilter]);
+
+    const paginatedActivitiesList = useMemo(() => {
+        const startIndex = (activitiesPage - 1) * itemsPerPageActivities;
+        return displayedActivities.slice(startIndex, startIndex + itemsPerPageActivities);
+    }, [displayedActivities, activitiesPage]);
+
+    const totalActivityPages = Math.ceil(displayedActivities.length / itemsPerPageActivities);
+
+    // Reset activity page when filters change
+    useEffect(() => {
+        setActivitiesPage(1);
+    }, [activitiesFilter, selectedYear, selectedOu, selectedTier, selectedFundType]);
+
+    const ganttItems = useMemo(() => {
+        let items: any[] = [];
+        if (ganttFilter === 'All' || ganttFilter === 'Subprojects') {
+            items = [...items, ...filteredData.subprojects.map(s => ({
+                id: s.id,
+                name: s.name,
+                startDate: s.startDate,
+                endDate: s.estimatedCompletionDate,
+                actualEndDate: s.actualCompletionDate,
+                type: 'Subproject',
+                status: s.status
+            }))];
+        }
+        if (ganttFilter === 'All' || ganttFilter === 'Trainings') {
+            items = [...items, ...filteredData.trainings.map(t => ({
+                id: t.id,
+                name: t.name,
+                startDate: t.date,
+                endDate: t.date, // Single day duration for visualization purposes
+                type: 'Training',
+                status: 'Completed'
+            }))];
+        }
+        return items;
+    }, [filteredData, ganttFilter]);
 
     const financialStats = useMemo(() => {
         const subprojectTotal = filteredData.subprojects.reduce((sum, project) => {
@@ -347,7 +403,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">4K Information System Overview</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                      <div className="flex items-center gap-2">
-                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Operating Unit:</label>
+                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
                         <select 
                             id="ou-filter"
                             value={selectedOu}
@@ -404,6 +460,7 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                     </div>
                 </div>
             </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <StatCard title="Total Budget" value={formatCurrency(financialStats.total)} icon={<FinancialsIcon />} color="text-purple-500" />
                 <StatCard title="Total Budget for Sub Projects" value={formatCurrency(financialStats.subprojects)} icon={<FinancialsIcon />} color="text-blue-500" />
@@ -412,6 +469,39 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                 <StatCard title="Number of Trainings" value={filteredData.trainings.length.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" />
                 <StatCard title="Number of IPOs assisted" value={ipoStats.assisted.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" />
                 <StatCard title="Number of IPOs with Sub Projects" value={ipoStats.withSubprojects.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-teal-500" />
+            </div>
+
+            {/* System Schedule Summary Card */}
+            <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">System Schedule</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase mb-2 tracking-wider">Upcoming Deadlines</h4>
+                        {systemSettings.deadlines.length > 0 ? (
+                            <ul className="space-y-2">
+                                {systemSettings.deadlines.map(d => (
+                                    <li key={d.id} className="flex justify-between border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-r text-sm">
+                                        <span className="font-medium text-gray-800 dark:text-gray-200">{d.name}</span>
+                                        <span className="text-red-600 dark:text-red-400 font-bold">{formatDate(d.date)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-gray-500 italic">No upcoming deadlines.</p>}
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase mb-2 tracking-wider">Planning Schedules</h4>
+                        {systemSettings.planningSchedules.length > 0 ? (
+                            <ul className="space-y-2">
+                                {systemSettings.planningSchedules.map(s => (
+                                    <li key={s.id} className="flex justify-between border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm">
+                                        <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
+                                        <span className="text-gray-600 dark:text-gray-300 text-xs">{formatDate(s.startDate)} - {formatDate(s.endDate)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : <p className="text-sm text-gray-500 italic">No active planning schedules.</p>}
+                    </div>
+                </div>
             </div>
 
             <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
@@ -437,14 +527,58 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
             </div>
 
             <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects Timeline</h3>
-                <GanttChart subprojects={filteredData.subprojects} />
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Calendar</h3>
+                    <div className="flex space-x-2">
+                        <button 
+                            onClick={() => setGanttFilter('All')} 
+                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'All' ? 'bg-gray-200 dark:bg-gray-600 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            All
+                        </button>
+                        <button 
+                            onClick={() => setGanttFilter('Subprojects')} 
+                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'Subprojects' ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            Subprojects
+                        </button>
+                        <button 
+                            onClick={() => setGanttFilter('Trainings')} 
+                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'Trainings' ? 'bg-green-100 text-green-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            Trainings
+                        </button>
+                    </div>
+                </div>
+                <GanttChart items={ganttItems} systemSettings={systemSettings} />
             </div>
 
             <div className="mt-10">
-                <h3 className="text-2xl font-semibold mb-4 text-gray-800 dark:text-white">4K Activities</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Activities</h3>
+                    <div className="flex space-x-2">
+                        <button 
+                            onClick={() => setActivitiesFilter('All')} 
+                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'All' ? 'bg-gray-200 dark:bg-gray-600 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            All
+                        </button>
+                        <button 
+                            onClick={() => setActivitiesFilter('Subprojects')} 
+                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'Subprojects' ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            Subprojects
+                        </button>
+                        <button 
+                            onClick={() => setActivitiesFilter('Trainings')} 
+                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'Trainings' ? 'bg-green-100 text-green-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                        >
+                            Trainings
+                        </button>
+                    </div>
+                </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {allActivities.map(activity => (
+                    {paginatedActivitiesList.map(activity => (
                         <div 
                             key={`${activity.type}-${activity.id}`} 
                             className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transform transition-all duration-300 ease-in-out cursor-pointer"
@@ -461,6 +595,29 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                         </div>
                     ))}
                  </div>
+                 
+                 {/* Pagination Controls */}
+                 {totalActivityPages > 1 && (
+                     <div className="flex justify-center items-center mt-6 gap-4">
+                         <button 
+                            onClick={() => setActivitiesPage(p => Math.max(1, p - 1))}
+                            disabled={activitiesPage === 1}
+                            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                         >
+                             Previous
+                         </button>
+                         <span className="text-sm text-gray-600 dark:text-gray-400">
+                             Page {activitiesPage} of {totalActivityPages}
+                         </span>
+                         <button 
+                            onClick={() => setActivitiesPage(p => Math.min(totalActivityPages, p + 1))}
+                            disabled={activitiesPage === totalActivityPages}
+                            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                         >
+                             Next
+                         </button>
+                     </div>
+                 )}
             </div>
         </div>
     );
