@@ -344,74 +344,41 @@ export const operatingUnits = [
 export const ouToRegionMap: { [key: string]: string } = {
     'NPMO': 'National Capital Region (NCR)',
     'RPMO CAR': 'Cordillera Administrative Region (CAR)',
-    'RPMO 1': 'Ilocos Region (Region I)',
-    'RPMO 2': 'Cagayan Valley (Region II)',
-    'RPMO 3': 'Central Luzon (Region III)',
-    'RPMO 4A': 'CALABARZON (Region IV-A)',
-    'RPMO 4B': 'MIMAROPA (Region IV-B)',
-    'RPMO 5': 'Bicol Region (Region V)',
-    'RPMO 6': 'Western Visayas (Region VI)',
-    'RPMO 7': 'Central Visayas (Region VII)',
-    'RPMO 8': 'Eastern Visayas (Region VIII)',
-    'RPMO 9': 'Zamboanga Peninsula (Region IX)',
-    'RPMO 10': 'Northern Mindanao (Region X)',
-    'RPMO 11': 'Davao Region (Region XI)',
-    'RPMO 12': 'SOCCSKSARGEN (Region XII)',
-    'RPMO 13': 'Caraga (Region XIII)',
-    'RPMO NIR': 'Negros Island Region (NIR)'
-};
-
-export const philippineLocations: { [key: string]: any } = {
-  "Online": {},
-  "CALABARZON (Region IV-A)": {
-    "Rizal": {
-      "Tanay": ["San Isidro", "Daraitan"],
-      "Baras": ["Pinugay"]
-    },
-    "Quezon": {
-      "General Nakar": ["Macaingalan"]
-    }
-  },
-  "Davao Region (Region XI)": {
-    "Davao del Sur": {
-      "Davao City": ["Marilog"]
-    },
-    "Davao Occidental": {
-      "Malita": ["Buhangin"]
-    },
-    "Davao de Oro": {
-      "New Bataan": ["Camanlangan"]
-    },
-    "Davao del Norte": {
-      "Island Garden City of Samal": ["Adecor"]
-    }
-  },
-  "National Capital Region (NCR)": {
-    "Metro Manila": {
-      "Quezon City": ["Diliman", "Cubao", "Project 4"],
-      "Manila": ["Tondo", "Ermita", "Sampaloc"],
-      "Makati": ["Poblacion", "Bel-Air"]
-    }
-  }
+    'RPMO 1': 'Region I (Ilocos Region)',
+    'RPMO 2': 'Region II (Cagayan Valley)',
+    'RPMO 3': 'Region III (Central Luzon)',
+    'RPMO 4A': 'Region IV-A (CALABARZON)',
+    'RPMO 4B': 'MIMAROPA Region',
+    'RPMO 5': 'Region V (Bicol Region)',
+    'RPMO 6': 'Region VI (Western Visayas)',
+    'RPMO 7': 'Region VII (Central Visayas)',
+    'RPMO 8': 'Region VIII (Eastern Visayas)',
+    'RPMO 9': 'Region IX (Zamboanga Peninsula)',
+    'RPMO 10': 'Region X (Northern Mindanao)',
+    'RPMO 11': 'Region XI (Davao Region)',
+    'RPMO 12': 'Region XII (SOCCSKSARGEN)',
+    'RPMO 13': 'Region XIII (Caraga)',
+    'RPMO NIR': 'Negros Island Region (NIR)' // Placeholder if not in API yet
 };
 
 export const philippineRegions: string[] = [
     'National Capital Region (NCR)',
     'Cordillera Administrative Region (CAR)',
-    'Ilocos Region (Region I)',
-    'Cagayan Valley (Region II)',
-    'Central Luzon (Region III)',
-    'CALABARZON (Region IV-A)',
-    'MIMAROPA (Region IV-B)',
-    'Bicol Region (Region V)',
-    'Western Visayas (Region VI)',
-    'Central Visayas (Region VII)',
-    'Zamboanga Peninsula (Region IX)',
-    'Northern Mindanao (Region X)',
-    'Davao Region (Region XI)',
-    'SOCCSKSARGEN (Region XII)',
-    'Caraga (Region XIII)',
-    'Negros Island Region (NIR)',
+    'Region I (Ilocos Region)',
+    'Region II (Cagayan Valley)',
+    'Region III (Central Luzon)',
+    'Region IV-A (CALABARZON)',
+    'MIMAROPA Region',
+    'Region V (Bicol Region)',
+    'Region VI (Western Visayas)',
+    'Region VII (Central Visayas)',
+    'Region VIII (Eastern Visayas)',
+    'Region IX (Zamboanga Peninsula)',
+    'Region X (Northern Mindanao)',
+    'Region XI (Davao Region)',
+    'Region XII (SOCCSKSARGEN)',
+    'Region XIII (Caraga)',
+    'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
 ];
 
 
@@ -520,7 +487,7 @@ export const sampleIPOs: IPO[] = [
         name: "Samahan ng mga Katutubong Dumagat",
         acronym: "SKD",
         location: "Brgy. Daraitan, Tanay, Rizal",
-        region: "CALABARZON (Region IV-A)",
+        region: "Region IV-A (CALABARZON)",
         indigenousCulturalCommunity: "Dumagat",
         ancestralDomainNo: "R4A-RIZ-TAN-001",
         registeringBody: "SEC",
@@ -541,7 +508,7 @@ export const sampleIPOs: IPO[] = [
         name: "Buhangin Farmers Association",
         acronym: "BFA",
         location: "Brgy. Buhangin, Malita, Davao Occidental",
-        region: "Davao Region (Region XI)",
+        region: "Region XI (Davao Region)",
         indigenousCulturalCommunity: "Tagakaolo",
         ancestralDomainNo: "R11-DOC-MAL-002",
         registeringBody: "DOLE",
@@ -562,7 +529,7 @@ export const sampleIPOs: IPO[] = [
         name: "Macaingalan Coconut Farmers",
         acronym: "MCF",
         location: "Brgy. Macaingalan, General Nakar, Quezon",
-        region: "CALABARZON (Region IV-A)",
+        region: "Region IV-A (CALABARZON)",
         indigenousCulturalCommunity: "Dumagat-Remontado",
         ancestralDomainNo: "R4A-QUE-GEN-003",
         registeringBody: "CDA",
@@ -583,7 +550,7 @@ export const sampleIPOs: IPO[] = [
         name: "Adecor Mandaya Tribe",
         acronym: "AMT",
         location: "Brgy. Adecor, Island Garden City of Samal, Davao del Norte",
-        region: "Davao Region (Region XI)",
+        region: "Region XI (Davao Region)",
         indigenousCulturalCommunity: "Mandaya",
         ancestralDomainNo: "R11-DNO-SAM-004",
         registeringBody: "NCIP",
@@ -604,7 +571,7 @@ export const sampleIPOs: IPO[] = [
         name: "Marilog Indigenous Women",
         acronym: "MIW",
         location: "Brgy. Marilog, Davao City, Davao del Sur",
-        region: "Davao Region (Region XI)",
+        region: "Region XI (Davao Region)",
         indigenousCulturalCommunity: "Matigsalug",
         ancestralDomainNo: "R11-DCS-MAR-005",
         registeringBody: "SEC",

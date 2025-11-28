@@ -274,14 +274,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
 
     const handleLocationChange = (locationString: string) => {
-        const parsed = parseLocation(locationString);
         setFormData(prev => ({
             ...prev,
             location: locationString,
-            region: parsed.region,
         }));
     };
     
+    const handleRegionChange = (region: string) => {
+        setFormData(prev => ({
+            ...prev,
+            region: region
+        }));
+    };
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
@@ -819,6 +823,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             <LocationPicker 
                                 value={formData.location} 
                                 onChange={handleLocationChange}
+                                onRegionChange={handleRegionChange}
                                 required 
                             />
                         </div>

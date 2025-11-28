@@ -101,11 +101,16 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
     };
 
     const handleLocationChange = (locationString: string) => {
-        const parsed = parseLocation(locationString);
         setEditedIpo(prev => ({
             ...prev,
             location: locationString,
-            region: parsed.region,
+        }));
+    };
+    
+    const handleRegionChange = (region: string) => {
+        setEditedIpo(prev => ({
+            ...prev,
+            region: region,
         }));
     };
 
@@ -194,7 +199,12 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                             
                             <div className="md:col-span-3">
                                 <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
-                                <LocationPicker value={editedIpo.location} onChange={handleLocationChange} required />
+                                <LocationPicker 
+                                    value={editedIpo.location} 
+                                    onChange={handleLocationChange} 
+                                    onRegionChange={handleRegionChange} 
+                                    required 
+                                />
                             </div>
                             <div className="md:col-span-3">
                                 <label htmlFor="ancestralDomainNo" className="block text-sm font-medium">Ancestral Domain No.</label>
