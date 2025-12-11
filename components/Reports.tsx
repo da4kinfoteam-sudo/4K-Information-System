@@ -5,6 +5,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
+import { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable
 declare const XLSX: any;
@@ -20,7 +21,7 @@ interface ReportsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'BAR1';
+type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1';
 
 const getObjectTypeByCode = (code: string, uacsData: any): 'MOOE' | 'CO' => {
     for (const type of ['MOOE', 'CO']) {
@@ -491,6 +492,65 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
     );
 };
 
+const PICSTable: React.FC<{ data: any[] }> = ({ data }) => {
+    const totals = data.reduce((acc, row) => ({
+        totalTarget: acc.totalTarget + row.totalTarget,
+        totalGroup: acc.totalGroup + row.totalGroup,
+        maleTarget: acc.maleTarget + row.maleTarget,
+        femaleTarget: acc.femaleTarget + row.femaleTarget,
+        unidentifiedTarget: acc.unidentifiedTarget + row.unidentifiedTarget,
+        totalParticipants: acc.totalParticipants + row.totalParticipants
+    }), { totalTarget: 0, totalGroup: 0, maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0 });
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                <thead className="bg-gray-200 dark:bg-gray-700">
+                    <tr>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Region</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Province</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Performance Indicator</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Unit of Measure</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Target</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Group</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Male Target</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Female Target</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Unidentified Target</th>
+                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Participants</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.region}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.province}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.indicator}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">number</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalTarget}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalGroup}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.maleTarget}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.femaleTarget}</td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center"></td>
+                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalParticipants}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr className="font-bold bg-gray-200 dark:bg-gray-700">
+                        <td colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-right">GRAND TOTAL</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalTarget}</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalGroup}</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.maleTarget}</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.femaleTarget}</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.unidentifiedTarget}</td>
+                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalParticipants}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    );
+};
+
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     const [selectedYear, setSelectedYear] = useState<string>('All');
@@ -867,6 +927,91 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         return finalData;
     }, [filteredData, uacsCodes]);
 
+    const picsData = useMemo(() => {
+        const aggregator = new Map<string, { 
+            region: string, 
+            province: string, 
+            indicator: string, 
+            totalTarget: number, 
+            totalGroup: number,
+            maleTarget: number,
+            femaleTarget: number,
+            unidentifiedTarget: number,
+            totalParticipants: number
+        }>();
+
+        const getKey = (region: string, province: string, indicator: string) => `${region}|${province}|${indicator}`;
+
+        filteredData.subprojects.forEach(sp => {
+            const region = ouToRegionMap[sp.operatingUnit] || 'Unmapped Region';
+            // Filter out NCR
+            if (region === 'National Capital Region (NCR)') return;
+
+            const { province } = parseLocation(sp.location);
+            const indicator = `${sp.packageType} Subprojects provided`;
+            
+            const key = getKey(region, province || 'Unspecified', indicator);
+            if (!aggregator.has(key)) {
+                aggregator.set(key, { 
+                    region, 
+                    province: province || 'Unspecified', 
+                    indicator, 
+                    totalTarget: 0, 
+                    totalGroup: 0,
+                    maleTarget: 0,
+                    femaleTarget: 0,
+                    unidentifiedTarget: 0,
+                    totalParticipants: 0
+                });
+            }
+            const entry = aggregator.get(key)!;
+            entry.totalTarget += 1; // 1 activity/subproject
+            entry.totalGroup += 1; // 1 IPO
+            // Subprojects usually don't have participant breakdown in this model, defaulting to 0
+        });
+
+        const processActivity = (activity: Training | OtherActivity) => {
+            const region = ouToRegionMap[activity.operatingUnit] || 'Unmapped Region';
+            // Filter out NCR
+            if (region === 'National Capital Region (NCR)') return;
+            // Filter out Program Management
+            if (activity.component === 'Program Management') return;
+
+            const { province } = parseLocation(activity.location);
+            const indicator = `${activity.name} conducted`;
+
+            const key = getKey(region, province || 'Unspecified', indicator);
+            if (!aggregator.has(key)) {
+                aggregator.set(key, { 
+                    region, 
+                    province: province || 'Unspecified', 
+                    indicator, 
+                    totalTarget: 0, 
+                    totalGroup: 0,
+                    maleTarget: 0,
+                    femaleTarget: 0,
+                    unidentifiedTarget: 0,
+                    totalParticipants: 0
+                });
+            }
+            const entry = aggregator.get(key)!;
+            entry.totalTarget += 1;
+            entry.totalGroup += (activity.participatingIpos ? activity.participatingIpos.length : 0);
+            entry.maleTarget += (activity.participantsMale || 0);
+            entry.femaleTarget += (activity.participantsFemale || 0);
+            entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+        };
+
+        filteredData.trainings.forEach(processActivity);
+        filteredData.otherActivities.forEach(processActivity);
+
+        return Array.from(aggregator.values()).sort((a, b) => {
+            if (a.region !== b.region) return a.region.localeCompare(b.region);
+            if (a.province !== b.province) return a.province.localeCompare(b.province);
+            return a.indicator.localeCompare(b.indicator);
+        });
+    }, [filteredData]);
+
     const handleDownloadXLSX = () => {
         const aoa: (string | number | null)[][] = [
             [
@@ -945,6 +1090,36 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
         XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedOu}.xlsx`);
+    };
+
+    const handleDownloadPicsXlsx = () => {
+        const aoa: (string | number | null)[][] = [
+            [
+                "Region", "Province", "Performance Indicator", "Unit of Measure", 
+                "Total Target", "Total Group", "Total Male Target", "Total Female Target", 
+                "Total Unidentified Target", "Total Participants"
+            ]
+        ];
+
+        picsData.forEach(row => {
+            aoa.push([
+                row.region, 
+                row.province, 
+                row.indicator, 
+                "number", 
+                row.totalTarget, 
+                row.totalGroup, 
+                row.maleTarget, 
+                row.femaleTarget, 
+                null, 
+                row.totalParticipants
+            ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "PICS Report");
+        XLSX.writeFile(wb, `PICS_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
 
     const handleDownloadBpFormsXlsx = () => {
@@ -1083,6 +1258,16 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     </div>
                 );
             case 'BEDS': return <Placeholder title="Budget Execution Documents (BEDS)" />;
+            case 'PICS':
+                return (
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                        <div className="flex justify-between items-center mb-4 print-hidden">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">PICS Report</h3>
+                            <button onClick={handleDownloadPicsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                        </div>
+                        <PICSTable data={picsData} />
+                    </div>
+                );
             case 'BAR1': return <Placeholder title="BAR1 Reports" />;
             default: return null;
         }
@@ -1156,6 +1341,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                         <TabButton tabName="WFP" label="WFP" />
                         <TabButton tabName="BP Forms" label="BP Forms" />
                         <TabButton tabName="BEDS" label="BEDS" />
+                        <TabButton tabName="PICS" label="PICS" />
                         <TabButton tabName="BAR1" label="BAR1" />
                     </nav>
                 </div>

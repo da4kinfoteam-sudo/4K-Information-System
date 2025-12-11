@@ -37,7 +37,12 @@ const defaultFormData = {
     fundType: fundTypes[0] as FundType,
     tier: tiers[0] as Tier,
     operatingUnit: '',
-    encodedBy: ''
+    encodedBy: '',
+    catchUpPlanRemarks: '',
+    newTargetDate: '',
+    actualDate: '',
+    actualParticipantsMale: 0,
+    actualParticipantsFemale: 0
 };
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings, setTrainings, otherActivities, setOtherActivities, onSelectIpo, uacsCodes }) => {
@@ -47,8 +52,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<CombinedActivity | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
-    const [activeTab, setActiveTab] = useState<'details' | 'budget'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
+    const [selectedActivityType, setSelectedActivityType] = useState('');
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -60,15 +66,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     type SortKeys = keyof CombinedActivity | 'totalParticipants' | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     
-    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // Determine if current form state represents a Training (based on selected activity name)
+    // Determine if current form state represents a Training based on selected Activity Type
     const isTrainingForm = useMemo(() => {
-        return formData.name.endsWith(' Training');
-    }, [formData.name]);
+        return selectedActivityType.endsWith(' Training');
+    }, [selectedActivityType]);
 
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
     const canViewAll = currentUser?.role === 'Administrator' || currentUser?.operatingUnit === 'NPMO';
@@ -94,7 +100,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 fundType: editingItem.fundType ?? fundTypes[0],
                 tier: editingItem.tier ?? tiers[0],
                 facilitator: editingItem.type === 'Training' ? editingItem.facilitator : '',
+                catchUpPlanRemarks: editingItem.catchUpPlanRemarks || '',
+                newTargetDate: editingItem.newTargetDate || '',
+                actualDate: editingItem.actualDate || '',
+                actualParticipantsMale: editingItem.actualParticipantsMale || 0,
+                actualParticipantsFemale: editingItem.actualParticipantsFemale || 0,
             });
+            
+            // Set Activity Type
+            if (editingItem.type === 'Training') {
+                setSelectedActivityType(`${editingItem.component} Training`);
+            } else {
+                setSelectedActivityType(editingItem.name);
+            }
+
              setActiveTab('details');
         } else {
             setFormData({
@@ -102,13 +121,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 operatingUnit: currentUser?.operatingUnit || '',
                 encodedBy: currentUser?.fullName || ''
             });
+            setSelectedActivityType('');
         }
     }, [editingItem, currentUser]);
 
-    // When component changes in form, reset name unless editing
+    // When component changes in form, reset types unless editing
     useEffect(() => {
         if (view !== 'edit') {
             setFormData(prev => ({...prev, name: ''}));
+            setSelectedActivityType('');
         }
     }, [formData.component, view]);
 
@@ -116,6 +137,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         const filtered = ipoRegionFilter === 'All' ? ipos : ipos.filter(ipo => ipo.region === ipoRegionFilter);
         return filtered.sort((a,b) => a.name.localeCompare(b.name));
     }, [ipoRegionFilter, ipos]);
+
+    const activityOptions = useMemo(() => {
+        const base = otherActivityOptions[formData.component] || [];
+        const trainingOption = `${formData.component} Training`;
+        // Ensure unique
+        if (base.includes(trainingOption)) return base;
+        return [...base, trainingOption];
+    }, [formData.component]);
 
     // Combine and process list data
     const processedActivities = useMemo(() => {
@@ -198,8 +227,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         setSortConfig({ key, direction });
     };
     
-    const handleToggleRow = (activityId: number) => {
-        setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
+    const handleToggleRow = (activityId: number, type: 'Training' | 'Activity') => {
+        const key = `${type}-${activityId}`;
+        setExpandedRowId(prevId => (prevId === key ? null : key));
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -211,6 +241,24 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             ...prev, 
             [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
         }));
+    };
+
+    const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value;
+        setSelectedActivityType(value);
+        if (value.endsWith(' Training')) {
+            // If switching to training type
+            if (editingItem && editingItem.type === 'Training' && value === `${editingItem.component} Training`) {
+                // If editing and same type, restore original name
+                setFormData(prev => ({ ...prev, name: editingItem.name }));
+            } else {
+                // Otherwise clear name for input
+                setFormData(prev => ({ ...prev, name: '' }));
+            }
+        } else {
+            // Not a training, name IS the type
+            setFormData(prev => ({ ...prev, name: value }));
+        }
     };
     
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -256,6 +304,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
     const handleRemoveExpense = (id: number) => {
         setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
+    };
+
+    const handleExpenseAccomplishmentChange = (id: number, field: keyof OtherActivityExpense, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            expenses: prev.expenses.map(e => e.id === id ? { ...e, [field]: value } : e)
+        }));
     };
 
     const handleSubmit = (e: FormEvent) => {
@@ -339,6 +394,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const handleCancelEdit = () => {
         setEditingItem(null);
         setFormData(defaultFormData);
+        setSelectedActivityType('');
         setActiveTab('details');
         setView('list');
     };
@@ -359,14 +415,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             setItemToDelete(null);
         }
     };
-
-    const getActivityOptions = (component: string) => {
-        const baseOptions = otherActivityOptions[component as OtherActivityComponentType] || [];
-        const trainingOption = `${component} Training`;
-        // Avoid duplicate if training option exists in base list (unlikely with current constants)
-        if (baseOptions.includes(trainingOption)) return baseOptions;
-        return [...baseOptions, trainingOption];
-    }
     
     const formatDate = (dateString?: string) => {
         if (!dateString) return 'N/A';
@@ -684,10 +732,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                             {paginatedActivities.map((activity) => {
                                 const totalActivityBudget = activity.expenses.reduce((sum, e) => sum + e.amount, 0);
                                 const totalParticipants = activity.participantsMale + activity.participantsFemale;
+                                const rowKey = `${activity.type}-${activity.id}`;
                                 return (
-                                <React.Fragment key={`${activity.type}-${activity.id}`}>
-                                    <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === activity.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
+                                <React.Fragment key={rowKey}>
+                                    <tr onClick={() => handleToggleRow(activity.id, activity.type)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === rowKey ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
                                             {activity.name}
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
@@ -707,7 +756,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                             )}
                                         </td>
                                     </tr>
-                                     {expandedRowId === activity.id && (
+                                     {expandedRowId === rowKey && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
                                             <td colSpan={9} className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -788,26 +837,39 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             </div>
             <form onSubmit={handleSubmit}>
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                    <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="details" label="Details" />
                         <TabButton tabName="budget" label="Expenses" />
+                        {view === 'edit' && <TabButton tabName="accomplishments" label="Accomplishments" />}
                     </nav>
                 </div>
                 <div className="min-h-[400px]">
                     {activeTab === 'details' && (
                         <div className="space-y-6">
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Core Details</legend>
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Activity Information</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      <div><label htmlFor="component" className="block text-sm font-medium">Component</label><select name="component" id="component" value={formData.component} onChange={handleInputChange} required className={commonInputClasses}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                      <div>
-                                         <label htmlFor="name" className="block text-sm font-medium">Activity Name</label>
-                                         <input type="text" name="name" id="name" list="activity-options" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
-                                         <datalist id="activity-options">
-                                            {otherActivityOptions[formData.component].map(opt => <option key={opt} value={opt} />)}
-                                            <option value={`${formData.component} Training`} />
-                                         </datalist>
+                                         <label htmlFor="activityType" className="block text-sm font-medium">Activity Type</label>
+                                         <select 
+                                            name="activityType" 
+                                            id="activityType" 
+                                            value={selectedActivityType} 
+                                            onChange={handleActivityTypeChange} 
+                                            required 
+                                            className={commonInputClasses}
+                                         >
+                                            <option value="">Select Type</option>
+                                            {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                         </select>
                                      </div>
+                                     {isTrainingForm && (
+                                         <div>
+                                             <label htmlFor="name" className="block text-sm font-medium">Activity Name</label>
+                                             <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} placeholder="Enter specific training title" />
+                                         </div>
+                                     )}
                                     <div><label htmlFor="date" className="block text-sm font-medium">Date</label><input type="date" name="date" id="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} /></div>
                                     {isTrainingForm && (
                                         <div><label htmlFor="facilitator" className="block text-sm font-medium">Facilitator</label><input type="text" name="facilitator" id="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} /></div>
@@ -894,6 +956,103 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                 </div>
                             </fieldset>
                          </div>
+                    )}
+                    {activeTab === 'accomplishments' && view === 'edit' && (
+                        <div className="space-y-6">
+                            {/* Section 1: Activity Accomplishment */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Activity Accomplishment</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date of Conduct</label>
+                                        <input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    {((formData.participantsMale || 0) + (formData.participantsFemale || 0)) > 0 && (
+                                        <>
+                                            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 border-t pt-2 border-gray-200 dark:border-gray-700">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Male Participants</label>
+                                                    <input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Female Participants</label>
+                                                    <input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Actual Participants</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={(Number(formData.actualParticipantsMale) || 0) + (Number(formData.actualParticipantsFemale) || 0)} 
+                                                        disabled 
+                                                        className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
+                                                    />
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </fieldset>
+
+                            {/* Section 2: Budget Items Accomplishment */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-medium">Particulars</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                            {formData.expenses.map((expense) => (
+                                                <tr key={expense.id}>
+                                                    <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{expense.expenseParticular}</td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="date" value={expense.actualDisbursementDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="number" value={expense.actualAmount || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {formData.expenses.length === 0 && (
+                                                <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-gray-500 italic">No budget items to update.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+
+                            {/* Section 3: Customer Satisfaction */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Customer Satisfaction</legend>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
+                            </fieldset>
+
+                            {/* Section 4: Catch Up Plan (Conditional) */}
+                            {new Date() > new Date(formData.date) && (
+                                <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
+                                    <p className="text-xs text-red-500 mb-2">Activity is delayed. Please provide a catch-up plan.</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks / Justification</label>
+                                            <textarea name="catchUpPlanRemarks" value={formData.catchUpPlanRemarks || ''} onChange={handleInputChange} rows={3} className={commonInputClasses} placeholder="Describe actions taken or justification for delay..." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Date</label>
+                                            <input type="date" name="newTargetDate" value={formData.newTargetDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            )}
+                        </div>
                     )}
                 </div>
                 <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200 dark:border-gray-700">

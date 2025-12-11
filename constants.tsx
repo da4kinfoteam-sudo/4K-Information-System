@@ -226,6 +226,20 @@ export const months = [
 ] as const;
 export type Month = typeof months[number];
 
+export interface OtherActivityExpense {
+    id: number;
+    objectType: ObjectType;
+    expenseParticular: string;
+    uacsCode: string;
+    obligationMonth: string;
+    disbursementMonth: string;
+    amount: number;
+    // Accomplishment Fields
+    actualObligationDate?: string;
+    actualDisbursementDate?: string;
+    actualAmount?: number;
+}
+
 export interface Training {
     id: number;
     uid?: string;
@@ -246,6 +260,13 @@ export interface Training {
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
+    // Catch Up Plan
+    catchUpPlanRemarks?: string;
+    newTargetDate?: string;
+    // Accomplishment Fields
+    actualDate?: string;
+    actualParticipantsMale?: number;
+    actualParticipantsFemale?: number;
 }
 
 export type OtherActivityComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
@@ -277,17 +298,6 @@ export const otherActivityOptions: { [key in OtherActivityComponentType]: readon
     'Program Management': programManagementActivities,
 };
 
-export interface OtherActivityExpense {
-    id: number;
-    objectType: ObjectType;
-    expenseParticular: string;
-    uacsCode: string;
-    obligationMonth: string;
-    disbursementMonth: string;
-    amount: number;
-}
-
-
 export interface OtherActivity {
     id: number;
     uid?: string;
@@ -305,6 +315,13 @@ export interface OtherActivity {
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
+    // Catch Up Plan
+    catchUpPlanRemarks?: string;
+    newTargetDate?: string;
+    // Accomplishment Fields
+    actualDate?: string;
+    actualParticipantsMale?: number;
+    actualParticipantsFemale?: number;
 }
 
 // --- Program Management Interfaces ---

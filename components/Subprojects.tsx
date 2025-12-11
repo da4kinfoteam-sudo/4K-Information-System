@@ -1,5 +1,5 @@
 
-import React, { useState, FormEvent, useMemo, useEffect } from 'react';
+import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, targetCommodities, targetCommodityCategories } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -61,13 +61,23 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [statusFilter, setStatusFilter] = useState('All');
 
     // Sorting
-    type SortKeys = keyof Subproject | 'totalBudget';
+    type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+
+    // Scroll persistence
+    const tableContainerRef = useRef<HTMLDivElement>(null);
+    const scrollPositionRef = useRef(0);
+
+    useLayoutEffect(() => {
+        if (tableContainerRef.current) {
+            tableContainerRef.current.scrollLeft = scrollPositionRef.current;
+        }
+    }, [sortConfig]);
 
     // Budget Form State
     const [currentDetail, setCurrentDetail] = useState<Omit<SubprojectDetail, 'id'>>({
@@ -181,12 +191,44 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
         if (sortConfig !== null) {
             filtered.sort((a, b) => {
-                let aValue: any = a[sortConfig.key as keyof Subproject];
-                let bValue: any = b[sortConfig.key as keyof Subproject];
+                let aValue: any = '';
+                let bValue: any = '';
 
-                if (sortConfig.key === 'totalBudget') {
-                    aValue = a.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
-                    bValue = b.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
+                // Helper calculations for sorting
+                const getBudget = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
+                const getObligated = (s: Subproject) => s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
+                const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
+                const getRate = (s: Subproject) => {
+                    const total = s.details.length;
+                    const comp = s.details.filter(d => d.actualDeliveryDate).length;
+                    return total > 0 ? (comp / total) * 100 : 0;
+                };
+                const getCommodities = (s: Subproject) => s.subprojectCommodities?.map(c => c.name).join(', ') || '';
+
+                switch (sortConfig.key) {
+                    case 'totalBudget':
+                        aValue = getBudget(a);
+                        bValue = getBudget(b);
+                        break;
+                    case 'actualObligated':
+                        aValue = getObligated(a);
+                        bValue = getObligated(b);
+                        break;
+                    case 'actualDisbursed':
+                        aValue = getDisbursed(a);
+                        bValue = getDisbursed(b);
+                        break;
+                    case 'completionRate':
+                        aValue = getRate(a);
+                        bValue = getRate(b);
+                        break;
+                    case 'commodityTarget':
+                        aValue = getCommodities(a);
+                        bValue = getCommodities(b);
+                        break;
+                    default:
+                        aValue = a[sortConfig.key as keyof Subproject] ?? '';
+                        bValue = b[sortConfig.key as keyof Subproject] ?? '';
                 }
 
                 if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
@@ -820,37 +862,67 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div 
+                    className="overflow-x-auto" 
+                    ref={tableContainerRef}
+                    onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollLeft}
+                >
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th scope="col" className="w-12 px-4 py-3"></th>
-                                <SortableHeader sortKey="name" label="Name" />
-                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" />
-                                <SortableHeader sortKey="startDate" label="Start Date" />
-                                <SortableHeader sortKey="status" label="Status" />
-                                <SortableHeader sortKey="totalBudget" label="Budget" />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
+                                <SortableHeader sortKey="name" label="Name" className="min-w-[200px]" />
+                                <SortableHeader sortKey="operatingUnit" label="OU" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" className="min-w-[150px]" />
+                                <SortableHeader sortKey="commodityTarget" label="Commodity Target" className="min-w-[200px] whitespace-nowrap" />
+                                <SortableHeader sortKey="estimatedCompletionDate" label="Target Completion Date" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="actualCompletionDate" label="Actual Completion Date" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="totalBudget" label="Budget" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="actualObligated" label="Actual Obligated Amount" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="actualDisbursed" label="Actual Disbursed Amount" className="whitespace-nowrap" />
+                                <SortableHeader sortKey="completionRate" label="Completion Rate" className="whitespace-nowrap" />
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedSubprojects.map((s) => (
+                            {paginatedSubprojects.map((s) => {
+                                const budget = calculateTotalBudget(s.details);
+                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
+                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
+                                const totalItems = s.details.length;
+                                const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
+                                const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 
+                                    ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ')
+                                    : 'N/A';
+
+                                return (
                                 <React.Fragment key={s.id}>
                                     <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
+                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
                                             <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-accent hover:underline">
                                                 {s.name}
                                             </button>
                                             <div className="text-xs text-gray-400">{s.uid}</div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.startDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm"><span className={getStatusBadge(s.status)}>{s.status}</span></td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(calculateTotalBudget(s.details))}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.estimatedCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.actualCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualObligated)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualDisbursed)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div className="flex items-center">
+                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
+                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                             {canEdit && (
                                                 <>
                                                     <button onClick={(e) => { e.stopPropagation(); handleEditClick(s); }} className="text-accent hover:brightness-90 mr-4">Edit</button>
@@ -861,16 +933,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     </tr>
                                     {expandedRowId === s.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={8} className="p-4">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <td colSpan={12} className="p-4">
+                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                    {/* Column 1: Project Details */}
                                                     <div className="space-y-4">
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
                                                             <div className="space-y-2 text-sm">
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location}</span></p>
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Timeline:</strong> <span className="text-gray-900 dark:text-gray-100">{formatDate(s.startDate)} to {formatDate(s.estimatedCompletionDate)}</span></p>
-                                                                {s.actualCompletionDate && <p><strong className="text-gray-500 dark:text-gray-400">Actual Completion:</strong> <span className="text-gray-900 dark:text-gray-100">{formatDate(s.actualCompletionDate)}</span></p>}
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status}</span></p>
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
                                                             </div>
                                                         </div>
@@ -882,6 +954,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                         )}
                                                     </div>
                                                     
+                                                    {/* Column 2: Budget & Particulars */}
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
                                                         {s.details.length > 0 ? (
@@ -910,12 +983,47 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> <span className="text-gray-900 dark:text-gray-100">{s.tier ?? 'N/A'}</span></p>
                                                         </div>
                                                     </div>
+
+                                                    {/* Column 3: Brief Accomplishment Details */}
+                                                    <div className="space-y-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Accomplishment Brief</h4>
+                                                        <div className="space-y-3 text-sm">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-gray-600 dark:text-gray-400">Physical Completion</span>
+                                                                <span className={`font-bold ${completionRate === 100 ? 'text-green-600' : 'text-blue-600'}`}>{completionRate}%</span>
+                                                            </div>
+                                                            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                                                                <div className={`h-2 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
+                                                            </div>
+                                                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                                                                <div className="flex justify-between">
+                                                                    <span className="text-gray-500 dark:text-gray-400">Obligated</span>
+                                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span>
+                                                                </div>
+                                                                <div className="flex justify-between mt-1">
+                                                                    <span className="text-gray-500 dark:text-gray-400">Disbursed</span>
+                                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span>
+                                                                </div>
+                                                            </div>
+                                                            {s.subprojectCommodities && s.subprojectCommodities.length > 0 && (
+                                                                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
+                                                                    {s.subprojectCommodities.map((c, i) => (
+                                                                        <div key={i} className="flex justify-between text-xs">
+                                                                            <span>{c.name}</span>
+                                                                            <span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Livestock' ? 'heads' : 'yield'} (Actual)</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
                                     )}
                                 </React.Fragment>
-                            ))}
+                            );})}
                         </tbody>
                     </table>
                 </div>
