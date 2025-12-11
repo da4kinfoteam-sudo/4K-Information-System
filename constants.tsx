@@ -1,3 +1,4 @@
+
 // Author: AI
 // OS support: Any
 // Description: Constants and type definitions for the application
@@ -152,7 +153,30 @@ export interface SubprojectDetail {
     uacsCode: string;
     obligationMonth: string;
     disbursementMonth: string;
+    // Accomplishment Fields
+    actualDeliveryDate?: string;
+    actualObligationDate?: string;
+    actualDisbursementDate?: string;
+    actualAmount?: number;
 }
+
+export interface SubprojectCommodity {
+    typeName: string;
+    name: string;
+    area: number; // This represents Hectares for crops, or Number of Heads for livestock
+    averageYield?: number; // e.g. kg/ha. Optional for Livestock.
+    actualYield?: number; // Actual yield based on impact assessment
+}
+
+export const targetCommodityCategories: { [key: string]: string[] } = {
+    'Crop Commodity': ['Coffee', 'Cacao', 'Coconut', 'Abaca', 'Corn', 'Rice', 'Banana', 'Vegetables', 'Root Crops', 'Spices'],
+    'Livestock': ['Poultry', 'Cattle', 'Swine', 'Goat', 'Fisheries']
+};
+
+export const targetCommodities = [
+    ...targetCommodityCategories['Crop Commodity'],
+    ...targetCommodityCategories['Livestock']
+];
 
 export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
 export type FundType = typeof fundTypes[number];
@@ -168,6 +192,7 @@ export interface Subproject {
     indigenousPeopleOrganization: string;
     status: 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
     details: SubprojectDetail[];
+    subprojectCommodities?: SubprojectCommodity[];
     packageType: `Package ${number}`;
     startDate: string;
     estimatedCompletionDate: string;
@@ -181,6 +206,9 @@ export interface Subproject {
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
+    // Catch Up Plan
+    catchUpPlanRemarks?: string;
+    newTargetCompletionDate?: string;
 }
 
 export type TrainingComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
@@ -610,6 +638,9 @@ export const sampleSubprojects: Subproject[] = [
         details: [
             { id: 1, type: "Infrastructure", particulars: "Processing Shed", deliveryDate: "2024-03-01", unitOfMeasure: "unit", pricePerUnit: 500000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Buildings and Other Structures", uacsCode: "10604020-00", obligationMonth: "2024-01-30", disbursementMonth: "2024-03-15" },
             { id: 2, type: "Equipment", particulars: "Coffee Roaster", deliveryDate: "2024-04-01", unitOfMeasure: "unit", pricePerUnit: 150000, numberOfUnits: 1, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-02-28", disbursementMonth: "2024-04-15" }
+        ],
+        subprojectCommodities: [
+            { typeName: "Crop Commodity", name: "Coffee", area: 5, averageYield: 800 }
         ]
     },
     {
@@ -631,7 +662,10 @@ export const sampleSubprojects: Subproject[] = [
         operatingUnit: "RPMO 11",
         encodedBy: "Admin User",
         details: [
-            { id: 1, type: "Livestock", particulars: "Goats (Breeder)", deliveryDate: "2024-03-15", unitOfMeasure: "heads", pricePerUnit: 10000, numberOfUnits: 30, objectType: "CO", expenseParticular: "Breeding Stocks", uacsCode: "10607010-00", obligationMonth: "2024-02-15", disbursementMonth: "2024-03-20" }
+            { id: 1, type: "Livestock", particulars: "Goats (Breeder)", deliveryDate: "2024-03-15", unitOfMeasure: "heads", pricePerUnit: 10000, numberOfUnits: 30, objectType: "CO", expenseParticular: "Breeding Stocks", uacsCode: "10607010-00", obligationMonth: "2024-02-15", disbursementMonth: "2024-03-20", actualDeliveryDate: "2024-03-15", actualObligationDate: "2024-02-15", actualDisbursementDate: "2024-03-20", actualAmount: 300000 }
+        ],
+        subprojectCommodities: [
+            { typeName: "Livestock", name: "Goat", area: 30 }
         ]
     },
     {
@@ -653,6 +687,9 @@ export const sampleSubprojects: Subproject[] = [
         encodedBy: "Juan Dela Cruz",
         details: [
             { id: 1, type: "Equipment", particulars: "VCO Press", deliveryDate: "2024-08-01", unitOfMeasure: "unit", pricePerUnit: 80000, numberOfUnits: 2, objectType: "CO", expenseParticular: "Machinery and Equipment", uacsCode: "10605030-00", obligationMonth: "2024-07-15", disbursementMonth: "2024-08-15" }
+        ],
+        subprojectCommodities: [
+            { typeName: "Crop Commodity", name: "Coconut", area: 10, averageYield: 1500 }
         ]
     },
     {
@@ -675,7 +712,8 @@ export const sampleSubprojects: Subproject[] = [
         encodedBy: "Admin User",
         details: [
             { id: 1, type: "Crop Commodity", particulars: "Cacao Seedlings", deliveryDate: "2023-06-01", unitOfMeasure: "pcs", pricePerUnit: 50, numberOfUnits: 5000, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2023-05-15", disbursementMonth: "2023-06-15" }
-        ]
+        ],
+        subprojectCommodities: []
     },
     {
         id: 5,
@@ -696,7 +734,8 @@ export const sampleSubprojects: Subproject[] = [
         encodedBy: "Admin User",
         details: [
             { id: 1, type: "Livestock", particulars: "Native Chicken", deliveryDate: "2024-05-01", unitOfMeasure: "heads", pricePerUnit: 500, numberOfUnits: 200, objectType: "MOOE", expenseParticular: "Supplies and Materials Expenses", uacsCode: "50203080-00", obligationMonth: "2024-04-15", disbursementMonth: "2024-05-15" }
-        ]
+        ],
+        subprojectCommodities: []
     }
 ];
 

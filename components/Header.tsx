@@ -32,6 +32,19 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
     const { currentUser, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const [currentDate, setCurrentDate] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentDate(new Date()), 60000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const formattedDate = currentDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -49,16 +62,23 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
     return (
         <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md z-20">
             <div className="flex items-center justify-between p-4">
-                {/* Mobile Menu Button */}
-                <button 
-                    onClick={toggleSidebar} 
-                    className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none"
-                    aria-label="Open sidebar"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-                    </svg>
-                </button>
+                <div className="flex items-center">
+                    {/* Mobile Menu Button */}
+                    <button 
+                        onClick={toggleSidebar} 
+                        className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4"
+                        aria-label="Open sidebar"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                    
+                    {/* System Date */}
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {formattedDate}
+                    </span>
+                </div>
                 
                 {/* Spacer to push content to the right */}
                 <div className="flex-1"></div>
@@ -124,3 +144,4 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
 };
 
 export default Header;
+    

@@ -1,6 +1,6 @@
 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits } from '../constants';
+import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, targetCommodities, targetCommodityCategories } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,6 +11,7 @@ interface SubprojectsProps {
     ipos: IPO[];
     subprojects: Subproject[];
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
+    setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
@@ -25,6 +26,7 @@ const defaultFormData: Subproject = {
     indigenousPeopleOrganization: '',
     status: 'Proposed',
     details: [],
+    subprojectCommodities: [],
     packageType: 'Package 1',
     startDate: '',
     estimatedCompletionDate: '',
@@ -37,13 +39,18 @@ const defaultFormData: Subproject = {
     encodedBy: ''
 };
 
-const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes }) => {
+const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes }) => {
     const { currentUser } = useAuth();
     const [formData, setFormData] = useState<Subproject>(defaultFormData);
     const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
-    const [activeTab, setActiveTab] = useState<'details' | 'budget'>('details');
+    
+    // Error Modal State
+    const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+
+    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
 
     // Filters
@@ -77,6 +84,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         disbursementMonth: ''
     });
 
+    // Commodity Form State
+    const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
+        typeName: '',
+        name: '',
+        area: 0,
+        averageYield: 0
+    });
+
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
     const canViewAll = currentUser?.role === 'Administrator' || currentUser?.operatingUnit === 'NPMO';
 
@@ -92,6 +107,39 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             });
         }
     }, [editingSubproject, currentUser]);
+
+    // Check completion status whenever details change
+    useEffect(() => {
+        if (editingSubproject && formData.details.length > 0) {
+            const allItemsDelivered = formData.details.every(d => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '');
+            if (allItemsDelivered) {
+                // Find latest actual delivery date
+                const latestDate = formData.details.reduce((latest, current) => {
+                    const d = new Date(current.actualDeliveryDate!);
+                    return d > latest ? d : latest;
+                }, new Date(0));
+                
+                // Only update if status is not already completed to avoid infinite loops or unnecessary updates
+                if (formData.status !== 'Completed') {
+                    setFormData(prev => ({
+                        ...prev,
+                        status: 'Completed',
+                        actualCompletionDate: latestDate.toISOString().split('T')[0]
+                    }));
+                }
+            } else {
+                // Revert status if not all items are delivered and it was automatically marked completed
+                if (formData.status === 'Completed') {
+                     setFormData(prev => ({
+                        ...prev,
+                        status: 'Ongoing', // Or revert to previous status if tracked
+                        actualCompletionDate: undefined
+                    }));
+                }
+            }
+        }
+    }, [formData.details, editingSubproject]);
+
 
     const processedSubprojects = useMemo(() => {
         let filtered = [...subprojects];
@@ -180,7 +228,31 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+
+            if (name === 'fundType') {
+                const currentSystemYear = new Date().getFullYear();
+                if (value === 'Continuing') {
+                    newData.fundingYear = currentSystemYear - 1;
+                } else {
+                    // 'Current' or 'Insertion'
+                    newData.fundingYear = currentSystemYear;
+                }
+            }
+
+            if (name === 'indigenousPeopleOrganization') {
+                const selectedIpo = ipos.find(ipo => ipo.name === value);
+                if (selectedIpo) {
+                    newData.location = selectedIpo.location;
+                } else {
+                    newData.location = '';
+                }
+            }
+
+            return newData;
+        });
     };
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -198,7 +270,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleAddDetail = () => {
         if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
-            alert("Please fill in required detail fields.");
+            alert("Please fill in required detail fields (Particulars, UACS, Price, Qty).");
             return;
         }
         const newDetail: SubprojectDetail = {
@@ -221,27 +293,163 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }));
     };
 
+    const handleEditDetail = (id: number) => {
+        const detailToEdit = formData.details.find(d => d.id === id);
+        if (detailToEdit) {
+            setCurrentDetail({
+                type: detailToEdit.type,
+                particulars: detailToEdit.particulars,
+                deliveryDate: detailToEdit.deliveryDate,
+                unitOfMeasure: detailToEdit.unitOfMeasure,
+                pricePerUnit: detailToEdit.pricePerUnit,
+                numberOfUnits: detailToEdit.numberOfUnits,
+                objectType: detailToEdit.objectType,
+                expenseParticular: detailToEdit.expenseParticular,
+                uacsCode: detailToEdit.uacsCode,
+                obligationMonth: detailToEdit.obligationMonth,
+                disbursementMonth: detailToEdit.disbursementMonth
+            });
+            // Remove the item being edited so it can be re-added
+            setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
+        }
+    };
+
     const handleRemoveDetail = (id: number) => {
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
     };
 
+    const handleDetailAccomplishmentChange = (id: number, field: keyof SubprojectDetail, value: any) => {
+        setFormData(prev => ({
+            ...prev,
+            details: prev.details.map(d => d.id === id ? { ...d, [field]: value } : d)
+        }));
+    };
+
+    // Commodity Handlers
+    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === 'typeName') {
+            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' })); // Reset commodity name if type changes
+        } else {
+            setCurrentCommodity(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleAddCommodity = () => {
+        const isLivestock = currentCommodity.typeName === 'Livestock';
+        if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area || (!isLivestock && !currentCommodity.averageYield)) {
+            alert(`Please fill in all commodity fields (Type, Name, ${isLivestock ? 'Heads' : 'Area, Yield'}).`);
+            return;
+        }
+        const newCommodity: SubprojectCommodity = {
+            ...currentCommodity,
+            area: Number(currentCommodity.area),
+            averageYield: isLivestock ? undefined : Number(currentCommodity.averageYield)
+        };
+        setFormData(prev => ({
+            ...prev,
+            subprojectCommodities: [...(prev.subprojectCommodities || []), newCommodity]
+        }));
+        setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
+    };
+
+    const handleEditCommodity = (index: number) => {
+        const commodityToEdit = formData.subprojectCommodities?.[index];
+        if (commodityToEdit) {
+            setCurrentCommodity({
+                typeName: commodityToEdit.typeName || '', // Handle legacy data
+                name: commodityToEdit.name,
+                area: commodityToEdit.area,
+                averageYield: commodityToEdit.averageYield || 0
+            });
+            // Remove from list to allow re-adding
+            setFormData(prev => ({
+                ...prev,
+                subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
+            }));
+        }
+    };
+
+    const handleRemoveCommodity = (index: number) => {
+        setFormData(prev => ({
+            ...prev,
+            subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
+        }));
+    };
+
+    const handleCommodityAccomplishmentChange = (index: number, value: number) => {
+        setFormData(prev => ({
+            ...prev,
+            subprojectCommodities: prev.subprojectCommodities?.map((c, i) => i === index ? { ...c, actualYield: value } : c)
+        }));
+    };
+
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
-        if (!formData.name || !formData.location || !formData.indigenousPeopleOrganization) {
-            alert("Please fill in required fields.");
+        
+        const missingFields: string[] = [];
+        if (!formData.name) missingFields.push('Subproject Name');
+        if (!formData.indigenousPeopleOrganization) missingFields.push('IPO');
+        if (!formData.location) missingFields.push('Location');
+        if (!formData.startDate) missingFields.push('Start Date');
+        if (!formData.estimatedCompletionDate) missingFields.push('Estimated Completion Date');
+
+        if (missingFields.length > 0) {
+            setErrorMessage(`Please fill in the following required fields: ${missingFields.join(', ')}.`);
+            setIsErrorModalOpen(true);
             return;
         }
 
+        const historyEntry = {
+            date: new Date().toISOString(),
+            event: editingSubproject ? "Subproject Updated" : "Subproject Created",
+            user: currentUser?.fullName || "System"
+        };
+
         if (editingSubproject) {
-            const updated = { ...formData, id: editingSubproject.id };
+            const updated = { 
+                ...formData, 
+                id: editingSubproject.id,
+                history: [...(editingSubproject.history || []), historyEntry]
+            };
             setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
         } else {
             const newId = Math.max(...subprojects.map(s => s.id), 0) + 1;
             // Generate simple UID if not present
             const uid = formData.uid || `SP-${new Date().getFullYear()}-${String(newId).padStart(3, '0')}`;
-            const newSubproject = { ...formData, id: newId, uid };
+            const newSubproject = { 
+                ...formData, 
+                id: newId, 
+                uid,
+                history: [historyEntry]
+            };
             setSubprojects(prev => [...prev, newSubproject]);
         }
+
+        // Sync commodities to IPO
+        if (formData.subprojectCommodities && formData.subprojectCommodities.length > 0) {
+            setIpos(prev => prev.map(ipo => {
+                if (ipo.name === formData.indigenousPeopleOrganization) {
+                    const newCommodities = [...ipo.commodities];
+                    let changed = false;
+                    formData.subprojectCommodities?.forEach(sc => {
+                        const exists = newCommodities.some(c => c.particular === sc.name && c.type === sc.typeName);
+                        if (!exists) {
+                            newCommodities.push({
+                                type: sc.typeName,
+                                particular: sc.name,
+                                value: sc.area,
+                                isScad: false
+                            });
+                            changed = true;
+                        }
+                    });
+                    if (changed) return { ...ipo, commodities: newCommodities };
+                }
+                return ipo;
+            }));
+        }
+
         handleCancelEdit();
     };
 
@@ -440,7 +648,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             // Mock Lat/Lng for map display since parsing assumes structure, could be enhanced with proper Geocoding
                             lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
                             lng: 120.9842 + (Math.random() * 0.1 - 0.05),
-                            details: []
+                            details: [],
+                            subprojectCommodities: []
                         });
                     }
 
@@ -740,9 +949,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             </div>
             <form onSubmit={handleSubmit}>
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-4" aria-label="Tabs">
+                    <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="details" label="Subproject Details" />
+                        <TabButton tabName="commodity" label="Subproject Commodity" />
                         <TabButton tabName="budget" label="Budget Items" />
+                        {view === 'edit' && <TabButton tabName="accomplishments" label="Accomplishments" />}
                     </nav>
                 </div>
                 <div className="min-h-[400px]">
@@ -751,10 +962,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                    <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} /></div>
                                     <div>
                                         <label className="block text-sm font-medium">IPO</label>
-                                        <select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} required className={commonInputClasses}>
+                                        <select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses}>
                                             <option value="">Select IPO</option>
                                             {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                                         </select>
@@ -764,9 +975,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
                                             <option value="Proposed">Proposed</option>
                                             <option value="Ongoing">Ongoing</option>
-                                            <option value="Completed">Completed</option>
                                             <option value="Cancelled">Cancelled</option>
+                                            {/* Completed is hidden as it is auto-calculated */}
+                                            {formData.status === 'Completed' && <option value="Completed">Completed</option>}
                                         </select>
+                                        {formData.status === 'Completed' && <p className="text-xs text-green-600 mt-1">Status set to Completed automatically based on actual delivery dates.</p>}
                                     </div>
                                     <div>
                                          <label className="block text-sm font-medium">Package</label>
@@ -779,18 +992,37 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                              <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Timeline</legend>
                                 <div className="space-y-4">
-                                    <LocationPicker value={formData.location} onChange={(loc) => setFormData(prev => ({ ...prev, location: loc }))} required />
+                                    <div>
+                                        <label className="block text-sm font-medium">Location</label>
+                                        <input 
+                                            type="text" 
+                                            name="location"
+                                            value={formData.location} 
+                                            readOnly 
+                                            className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
+                                            placeholder="Auto-filled based on IPO selection"
+                                        />
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                        <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                        <div><label className="block text-sm font-medium">Actual Completion</label><input type="date" name="actualCompletionDate" value={formData.actualCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                        <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                        <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                        <div><label className="block text-sm font-medium">Actual Completion</label><input type="date" name="actualCompletionDate" value={formData.actualCompletionDate || ''} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} /></div>
                                     </div>
                                 </div>
                             </fieldset>
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div><label className="block text-sm font-medium">Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Year</label>
+                                        <input 
+                                            type="number" 
+                                            name="fundingYear" 
+                                            value={formData.fundingYear} 
+                                            readOnly 
+                                            className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
+                                        />
+                                    </div>
                                     <div>
                                         <label className="block text-sm font-medium">Type</label>
                                         <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
@@ -807,6 +1039,66 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             </fieldset>
                          </div>
                     )}
+                    {activeTab === 'commodity' && (
+                        <div className="space-y-6">
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Subproject Commodities</legend>
+                                <div className="space-y-2 mb-4">
+                                    {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
+                                        formData.subprojectCommodities.map((c, index) => (
+                                            <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                                <div>
+                                                    <span className="font-semibold">{c.name}</span>
+                                                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                        {c.typeName === 'Livestock' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Livestock' && `| Yield: ${c.averageYield}`}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                    </button>
+                                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added.</p>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
+                                    <div>
+                                        <label className="block text-xs font-medium">Type</label>
+                                        <select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}>
+                                            <option value="">Select Type</option>
+                                            {Object.keys(targetCommodityCategories).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium">Commodity</label>
+                                        <select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}>
+                                            <option value="">Select Commodity</option>
+                                            {currentCommodity.typeName && targetCommodityCategories[currentCommodity.typeName].map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium">{currentCommodity.typeName === 'Livestock' ? 'No. of Heads' : 'Area (ha)'}</label>
+                                        <input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
+                                    </div>
+                                    <div className="flex gap-2 items-end">
+                                        {currentCommodity.typeName !== 'Livestock' && (
+                                            <div className="flex-grow">
+                                                <label className="block text-xs font-medium">Average Yield</label>
+                                                <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
+                                            </div>
+                                        )}
+                                        <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    )}
                     {activeTab === 'budget' && (
                         <div className="space-y-6">
                              <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
@@ -820,6 +1112,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
+                                                <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                </button>
                                                 <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
                                             </div>
                                         </div>
@@ -837,12 +1132,116 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                     </div>
 
+                                    <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                    <div><label className="block text-xs font-medium">Obligation Date</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                    <div><label className="block text-xs font-medium">Disbursement Date</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
                                 </div>
                              </fieldset>
+                        </div>
+                    )}
+                    {activeTab === 'accomplishments' && view === 'edit' && (
+                        <div className="space-y-6">
+                            {/* Section 1: Budget Items */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-medium">Particulars</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                            {formData.details.map((detail) => (
+                                                <tr key={detail.id}>
+                                                    <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{detail.particulars}</td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="date" value={detail.actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="date" value={detail.actualObligationDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="date" value={detail.actualDisbursementDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <input type="number" value={detail.actualAmount || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+
+                            {/* Section 2: Customer Satisfaction */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Customer Satisfaction</legend>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
+                            </fieldset>
+
+                            {/* Section 3: Impact of Subproject */}
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Impact of Subproject</legend>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
+                                            <tr>
+                                                <th className="px-3 py-2 text-left font-medium">Commodity</th>
+                                                <th className="px-3 py-2 text-left font-medium">Target</th>
+                                                <th className="px-3 py-2 text-left font-medium">Actual Yield/Heads</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                            {formData.subprojectCommodities?.map((commodity, index) => (
+                                                <tr key={index}>
+                                                    <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
+                                                    <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
+                                                        {commodity.averageYield ? `${commodity.averageYield} (Yield)` : ''} 
+                                                        {commodity.typeName === 'Livestock' ? ' (Heads)' : ''}
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, parseFloat(e.target.value))} className="w-32 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
+                                                            <span className="text-xs text-gray-500">{commodity.typeName === 'Livestock' ? 'heads' : 'yield'}</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {(!formData.subprojectCommodities || formData.subprojectCommodities.length === 0) && (
+                                                <tr><td colSpan={3} className="px-3 py-2 text-sm text-gray-500 italic text-center">No commodities linked.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+
+                            {/* Section 4: Catch Up Plan (Conditional) */}
+                            {new Date() > new Date(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
+                                <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
+                                    <p className="text-xs text-red-500 mb-2">Project is delayed. Please provide a catch-up plan.</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks / Justification</label>
+                                            <textarea name="catchUpPlanRemarks" value={formData.catchUpPlanRemarks || ''} onChange={handleInputChange} rows={3} className={commonInputClasses} placeholder="Describe actions taken or justification for delay..." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Completion Date</label>
+                                            <input type="date" name="newTargetCompletionDate" value={formData.newTargetCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            )}
                         </div>
                     )}
                 </div>
@@ -868,6 +1267,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     </div>
                 </div>
             )}
+            
+            {isErrorModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Validation Error</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">{errorMessage}</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsErrorModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );

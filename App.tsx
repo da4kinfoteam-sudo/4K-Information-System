@@ -142,7 +142,8 @@ const AppContent: React.FC = () => {
                 return <Subprojects 
                             ipos={ipos} 
                             subprojects={subprojects} 
-                            setSubprojects={setSubprojects} 
+                            setSubprojects={setSubprojects}
+                            setIpos={setIpos} 
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
                             uacsCodes={derivedUacsCodes}
@@ -203,7 +204,34 @@ const AppContent: React.FC = () => {
                             ipos={ipos}
                             onBack={handleBack} 
                             previousPageName={previousPage === '/' ? 'Dashboard' : previousPage.slice(1)}
-                            onUpdateSubproject={(updated) => setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p))}
+                            onUpdateSubproject={(updated) => {
+                                setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                setSelectedSubproject(updated);
+
+                                // Sync commodities to IPO
+                                if (updated.subprojectCommodities && updated.subprojectCommodities.length > 0) {
+                                    setIpos(prev => prev.map(ipo => {
+                                        if (ipo.name === updated.indigenousPeopleOrganization) {
+                                            const newCommodities = [...ipo.commodities];
+                                            let changed = false;
+                                            updated.subprojectCommodities?.forEach(sc => {
+                                                const exists = newCommodities.some(c => c.particular === sc.name && c.type === sc.typeName);
+                                                if (!exists) {
+                                                    newCommodities.push({
+                                                        type: sc.typeName,
+                                                        particular: sc.name,
+                                                        value: sc.area,
+                                                        isScad: false
+                                                    });
+                                                    changed = true;
+                                                }
+                                            });
+                                            if (changed) return { ...ipo, commodities: newCommodities };
+                                        }
+                                        return ipo;
+                                    }));
+                                }
+                            }}
                             particularTypes={derivedParticularTypes}
                             uacsCodes={derivedUacsCodes}
                         />;
@@ -215,7 +243,10 @@ const AppContent: React.FC = () => {
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
                             onBack={handleBack}
                             previousPageName={previousPage === '/' ? 'Dashboard' : previousPage.slice(1)}
-                            onUpdateIpo={(updated) => setIpos(prev => prev.map(i => i.id === updated.id ? updated : i))}
+                            onUpdateIpo={(updated) => {
+                                setIpos(prev => prev.map(i => i.id === updated.id ? updated : i));
+                                setSelectedIpo(updated);
+                            }}
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
                         />;
