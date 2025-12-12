@@ -40,6 +40,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<ActiveTab>('Office');
+    const [formTab, setFormTab] = useState<'Details' | 'Accomplishment'>('Details');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<any>(null);
@@ -84,7 +85,15 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 
         // Other Expenses fields
         particulars: '',
-        amount: 0
+        amount: 0,
+
+        // Accomplishment Fields
+        actualDate: '',
+        actualAmount: 0,
+        actualObligationDate: '',
+        actualDisbursementDate: '',
+        actualObligationAmount: 0,
+        actualDisbursementAmount: 0
     };
 
     const [formData, setFormData] = useState(initialFormState);
@@ -131,13 +140,24 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             // Reset UACS selectors
             setSelectedObjectType('MOOE');
             setSelectedParticular('');
+            setFormTab('Details');
         }
     }, [view, editingItem, currentUser]);
 
     // Pre-fill form for editing
     useEffect(() => {
         if (editingItem) {
-            setFormData({ ...initialFormState, ...editingItem });
+            setFormData({ 
+                ...initialFormState, 
+                ...editingItem,
+                // Ensure defaults if missing in item
+                actualDate: editingItem.actualDate || '',
+                actualAmount: editingItem.actualAmount || 0,
+                actualObligationDate: editingItem.actualObligationDate || '',
+                actualDisbursementDate: editingItem.actualDisbursementDate || '',
+                actualObligationAmount: editingItem.actualObligationAmount || 0,
+                actualDisbursementAmount: editingItem.actualDisbursementAmount || 0
+            });
             
             // Reverse engineer UACS selection
             let foundType: ObjectType = 'MOOE';
@@ -155,6 +175,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             }
             setSelectedObjectType(foundType);
             setSelectedParticular(foundParticular);
+            setFormTab('Details');
         }
     }, [editingItem, uacsCodes]);
 
@@ -181,7 +202,13 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             fundType: formData.fundType,
             fundYear: Number(formData.fundYear),
             tier: formData.tier,
-            encodedBy: formData.encodedBy
+            encodedBy: formData.encodedBy,
+            actualDate: formData.actualDate,
+            actualAmount: Number(formData.actualAmount),
+            actualObligationDate: formData.actualObligationDate,
+            actualDisbursementDate: formData.actualDisbursementDate,
+            actualObligationAmount: Number(formData.actualObligationAmount),
+            actualDisbursementAmount: Number(formData.actualDisbursementAmount)
         };
 
         if (editingItem) {
@@ -425,6 +452,23 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         reader.readAsArrayBuffer(file);
     };
 
+    const TabButton: React.FC<{ tabName: typeof formTab; label: string }> = ({ tabName, label }) => {
+        const isActive = formTab === tabName;
+        return (
+            <button
+                type="button"
+                onClick={() => setFormTab(tabName)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
+                    ${isActive
+                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    };
+
     const renderForm = () => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
             <div className="flex justify-between items-center mb-6">
@@ -434,118 +478,171 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 <button onClick={() => { setView('list'); setEditingItem(null); }} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Cancel</button>
             </div>
             
-            <form onSubmit={handleFormSubmit} className="space-y-6">
-                <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">General Information</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
-                            <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={commonInputClasses}>
-                                {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
-                            <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
-                            <select name="fundType" value={formData.fundType} onChange={handleInputChange as any} className={commonInputClasses}>
-                                {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
-                            <select name="tier" value={formData.tier} onChange={handleInputChange as any} className={commonInputClasses}>
-                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label>
-                            <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label>
-                            <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
-                        </div>
+            <form onSubmit={handleFormSubmit}>
+                {editingItem && (
+                    <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                        <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
+                            <TabButton tabName="Details" label="Details" />
+                            <TabButton tabName="Accomplishment" label="Accomplishments" />
+                        </nav>
                     </div>
-                </fieldset>
+                )}
 
-                <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">UACS Classification</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
-                            <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
-                                {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label>
-                            <select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
-                                <option value="">Select Particular</option>
-                                {Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
-                            <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} disabled={!selectedParticular} className={commonInputClasses}>
-                                <option value="">Select Code</option>
-                                {selectedParticular && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
-                                    <option key={code} value={code}>{code} - {desc}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </fieldset>
+                <div className="space-y-6">
+                    {(formTab === 'Details' || !editingItem) && (
+                        <>
+                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">General Information</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
+                                        <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={commonInputClasses}>
+                                            {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
+                                        <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
+                                        <select name="fundType" value={formData.fundType} onChange={handleInputChange as any} className={commonInputClasses}>
+                                            {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
+                                        <select name="tier" value={formData.tier} onChange={handleInputChange as any} className={commonInputClasses}>
+                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label>
+                                        <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label>
+                                        <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                </div>
+                            </fieldset>
 
-                <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Specific Details</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {activeTab === 'Office' && (
-                            <>
-                                <div><label className="block text-sm font-medium">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div className="md:col-span-2 text-right font-bold text-lg mt-2">Total: {formatCurrency(formData.numberOfUnits * formData.pricePerUnit)}</div>
-                            </>
-                        )}
-                         {activeTab === 'Staffing' && (
-                            <>
-                                <div><label className="block text-sm font-medium">Position</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                <div>
-                                    <label className="block text-sm font-medium">Status</label>
-                                    <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
-                                        <option value="Permanent">Permanent</option>
-                                        <option value="Contractual">Contractual</option>
-                                        <option value="COS">COS</option>
-                                        <option value="Job Order">Job Order</option>
-                                    </select>
+                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">UACS Classification</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
+                                        <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
+                                            {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label>
+                                        <select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
+                                            <option value="">Select Particular</option>
+                                            {Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}
+                                        </select>
+                                    </div>
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                                        <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} disabled={!selectedParticular} className={commonInputClasses}>
+                                            <option value="">Select Code</option>
+                                            {selectedParticular && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
+                                                <option key={code} value={code}>{code} - {desc}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                                <div><label className="block text-sm font-medium">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">Annual Salary + Incentives</label><input type="number" name="annualSalary" value={formData.annualSalary} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div>
-                                    <label className="block text-sm font-medium">Personnel Type</label>
-                                    <select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}>
-                                        <option value="Technical">Technical</option>
-                                        <option value="Administrative">Administrative</option>
-                                        <option value="Support">Support</option>
-                                    </select>
+                            </fieldset>
+
+                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Specific Details</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {activeTab === 'Office' && (
+                                        <>
+                                            <div><label className="block text-sm font-medium">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                            <div><label className="block text-sm font-medium">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                            <div className="md:col-span-2"><label className="block text-sm font-medium">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
+                                            <div><label className="block text-sm font-medium">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
+                                            <div><label className="block text-sm font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                                            <div className="md:col-span-2 text-right font-bold text-lg mt-2">Total: {formatCurrency(formData.numberOfUnits * formData.pricePerUnit)}</div>
+                                        </>
+                                    )}
+                                     {activeTab === 'Staffing' && (
+                                        <>
+                                            <div><label className="block text-sm font-medium">Position</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Status</label>
+                                                <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
+                                                    <option value="Permanent">Permanent</option>
+                                                    <option value="Contractual">Contractual</option>
+                                                    <option value="COS">COS</option>
+                                                    <option value="Job Order">Job Order</option>
+                                                </select>
+                                            </div>
+                                            <div><label className="block text-sm font-medium">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
+                                            <div><label className="block text-sm font-medium">Annual Salary + Incentives</label><input type="number" name="annualSalary" value={formData.annualSalary} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Personnel Type</label>
+                                                <select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}>
+                                                    <option value="Technical">Technical</option>
+                                                    <option value="Administrative">Administrative</option>
+                                                    <option value="Support">Support</option>
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
+                                    {activeTab === 'Other' && (
+                                        <>
+                                             <div className="md:col-span-2"><label className="block text-sm font-medium">Particulars</label><textarea name="particulars" value={formData.particulars} onChange={handleInputChange} rows={3} required className={commonInputClasses} /></div>
+                                             <div><label className="block text-sm font-medium">Amount</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                                        </>
+                                    )}
                                 </div>
-                            </>
-                        )}
-                        {activeTab === 'Other' && (
-                            <>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium">Particulars</label><textarea name="particulars" value={formData.particulars} onChange={handleInputChange} rows={3} required className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">Amount</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                            </>
-                        )}
-                    </div>
-                </fieldset>
+                            </fieldset>
+                        </>
+                    )}
+
+                    {formTab === 'Accomplishment' && editingItem && (
+                        <div className="space-y-6">
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Accomplishment</legend>
+                                
+                                {/* Obligation Section */}
+                                <div className="mb-4">
+                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Obligation</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                                            <input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
+                                            <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Disbursement Section */}
+                                <div>
+                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Disbursement</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                                            <input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
+                                            <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    )}
+                </div>
                 
-                <div className="flex justify-end gap-4">
+                <div className="flex justify-end gap-4 mt-6">
                     <button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-md text-sm font-medium">Cancel</button>
                     <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:brightness-95">Save Record</button>
                 </div>

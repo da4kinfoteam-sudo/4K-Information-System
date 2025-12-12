@@ -410,10 +410,10 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
         )
     };
 
-    const grandTotals = useMemo(() => Object.values(data).flatMap(component => {
+    const grandTotals = useMemo(() => Object.values(data).flatMap((component: any) => {
         if (Array.isArray(component)) return component;
-        if ((component as any).isExpandable) return (component as any).items;
-        if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
+        if (component.isExpandable) return component.items;
+        if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
         return [];
     }), [data]);
 
@@ -1439,10 +1439,10 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             }
         });
 
-        const grandTotals = Object.values(wfpData).flatMap(component => {
+        const grandTotals = Object.values(wfpData).flatMap((component: any) => {
             if (Array.isArray(component)) return component;
-            if ((component as any).isExpandable) return (component as any).items;
-            if ((component as any).isNestedExpandable) return Object.values((component as any).packages).flatMap((pkg: any) => pkg.items);
+            if (component.isExpandable) return component.items;
+            if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
             return [];
         });
 
