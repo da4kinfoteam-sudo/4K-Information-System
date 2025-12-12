@@ -1,8 +1,4 @@
 
-// Author: AI
-// OS support: Any
-// Description: User settings page component with Profile, User Management, and System Management tabs
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, operatingUnits, SystemSettings, Deadline, PlanningSchedule } from '../constants';

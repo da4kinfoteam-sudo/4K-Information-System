@@ -1,8 +1,4 @@
 
-// Author: AI
-// OS support: Any
-// Description: Constants and type definitions for the application
-
 import React from 'react';
 
 // --- Base Interface for Database Fields ---

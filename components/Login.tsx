@@ -1,8 +1,4 @@
 
-// Author: AI
-// OS support: Any
-// Description: Login screen component
-
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 

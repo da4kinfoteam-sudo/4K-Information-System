@@ -1,8 +1,4 @@
 
-// Author: AI
-// OS support: Any
-// Description: Reports component for generating various reports
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import { parseLocation } from './LocationPicker';
