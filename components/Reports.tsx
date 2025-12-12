@@ -3,7 +3,7 @@
 // OS support: Any
 // Description: Reports component for generating various reports
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import { parseLocation } from './LocationPicker';
 
@@ -94,7 +94,7 @@ const SummaryRow: React.FC<{
     return (
         <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
             <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
-                <span className="inline-block w-5 text-center">{isExpanded ? '−' : '+'}</span> {label}
+                <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
             </td>
             {allUacsCodes.map((code: string) => (
                 <td key={code} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
@@ -212,11 +212,11 @@ const BPFormsReport: React.FC<{ data: any }> = ({ data }) => {
                             );
                         }
                         if ((componentData as any).isNestedExpandable) {
-                             const allPackageActivities = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
+                             const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
                              return (
                                 <React.Fragment key={componentName}>
                                     <SummaryRow 
-                                        items={allPackageActivities}
+                                        items={allPackageItems}
                                         label={componentName}
                                         rowKey={componentName}
                                         isExpanded={isComponentExpanded}
@@ -445,34 +445,35 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {Object.entries(data).map(([key, componentData]) => {
+                    {Object.entries(data).map(([key, cd]) => {
+                        const componentData = cd as any;
                         if (Array.isArray(componentData)) {
                              const isComponentExpanded = expandedRows.has(key);
                              return (
                                 <React.Fragment key={key}>
                                     {renderSummaryRow(componentData, key, key, isComponentExpanded, 0)}
                                     {isComponentExpanded &&
-                                        componentData.map((item, index) => renderDataRow(item, `${key}-${index}`, 1))
+                                        componentData.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))
                                     }
                                 </React.Fragment>
                             );
                         }
-                        if ((componentData as any).isExpandable) {
+                        if (componentData.isExpandable) {
                              const isComponentExpanded = expandedRows.has(key);
                              return (
                                 <React.Fragment key={key}>
-                                    {renderSummaryRow((componentData as any).items, key, key, isComponentExpanded, 0)}
-                                    {isComponentExpanded && (componentData as any).items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
+                                    {renderSummaryRow(componentData.items, key, key, isComponentExpanded, 0)}
+                                    {isComponentExpanded && componentData.items.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
                                 </React.Fragment>
                             );
                         }
-                        if ((componentData as any).isNestedExpandable) {
+                        if (componentData.isNestedExpandable) {
                             const isComponentExpanded = expandedRows.has(key);
-                            const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
+                            const allPackageItems = Object.values(componentData.packages).flatMap((pkg: any) => pkg.items);
                              return (
                                 <React.Fragment key={key}>
                                     {renderSummaryRow(allPackageItems, key, key, isComponentExpanded, 0)}
-                                    {isComponentExpanded && Object.entries((componentData as any).packages).map(([packageName, packageData]: [string, any]) => (
+                                    {isComponentExpanded && Object.entries(componentData.packages).map(([packageName, packageData]: [string, any]) => (
                                         <React.Fragment key={packageName}>
                                             {renderSummaryRow(packageData.items, packageName, packageName, expandedRows.has(packageName), 1)}
                                             {expandedRows.has(packageName) && packageData.items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, 2))}
@@ -493,57 +494,260 @@ const WFPTable: React.FC<{ data: { [key: string]: any } }> = ({ data }) => {
 };
 
 const PICSTable: React.FC<{ data: any[] }> = ({ data }) => {
-    const totals = data.reduce((acc, row) => ({
-        totalTarget: acc.totalTarget + row.totalTarget,
-        totalGroup: acc.totalGroup + row.totalGroup,
-        maleTarget: acc.maleTarget + row.maleTarget,
-        femaleTarget: acc.femaleTarget + row.femaleTarget,
-        unidentifiedTarget: acc.unidentifiedTarget + row.unidentifiedTarget,
-        totalParticipants: acc.totalParticipants + row.totalParticipants
-    }), { totalTarget: 0, totalGroup: 0, maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0 });
+    // State to track expanded status. Key = "RegionName" or "RegionName|ProvinceName"
+    // Note: By default, everything is collapsed (not in the set). If present in set, it is expanded (shown).
+    const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+    const toggle = (id: string) => {
+        setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+    };
+
+    // Calculate Summary Helper
+    const calculateSummary = (items: any[]) => {
+        const summary = {
+            totalTarget: 0,
+            maleTarget: 0,
+            femaleTarget: 0,
+            unidentifiedTarget: 0,
+            totalParticipants: 0,
+            allIpos: new Set<string>(),
+            // Tier 1
+            tier1TotalTarget: 0,
+            tier1MaleTarget: 0,
+            tier1FemaleTarget: 0,
+            tier1UnidentifiedTarget: 0,
+            tier1TotalParticipants: 0,
+            tier1AllIpos: new Set<string>(),
+            // Tier 2
+            tier2TotalTarget: 0,
+            tier2MaleTarget: 0,
+            tier2FemaleTarget: 0,
+            tier2UnidentifiedTarget: 0,
+            tier2TotalParticipants: 0,
+            tier2AllIpos: new Set<string>(),
+        };
+        items.forEach(item => {
+            summary.totalTarget += item.totalTarget;
+            summary.maleTarget += item.maleTarget;
+            summary.femaleTarget += item.femaleTarget;
+            summary.unidentifiedTarget += item.unidentifiedTarget;
+            summary.totalParticipants += item.totalParticipants;
+            if (item.ipoNames) {
+                item.ipoNames.forEach((name: string) => summary.allIpos.add(name));
+            }
+
+            summary.tier1TotalTarget += item.tier1TotalTarget;
+            summary.tier1MaleTarget += item.tier1MaleTarget;
+            summary.tier1FemaleTarget += item.tier1FemaleTarget;
+            summary.tier1UnidentifiedTarget += item.tier1UnidentifiedTarget;
+            summary.tier1TotalParticipants += item.tier1TotalParticipants;
+            if (item.tier1IpoNames) item.tier1IpoNames.forEach((name: string) => summary.tier1AllIpos.add(name));
+
+            summary.tier2TotalTarget += item.tier2TotalTarget;
+            summary.tier2MaleTarget += item.tier2MaleTarget;
+            summary.tier2FemaleTarget += item.tier2FemaleTarget;
+            summary.tier2UnidentifiedTarget += item.tier2UnidentifiedTarget;
+            summary.tier2TotalParticipants += item.tier2TotalParticipants;
+            if (item.tier2IpoNames) item.tier2IpoNames.forEach((name: string) => summary.tier2AllIpos.add(name));
+        });
+        return {
+            ...summary,
+            totalGroup: summary.allIpos.size,
+            tier1TotalGroup: summary.tier1AllIpos.size,
+            tier2TotalGroup: summary.tier2AllIpos.size,
+        };
+    };
+
+    const groupedData = useMemo(() => {
+        const regions: Record<string, { provinces: Record<string, { items: any[] }> }> = {};
+        data.forEach(item => {
+            if (!regions[item.region]) regions[item.region] = { provinces: {} };
+            if (!regions[item.region].provinces[item.province]) regions[item.region].provinces[item.province] = { items: [] };
+            regions[item.region].provinces[item.province].items.push(item);
+        });
+        return regions;
+    }, [data]);
+
+    const sortedRegions = Object.keys(groupedData).sort();
+    const grandTotalSummary = calculateSummary(data);
+
+    // Styles matching WFPTable
+    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
+    const headerCellClass = "p-1 border border-gray-300 dark:border-gray-600 font-bold bg-gray-200 dark:bg-gray-700 text-center align-middle";
+    const groupRowClass = "font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer";
 
     return (
         <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                <thead className="bg-gray-200 dark:bg-gray-700">
+                <thead className="sticky top-0 z-10">
                     <tr>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Region</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Province</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-left">Performance Indicator</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Unit of Measure</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Target</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Group</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Male Target</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Female Target</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Unidentified Target</th>
-                        <th className="p-2 border border-gray-300 dark:border-gray-600 text-center">Total Participants</th>
+                        <th className={`${headerCellClass} text-left`}>Location / Performance Indicator</th>
+                        <th className={headerCellClass}>Unit of Measure</th>
+                        <th className={headerCellClass}>Total Target</th>
+                        <th className={headerCellClass}>Total Group (Unique IPOs)</th>
+                        <th className={headerCellClass}>Total Male Target</th>
+                        <th className={headerCellClass}>Total Female Target</th>
+                        <th className={headerCellClass}>Total Unidentified Target</th>
+                        <th className={headerCellClass}>Total Participants</th>
+                        
+                        <th className={headerCellClass}>Tier 1 Total Target</th>
+                        <th className={headerCellClass}>Tier 1 Total Group</th>
+                        <th className={headerCellClass}>Tier 1 Total Male</th>
+                        <th className={headerCellClass}>Tier 1 Total Female</th>
+                        <th className={headerCellClass}>Tier 1 Total Unidentified</th>
+                        <th className={headerCellClass}>Tier 1 Total Participants</th>
+
+                        <th className={headerCellClass}>Tier 2 Total Target</th>
+                        <th className={headerCellClass}>Tier 2 Total Group</th>
+                        <th className={headerCellClass}>Tier 2 Total Male</th>
+                        <th className={headerCellClass}>Tier 2 Total Female</th>
+                        <th className={headerCellClass}>Tier 2 Total Unidentified</th>
+                        <th className={headerCellClass}>Tier 2 Total Participants</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {data.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.region}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.province}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600">{row.indicator}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">number</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalTarget}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalGroup}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.maleTarget}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.femaleTarget}</td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center"></td>
-                            <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{row.totalParticipants}</td>
-                        </tr>
-                    ))}
+                    {sortedRegions.map(region => {
+                        const regionData = groupedData[region];
+                        const regionItems = Object.values(regionData.provinces).flatMap(p => p.items);
+                        const regionSummary = calculateSummary(regionItems);
+                        const isRegionExpanded = expanded[region];
+
+                        return (
+                            <React.Fragment key={region}>
+                                {/* Region Header / Summary Row */}
+                                <tr 
+                                    className={groupRowClass}
+                                    onClick={() => toggle(region)}
+                                >
+                                    <td className={`${dataCellClass} text-left`}>
+                                        <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400 font-bold">
+                                            {isRegionExpanded ? '−' : '+'}
+                                        </span>
+                                        {region}
+                                    </td>
+                                    <td className={`${dataCellClass} text-center`}>-</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.totalTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.totalGroup}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.maleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.femaleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.unidentifiedTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.totalParticipants}</td>
+
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1TotalTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1TotalGroup}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1MaleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1FemaleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1UnidentifiedTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier1TotalParticipants}</td>
+
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2TotalTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2TotalGroup}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2MaleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2FemaleTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2UnidentifiedTarget}</td>
+                                    <td className={`${dataCellClass} text-center`}>{regionSummary.tier2TotalParticipants}</td>
+                                </tr>
+
+                                {/* Provinces */}
+                                {isRegionExpanded && Object.keys(regionData.provinces).sort().map(province => {
+                                    const provinceItems = regionData.provinces[province].items;
+                                    const provinceSummary = calculateSummary(provinceItems);
+                                    const provinceKey = `${region}|${province}`;
+                                    const isProvinceExpanded = expanded[provinceKey];
+
+                                    return (
+                                        <React.Fragment key={provinceKey}>
+                                            <tr 
+                                                className={groupRowClass}
+                                                onClick={() => toggle(provinceKey)}
+                                            >
+                                                <td className={`${dataCellClass} text-left pl-6`}>
+                                                    <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400 font-bold">
+                                                        {isProvinceExpanded ? '−' : '+'}
+                                                    </span>
+                                                    {province}
+                                                </td>
+                                                <td className={`${dataCellClass} text-center`}>-</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.totalTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.totalGroup}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.maleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.femaleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.unidentifiedTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.totalParticipants}</td>
+
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1TotalTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1TotalGroup}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1MaleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1FemaleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1UnidentifiedTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier1TotalParticipants}</td>
+
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2TotalTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2TotalGroup}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2MaleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2FemaleTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2UnidentifiedTarget}</td>
+                                                <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2TotalParticipants}</td>
+                                            </tr>
+
+                                            {/* Items */}
+                                            {isProvinceExpanded && provinceItems.map((item, idx) => (
+                                                <tr key={`${provinceKey}-${idx}`} className="hover:bg-white dark:hover:bg-gray-700/30">
+                                                    <td className={`${dataCellClass} text-left pl-10`}>{item.indicator}</td>
+                                                    <td className={`${dataCellClass} text-center`}>number</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.totalTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.ipoNames.size}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.maleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.femaleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.unidentifiedTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.totalParticipants}</td>
+
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1TotalTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1IpoNames.size}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1MaleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1FemaleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1UnidentifiedTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier1TotalParticipants}</td>
+
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2TotalTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2IpoNames.size}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2MaleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2FemaleTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2UnidentifiedTarget}</td>
+                                                    <td className={`${dataCellClass} text-center`}>{item.tier2TotalParticipants}</td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </React.Fragment>
+                        );
+                    })}
                 </tbody>
                 <tfoot>
                     <tr className="font-bold bg-gray-200 dark:bg-gray-700">
-                        <td colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-right">GRAND TOTAL</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalTarget}</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalGroup}</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.maleTarget}</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.femaleTarget}</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.unidentifiedTarget}</td>
-                        <td className="p-2 border border-gray-300 dark:border-gray-600 text-center">{totals.totalParticipants}</td>
+                        <td className={`${dataCellClass} text-right`}>GRAND TOTAL</td>
+                        <td className={`${dataCellClass} text-center`}>-</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalGroup}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.maleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.femaleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.unidentifiedTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalParticipants}</td>
+
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1TotalTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1TotalGroup}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1MaleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1FemaleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1UnidentifiedTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier1TotalParticipants}</td>
+
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2TotalTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2TotalGroup}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2MaleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2FemaleTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2UnidentifiedTarget}</td>
+                        <td className={`${dataCellClass} text-center`}>{grandTotalSummary.tier2TotalParticipants}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -632,6 +836,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         };
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
     
+    // ... [BPForms Data Processing Code - no changes needed] ...
     const bpFormsProcessedData = useMemo(() => {
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
         const allUacsCodes: string[] = [];
@@ -659,7 +864,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         });
         filteredData.trainings.forEach(t => {
             t.expenses.forEach(e => {
-                // If component is Program Management, set specific package type 'Trainings'
                 const packageType = t.component === 'Program Management' ? 'Trainings' : undefined;
                 lineItems.push({
                     component: t.component, packageType, activityName: t.name,
@@ -669,7 +873,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         });
         filteredData.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
-                 // If component is Program Management, set specific package type 'Activities'
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 lineItems.push({
                     component: oa.component, packageType, activityName: oa.name,
@@ -722,7 +925,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 targetList = groupedData['Production and Livelihood'].packages[packageKey].items;
             } else if (item.component === 'Program Management') {
                  const packageKey = item.packageType || 'Activities';
-                 // Packages are pre-initialized for PM but safety check
                  if (!groupedData['Program Management'].packages[packageKey]) {
                     groupedData['Program Management'].packages[packageKey] = { items: [] };
                  }
@@ -755,7 +957,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             }
         });
         
-        // Sort packages within Production and Livelihood
         const plPackageKeys = Object.keys(groupedData['Production and Livelihood'].packages);
         plPackageKeys.sort((a, b) => {
             if (a === 'Trainings') return -1;
@@ -769,6 +970,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         return { headers, rows: groupedData, allUacsCodes };
     }, [filteredData, uacsCodes]);
 
+    // ... [WFP Data Processing Code - no changes needed] ...
     const wfpData = useMemo(() => {
         const getQuarter = (dateStr?: string): number => {
             if (!dateStr) return 0;
@@ -881,14 +1083,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             }
         });
 
-        // Helper for Program Management Items (Staff, Office, Other)
         const processPmItem = (items: any[], packageKey: string, isStaff = false) => {
             items.forEach(pm => {
                 const objType = getObjectTypeByCode(pm.uacsCode, uacsCodes);
                 const amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
                 
                 const financialQuarter = getQuarter(pm.obligationDate);
-                const physicalQuarter = getQuarter(pm.obligationDate); // Simplified assumption
+                const physicalQuarter = getQuarter(pm.obligationDate);
 
                 const item = {
                     indicator: isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars),
@@ -911,9 +1112,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 
         processPmItem(filteredData.staffingReqs, 'Staff Requirements', true);
         processPmItem(filteredData.officeReqs, 'Office Requirements');
-        processPmItem(filteredData.otherProgramExpenses, 'Office Requirements'); // Grouped with Office as requested
+        processPmItem(filteredData.otherProgramExpenses, 'Office Requirements');
 
-        // Sort PL packages
         const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages);
         plPackageKeys.sort((a, b) => {
             if (a === 'Trainings') return -1;
@@ -933,18 +1133,36 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             province: string, 
             indicator: string, 
             totalTarget: number, 
-            totalGroup: number,
+            ipoNames: Set<string>,
             maleTarget: number,
             femaleTarget: number,
             unidentifiedTarget: number,
-            totalParticipants: number
+            totalParticipants: number,
+            
+            tier1TotalTarget: number,
+            tier1IpoNames: Set<string>,
+            tier1MaleTarget: number,
+            tier1FemaleTarget: number,
+            tier1UnidentifiedTarget: number,
+            tier1TotalParticipants: number,
+
+            tier2TotalTarget: number,
+            tier2IpoNames: Set<string>,
+            tier2MaleTarget: number,
+            tier2FemaleTarget: number,
+            tier2UnidentifiedTarget: number,
+            tier2TotalParticipants: number,
         }>();
 
         const getKey = (region: string, province: string, indicator: string) => `${region}|${province}|${indicator}`;
 
+        const ipoMap = new Map<string, IPO>();
+        ipos.forEach(ipo => ipoMap.set(ipo.name, ipo));
+
+        const adTracker = new Map<string, { all: Set<string>, t1: Set<string>, t2: Set<string> }>();
+
         filteredData.subprojects.forEach(sp => {
             const region = ouToRegionMap[sp.operatingUnit] || 'Unmapped Region';
-            // Filter out NCR
             if (region === 'National Capital Region (NCR)') return;
 
             const { province } = parseLocation(sp.location);
@@ -957,24 +1175,145 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     province: province || 'Unspecified', 
                     indicator, 
                     totalTarget: 0, 
-                    totalGroup: 0,
+                    ipoNames: new Set<string>(),
                     maleTarget: 0,
                     femaleTarget: 0,
                     unidentifiedTarget: 0,
-                    totalParticipants: 0
+                    totalParticipants: 0,
+                    tier1TotalTarget: 0,
+                    tier1IpoNames: new Set<string>(),
+                    tier1MaleTarget: 0,
+                    tier1FemaleTarget: 0,
+                    tier1UnidentifiedTarget: 0,
+                    tier1TotalParticipants: 0,
+                    tier2TotalTarget: 0,
+                    tier2IpoNames: new Set<string>(),
+                    tier2MaleTarget: 0,
+                    tier2FemaleTarget: 0,
+                    tier2UnidentifiedTarget: 0,
+                    tier2TotalParticipants: 0,
                 });
             }
             const entry = aggregator.get(key)!;
-            entry.totalTarget += 1; // 1 activity/subproject
-            entry.totalGroup += 1; // 1 IPO
-            // Subprojects usually don't have participant breakdown in this model, defaulting to 0
+            entry.totalTarget += 1;
+            entry.ipoNames.add(sp.indigenousPeopleOrganization);
+
+            if (sp.tier === 'Tier 1') {
+                entry.tier1TotalTarget += 1;
+                entry.tier1IpoNames.add(sp.indigenousPeopleOrganization);
+            } else if (sp.tier === 'Tier 2') {
+                entry.tier2TotalTarget += 1;
+                entry.tier2IpoNames.add(sp.indigenousPeopleOrganization);
+            }
+
+            const ipo = ipoMap.get(sp.indigenousPeopleOrganization);
+            if (ipo && ipo.ancestralDomainNo) {
+                const locKey = `${region}|${province || 'Unspecified'}`;
+                if (!adTracker.has(locKey)) {
+                    adTracker.set(locKey, { all: new Set(), t1: new Set(), t2: new Set() });
+                }
+                const tracker = adTracker.get(locKey)!;
+                tracker.all.add(ipo.ancestralDomainNo);
+                if (sp.tier === 'Tier 1') tracker.t1.add(ipo.ancestralDomainNo);
+                if (sp.tier === 'Tier 2') tracker.t2.add(ipo.ancestralDomainNo);
+            }
         });
 
-        const processActivity = (activity: Training | OtherActivity) => {
+        adTracker.forEach((tracker, locKey) => {
+            const [region, province] = locKey.split('|');
+            const indicator = "Ancestral Domains covered";
+            const key = getKey(region, province, indicator);
+
+            if (!aggregator.has(key)) {
+                aggregator.set(key, {
+                    region,
+                    province,
+                    indicator,
+                    totalTarget: 0,
+                    ipoNames: new Set<string>(),
+                    maleTarget: 0,
+                    femaleTarget: 0,
+                    unidentifiedTarget: 0,
+                    totalParticipants: 0,
+                    tier1TotalTarget: 0,
+                    tier1IpoNames: new Set<string>(),
+                    tier1MaleTarget: 0,
+                    tier1FemaleTarget: 0,
+                    tier1UnidentifiedTarget: 0,
+                    tier1TotalParticipants: 0,
+                    tier2TotalTarget: 0,
+                    tier2IpoNames: new Set<string>(),
+                    tier2MaleTarget: 0,
+                    tier2FemaleTarget: 0,
+                    tier2UnidentifiedTarget: 0,
+                    tier2TotalParticipants: 0,
+                });
+            }
+            const entry = aggregator.get(key)!;
+            entry.totalTarget = tracker.all.size;
+            entry.tier1TotalTarget = tracker.t1.size;
+            entry.tier2TotalTarget = tracker.t2.size;
+        });
+
+        filteredData.trainings.forEach(activity => {
             const region = ouToRegionMap[activity.operatingUnit] || 'Unmapped Region';
-            // Filter out NCR
             if (region === 'National Capital Region (NCR)') return;
-            // Filter out Program Management
+            if (activity.component === 'Program Management') return;
+
+            const { province } = parseLocation(activity.location);
+            const indicator = `${activity.component} Trainings conducted`;
+
+            const key = getKey(region, province || 'Unspecified', indicator);
+            if (!aggregator.has(key)) {
+                aggregator.set(key, { 
+                    region, 
+                    province: province || 'Unspecified', 
+                    indicator, 
+                    totalTarget: 0, 
+                    ipoNames: new Set<string>(),
+                    maleTarget: 0,
+                    femaleTarget: 0,
+                    unidentifiedTarget: 0,
+                    totalParticipants: 0,
+                    tier1TotalTarget: 0,
+                    tier1IpoNames: new Set<string>(),
+                    tier1MaleTarget: 0,
+                    tier1FemaleTarget: 0,
+                    tier1UnidentifiedTarget: 0,
+                    tier1TotalParticipants: 0,
+                    tier2TotalTarget: 0,
+                    tier2IpoNames: new Set<string>(),
+                    tier2MaleTarget: 0,
+                    tier2FemaleTarget: 0,
+                    tier2UnidentifiedTarget: 0,
+                    tier2TotalParticipants: 0,
+                });
+            }
+            const entry = aggregator.get(key)!;
+            entry.totalTarget += 1;
+            activity.participatingIpos.forEach(ipo => entry.ipoNames.add(ipo));
+            entry.maleTarget += (activity.participantsMale || 0);
+            entry.femaleTarget += (activity.participantsFemale || 0);
+            entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+
+            if (activity.tier === 'Tier 1') {
+                entry.tier1TotalTarget += 1;
+                activity.participatingIpos.forEach(ipo => entry.tier1IpoNames.add(ipo));
+                entry.tier1MaleTarget += (activity.participantsMale || 0);
+                entry.tier1FemaleTarget += (activity.participantsFemale || 0);
+                entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+            } else if (activity.tier === 'Tier 2') {
+                entry.tier2TotalTarget += 1;
+                activity.participatingIpos.forEach(ipo => entry.tier2IpoNames.add(ipo));
+                entry.tier2MaleTarget += (activity.participantsMale || 0);
+                entry.tier2FemaleTarget += (activity.participantsFemale || 0);
+                entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+            }
+        });
+
+        filteredData.otherActivities.forEach(activity => {
+            const region = ouToRegionMap[activity.operatingUnit] || 'Unmapped Region';
+            if (region === 'National Capital Region (NCR)') return;
             if (activity.component === 'Program Management') return;
 
             const { province } = parseLocation(activity.location);
@@ -987,30 +1326,53 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     province: province || 'Unspecified', 
                     indicator, 
                     totalTarget: 0, 
-                    totalGroup: 0,
+                    ipoNames: new Set<string>(),
                     maleTarget: 0,
                     femaleTarget: 0,
                     unidentifiedTarget: 0,
-                    totalParticipants: 0
+                    totalParticipants: 0,
+                    tier1TotalTarget: 0,
+                    tier1IpoNames: new Set<string>(),
+                    tier1MaleTarget: 0,
+                    tier1FemaleTarget: 0,
+                    tier1UnidentifiedTarget: 0,
+                    tier1TotalParticipants: 0,
+                    tier2TotalTarget: 0,
+                    tier2IpoNames: new Set<string>(),
+                    tier2MaleTarget: 0,
+                    tier2FemaleTarget: 0,
+                    tier2UnidentifiedTarget: 0,
+                    tier2TotalParticipants: 0,
                 });
             }
             const entry = aggregator.get(key)!;
             entry.totalTarget += 1;
-            entry.totalGroup += (activity.participatingIpos ? activity.participatingIpos.length : 0);
+            activity.participatingIpos.forEach(ipo => entry.ipoNames.add(ipo));
             entry.maleTarget += (activity.participantsMale || 0);
             entry.femaleTarget += (activity.participantsFemale || 0);
             entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
-        };
 
-        filteredData.trainings.forEach(processActivity);
-        filteredData.otherActivities.forEach(processActivity);
+            if (activity.tier === 'Tier 1') {
+                entry.tier1TotalTarget += 1;
+                activity.participatingIpos.forEach(ipo => entry.tier1IpoNames.add(ipo));
+                entry.tier1MaleTarget += (activity.participantsMale || 0);
+                entry.tier1FemaleTarget += (activity.participantsFemale || 0);
+                entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+            } else if (activity.tier === 'Tier 2') {
+                entry.tier2TotalTarget += 1;
+                activity.participatingIpos.forEach(ipo => entry.tier2IpoNames.add(ipo));
+                entry.tier2MaleTarget += (activity.participantsMale || 0);
+                entry.tier2FemaleTarget += (activity.participantsFemale || 0);
+                entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0);
+            }
+        });
 
         return Array.from(aggregator.values()).sort((a, b) => {
             if (a.region !== b.region) return a.region.localeCompare(b.region);
             if (a.province !== b.province) return a.province.localeCompare(b.province);
             return a.indicator.localeCompare(b.indicator);
         });
-    }, [filteredData]);
+    }, [filteredData, ipos]);
 
     const handleDownloadXLSX = () => {
         const aoa: (string | number | null)[][] = [
@@ -1097,7 +1459,11 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             [
                 "Region", "Province", "Performance Indicator", "Unit of Measure", 
                 "Total Target", "Total Group", "Total Male Target", "Total Female Target", 
-                "Total Unidentified Target", "Total Participants"
+                "Total Unidentified Target", "Total Participants",
+                "Tier 1 Total Target", "Tier 1 Total Group", "Tier 1 Total Male", "Tier 1 Total Female",
+                "Tier 1 Total Unidentified", "Tier 1 Total Participants",
+                "Tier 2 Total Target", "Tier 2 Total Group", "Tier 2 Total Male", "Tier 2 Total Female",
+                "Tier 2 Total Unidentified", "Tier 2 Total Participants"
             ]
         ];
 
@@ -1108,11 +1474,23 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 row.indicator, 
                 "number", 
                 row.totalTarget, 
-                row.totalGroup, 
+                row.ipoNames.size, 
                 row.maleTarget, 
                 row.femaleTarget, 
                 null, 
-                row.totalParticipants
+                row.totalParticipants,
+                row.tier1TotalTarget,
+                row.tier1IpoNames.size,
+                row.tier1MaleTarget,
+                row.tier1FemaleTarget,
+                null,
+                row.tier1TotalParticipants,
+                row.tier2TotalTarget,
+                row.tier2IpoNames.size,
+                row.tier2MaleTarget,
+                row.tier2FemaleTarget,
+                null,
+                row.tier2TotalParticipants
             ]);
         });
 

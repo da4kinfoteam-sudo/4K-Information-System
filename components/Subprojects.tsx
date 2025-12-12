@@ -288,8 +288,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 const selectedIpo = ipos.find(ipo => ipo.name === value);
                 if (selectedIpo) {
                     newData.location = selectedIpo.location;
+                    newData.ipo_id = selectedIpo.id; // Link FK
                 } else {
                     newData.location = '';
+                    newData.ipo_id = undefined;
                 }
             }
 
@@ -442,8 +444,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             return;
         }
 
+        const currentTimestamp = new Date().toISOString();
+
         const historyEntry = {
-            date: new Date().toISOString(),
+            date: currentTimestamp,
             event: editingSubproject ? "Subproject Updated" : "Subproject Created",
             user: currentUser?.fullName || "System"
         };
@@ -452,7 +456,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             const updated = { 
                 ...formData, 
                 id: editingSubproject.id,
-                history: [...(editingSubproject.history || []), historyEntry]
+                history: [...(editingSubproject.history || []), historyEntry],
+                updated_at: currentTimestamp
             };
             setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
         } else {
@@ -463,7 +468,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 ...formData, 
                 id: newId, 
                 uid,
-                history: [historyEntry]
+                history: [historyEntry],
+                created_at: currentTimestamp,
+                updated_at: currentTimestamp
             };
             setSubprojects(prev => [...prev, newSubproject]);
         }
@@ -663,6 +670,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
                 const groupedData = new Map<string, any>();
                 let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
+                const currentTimestamp = new Date().toISOString();
 
                 jsonData.forEach((row, index) => {
                     if (!row.uid) return; // Skip rows without UID
@@ -691,7 +699,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
                             lng: 120.9842 + (Math.random() * 0.1 - 0.05),
                             details: [],
-                            subprojectCommodities: []
+                            subprojectCommodities: [],
+                            created_at: currentTimestamp,
+                            updated_at: currentTimestamp
                         });
                     }
 
