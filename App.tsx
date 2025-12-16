@@ -135,6 +135,9 @@ const AppContent: React.FC = () => {
                             trainings={trainings} 
                             otherActivities={otherActivities} 
                             systemSettings={systemSettings}
+                            officeReqs={officeReqs}
+                            staffingReqs={staffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
                         />;
             case '/dashboards':
                  return <DashboardsPage subprojects={subprojects} ipos={ipos} trainings={trainings} otherActivities={otherActivities} />;

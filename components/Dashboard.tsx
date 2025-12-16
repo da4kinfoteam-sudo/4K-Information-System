@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
-import { Subproject, IPO, Training, OtherActivity } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import GanttChart from './GanttChart';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
@@ -136,9 +136,15 @@ interface DashboardProps {
     trainings: Training[];
     otherActivities: OtherActivity[];
     systemSettings: SystemSettings;
+    officeReqs: OfficeRequirement[];
+    staffingReqs: StaffingRequirement[];
+    otherProgramExpenses: OtherProgramExpense[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, otherActivities, systemSettings }) => {
+const Dashboard: React.FC<DashboardProps> = ({ 
+    subprojects, ipos, trainings, otherActivities, systemSettings,
+    officeReqs, staffingReqs, otherProgramExpenses
+}) => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
@@ -167,11 +173,17 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
         trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
         ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
         otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
+        officeReqs.forEach(i => years.add(i.fundYear.toString()));
+        staffingReqs.forEach(i => years.add(i.fundYear.toString()));
+        otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, ipos, trainings, otherActivities]);
+    }, [subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
     
     const filteredData = useMemo(() => {
-        let dataToFilter = { subprojects, ipos, trainings, otherActivities };
+        let dataToFilter = { 
+            subprojects, ipos, trainings, otherActivities,
+            officeReqs, staffingReqs, otherProgramExpenses
+        };
 
         // 1. Filter by Year, Tier, Fund Type
         if (selectedYear !== 'All') {
@@ -180,6 +192,9 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                 ipos: dataToFilter.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear),
                 trainings: dataToFilter.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
                 otherActivities: dataToFilter.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+                officeReqs: dataToFilter.officeReqs.filter(i => i.fundYear.toString() === selectedYear),
+                staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundYear.toString() === selectedYear),
+                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear),
             };
         }
 
@@ -188,6 +203,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                 ...dataToFilter,
                 subprojects: dataToFilter.subprojects.filter(p => p.tier === selectedTier),
                 trainings: dataToFilter.trainings.filter(t => t.tier === selectedTier),
+                otherActivities: dataToFilter.otherActivities.filter(a => a.tier === selectedTier),
+                officeReqs: dataToFilter.officeReqs.filter(i => i.tier === selectedTier),
+                staffingReqs: dataToFilter.staffingReqs.filter(i => i.tier === selectedTier),
+                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.tier === selectedTier),
             };
         }
         
@@ -196,6 +215,10 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
                 ...dataToFilter,
                 subprojects: dataToFilter.subprojects.filter(p => p.fundType === selectedFundType),
                 trainings: dataToFilter.trainings.filter(t => t.fundType === selectedFundType),
+                otherActivities: dataToFilter.otherActivities.filter(a => a.fundType === selectedFundType),
+                officeReqs: dataToFilter.officeReqs.filter(i => i.fundType === selectedFundType),
+                staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundType === selectedFundType),
+                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundType === selectedFundType),
             };
         }
         
@@ -211,9 +234,12 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
             ipos: dataToFilter.ipos.filter(i => i.region === targetRegion),
             trainings: dataToFilter.trainings.filter(t => t.operatingUnit === selectedOu),
             otherActivities: dataToFilter.otherActivities.filter(a => a.operatingUnit === selectedOu),
+            officeReqs: dataToFilter.officeReqs.filter(i => i.operatingUnit === selectedOu),
+            staffingReqs: dataToFilter.staffingReqs.filter(i => i.operatingUnit === selectedOu),
+            otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu),
         };
 
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
@@ -287,12 +313,17 @@ const Dashboard: React.FC<DashboardProps> = ({ subprojects, ipos, trainings, oth
             return sum + activityTotal;
         }, 0);
 
+        const pmTotal = 
+            filteredData.officeReqs.reduce((sum, item) => sum + (item.numberOfUnits * item.pricePerUnit), 0) +
+            filteredData.staffingReqs.reduce((sum, item) => sum + item.annualSalary, 0) +
+            filteredData.otherProgramExpenses.reduce((sum, item) => sum + item.amount, 0);
+
         return {
-            total: subprojectTotal + trainingTotal + otherActivitiesTotal,
+            total: subprojectTotal + trainingTotal + otherActivitiesTotal + pmTotal,
             subprojects: subprojectTotal,
             trainings: trainingTotal
         };
-    }, [filteredData.subprojects, filteredData.trainings, filteredData.otherActivities]);
+    }, [filteredData]);
 
     const ipoStats = useMemo(() => {
         const iposInSubprojects = new Set(filteredData.subprojects.map(p => p.indigenousPeopleOrganization));
