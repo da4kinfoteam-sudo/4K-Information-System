@@ -816,30 +816,38 @@ const PICSTable: React.FC<{ data: any[] }> = ({ data }) => {
     return (
         <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                <thead className="sticky top-0 z-10">
+                <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-gray-700">
                     <tr>
-                        <th className={`${headerCellClass} text-left`}>Location / Performance Indicator</th>
-                        <th className={headerCellClass}>Unit of Measure</th>
-                        <th className={headerCellClass}>Total Target</th>
-                        <th className={headerCellClass}>Total Group (Unique IPOs)</th>
-                        <th className={headerCellClass}>Total Male Target</th>
-                        <th className={headerCellClass}>Total Female Target</th>
-                        <th className={headerCellClass}>Total Unidentified Target</th>
-                        <th className={headerCellClass}>Total Participants</th>
+                        <th rowSpan={2} className={`${headerCellClass} text-left`}>Location / Performance Indicator</th>
+                        <th rowSpan={2} className={headerCellClass}>Unit of Measure</th>
+                        <th colSpan={6} className={headerCellClass}>TOTAL</th>
+                        <th colSpan={6} className={headerCellClass}>TIER 1</th>
+                        <th colSpan={6} className={headerCellClass}>TIER 2</th>
+                    </tr>
+                    <tr>
+                        {/* Total Sub-columns */}
+                        <th className={headerCellClass}>Target</th>
+                        <th className={headerCellClass}>Group (IPOs)</th>
+                        <th className={headerCellClass}>Male</th>
+                        <th className={headerCellClass}>Female</th>
+                        <th className={headerCellClass}>Unidentified</th>
+                        <th className={headerCellClass}>Participants</th>
                         
-                        <th className={headerCellClass}>Tier 1 Total Target</th>
-                        <th className={headerCellClass}>Tier 1 Total Group</th>
-                        <th className={headerCellClass}>Tier 1 Total Male</th>
-                        <th className={headerCellClass}>Tier 1 Total Female</th>
-                        <th className={headerCellClass}>Tier 1 Total Unidentified</th>
-                        <th className={headerCellClass}>Tier 1 Total Participants</th>
+                        {/* Tier 1 Sub-columns */}
+                        <th className={headerCellClass}>Target</th>
+                        <th className={headerCellClass}>Group</th>
+                        <th className={headerCellClass}>Male</th>
+                        <th className={headerCellClass}>Female</th>
+                        <th className={headerCellClass}>Unidentified</th>
+                        <th className={headerCellClass}>Participants</th>
 
-                        <th className={headerCellClass}>Tier 2 Total Target</th>
-                        <th className={headerCellClass}>Tier 2 Total Group</th>
-                        <th className={headerCellClass}>Tier 2 Total Male</th>
-                        <th className={headerCellClass}>Tier 2 Total Female</th>
-                        <th className={headerCellClass}>Tier 2 Total Unidentified</th>
-                        <th className={headerCellClass}>Tier 2 Total Participants</th>
+                        {/* Tier 2 Sub-columns */}
+                        <th className={headerCellClass}>Target</th>
+                        <th className={headerCellClass}>Group</th>
+                        <th className={headerCellClass}>Male</th>
+                        <th className={headerCellClass}>Female</th>
+                        <th className={headerCellClass}>Unidentified</th>
+                        <th className={headerCellClass}>Participants</th>
                     </tr>
                 </thead>
                 <tbody>
