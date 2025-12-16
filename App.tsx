@@ -18,11 +18,13 @@ import useLocalStorageState from './hooks/useLocalStorageState';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
-    OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings
+} from './constants';
+import {
     sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList,
     sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
-} from './constants';
+} from './samples';
 
 const AppContent: React.FC = () => {
     const { currentUser } = useAuth();
