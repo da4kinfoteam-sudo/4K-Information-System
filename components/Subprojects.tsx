@@ -552,7 +552,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleDownloadTemplate = () => {
         const headers = [
-            'uid', 'name', 'indigenousPeopleOrganization', 'location', 'status', 'packageType', 
+            'uid', 'name', 'indigenousPeopleOrganization', 'province', 'municipality', 'status', 'packageType', 
             'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
             'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
             'detail_objectType', 'detail_expenseParticular', 'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
@@ -563,7 +563,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 uid: 'SP-TEMP-001',
                 name: 'Sample Coffee Production',
                 indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
-                location: 'Brgy. Daraitan, Tanay, Rizal',
+                province: 'Rizal',
+                municipality: 'Tanay',
                 status: 'Ongoing',
                 packageType: 'Package 1',
                 startDate: '2024-01-15',
@@ -590,7 +591,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 uid: 'SP-TEMP-001',
                 name: 'Sample Coffee Production',
                 indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
-                location: 'Brgy. Daraitan, Tanay, Rizal',
+                province: 'Rizal',
+                municipality: 'Tanay',
                 status: 'Ongoing',
                 packageType: 'Package 1',
                 startDate: '2024-01-15',
@@ -620,7 +622,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             ["uid", "Unique Identifier. REQUIRED. Rows with the same UID will be grouped into one subproject."],
             ["name", "Name of the subproject."],
             ["indigenousPeopleOrganization", "Name of the IPO."],
-            ["location", "Location string (e.g., Brgy. X, Municipality, Province)."],
+            ["province", "Province name. (Required)"],
+            ["municipality", "City or Municipality name. (Required)"],
             ["status", "Proposed, Ongoing, Completed, or Cancelled."],
             ["packageType", "Package 1, Package 2, etc."],
             ["startDate", "YYYY-MM-DD"],
@@ -678,11 +681,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     if (!groupedData.has(row.uid)) {
                         maxId++;
                         
+                        // Construct Location String from Province and Municipality
+                        const municipality = String(row.municipality || '').trim();
+                        const province = String(row.province || '').trim();
+                        const locationString = `${municipality}, ${province}`;
+
                         groupedData.set(row.uid, {
                             id: maxId,
                             uid: String(row.uid),
                             name: String(row.name),
-                            location: String(row.location),
+                            location: locationString,
                             indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
                             status: row.status,
                             packageType: row.packageType,

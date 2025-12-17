@@ -24,7 +24,6 @@ export interface Commodity {
 export interface IPO extends BaseEntity {
     id: number;
     name: string;
-    acronym: string;
     location: string;
     region: string;
     indigenousCulturalCommunity: string;

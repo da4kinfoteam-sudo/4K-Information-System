@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, FormEvent } from 'react';
 import { IPO, Subproject, Training, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -184,13 +185,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-2">
+                            <div className="md:col-span-3">
                                 <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
                                 <input type="text" name="name" id="name" value={editedIpo.name} onChange={handleInputChange} required className={commonInputClasses} />
-                            </div>
-                            <div>
-                                <label htmlFor="acronym" className="block text-sm font-medium">Acronym</label>
-                                <input type="text" name="acronym" id="acronym" value={editedIpo.acronym} onChange={handleInputChange} required className={commonInputClasses} />
                             </div>
                              <div className="md:col-span-3">
                                 <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
@@ -271,7 +268,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                         {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
                                     </div>
                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                     </button>
                                 </div>
                             ))}
@@ -334,7 +331,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         <div className="space-y-8">
             <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{ipo.name} ({ipo.acronym})</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{ipo.name}</h1>
                     <p className="text-md text-gray-500 dark:text-gray-400">{ipo.location}</p>
                 </div>
                 <div className="flex items-center gap-4">

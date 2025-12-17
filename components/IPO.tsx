@@ -1,3 +1,4 @@
+
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -17,7 +18,6 @@ interface IPOsProps {
 
 const defaultFormData = {
     name: '',
-    acronym: '',
     location: '',
     region: '',
     indigenousCulturalCommunity: '',
@@ -91,7 +91,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         if (editingIpo) {
              setFormData({
                 name: editingIpo.name,
-                acronym: editingIpo.acronym,
                 location: editingIpo.location,
                 region: editingIpo.region,
                 indigenousCulturalCommunity: editingIpo.indigenousCulturalCommunity,
@@ -155,7 +154,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             const lowercasedSearchTerm = searchTerm.toLowerCase();
             filteredIpos = filteredIpos.filter(ipo =>
                 ipo.name.toLowerCase().includes(lowercasedSearchTerm) ||
-                ipo.acronym.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.location.toLowerCase().includes(lowercasedSearchTerm)
             );
@@ -291,8 +289,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         e.preventDefault();
         const finalRegisteringBody = formData.registeringBody === 'Others' ? otherRegisteringBody : formData.registeringBody;
         
-        if (!formData.name || !formData.acronym || !formData.location || !finalRegisteringBody || !formData.registrationDate) {
-            alert('Please fill out all required fields: Name, Acronym, Location, Registering Body, and Registration Date.');
+        if (!formData.name || !formData.location || !finalRegisteringBody || !formData.registrationDate) {
+            alert('Please fill out all required fields: Name, Location, Registering Body, and Registration Date.');
             return;
         }
         
@@ -390,7 +388,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
     const handleDownloadReport = () => {
         const dataToExport = processedIpos.map(ipo => ({
             'Name': ipo.name,
-            'Acronym': ipo.acronym,
             'Location': ipo.location,
             'Region': ipo.region,
             'ICC': ipo.indigenousCulturalCommunity,
@@ -415,7 +412,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
     const handleDownloadTemplate = () => {
         const headers = [
-            'name', 'acronym', 'location', 'indigenousCulturalCommunity', 
+            'name', 'province', 'municipality', 'barangay', 'indigenousCulturalCommunity', 
             'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida', 'isWithinElcac', 'isWithScad',
             'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
             'levelOfDevelopment'
@@ -423,9 +420,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         
         const exampleData = [{
             name: 'Sample Farmers Association',
-            acronym: 'SFA',
-            location: 'Brgy. Sample, Sample City, Sample Province',
-            indigenousCulturalCommunity: 'Sample Tribe',
+            province: 'Rizal',
+            municipality: 'Tanay',
+            barangay: 'Brgy. Daraitan',
+            indigenousCulturalCommunity: 'Dumagat',
             ancestralDomainNo: 'AD-12345',
             registeringBody: 'CDA',
             isWomenLed: 'TRUE',
@@ -442,8 +440,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         const instructions = [
             ["Column", "Description"],
             ["name", "Full name of the IPO. (Required)"],
-            ["acronym", "Acronym of the IPO. (Required)"],
-            ["location", "Full location, formatted as 'Barangay, Municipality, Province'. (Required)"],
+            ["province", "Province name. (Required)"],
+            ["municipality", "City or Municipality name. (Required)"],
+            ["barangay", "Barangay name(s). Optional. Separate multiple barangays with a comma (e.g., 'Brgy A, Brgy B')."],
             ["indigenousCulturalCommunity", "The name of the indigenous cultural community."],
             ["ancestralDomainNo", "The ancestral domain number, if any."],
             ["registeringBody", "e.g., SEC, DOLE, CDA, National Commission on Indigenous Peoples."],
@@ -486,8 +485,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                 
                 const newIpos: IPO[] = jsonData.map((row, index) => {
                     // Basic validation
-                    if (!row.name || !row.acronym || !row.location || !row.registrationDate) {
-                        throw new Error(`Row ${index + 2} is missing required fields (name, acronym, location, registrationDate).`);
+                    if (!row.name || !row.province || !row.municipality || !row.registrationDate) {
+                        throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality, registrationDate).`);
                     }
 
                     let commodities: Commodity[];
@@ -499,14 +498,30 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     }
 
                     currentMaxId++;
-                    const { region } = parseLocation(row.location);
+                    
+                    // Construct Location String
+                    // Format: [Brgy list], Municipality, Province
+                    let locationString = '';
+                    const brgy = row.barangay ? String(row.barangay).trim() : '';
+                    const municipality = String(row.municipality).trim();
+                    const province = String(row.province).trim();
+
+                    if (brgy) {
+                        const brgyList = brgy.split(',').map(b => b.trim()).filter(b => b !== '');
+                        // Add Brgy prefix if missing for consistency
+                        const formattedBrgys = brgyList.map(b => b.startsWith('Brgy.') || b.startsWith('Sitio') ? b : `Brgy. ${b}`);
+                        locationString = `${formattedBrgys.join(', ')}, ${municipality}, ${province}`;
+                    } else {
+                        locationString = `${municipality}, ${province}`;
+                    }
+
+                    const { region } = parseLocation(locationString);
                     const isWithScad = commodities.some(c => c.isScad);
 
                     return {
                         id: currentMaxId,
                         name: String(row.name),
-                        acronym: String(row.acronym),
-                        location: String(row.location),
+                        location: locationString,
                         region: region,
                         indigenousCulturalCommunity: String(row.indigenousCulturalCommunity || ''),
                         ancestralDomainNo: String(row.ancestralDomainNo || ''),
@@ -664,7 +679,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                     className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
                                                 >
                                                     <div>{ipo.name}</div>
-                                                    <div className="text-xs text-gray-400">{ipo.acronym}</div>
                                                 </button>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
@@ -805,13 +819,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                 <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-3">
                             <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
                             <input type="text" name="name" id="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} />
-                        </div>
-                        <div>
-                            <label htmlFor="acronym" className="block text-sm font-medium">Acronym</label>
-                            <input type="text" name="acronym" id="acronym" value={formData.acronym} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
                          <div className="md:col-span-3">
                             <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>

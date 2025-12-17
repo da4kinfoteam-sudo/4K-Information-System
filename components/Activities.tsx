@@ -491,7 +491,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
     const handleDownloadTemplate = () => {
         const headers = [
-            'uid', 'type', 'component', 'name', 'date', 'location', 'facilitator', 'description',
+            'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
             'participatingIpos', 'participantsMale', 'participantsFemale',
             'fundingYear', 'fundType', 'tier', 
             'expense_objectType', 'expense_particular', 'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
@@ -503,7 +503,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 component: 'Social Preparation',
                 name: 'Basic Leadership Training',
                 date: '2024-03-15',
-                location: 'Brgy. San Isidro, Tanay, Rizal',
+                province: 'Rizal',
+                municipality: 'Tanay',
                 facilitator: 'John Doe',
                 description: 'Leadership skills training.',
                 participatingIpos: 'San Isidro Farmers Association',
@@ -525,7 +526,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 component: 'Social Preparation',
                 name: 'Basic Leadership Training',
                 date: '2024-03-15',
-                location: 'Brgy. San Isidro, Tanay, Rizal',
+                province: 'Rizal',
+                municipality: 'Tanay',
                 facilitator: 'John Doe',
                 description: 'Leadership skills training.',
                 participatingIpos: 'San Isidro Farmers Association',
@@ -576,7 +578,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
                     if (!groupedData.has(uid)) {
                         // Basic validation for new group
-                        if (!row.type || !row.component || !row.name || !row.date || !row.location) {
+                        if (!row.type || !row.component || !row.name || !row.date || !row.province || !row.municipality) {
                             throw new Error(`Row ${rowNum} (UID: ${uid}): Missing required common fields.`);
                         }
 
@@ -584,6 +586,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                         for (const ipoName of participatingIpos) {
                             if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found.`);
                         }
+
+                        // Construct Location String from Province and Municipality
+                        const municipality = String(row.municipality || '').trim();
+                        const province = String(row.province || '').trim();
+                        const locationString = `${municipality}, ${province}`;
 
                         groupedData.set(uid, {
                             common: {
@@ -593,7 +600,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                 name: String(row.name),
                                 date: String(row.date),
                                 description: String(row.description || ''),
-                                location: String(row.location),
+                                location: locationString,
                                 participatingIpos: participatingIpos,
                                 participantsMale: Number(row.participantsMale) || 0,
                                 participantsFemale: Number(row.participantsFemale) || 0,

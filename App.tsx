@@ -20,8 +20,9 @@ import {
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings
 } from './constants';
+import { sampleIPOs } from './sampleIPOs';
 import {
-    sampleIPOs, sampleSubprojects, sampleTrainings, sampleOtherActivities, 
+    sampleSubprojects, sampleTrainings, sampleOtherActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList,
     sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
 } from './samples';

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
 // API Base URL
@@ -17,25 +18,32 @@ interface LocationPickerProps {
 }
 
 // Utility to split location string
-export const parseLocation = (location: string): { region: string; province: string; municipality: string; barangay: string } => {
+export const parseLocation = (location: string): { region: string; province: string; municipality: string; barangay: string; barangays: string[] } => {
     if (!location || location === "Online") {
-        return { region: location === "Online" ? "Online" : "", province: "", municipality: "", barangay: "" };
+        return { region: location === "Online" ? "Online" : "", province: "", municipality: "", barangay: "", barangays: [] };
     }
     const parts = location.split(',').map(p => p.trim());
     
-    let barangay = '', municipality = '', province = '';
+    let province = '';
+    let municipality = '';
+    let barangays: string[] = [];
 
     if (parts.length === 2) {
-      municipality = parts[0];
-      province = parts[1];
+        // Format: Municipality, Province
+        municipality = parts[0];
+        province = parts[1];
     } else if (parts.length >= 3) {
-      province = parts[parts.length - 1];
-      municipality = parts[parts.length - 2];
-      barangay = parts[parts.length - 3].replace(/^(Brgy\.|Sitio)\s*/, '');
+        // Format: Brgy 1, Brgy 2, Municipality, Province
+        province = parts[parts.length - 1];
+        municipality = parts[parts.length - 2];
+        const barangayParts = parts.slice(0, parts.length - 2);
+        barangays = barangayParts.map(b => b.replace(/^(Brgy\.|Sitio)\s*/, ''));
     }
     
-    // Region is not stored in location string, so return empty or inferred if possible (but tricky without map)
-    return { region: "", province, municipality, barangay };
+    // Legacy single string support (joins multiple with comma)
+    const barangay = barangays.join(', ');
+
+    return { region: "", province, municipality, barangay, barangays };
 };
 
 const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegionChange, required = false, allowOnline = false }) => {
@@ -50,7 +58,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
     const [selectedRegionCode, setSelectedRegionCode] = useState('');
     const [selectedProvinceCode, setSelectedProvinceCode] = useState('');
     const [selectedCityCode, setSelectedCityCode] = useState('');
-    const [selectedBarangayName, setSelectedBarangayName] = useState('');
+    const [selectedBarangayNames, setSelectedBarangayNames] = useState<string[]>([]);
     
     const [isOnline, setIsOnline] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -90,11 +98,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
 
         if (!value || isLoading || allProvinces.length === 0) return;
 
-        // If user is manually selecting, we don't want to overwrite unless value changes externally (e.g. initial load)
-        // Simple check: construct current string and see if it matches value
-        // But here we want to populate dropdowns FROM string.
-        
-        const { province, municipality, barangay } = parseLocation(value);
+        const { province, municipality, barangays: parsedBarangays } = parseLocation(value);
         
         // Match Province
         const matchedProvince = allProvinces.find(p => p.name.toLowerCase() === province.toLowerCase());
@@ -132,31 +136,26 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                                 .then(bData => {
                                     bData.sort((a: any, b: any) => a.name.localeCompare(b.name));
                                     setBarangays(bData);
-                                    const matchedBrgy = bData.find((b: any) => b.name.toLowerCase() === barangay.toLowerCase());
-                                    if(matchedBrgy) setSelectedBarangayName(matchedBrgy.name);
-                                    else setSelectedBarangayName(barangay); // Fallback to text if not found in list but present in string
+                                    // Match Barangays
+                                    // We filter parsedBarangays to ensure they roughly exist or keep text if not
+                                    setSelectedBarangayNames(parsedBarangays);
                                 });
                         }
                     });
             }
         } else {
-            // Province not found (Maybe NCR District or HUC independent of province in list?)
-            // NCR Handling: Check if municipality matches a city in NCR
+            // NCR Handling
             if (regions.length > 0) {
                 const ncr = regions.find(r => r.code === '130000000'); // NCR Code
                 if (ncr) {
-                     // Check if it's in NCR cities
-                     // This is a bit expensive to check every time, but necessary for HUCs/NCR reverse lookup without full database
-                     // Optimization: If province is empty or 'Metro Manila' or similar
                      if (!province || province === 'Metro Manila') {
-                         // Assume NCR for now or try to find city in NCR
                          fetch(`${API_BASE}/regions/130000000/cities-municipalities/`)
                             .then(res => res.json())
                             .then(data => {
                                 const matchedCity = data.find((c: any) => c.name.toLowerCase() === municipality.toLowerCase());
                                 if (matchedCity) {
                                     setSelectedRegionCode('130000000');
-                                    setProvinces([]); // NCR has no provinces in this API context usually
+                                    setProvinces([]);
                                     setCities(data.sort((a: any, b: any) => a.name.localeCompare(b.name)));
                                     setSelectedCityCode(matchedCity.code);
                                      // Fetch Barangays
@@ -165,7 +164,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                                         .then(bData => {
                                             bData.sort((a: any, b: any) => a.name.localeCompare(b.name));
                                             setBarangays(bData);
-                                            setSelectedBarangayName(barangay);
+                                            setSelectedBarangayNames(parsedBarangays);
                                         });
                                 }
                             });
@@ -174,23 +173,38 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value, isLoading, allProvinces]); // Careful with deps loop
+    }, [value, isLoading, allProvinces]);
 
+    const constructLocationString = (cityCode: string, provCode: string, brgys: string[]) => {
+        const city = cities.find(c => c.code === cityCode);
+        const province = provinces.find(p => p.code === provCode);
+        
+        let locString = '';
+        if (city) {
+            const brgyPart = brgys.length > 0 ? brgys.map(b => `Brgy. ${b}`).join(', ') + ', ' : '';
+            if (province) {
+                locString = `${brgyPart}${city.name}, ${province.name}`;
+            } else {
+                // NCR or HUC
+                locString = `${brgyPart}${city.name}`; 
+                // Maybe append region if needed, but keeping it simple as per parse logic
+            }
+        }
+        return locString;
+    };
     
     // Handlers
     const handleRegionChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
         const code = e.target.value;
         setSelectedRegionCode(code);
         
-        // Reset downstream
         setProvinces([]);
         setCities([]);
         setBarangays([]);
         setSelectedProvinceCode('');
         setSelectedCityCode('');
-        setSelectedBarangayName('');
+        setSelectedBarangayNames([]);
         
-        // Report region name change
         if (onRegionChange) {
             const region = regions.find(r => r.code === code);
             if (region) onRegionChange(region.name);
@@ -210,14 +224,12 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
             }
         }
 
-        // Fetch Provinces (or Cities for NCR)
         try {
             const res = await fetch(`${API_BASE}/regions/${code}/provinces/`);
             const data = await res.json();
             data.sort((a: any, b: any) => a.name.localeCompare(b.name));
             
             if (data.length === 0) {
-                // E.g. NCR, fetch cities directly
                 const citiesRes = await fetch(`${API_BASE}/regions/${code}/cities-municipalities/`);
                 const citiesData = await citiesRes.json();
                 citiesData.sort((a: any, b: any) => a.name.localeCompare(b.name));
@@ -228,8 +240,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         } catch (err) {
             console.error("Error fetching provinces/cities", err);
         }
-        
-        onChange(''); // Incomplete location
+        onChange('');
     };
 
     const handleProvinceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -239,7 +250,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         setCities([]);
         setBarangays([]);
         setSelectedCityCode('');
-        setSelectedBarangayName('');
+        setSelectedBarangayNames([]);
         
         if (!code) {
             onChange('');
@@ -262,7 +273,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         setSelectedCityCode(code);
         
         setBarangays([]);
-        setSelectedBarangayName('');
+        setSelectedBarangayNames([]);
         
         if (!code) {
             onChange('');
@@ -278,43 +289,29 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
             console.error("Error fetching barangays", err);
         }
         
-        // Update string if province is selected (partial update?) -> No, usually full string needed
-        // Just wait for Barangay? Or allow City, Prov?
-        // Current format convention: Brgy, City, Province
-        // If we want to allow partials, we can construct here. But usually Brgy is required.
-        // Let's construct what we have.
-        const city = cities.find(c => c.code === code);
-        const province = provinces.find(p => p.code === selectedProvinceCode);
-        
-        if (city && province) {
-             onChange(`${city.name}, ${province.name}`);
-        } else if (city && !province) {
-             // NCR case
-             onChange(`${city.name}`); // Maybe append Metro Manila? Usually handled by region context
-        }
+        const loc = constructLocationString(code, selectedProvinceCode, []);
+        onChange(loc);
     };
 
-    const handleBarangayChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleAddBarangay = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const name = e.target.value;
-        setSelectedBarangayName(name);
-        
         if (!name) return;
-
-        const city = cities.find(c => c.code === selectedCityCode);
-        const province = provinces.find(p => p.code === selectedProvinceCode);
         
-        let locString = '';
-        if (province) {
-            locString = `Brgy. ${name}, ${city?.name}, ${province.name}`;
-        } else {
-            // NCR or HUC
-            locString = `Brgy. ${name}, ${city?.name}`; // Often formatted as City, Metro Manila
-            // Check if Region is NCR to append context?
-            if (selectedRegionCode === '130000000') {
-                 // Optional: Append Metro Manila
-            }
+        if (!selectedBarangayNames.includes(name)) {
+            const newBarangays = [...selectedBarangayNames, name];
+            setSelectedBarangayNames(newBarangays);
+            const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays);
+            onChange(loc);
         }
-        onChange(locString);
+        // Reset select to default
+        e.target.value = "";
+    };
+
+    const handleRemoveBarangay = (name: string) => {
+        const newBarangays = selectedBarangayNames.filter(b => b !== name);
+        setSelectedBarangayNames(newBarangays);
+        const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays);
+        onChange(loc);
     };
 
     const commonClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600";
@@ -364,16 +361,30 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Barangay</label>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Barangay(s)</label>
                         <select 
-                            value={selectedBarangayName} 
-                            onChange={handleBarangayChange} 
+                            onChange={handleAddBarangay} 
                             disabled={!selectedCityCode || barangays.length === 0} 
                             className={commonClasses}
+                            defaultValue=""
                         >
-                            <option value="">Select Barangay</option>
+                            <option value="">Add Barangay...</option>
                             {barangays.map(b => <option key={b.code} value={b.name}>{b.name}</option>)}
                         </select>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {selectedBarangayNames.map(b => (
+                                <span key={b} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
+                                    {b}
+                                    <button 
+                                        type="button" 
+                                        onClick={() => handleRemoveBarangay(b)} 
+                                        className="ml-1 text-gray-500 hover:text-red-500 focus:outline-none"
+                                    >
+                                        &times;
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
                     </div>
                 </>
             )}

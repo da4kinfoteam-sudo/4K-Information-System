@@ -2,6 +2,9 @@
 import React, { useState, useMemo } from 'react';
 import { objectTypes } from '../constants';
 
+// Declare XLSX to inform TypeScript about the global variable from the script tag
+declare const XLSX: any;
+
 // Data Structures matching the flattened state
 export interface ReferenceUacs {
     id: string;
@@ -30,6 +33,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [deleteItem, setDeleteItem] = useState<any>(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     // --- UACS Form State ---
     const [uacsForm, setUacsForm] = useState({
@@ -127,11 +131,88 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setDeleteItem(null);
     };
 
+    // --- Import / Export Handlers ---
+    const handleDownloadTemplate = () => {
+        const wb = XLSX.utils.book_new();
+        let ws;
+        let filename;
+
+        if (activeTab === 'UACS') {
+            const headers = ['objectType', 'particular', 'uacsCode', 'description'];
+            const example = [{
+                objectType: 'MOOE',
+                particular: 'Travelling Expenses',
+                uacsCode: '50201010-00',
+                description: 'Travelling Expenses - Local'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'UACS_Template.xlsx';
+        } else {
+            const headers = ['type', 'particular'];
+            const example = [{
+                type: 'Livestock',
+                particular: 'Carabao'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Items_Template.xlsx';
+        }
+
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        XLSX.writeFile(wb, filename);
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                if (activeTab === 'UACS') {
+                    const newItems: ReferenceUacs[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        objectType: row.objectType || 'MOOE',
+                        particular: row.particular || '',
+                        uacsCode: row.uacsCode ? String(row.uacsCode) : '',
+                        description: row.description || ''
+                    })).filter(i => i.uacsCode && i.particular);
+
+                    setUacsList(prev => [...newItems, ...prev]);
+                    alert(`${newItems.length} UACS codes imported successfully.`);
+                } else {
+                    const newItems: ReferenceParticular[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        type: row.type || 'Others',
+                        particular: row.particular || ''
+                    })).filter(i => i.particular);
+
+                    setParticularList(prev => [...newItems, ...prev]);
+                    alert(`${newItems.length} items imported successfully.`);
+                }
+            } catch (error: any) {
+                console.error("Error processing XLSX file:", error);
+                alert(`Failed to import file. ${error.message}`);
+            } finally {
+                setIsUploading(false);
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            {/* Header with Title and Add Button */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">System References</h2>
                 <button 
                     onClick={handleOpenAdd}
@@ -167,15 +248,40 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 </nav>
             </div>
 
-            {/* Search */}
-            <div>
-                <input 
-                    type="text" 
-                    placeholder="Search..." 
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="max-w-md w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
-                />
+            {/* Search and Bulk Actions Row */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="w-full md:w-1/3">
+                    <input 
+                        type="text" 
+                        placeholder="Search..." 
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                    <button 
+                        onClick={handleDownloadTemplate}
+                        className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
+                    >
+                        Download Template
+                    </button>
+                    <label 
+                        htmlFor="ref-upload" 
+                        className={`inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                        {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                    </label>
+                    <input 
+                        id="ref-upload" 
+                        type="file" 
+                        className="hidden" 
+                        onChange={handleFileUpload} 
+                        accept=".xlsx, .xls"
+                        disabled={isUploading}
+                    />
+                </div>
             </div>
 
             {/* Table Area */}

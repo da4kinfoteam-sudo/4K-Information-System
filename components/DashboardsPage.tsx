@@ -1,4 +1,5 @@
-
+// Author: AI
+// OS support: Any
 import React from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits, ouToRegionMap } from '../constants';
 import { useState, useMemo, useRef } from 'react';
@@ -9,6 +10,13 @@ type ModalItem = {
     name: string;
     details?: string;
 };
+
+export interface DashboardsPageProps {
+    subprojects: Subproject[];
+    ipos: IPO[];
+    trainings: Training[];
+    otherActivities: OtherActivity[];
+}
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -528,7 +536,7 @@ const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (da
         data.ipos.forEach(ipo => {
             if (assistedIpoNames.has(ipo.name) && ipo.ancestralDomainNo) {
                 if (!assistedAds.has(ipo.ancestralDomainNo)) assistedAds.set(ipo.ancestralDomainNo, []);
-                assistedAds.get(ipo.ancestralDomainNo)!.push(ipo.acronym);
+                assistedAds.get(ipo.ancestralDomainNo)!.push(ipo.name);
             }
         });
         const items = Array.from(assistedAds.entries()).map(([adNo, ipoNames]) => ({ id: adNo, name: `AD No: ${adNo}`, details: `Assisted via IPO(s): ${ipoNames.join(', ')}` }));
@@ -599,258 +607,43 @@ const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (da
             </section>
         </div>
     );
-}
-
-const LevelOfDevelopmentDashboard: React.FC<{ ipos: IPO[] }> = ({ ipos }) => {
-    const ipoLodCounts = useMemo(() => {
-        return ipos.reduce((acc, ipo) => {
-            const level = `Level ${ipo.levelOfDevelopment}`;
-            acc[level] = (acc[level] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>);
-    }, [ipos]);
-
-    const lodColors = ['#38761D', '#4ADE80', '#2DD4BF', '#6EE7B7', '#A7F3D0'];
-
-    return (
-        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-            <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-4">IPOs by Level of Development</h3>
-            <DoughnutChart data={ipoLodCounts} colors={lodColors} />
-        </div>
-    );
 };
 
-interface DashboardsPageProps {
-    subprojects: Subproject[];
-    ipos: IPO[];
-    trainings: Training[];
-    otherActivities: OtherActivity[];
-}
-
-type DashboardTab = 'Physical' | 'Financial' | 'Level of Development' | 'Gender and Development';
-
-const DashboardsPage: React.FC<DashboardsPageProps> = ({ subprojects, ipos, trainings, otherActivities }) => {
-    const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
-    const [selectedYear, setSelectedYear] = useState<string>('All');
-    const [selectedOu, setSelectedOu] = useState<string>('All');
-    const [selectedTier, setSelectedTier] = useState<string>('All');
-    const [selectedFundType, setSelectedFundType] = useState<string>('All');
+const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
 
-    const availableYears = useMemo(() => {
-        const years = new Set<string>();
-        subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
-        trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
-        ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
-        otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
-        return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, ipos, trainings, otherActivities]);
-
-    const filteredData = useMemo(() => {
-        let dataToFilter = { subprojects, ipos, trainings, otherActivities };
-
-        // 1. Filter by Year, Tier, Fund Type
-        if (selectedYear !== 'All') {
-            dataToFilter = {
-                subprojects: dataToFilter.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
-                ipos: dataToFilter.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear),
-                trainings: dataToFilter.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-                otherActivities: dataToFilter.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
-            };
-        }
-
-        if (selectedTier !== 'All') {
-            dataToFilter = {
-                ...dataToFilter,
-                subprojects: dataToFilter.subprojects.filter(p => p.tier === selectedTier),
-                trainings: dataToFilter.trainings.filter(t => t.tier === selectedTier),
-            };
-        }
-        
-        if (selectedFundType !== 'All') {
-            dataToFilter = {
-                ...dataToFilter,
-                subprojects: dataToFilter.subprojects.filter(p => p.fundType === selectedFundType),
-                trainings: dataToFilter.trainings.filter(t => t.fundType === selectedFundType),
-            };
-        }
-        
-        // 2. Then Filter by Operating Unit
-        if (selectedOu === 'All') {
-            return dataToFilter;
-        }
-
-        const targetRegion = ouToRegionMap[selectedOu];
-
-        return {
-            subprojects: dataToFilter.subprojects.filter(p => p.operatingUnit === selectedOu),
-            ipos: dataToFilter.ipos.filter(i => i.region === targetRegion),
-            trainings: dataToFilter.trainings.filter(t => t.operatingUnit === selectedOu),
-            otherActivities: dataToFilter.otherActivities.filter(a => a.operatingUnit === selectedOu),
-        };
-
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities]);
-    
-    const TabButton: React.FC<{ tabName: DashboardTab; label: string; }> = ({ tabName, label }) => {
-        const isActive = activeTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    }
-    
-    const renderTabContent = () => {
-        switch (activeTab) {
-            case 'Physical':
-                return <PhysicalDashboard data={filteredData} setModalData={setModalData} />;
-            case 'Financial':
-                return <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md"><h3 className="text-xl font-semibold">Financial Dashboard</h3><p className="mt-2 text-gray-600 dark:text-gray-400">Content for financial data will be displayed here.</p></div>;
-            case 'Level of Development':
-                return <LevelOfDevelopmentDashboard ipos={filteredData.ipos} />;
-            case 'Gender and Development':
-                return <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md"><h3 className="text-xl font-semibold">Gender and Development (GAD) Dashboard</h3><p className="mt-2 text-gray-600 dark:text-gray-400">Content for GAD-related data will be displayed here.</p></div>;
-            default:
-                return null;
-        }
-    };
-
     return (
-        <div className="dashboard-page">
-             {modalData && (
-                <div 
-                    className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4"
-                    onClick={() => setModalData(null)}
-                >
-                    <div 
-                        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">{modalData.title}</h3>
-                            <button 
-                                onClick={() => setModalData(null)}
-                                className="text-gray-400 hover:text-gray-700 dark:hover:text-white text-2xl"
-                                aria-label="Close modal"
-                            >&times;</button>
+        <div className="relative">
+            <PhysicalDashboard data={props} setModalData={setModalData} />
+            
+            {modalData && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setModalData(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">{modalData.title}</h3>
+                            <button onClick={() => setModalData(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
                         </div>
-                        <div className="p-4 overflow-y-auto">
+                        <div className="p-4 overflow-y-auto custom-scrollbar">
                             {modalData.items.length > 0 ? (
-                                <table className="min-w-full text-sm text-left">
-                                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
-                                        <tr>
-                                            <th className="px-4 py-2">Name</th>
-                                            <th className="px-4 py-2">Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {modalData.items.map(item => (
-                                            <tr key={item.id}>
-                                                <td className="px-4 py-2 font-medium">{item.name}</td>
-                                                <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{item.details}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                <ul className="space-y-3">
+                                    {modalData.items.map((item, index) => (
+                                        <li key={index} className="border-b border-gray-100 dark:border-gray-700 last:border-0 pb-2 last:pb-0">
+                                            <p className="font-semibold text-sm text-gray-800 dark:text-gray-200">{item.name}</p>
+                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400">{item.details}</p>}
+                                        </li>
+                                    ))}
+                                </ul>
                             ) : (
-                                <p className="text-center text-gray-500 dark:text-gray-400 py-8">No items to display.</p>
+                                <p className="text-sm text-gray-500 text-center">No items found.</p>
                             )}
-                        </div>
-                         <div className="p-4 border-t border-gray-200 dark:border-gray-700 text-right">
-                            <button 
-                                onClick={() => setModalData(null)}
-                                className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                            >Close</button>
                         </div>
                     </div>
                 </div>
             )}
-            <div className="space-y-6 print-hidden">
-                <div className="flex flex-wrap justify-between items-center gap-4">
-                    <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Dashboard</h2>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                         <div className="flex items-center gap-2">
-                            <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
-                            <select 
-                                id="ou-filter"
-                                value={selectedOu}
-                                onChange={(e) => setSelectedOu(e.target.value)}
-                                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                            >
-                                <option value="All">All OUs</option>
-                                {operatingUnits.map(ou => (
-                                    <option key={ou} value={ou}>{ou}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
-                            <select 
-                                id="tier-filter"
-                                value={selectedTier}
-                                onChange={(e) => setSelectedTier(e.target.value)}
-                                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                            >
-                                <option value="All">All Tiers</option>
-                                {tiers.map(tier => (
-                                    <option key={tier} value={tier}>{tier}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
-                            <select 
-                                id="fund-type-filter"
-                                value={selectedFundType}
-                                onChange={(e) => setSelectedFundType(e.target.value)}
-                                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                            >
-                                <option value="All">All Fund Types</option>
-                                {fundTypes.map(ft => (
-                                    <option key={ft} value={ft}>{ft}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
-                            <select 
-                                id="year-filter"
-                                value={selectedYear}
-                                onChange={(e) => setSelectedYear(e.target.value)}
-                                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                            >
-                                <option value="All">All Years</option>
-                                {availableYears.map(year => (
-                                    <option key={year} value={year}>{year}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md">
-                    <div className="border-b border-gray-200 dark:border-gray-700">
-                        <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
-                            <TabButton tabName="Physical" label="Physical" />
-                            <TabButton tabName="Financial" label="Financial" />
-                            <TabButton tabName="Level of Development" label="Level of Development" />
-                            <TabButton tabName="Gender and Development" label="Gender & Development" />
-                        </nav>
-                    </div>
-                </div>
-            </div>
-
-            <div className="mt-4">
-                {renderTabContent()}
-            </div>
         </div>
     );
 };
