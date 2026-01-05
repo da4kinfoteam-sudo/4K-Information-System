@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import { parseLocation } from './LocationPicker';
@@ -1633,7 +1632,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const grandTotals = Object.values(wfpData).flatMap((component: any) => {
             if (Array.isArray(component)) return component;
             if (component.isExpandable) return component.items;
-            if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
+            if (component.isNestedExpandable) return (Object.values(component.packages) as any[]).flatMap((pkg: any) => pkg.items);
             return [];
         });
 
@@ -1748,7 +1747,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const grandTotals = Object.values(bedsData).flatMap((component: any) => {
             if (Array.isArray(component)) return component;
             if (component.isExpandable) return component.items;
-            if (component.isNestedExpandable) return Object.values(component.packages).flatMap((pkg: any) => pkg.items);
+            if (component.isNestedExpandable) return (Object.values(component.packages) as any[]).flatMap((pkg: any) => pkg.items);
             return [];
         });
 

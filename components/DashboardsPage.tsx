@@ -1,3 +1,4 @@
+
 // Author: AI
 // OS support: Any
 import React from 'react';
@@ -17,6 +18,8 @@ export interface DashboardsPageProps {
     trainings: Training[];
     otherActivities: OtherActivity[];
 }
+
+type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income';
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -610,11 +613,175 @@ const PhysicalDashboard: React.FC<{ data: DashboardsPageProps, setModalData: (da
 };
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
+    const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
+    const [selectedYear, setSelectedYear] = useState<string>('All');
+    const [selectedOu, setSelectedOu] = useState<string>('All');
+    const [selectedTier, setSelectedTier] = useState<string>('All');
+    const [selectedFundType, setSelectedFundType] = useState<string>('All');
+
+    const availableYears = useMemo(() => {
+        const years = new Set<string>();
+        props.subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
+        props.trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
+        props.ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
+        props.otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
+        return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
+    }, [props.subprojects, props.trainings, props.ipos, props.otherActivities]);
+
+    const filteredData = useMemo(() => {
+        let data = {
+            subprojects: [...props.subprojects],
+            ipos: [...props.ipos],
+            trainings: [...props.trainings],
+            otherActivities: [...props.otherActivities]
+        };
+
+        // Filter by Year
+        if (selectedYear !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.fundingYear?.toString() === selectedYear);
+            data.ipos = data.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear);
+            data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
+            data.otherActivities = data.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear);
+        }
+
+        // Filter by Tier
+        if (selectedTier !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.tier === selectedTier);
+            data.trainings = data.trainings.filter(t => t.tier === selectedTier);
+            data.otherActivities = data.otherActivities.filter(a => a.tier === selectedTier);
+        }
+
+        // Filter by Fund Type
+        if (selectedFundType !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.fundType === selectedFundType);
+            data.trainings = data.trainings.filter(t => t.fundType === selectedFundType);
+            data.otherActivities = data.otherActivities.filter(a => a.fundType === selectedFundType);
+        }
+
+        // Filter by OU
+        if (selectedOu !== 'All') {
+            const targetRegion = ouToRegionMap[selectedOu];
+            data.subprojects = data.subprojects.filter(p => p.operatingUnit === selectedOu);
+            data.trainings = data.trainings.filter(t => t.operatingUnit === selectedOu);
+            data.otherActivities = data.otherActivities.filter(a => a.operatingUnit === selectedOu);
+            data.ipos = data.ipos.filter(i => i.region === targetRegion);
+        }
+
+        return data;
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, props]);
+
+    const TabButton: React.FC<{ tabName: DashboardTab; label: string }> = ({ tabName, label }) => {
+        const isActive = activeTab === tabName;
+        return (
+            <button
+                type="button"
+                onClick={() => setActiveTab(tabName)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200 whitespace-nowrap
+                    ${isActive
+                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    };
 
     return (
         <div className="relative">
-            <PhysicalDashboard data={props} setModalData={setModalData} />
+            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Strategic Dashboard</h2>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                     <div className="flex items-center gap-2">
+                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
+                        <select 
+                            id="ou-filter"
+                            value={selectedOu}
+                            onChange={(e) => setSelectedOu(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All OUs</option>
+                            {operatingUnits.map(ou => (
+                                <option key={ou} value={ou}>{ou}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                        <select 
+                            id="tier-filter"
+                            value={selectedTier}
+                            onChange={(e) => setSelectedTier(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                        <select 
+                            id="fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(ft => (
+                                <option key={ft} value={ft}>{ft}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                        <select 
+                            id="year-filter"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Years</option>
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tabs Section */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mb-6">
+                <div className="border-b border-gray-200 dark:border-gray-700">
+                    <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
+                        <TabButton tabName="Physical" label="Physical" />
+                        <TabButton tabName="Financial" label="Financial" />
+                        <TabButton tabName="GAD" label="GAD" />
+                        <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
+                        <TabButton tabName="Nutrition" label="Nutrition" />
+                        <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
+                    </nav>
+                </div>
+            </div>
+
+            {/* Tab Content */}
+            {activeTab === 'Physical' ? (
+                <PhysicalDashboard data={filteredData} setModalData={setModalData} />
+            ) : (
+                <div className="bg-white dark:bg-gray-800 p-12 rounded-lg shadow-md flex flex-col items-center justify-center text-center min-h-[400px]">
+                    <div className="p-4 bg-gray-100 dark:bg-gray-700 rounded-full mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                        </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-2">{activeTab} Dashboard</h3>
+                    <p className="text-gray-500 dark:text-gray-400 max-w-md">
+                        This section is currently under construction. Please check back later for updates on {activeTab.toLowerCase()} metrics.
+                    </p>
+                </div>
+            )}
             
             {modalData && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setModalData(null)}>
