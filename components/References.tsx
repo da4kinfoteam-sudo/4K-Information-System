@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { objectTypes } from '../constants';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -27,6 +27,12 @@ interface ReferencesProps {
     setParticularList: React.Dispatch<React.SetStateAction<ReferenceParticular[]>>;
 }
 
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+
 const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList }) => {
     const [activeTab, setActiveTab] = useState<'UACS' | 'Items'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
@@ -34,6 +40,11 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [editingItem, setEditingItem] = useState<any>(null);
     const [deleteItem, setDeleteItem] = useState<any>(null);
     const [isUploading, setIsUploading] = useState(false);
+
+    // Multi-Delete State
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
     // --- UACS Form State ---
     const [uacsForm, setUacsForm] = useState({
@@ -48,6 +59,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         type: '',
         particular: ''
     });
+
+    // Reset selection mode on tab change
+    useEffect(() => {
+        setIsSelectionMode(false);
+        setSelectedIds([]);
+    }, [activeTab]);
 
     // --- Filtering ---
     const filteredUacs = useMemo(() => {
@@ -131,6 +148,48 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setDeleteItem(null);
     };
 
+    // --- Multi-Delete Handlers ---
+    const handleToggleSelectionMode = () => {
+        if (isSelectionMode) {
+            setIsSelectionMode(false);
+            setSelectedIds([]);
+        } else {
+            setIsSelectionMode(true);
+        }
+    };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const currentList = activeTab === 'UACS' ? filteredUacs : filteredParticulars;
+        if (e.target.checked) {
+            const ids = currentList.map(i => i.id);
+            setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
+        } else {
+            const idsToRemove = new Set(currentList.map(i => i.id));
+            setSelectedIds(prev => prev.filter(id => !idsToRemove.has(id)));
+        }
+    };
+
+    const handleSelectRow = (id: string) => {
+        setSelectedIds(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(i => i !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
+    };
+
+    const confirmMultiDelete = () => {
+        if (activeTab === 'UACS') {
+            setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else {
+            setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        }
+        setIsMultiDeleteModalOpen(false);
+        setIsSelectionMode(false);
+        setSelectedIds([]);
+    };
+
     // --- Import / Export Handlers ---
     const handleDownloadTemplate = () => {
         const wb = XLSX.utils.book_new();
@@ -211,6 +270,23 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     return (
         <div className="space-y-6">
+            {/* Multi Delete Modal */}
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected item(s)? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header with Title and Add Button */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">System References</h2>
@@ -260,7 +336,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     />
                 </div>
                 
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                    {isSelectionMode && selectedIds.length > 0 && (
+                        <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                            Delete Selected ({selectedIds.length})
+                        </button>
+                    )}
                     <button 
                         onClick={handleDownloadTemplate}
                         className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
@@ -281,6 +362,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         accept=".xlsx, .xls"
                         disabled={isUploading}
                     />
+                    <button
+                        onClick={handleToggleSelectionMode}
+                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                        title="Toggle Multi-Delete Mode"
+                    >
+                        <TrashIcon />
+                    </button>
                 </div>
             </div>
 
@@ -303,7 +391,21 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Item Particular</th>
                                     </>
                                 )}
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    {isSelectionMode ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-xs">Select All</span>
+                                            <input 
+                                                type="checkbox" 
+                                                onChange={handleSelectAll} 
+                                                checked={(activeTab === 'UACS' ? filteredUacs : filteredParticulars).length > 0 && (activeTab === 'UACS' ? filteredUacs : filteredParticulars).every(i => selectedIds.includes(i.id))}
+                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                            />
+                                        </div>
+                                    ) : (
+                                        "Actions"
+                                    )}
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -316,8 +418,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
                                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                {isSelectionMode ? (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.includes(item.id)} 
+                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
+                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                     ))
@@ -331,8 +445,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                {isSelectionMode ? (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.includes(item.id)} 
+                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
+                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                     ))

@@ -1,4 +1,3 @@
-
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, OtherActivity, IPO, philippineRegions, OtherActivityComponentType, otherActivityComponents, otherActivityOptions, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, TrainingComponentType, operatingUnits } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -19,6 +18,12 @@ interface ActivitiesProps {
 
 // Unified type for list view
 type CombinedActivity = (Training & { type: 'Training' }) | (OtherActivity & { type: 'Activity', facilitator: string | undefined });
+
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
 
 const defaultFormData = {
     id: 0,
@@ -55,6 +60,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
     const [selectedActivityType, setSelectedActivityType] = useState('');
+
+    // Multi-Delete State
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -230,6 +240,49 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const handleToggleRow = (activityId: number, type: 'Training' | 'Activity') => {
         const key = `${type}-${activityId}`;
         setExpandedRowId(prevId => (prevId === key ? null : key));
+    };
+
+    // --- Multi-Delete Handlers ---
+    const handleToggleSelectionMode = () => {
+        if (isSelectionMode) {
+            setIsSelectionMode(false);
+            setSelectedKeys([]);
+        } else {
+            setIsSelectionMode(true);
+        }
+    };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            const keys = paginatedActivities.map(a => `${a.type}-${a.id}`);
+            setSelectedKeys(prev => Array.from(new Set([...prev, ...keys])));
+        } else {
+            const keysToRemove = new Set(paginatedActivities.map(a => `${a.type}-${a.id}`));
+            setSelectedKeys(prev => prev.filter(k => !keysToRemove.has(k)));
+        }
+    };
+
+    const handleSelectRow = (key: string) => {
+        setSelectedKeys(prev => {
+            if (prev.includes(key)) return prev.filter(k => k !== key);
+            return [...prev, key];
+        });
+    };
+
+    const confirmMultiDelete = () => {
+        const trainingIds = selectedKeys.filter(k => k.startsWith('Training-')).map(k => Number(k.split('-')[1]));
+        const activityIds = selectedKeys.filter(k => k.startsWith('Activity-')).map(k => Number(k.split('-')[1]));
+
+        if (trainingIds.length > 0) {
+            setTrainings(prev => prev.filter(t => !trainingIds.includes(t.id)));
+        }
+        if (activityIds.length > 0) {
+            setOtherActivities(prev => prev.filter(a => !activityIds.includes(a.id)));
+        }
+        
+        setIsMultiDeleteModalOpen(false);
+        setIsSelectionMode(false);
+        setSelectedKeys([]);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -709,12 +762,24 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     </div>
                     <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
+                        {isSelectionMode && selectedKeys.length > 0 && (
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                                Delete Selected ({selectedKeys.length})
+                            </button>
+                        )}
                         <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
                         {canEdit && (
                             <>
                                 <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
                                 <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
                                 <input id="activity-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+                                <button
+                                    onClick={handleToggleSelectionMode}
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    title="Toggle Multi-Delete Mode"
+                                >
+                                    <TrashIcon />
+                                </button>
                             </>
                         )}
                     </div>
@@ -724,7 +789,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th scope="col" className="w-12 px-4 py-3"></th>
+                                <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
                                 <SortableHeader sortKey="name" label="Name" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Type</th>
                                 <SortableHeader sortKey="date" label="Date" />
@@ -732,7 +797,21 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                 <SortableHeader sortKey="totalParticipants" label="Participants" />
                                 <SortableHeader sortKey="budget" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">OU</th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Actions</th>
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
+                                    {isSelectionMode ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-xs">Select All</span>
+                                            <input 
+                                                type="checkbox" 
+                                                onChange={handleSelectAll} 
+                                                checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedKeys.includes(`${a.type}-${a.id}`))}
+                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                            />
+                                        </div>
+                                    ) : (
+                                        "Actions"
+                                    )}
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -743,7 +822,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                 return (
                                 <React.Fragment key={rowKey}>
                                     <tr onClick={() => handleToggleRow(activity.id, activity.type)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === rowKey ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
+                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === rowKey ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
                                             {activity.name}
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
@@ -754,12 +833,21 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{totalParticipants > 0 ? totalParticipants : '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalActivityBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.operatingUnit}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                             {canEdit && (
-                                                <>
+                                                <div className="flex items-center justify-end">
+                                                    {isSelectionMode && (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedKeys.includes(rowKey)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(rowKey); }} 
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    )}
                                                     <button onClick={(e) => { e.stopPropagation(); handleEditClick(activity); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(activity); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
-                                                </>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>
@@ -1087,6 +1175,23 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     </div>
                 </div>
             )}
+
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">
+                            Are you sure you want to delete the <strong>{selectedKeys.length}</strong> selected item(s)? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );

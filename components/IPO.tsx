@@ -1,4 +1,3 @@
-
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -15,6 +14,12 @@ interface IPOsProps {
     onSelectSubproject: (subproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
 }
+
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
 
 const defaultFormData = {
     name: '',
@@ -44,6 +49,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+
+    // Multi-Delete State
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [regionFilter, setRegionFilter] = useState('All');
@@ -209,6 +219,42 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         setFlagFilter(prev => ({ ...prev, [name]: checked }));
     };
 
+    // --- Multi-Delete Handlers ---
+    const handleToggleSelectionMode = () => {
+        if (isSelectionMode) {
+            setIsSelectionMode(false);
+            setSelectedIds([]);
+        } else {
+            setIsSelectionMode(true);
+        }
+    };
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            const ids = paginatedIpos.map(i => i.id);
+            setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
+        } else {
+            const idsToRemove = new Set(paginatedIpos.map(i => i.id));
+            setSelectedIds(prev => prev.filter(id => !idsToRemove.has(id)));
+        }
+    };
+
+    const handleSelectRow = (id: number) => {
+        setSelectedIds(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(i => i !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
+    };
+
+    const confirmMultiDelete = () => {
+        setIpos(prev => prev.filter(ipo => !selectedIds.includes(ipo.id)));
+        setIsMultiDeleteModalOpen(false);
+        setIsSelectionMode(false);
+        setSelectedIds([]);
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -594,6 +640,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
+                            {isSelectionMode && selectedIds.length > 0 && (
+                                <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                                    Delete Selected ({selectedIds.length})
+                                </button>
+                            )}
                              <button 
                                 onClick={handleDownloadReport}
                                 className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
@@ -620,6 +671,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 accept=".xlsx, .xls"
                                 disabled={isUploading}
                             />
+                            <button
+                                onClick={handleToggleSelectionMode}
+                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                title="Toggle Multi-Delete Mode"
+                            >
+                                <TrashIcon />
+                            </button>
                         </div>
                     </div>
                      <div className="flex items-center gap-x-6 gap-y-2 flex-wrap pt-2">
@@ -653,7 +711,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <SortableHeader sortKey="registrationDate" label="Registered" />
                                 <SortableHeader sortKey="contactPerson" label="Contact Person" />
                                 <SortableHeader sortKey="totalInvested" label="Total Invested" />
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    {isSelectionMode ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-xs">Select All</span>
+                                            <input 
+                                                type="checkbox" 
+                                                onChange={handleSelectAll} 
+                                                checked={paginatedIpos.length > 0 && paginatedIpos.every(i => selectedIds.includes(i.id))}
+                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                            />
+                                        </div>
+                                    ) : (
+                                        "Actions"
+                                    )}
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -691,8 +763,20 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                 {formatCurrency(totalInvestment)}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
-                                                <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                                {isSelectionMode ? (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.includes(ipo.id)} 
+                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(ipo.id); }} 
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                                        <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                                    </>
+                                                )}
                                             </td>
                                         </tr>
                                          {expandedRowId === ipo.id && (
@@ -802,20 +886,45 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     </div>
                 </div>
             </div>
+
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
+                        <p className="my-4">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPO(s)? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
-    
+
     const renderFormView = () => (
-         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit IPO' : 'Add New IPO'}</h3>
-                 <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                    Back to List
-                </button>
+                 <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
-                
                 <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -827,13 +936,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
                             <input type="text" name="indigenousCulturalCommunity" id="indigenousCulturalCommunity" value={formData.indigenousCulturalCommunity} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
-
+                        
                         <div className="md:col-span-3">
                             <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
                             <LocationPicker 
                                 value={formData.location} 
-                                onChange={handleLocationChange}
-                                onRegionChange={handleRegionChange}
+                                onChange={handleLocationChange} 
+                                onRegionChange={handleRegionChange} 
                                 required 
                             />
                         </div>
@@ -842,7 +951,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             <input type="text" name="ancestralDomainNo" id="ancestralDomainNo" value={formData.ancestralDomainNo} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
 
-                        <div>
+                         <div>
                             <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
                             <select name="registeringBody" id="registeringBody" value={formData.registeringBody} onChange={handleInputChange} required className={commonInputClasses}>
                                 {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -855,7 +964,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
                             </div>
                          )}
-                         <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
+                          <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
                             <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
                             <input type="date" name="registrationDate" id="registrationDate" value={formData.registrationDate} onChange={handleInputChange} required className={commonInputClasses} />
                         </div>
@@ -868,7 +977,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
                             <input type="text" name="contactNumber" id="contactNumber" value={formData.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
-                        
+
                         <div className="md:col-span-3 flex items-center flex-wrap gap-x-8 gap-y-2 pt-2">
                              <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
                                 <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={formData.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
@@ -882,8 +991,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={formData.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
                                 <span>Within ELCAC area</span>
                             </label>
-                            <label htmlFor="isWithScad" className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
-                                <input type="checkbox" name="isWithScad" id="isWithScad" checked={formData.isWithScad} onChange={handleInputChange} disabled className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                            <label className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
+                                <input type="checkbox" name="isWithScad" checked={formData.isWithScad} disabled className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
                                 <span>With SCAD</span>
                             </label>
                         </div>
@@ -907,24 +1016,19 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             </div>
                         ))}
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                        <div>
+                         <div>
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
                             <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
                                 <option value="">Select Type</option>
-                                {commodityTypes.map(type => (
-                                    <option key={type} value={type}>{type}</option>
-                                ))}
+                                {commodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
                             </select>
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
                             <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
                                 <option value="">Select Particular</option>
-                                {currentCommodity.type && particularTypes[currentCommodity.type].map(item => (
-                                    <option key={item} value={item}>{item}</option>
-                                ))}
+                                {currentCommodity.type && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                             </select>
                         </div>
                          <div className="flex items-end gap-2">
@@ -935,44 +1039,40 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                         </div>
                     </div>
-                     <div className="mt-2">
+                    <div className="mt-2">
                         <label className="flex items-center gap-2 text-sm font-medium">
                             <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
                             <span>SCAD commodity</span>
                         </label>
                     </div>
                 </fieldset>
-
-                 <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                
+                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Level of Development</legend>
                     <div>
                         <label htmlFor="levelOfDevelopment" className="block text-sm font-medium">Current Level</label>
                         <select name="levelOfDevelopment" id="levelOfDevelopment" value={formData.levelOfDevelopment} onChange={handleInputChange} required className={commonInputClasses}>
-                            <option value={1}>Level 1</option>
-                            <option value={2}>Level 2</option>
-                            <option value={3}>Level 3</option>
-                            <option value={4}>Level 4</option>
-                            <option value={5}>Level 5</option>
+                            <option value={1}>Level 1</option> <option value={2}>Level 2</option> <option value={3}>Level 3</option> <option value={4}>Level 4</option> <option value={5}>Level 5</option>
                         </select>
                     </div>
                 </fieldset>
 
-                <div className="flex justify-end gap-4 pt-2">
-                    {editingIpo && (
-                        <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                            Cancel
-                        </button>
-                    )}
+                <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                        Cancel
+                    </button>
                     <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        {editingIpo ? 'Update IPO' : 'Add IPO'}
+                        Save {view === 'edit' ? 'Changes' : 'IPO'}
                     </button>
                 </div>
-            </form>
+             </form>
         </div>
     );
 
     return (
         <div>
+            {view === 'list' ? renderListView() : renderFormView()}
+            
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
@@ -985,7 +1085,22 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     </div>
                 </div>
             )}
-            {view === 'list' ? renderListView() : renderFormView()}
+
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPO(s)? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

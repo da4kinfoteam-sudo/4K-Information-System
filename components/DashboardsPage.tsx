@@ -1,6 +1,4 @@
 
-// Author: AI
-// OS support: Any
 import React from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, IpoIcon, ProjectsIcon, TrainingIcon, operatingUnits, ouToRegionMap } from '../constants';
 import { useState, useMemo, useRef } from 'react';
