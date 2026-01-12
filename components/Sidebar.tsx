@@ -47,14 +47,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                          <div className="w-6 md:hidden"></div> {/* Mobile Spacer left */}
                          <div className="hidden md:block w-full"> {/* Desktop wrapper */}
                              <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center group">
-                                <div className="p-2 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-2 group-hover:shadow-md transition-shadow">
+                                <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow">
                                     <img 
                                         src="/assets/4klogo.png" 
                                         alt="DA 4K Logo" 
                                         className="h-16 w-16 object-contain"
                                     />
                                 </div>
-                                <h1 className="text-xl font-bold text-gray-800 dark:text-white leading-tight">4K Information System</h1>
+                                <h1 className="text-lg font-bold text-gray-800 dark:text-white leading-tight">4K Information System</h1>
                             </a>
                          </div>
                          
@@ -63,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                             <img 
                                 src="/assets/4klogo.png" 
                                 alt="DA 4K Logo" 
-                                className="h-12 w-12 object-contain mb-1"
+                                className="h-10 w-10 object-contain mb-1"
                             />
                             <h1 className="text-lg font-bold text-gray-800 dark:text-white">4K IS</h1>
                         </a>

@@ -28,7 +28,7 @@ const Login: React.FC = () => {
         <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
             <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
                 <div className="flex flex-col items-center mb-8">
-                    <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm">
                         <img 
                             src="/assets/4klogo.png" 
                             alt="DA 4K Logo" 
