@@ -1,4 +1,3 @@
-
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Training, OtherActivity, IPO, philippineRegions, OtherActivityComponentType, otherActivityComponents, otherActivityOptions, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, TrainingComponentType, operatingUnits } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -15,8 +14,6 @@ interface ActivitiesProps {
     setOtherActivities: React.Dispatch<React.SetStateAction<OtherActivity[]>>;
     onSelectIpo: (ipo: IPO) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
-    pageTitle?: string;
-    forcedType?: 'Training' | 'Activity';
 }
 
 // Unified type for list view
@@ -53,7 +50,7 @@ const defaultFormData = {
     actualParticipantsFemale: 0
 };
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings, setTrainings, otherActivities, setOtherActivities, onSelectIpo, uacsCodes, pageTitle = "Activities Management", forcedType }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings, setTrainings, otherActivities, setOtherActivities, onSelectIpo, uacsCodes }) => {
     const { currentUser } = useAuth();
     const [formData, setFormData] = useState(defaultFormData);
     const [editingItem, setEditingItem] = useState<CombinedActivity | null>(null);
@@ -84,17 +81,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // If forcedType is provided, lock the filter
-    useEffect(() => {
-        if (forcedType) {
-            setTypeFilter(forcedType);
-        }
-    }, [forcedType]);
-
     // Determine if current form state represents a Training based on selected Activity Type
     const isTrainingForm = useMemo(() => {
-        return selectedActivityType.endsWith(' Training') || (forcedType === 'Training');
-    }, [selectedActivityType, forcedType]);
+        return selectedActivityType.endsWith(' Training');
+    }, [selectedActivityType]);
 
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
     const canViewAll = currentUser?.role === 'Administrator' || currentUser?.operatingUnit === 'NPMO';
@@ -148,12 +138,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     // When component changes in form, reset types unless editing
     useEffect(() => {
         if (view !== 'edit') {
-            if (!forcedType || forcedType === 'Activity') {
-                 setFormData(prev => ({...prev, name: ''}));
-                 setSelectedActivityType('');
-            }
+            setFormData(prev => ({...prev, name: ''}));
+            setSelectedActivityType('');
         }
-    }, [formData.component, view, forcedType]);
+    }, [formData.component, view]);
 
     const filteredIposForSelection = useMemo(() => {
         const filtered = ipoRegionFilter === 'All' ? ipos : ipos.filter(ipo => ipo.region === ipoRegionFilter);
@@ -163,28 +151,16 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const activityOptions = useMemo(() => {
         const base = otherActivityOptions[formData.component] || [];
         const trainingOption = `${formData.component} Training`;
-        
-        if (forcedType === 'Training') return [trainingOption];
-        if (forcedType === 'Activity') return base;
-
         // Ensure unique
         if (base.includes(trainingOption)) return base;
         return [...base, trainingOption];
-    }, [formData.component, forcedType]);
+    }, [formData.component]);
 
     // Combine and process list data
     const processedActivities = useMemo(() => {
-        let combined: CombinedActivity[] = [];
-        
-        if (!forcedType || forcedType === 'Training') {
-             const t = trainings.map(x => ({ ...x, type: 'Training' as const }));
-             combined = [...combined, ...t];
-        }
-        
-        if (!forcedType || forcedType === 'Activity') {
-             const o = otherActivities.map(x => ({ ...x, type: 'Activity' as const, facilitator: undefined }));
-             combined = [...combined, ...o];
-        }
+        const t = trainings.map(x => ({ ...x, type: 'Training' as const }));
+        const o = otherActivities.map(x => ({ ...x, type: 'Activity' as const, facilitator: undefined }));
+        let combined: CombinedActivity[] = [...t, ...o];
 
         // OU Filtering
         if (!canViewAll && currentUser) {
@@ -197,8 +173,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             combined = combined.filter(activity => activity.component === componentFilter);
         }
 
-        // Only apply typeFilter if not forced, although combined list construction already handles it mostly
-        if (!forcedType && typeFilter !== 'All') {
+        if (typeFilter !== 'All') {
             combined = combined.filter(activity => activity.type === typeFilter);
         }
 
@@ -241,7 +216,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             });
         }
         return combined;
-    }, [trainings, otherActivities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll, forcedType]);
+    }, [trainings, otherActivities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll]);
 
     const paginatedActivities = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
@@ -252,7 +227,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, componentFilter, typeFilter, ouFilter, sortConfig, itemsPerPage, forcedType]);
+    }, [searchTerm, componentFilter, typeFilter, ouFilter, sortConfig, itemsPerPage]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -324,14 +299,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
         setSelectedActivityType(value);
-        if (value.endsWith(' Training') || forcedType === 'Training') {
+        if (value.endsWith(' Training')) {
             // If switching to training type
             if (editingItem && editingItem.type === 'Training' && value === `${editingItem.component} Training`) {
                 // If editing and same type, restore original name
                 setFormData(prev => ({ ...prev, name: editingItem.name }));
             } else {
-                // Otherwise clear name for input (unless specifically Activity where name matches type)
-                if (forcedType !== 'Activity') setFormData(prev => ({ ...prev, name: '' }));
+                // Otherwise clear name for input
+                setFormData(prev => ({ ...prev, name: '' }));
             }
         } else {
             // Not a training, name IS the type
@@ -574,8 +549,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             'fundingYear', 'fundType', 'tier', 
             'expense_objectType', 'expense_particular', 'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
         ];
-        // ... (existing template code)
-        // For brevity, skipping full recreation of template logic as it's unchanged logic-wise
         const exampleData = [
             {
                 uid: 'TRN-2024-001',
@@ -599,6 +572,29 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 expense_obligationMonth: '2024-03-01',
                 expense_disbursementMonth: '2024-03-20',
                 expense_amount: 25000
+            },
+             {
+                uid: 'TRN-2024-001',
+                type: 'Training',
+                component: 'Social Preparation',
+                name: 'Basic Leadership Training',
+                date: '2024-03-15',
+                province: 'Rizal',
+                municipality: 'Tanay',
+                facilitator: 'John Doe',
+                description: 'Leadership skills training.',
+                participatingIpos: 'San Isidro Farmers Association',
+                participantsMale: 10,
+                participantsFemale: 15,
+                fundingYear: 2024,
+                fundType: 'Current',
+                tier: 'Tier 1',
+                expense_objectType: 'MOOE',
+                expense_particular: 'Other Supplies',
+                expense_uacsCode: '50203990-00',
+                expense_obligationMonth: '2024-03-05',
+                expense_disbursementMonth: '2024-03-25',
+                expense_amount: 5000
             }
         ];
 
@@ -727,17 +723,17 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const renderListView = () => (
         <>
             <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">{pageTitle}</h2>
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Activities Management</h2>
                 {canEdit && (
                     <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        + Add New {forcedType === 'Training' ? 'Training' : forcedType === 'Activity' ? 'Activity' : 'Item'}
+                        + Add New Activity
                     </button>
                 )}
             </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                  <div className="mb-4 flex flex-col md:flex-row gap-4">
                     <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                        <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-auto ${commonInputClasses} mt-0`} />
+                        <input type="text" placeholder="Search activities..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-auto ${commonInputClasses} mt-0`} />
                          {canViewAll && (
                             <div className="flex items-center gap-2">
                                <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
@@ -755,17 +751,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                 <option value="All">All Components</option>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         </div>
-                         {/* Only show Type filter if NOT forced */}
-                         {!forcedType && (
-                             <div className="flex items-center gap-2">
-                               <label htmlFor="typeFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Type:</label>
-                                <select id="typeFilter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
-                                    <option value="All">All Types</option>
-                                    <option value="Training">Trainings Only</option>
-                                    <option value="Activity">Other Activities Only</option>
-                                </select>
-                            </div>
-                         )}
+                         <div className="flex items-center gap-2">
+                           <label htmlFor="typeFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Type:</label>
+                            <select id="typeFilter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Types</option>
+                                <option value="Training">Trainings Only</option>
+                                <option value="Activity">Other Activities Only</option>
+                            </select>
+                        </div>
                     </div>
                     <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
@@ -934,7 +927,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const renderFormView = () => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit ' : 'Add New '}{forcedType || 'Activity'}</h3>
+                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Activity' : 'Add New Activity'}</h3>
                  <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>

@@ -155,7 +155,7 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                         />;
-            case '/trainings':
+            case '/activities':
                 return <ActivitiesComponent 
                             ipos={ipos} 
                             trainings={trainings}
@@ -164,20 +164,6 @@ const AppContent: React.FC = () => {
                             setOtherActivities={setOtherActivities} 
                             onSelectIpo={handleSelectIpo}
                             uacsCodes={derivedUacsCodes}
-                            pageTitle="Trainings Management"
-                            forcedType="Training"
-                        />;
-            case '/other-activities':
-                return <ActivitiesComponent 
-                            ipos={ipos} 
-                            trainings={trainings}
-                            setTrainings={setTrainings}
-                            otherActivities={otherActivities} 
-                            setOtherActivities={setOtherActivities} 
-                            onSelectIpo={handleSelectIpo}
-                            uacsCodes={derivedUacsCodes}
-                            pageTitle="Other Activities Management"
-                            forcedType="Activity"
                         />;
             case '/program-management':
                 return <ProgramManagement
