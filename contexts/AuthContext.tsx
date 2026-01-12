@@ -1,8 +1,3 @@
-
-// Author: AI
-// OS support: Any
-// Description: Authentication context for managing user session
-
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../constants';
 import useLocalStorageState from '../hooks/useLocalStorageState';

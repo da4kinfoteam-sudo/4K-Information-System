@@ -1,10 +1,14 @@
 
+// Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { 
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, 
     fundTypes, FundType, tiers, Tier, operatingUnits, objectTypes, ObjectType 
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
+import { OfficeRequirementsTable, OfficeRequirementsFormFields, constructOfficeRequirement, parseOfficeRequirementRow } from './program_management/OfficeRequirementsTab';
+import { StaffingRequirementsTable, StaffingRequirementsFormFields, constructStaffingRequirement, parseStaffingRequirementRow } from './program_management/StaffingRequirementsTab';
+import { OtherExpensesTable, OtherExpensesFormFields, constructOtherExpense, parseOtherExpenseRow } from './program_management/OtherExpensesTab';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -29,15 +33,6 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
-const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-};
-
-const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-};
-
 const ProgramManagement: React.FC<ProgramManagementProps> = ({ 
     officeReqs, setOfficeReqs, 
     staffingReqs, setStaffingReqs, 
@@ -47,7 +42,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<ActiveTab>('Office');
     const [formTab, setFormTab] = useState<'Details' | 'Accomplishment'>('Details');
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<any>(null);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -67,7 +61,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
 
-    // Generic Form State - unified structure to handle all types, specific fields handled conditionally
+    // Generic Form State
     const initialFormState = {
         id: 0,
         uid: '',
@@ -110,35 +104,22 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const [formData, setFormData] = useState(initialFormState);
 
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.operatingUnit === 'NPMO';
+    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
+
+    // Set default OU filter for restricted users
+    useEffect(() => {
+        if (currentUser && !canViewAll) {
+            setOuFilter(currentUser.operatingUnit);
+        } else {
+            setOuFilter('All');
+        }
+    }, [currentUser, canViewAll]);
 
     // Reset selection mode when active tab changes
     useEffect(() => {
         setIsSelectionMode(false);
         setSelectedIds([]);
     }, [activeTab]);
-
-    // Filtered Data based on Tab and OU
-    const currentList = useMemo(() => {
-        let list: any[] = [];
-        switch(activeTab) {
-            case 'Office': list = officeReqs; break;
-            case 'Staffing': list = staffingReqs; break;
-            case 'Other': list = otherProgramExpenses; break;
-        }
-
-        if (!canViewAll && currentUser) {
-            list = list.filter(item => item.operatingUnit === currentUser.operatingUnit);
-        } else if (canViewAll && ouFilter !== 'All') {
-            list = list.filter(item => item.operatingUnit === ouFilter);
-        }
-
-        if (yearFilter !== 'All') {
-            list = list.filter(item => item.fundYear.toString() === yearFilter);
-        }
-        
-        return list.sort((a,b) => b.id - a.id);
-    }, [activeTab, officeReqs, staffingReqs, otherProgramExpenses, ouFilter, yearFilter, currentUser, canViewAll]);
 
     const availableYears = useMemo(() => {
          const years = new Set<string>();
@@ -151,7 +132,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         if (view === 'form' && !editingItem) {
             setFormData({
                 ...initialFormState,
-                operatingUnit: currentUser?.operatingUnit || 'NPMO',
+                operatingUnit: currentUser?.operatingUnit || (canViewAll ? 'NPMO' : currentUser?.operatingUnit || ''),
                 encodedBy: currentUser?.fullName || '',
             });
             // Reset UACS selectors
@@ -159,7 +140,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             setSelectedParticular('');
             setFormTab('Details');
         }
-    }, [view, editingItem, currentUser]);
+    }, [view, editingItem, currentUser, canViewAll]);
 
     // Pre-fill form for editing
     useEffect(() => {
@@ -182,11 +163,13 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             
             outerLoop:
             for (const type of objectTypes) {
-                for (const part in uacsCodes[type]) {
-                    if (uacsCodes[type][part].hasOwnProperty(editingItem.uacsCode)) {
-                        foundType = type;
-                        foundParticular = part;
-                        break outerLoop;
+                if(uacsCodes[type]) {
+                    for (const part in uacsCodes[type]) {
+                        if (uacsCodes[type][part].hasOwnProperty(editingItem.uacsCode)) {
+                            foundType = type;
+                            foundParticular = part;
+                            break outerLoop;
+                        }
                     }
                 }
             }
@@ -205,13 +188,16 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const handleFormSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Validation
-        if (!formData.operatingUnit || !formData.uacsCode) {
-            alert("Please fill in all required fields.");
+        if (!formData.operatingUnit) {
+            alert("Operating Unit is required.");
+            return;
+        }
+        if (!formData.uacsCode) {
+            alert("UACS Code is required.");
             return;
         }
 
-        const commonData = {
+        const commonFields = {
             operatingUnit: formData.operatingUnit,
             uacsCode: formData.uacsCode,
             obligationDate: formData.obligationDate,
@@ -219,7 +205,11 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             fundType: formData.fundType,
             fundYear: Number(formData.fundYear),
             tier: formData.tier,
-            encodedBy: formData.encodedBy,
+            encodedBy: formData.encodedBy || currentUser?.fullName || 'System',
+            updated_at: new Date().toISOString()
+        };
+
+        const accomplishmentFields = {
             actualDate: formData.actualDate,
             actualAmount: Number(formData.actualAmount),
             actualObligationDate: formData.actualObligationDate,
@@ -229,40 +219,59 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         };
 
         if (editingItem) {
-            // Update
-            const updateId = editingItem.id;
-            if (activeTab === 'Office') {
-                setOfficeReqs(prev => prev.map(item => item.id === updateId ? { ...item, ...commonData, equipment: formData.equipment, specs: formData.specs, purpose: formData.purpose, numberOfUnits: Number(formData.numberOfUnits), pricePerUnit: Number(formData.pricePerUnit) } : item));
-            } else if (activeTab === 'Staffing') {
-                 setStaffingReqs(prev => prev.map(item => item.id === updateId ? { ...item, ...commonData, personnelPosition: formData.personnelPosition, status: formData.status as any, salaryGrade: Number(formData.salaryGrade), annualSalary: Number(formData.annualSalary), personnelType: formData.personnelType as any } : item));
-            } else {
-                setOtherProgramExpenses(prev => prev.map(item => item.id === updateId ? { ...item, ...commonData, particulars: formData.particulars, amount: Number(formData.amount) } : item));
-            }
+             const updateId = editingItem.id;
+             if (activeTab === 'Office') {
+                 setOfficeReqs(prev => prev.map(item => item.id === updateId ? constructOfficeRequirement(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
+             } else if (activeTab === 'Staffing') {
+                 setStaffingReqs(prev => prev.map(item => item.id === updateId ? constructStaffingRequirement(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
+             } else {
+                 setOtherProgramExpenses(prev => prev.map(item => item.id === updateId ? constructOtherExpense(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
+             }
         } else {
-            // Create
-            const newId = Date.now(); // Simple ID generation
-            // Generate UID based on Type and Year
-            const prefix = activeTab === 'Office' ? 'OR' : activeTab === 'Staffing' ? 'SR' : 'OE';
-            const uid = `${prefix}-${formData.fundYear}-${String(newId).slice(-4)}`;
-
+            const newId = Date.now();
+            let newUid = formData.uid;
+            
+            if (!newUid) {
+                const year = new Date().getFullYear();
+                const prefix = activeTab === 'Office' ? 'OR' : activeTab === 'Staffing' ? 'SR' : 'OE';
+                const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+                newUid = `${prefix}-${year}-${sequence}`;
+            }
+            
             if (activeTab === 'Office') {
-                setOfficeReqs(prev => [{ ...commonData, id: newId, uid, equipment: formData.equipment, specs: formData.specs, purpose: formData.purpose, numberOfUnits: Number(formData.numberOfUnits), pricePerUnit: Number(formData.pricePerUnit) }, ...prev]);
+                 setOfficeReqs(prev => [constructOfficeRequirement(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
             } else if (activeTab === 'Staffing') {
-                 setStaffingReqs(prev => [{ ...commonData, id: newId, uid, personnelPosition: formData.personnelPosition, status: formData.status as any, salaryGrade: Number(formData.salaryGrade), annualSalary: Number(formData.annualSalary), personnelType: formData.personnelType as any }, ...prev]);
+                 setStaffingReqs(prev => [constructStaffingRequirement(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
             } else {
-                setOtherProgramExpenses(prev => [{ ...commonData, id: newId, uid, particulars: formData.particulars, amount: Number(formData.amount) }, ...prev]);
+                 setOtherProgramExpenses(prev => [constructOtherExpense(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
             }
         }
-        setView('list');
-        setEditingItem(null);
+        
+        handleCancelForm();
     };
 
-    const handleDelete = () => {
+    const handleCancelForm = () => {
+        setEditingItem(null);
+        setView('list');
+        setFormData(initialFormState);
+    };
+
+    const handleEdit = (item: any) => {
+        setEditingItem(item);
+        setView('form');
+    };
+
+    const handleDelete = (item: any) => {
+        setItemToDelete(item);
+        setIsDeleteModalOpen(true);
+    };
+
+    const confirmDelete = () => {
         if (itemToDelete) {
-             if (activeTab === 'Office') {
+            if (activeTab === 'Office') {
                 setOfficeReqs(prev => prev.filter(i => i.id !== itemToDelete.id));
             } else if (activeTab === 'Staffing') {
-                 setStaffingReqs(prev => prev.filter(i => i.id !== itemToDelete.id));
+                setStaffingReqs(prev => prev.filter(i => i.id !== itemToDelete.id));
             } else {
                 setOtherProgramExpenses(prev => prev.filter(i => i.id !== itemToDelete.id));
             }
@@ -271,7 +280,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     };
 
-    // --- Multi-Delete Handlers ---
+    // --- Multi-Delete ---
     const handleToggleSelectionMode = () => {
         if (isSelectionMode) {
             setIsSelectionMode(false);
@@ -281,24 +290,8 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     };
 
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.checked) {
-            const ids = currentList.map(item => item.id);
-            setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
-        } else {
-            const idsToRemove = new Set(currentList.map(item => item.id));
-            setSelectedIds(prev => prev.filter(id => !idsToRemove.has(id)));
-        }
-    };
-
     const handleSelectRow = (id: number) => {
-        setSelectedIds(prev => {
-            if (prev.includes(id)) {
-                return prev.filter(i => i !== id);
-            } else {
-                return [...prev, id];
-            }
-        });
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
     const confirmMultiDelete = () => {
@@ -314,69 +307,96 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         setSelectedIds([]);
     };
 
-    // --- Import/Export Handlers ---
-
-    const handleDownloadReport = () => {
-        const dataToExport = currentList.map((item: any) => {
-            const common = {
-                'UID': item.uid,
-                'Operating Unit': item.operatingUnit,
-                'Fund Year': item.fundYear,
-                'Fund Type': item.fundType,
-                'Tier': item.tier,
-                'Obligation Date': item.obligationDate,
-                'Disbursement Date': item.disbursementDate,
-                'UACS Code': item.uacsCode,
-            };
-
-            if (activeTab === 'Office') {
-                return {
-                    ...common,
-                    'Equipment': item.equipment,
-                    'Specifications': item.specs,
-                    'Purpose': item.purpose,
-                    'Units': item.numberOfUnits,
-                    'Price Per Unit': item.pricePerUnit,
-                    'Total Amount': item.numberOfUnits * item.pricePerUnit
-                };
-            } else if (activeTab === 'Staffing') {
-                return {
-                    ...common,
-                    'Position': item.personnelPosition,
-                    'Status': item.status,
-                    'Salary Grade': item.salaryGrade,
-                    'Annual Salary': item.annualSalary,
-                    'Personnel Type': item.personnelType
-                };
-            } else {
-                return {
-                    ...common,
-                    'Particulars': item.particulars,
-                    'Amount': item.amount
-                };
-            }
-        });
-
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, `${activeTab} Report`);
-        XLSX.writeFile(wb, `${activeTab}_Report.xlsx`);
+    // --- Filtering ---
+    const filterList = (list: any[]) => {
+        let filtered = list;
+        if (!canViewAll && currentUser) {
+            filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
+        } else if (canViewAll && ouFilter !== 'All') {
+            filtered = filtered.filter(item => item.operatingUnit === ouFilter);
+        }
+        if (yearFilter !== 'All') {
+            filtered = filtered.filter(item => item.fundYear.toString() === yearFilter);
+        }
+        return filtered.sort((a,b) => b.id - a.id);
     };
 
+    const getCurrentList = () => {
+        if (activeTab === 'Office') return filterList(officeReqs);
+        if (activeTab === 'Staffing') return filterList(staffingReqs);
+        return filterList(otherProgramExpenses);
+    }
+
+    // --- Report Handler ---
+    const handleDownloadReport = () => {
+        const currentList = getCurrentList();
+        let data: any[] = [];
+        let sheetName = "";
+        let fileName = "";
+
+        if (activeTab === 'Office') {
+            data = (currentList as OfficeRequirement[]).map(item => ({
+                UID: item.uid,
+                OU: item.operatingUnit,
+                Equipment: item.equipment,
+                Specs: item.specs,
+                Purpose: item.purpose,
+                'No. of Units': item.numberOfUnits,
+                'Price/Unit': item.pricePerUnit,
+                'Total Amount': item.numberOfUnits * item.pricePerUnit,
+                'Fund Type': item.fundType,
+                'Fund Year': item.fundYear,
+                Tier: item.tier,
+                'Obligation Date': item.obligationDate,
+                'Disbursement Date': item.disbursementDate
+            }));
+            sheetName = "Office Requirements";
+            fileName = "Office_Requirements_Report.xlsx";
+        } else if (activeTab === 'Staffing') {
+            data = (currentList as StaffingRequirement[]).map(item => ({
+                UID: item.uid,
+                OU: item.operatingUnit,
+                Position: item.personnelPosition,
+                Status: item.status,
+                'Salary Grade': item.salaryGrade,
+                'Annual Salary': item.annualSalary,
+                Type: item.personnelType,
+                'Fund Type': item.fundType,
+                'Fund Year': item.fundYear,
+                Tier: item.tier,
+                'Obligation Date': item.obligationDate,
+                'Disbursement Date': item.disbursementDate
+            }));
+            sheetName = "Staffing Requirements";
+            fileName = "Staffing_Requirements_Report.xlsx";
+        } else {
+            data = (currentList as OtherProgramExpense[]).map(item => ({
+                UID: item.uid,
+                OU: item.operatingUnit,
+                Particulars: item.particulars,
+                Amount: item.amount,
+                'Fund Type': item.fundType,
+                'Fund Year': item.fundYear,
+                Tier: item.tier,
+                'Obligation Date': item.obligationDate,
+                'Disbursement Date': item.disbursementDate
+            }));
+            sheetName = "Other Expenses";
+            fileName = "Other_Expenses_Report.xlsx";
+        }
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.writeFile(wb, fileName);
+    };
+
+    // --- Import Handlers ---
     const handleDownloadTemplate = () => {
         let headers: string[] = [];
+        let commonHeaders = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode'];
         let exampleData: any[] = [];
-        let instructions: string[][] = [
-            ["Column", "Description"],
-            ["operatingUnit", "e.g., NPMO, RPMO 4A"],
-            ["fundYear", "YYYY"],
-            ["fundType", "Current, Continuing, Insertion"],
-            ["tier", "Tier 1, Tier 2"],
-            ["obligationDate", "YYYY-MM-DD"],
-            ["disbursementDate", "YYYY-MM-DD"],
-            ["uacsCode", "UACS Code string"]
-        ];
-
+        
         const commonExample = {
             operatingUnit: 'RPMO 4A',
             fundYear: 2024,
@@ -388,41 +408,19 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         };
 
         if (activeTab === 'Office') {
-            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
+            headers = [...commonHeaders, 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
             exampleData = [{ ...commonExample, equipment: 'Laptop', specs: 'i5, 8GB RAM', purpose: 'For Admin', numberOfUnits: 1, pricePerUnit: 45000 }];
-            instructions.push(
-                ["equipment", "Name of equipment"],
-                ["specs", "Specifications"],
-                ["purpose", "Purpose"],
-                ["numberOfUnits", "Number"],
-                ["pricePerUnit", "Number"]
-            );
         } else if (activeTab === 'Staffing') {
-            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'annualSalary', 'personnelType'];
+            headers = [...commonHeaders, 'personnelPosition', 'status', 'salaryGrade', 'annualSalary', 'personnelType'];
             exampleData = [{ ...commonExample, personnelPosition: 'Admin Aide', status: 'Contractual', salaryGrade: 6, annualSalary: 180000, personnelType: 'Administrative' }];
-            instructions.push(
-                ["personnelPosition", "Position Title"],
-                ["status", "Permanent, Contractual, COS, Job Order"],
-                ["salaryGrade", "Number (1-33)"],
-                ["annualSalary", "Number (Annual + Incentives)"],
-                ["personnelType", "Technical, Administrative, Support"]
-            );
         } else {
-            headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'particulars', 'amount'];
+            headers = [...commonHeaders, 'particulars', 'amount'];
             exampleData = [{ ...commonExample, particulars: 'Office Supplies Q1', amount: 15000 }];
-            instructions.push(
-                ["particulars", "Description"],
-                ["amount", "Number"]
-            );
         }
 
         const wb = XLSX.utils.book_new();
         const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
-
         XLSX.utils.book_append_sheet(wb, ws_data, "Data Template");
-        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
-
         XLSX.writeFile(wb, `${activeTab}_Upload_Template.xlsx`);
     };
 
@@ -444,7 +442,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 let currentIdStart = Date.now();
 
                 jsonData.forEach((row, index) => {
-                    // Basic check
                     if (!row.operatingUnit || !row.uacsCode) return;
 
                     const newId = currentIdStart + index;
@@ -461,33 +458,16 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         fundType: row.fundType || 'Current',
                         fundYear: Number(row.fundYear) || new Date().getFullYear(),
                         tier: row.tier || 'Tier 1',
-                        encodedBy: currentUser?.fullName || 'System Upload'
+                        encodedBy: currentUser?.fullName || 'System Upload',
+                        created_at: new Date().toISOString()
                     };
 
                     if (activeTab === 'Office') {
-                        newItems.push({
-                            ...commonData,
-                            equipment: row.equipment || '',
-                            specs: row.specs || '',
-                            purpose: row.purpose || '',
-                            numberOfUnits: Number(row.numberOfUnits) || 0,
-                            pricePerUnit: Number(row.pricePerUnit) || 0,
-                        } as OfficeRequirement);
+                        newItems.push(parseOfficeRequirementRow(row, commonData));
                     } else if (activeTab === 'Staffing') {
-                        newItems.push({
-                            ...commonData,
-                            personnelPosition: row.personnelPosition || '',
-                            status: row.status || 'Contractual',
-                            salaryGrade: Number(row.salaryGrade) || 1,
-                            annualSalary: Number(row.annualSalary) || 0,
-                            personnelType: row.personnelType || 'Technical'
-                        } as StaffingRequirement);
+                        newItems.push(parseStaffingRequirementRow(row, commonData));
                     } else {
-                        newItems.push({
-                            ...commonData,
-                            particulars: row.particulars || '',
-                            amount: Number(row.amount) || 0
-                        } as OtherProgramExpense);
+                        newItems.push(parseOtherExpenseRow(row, commonData));
                     }
                 });
 
@@ -512,219 +492,24 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         reader.readAsArrayBuffer(file);
     };
 
-    const TabButton: React.FC<{ tabName: typeof formTab; label: string }> = ({ tabName, label }) => {
-        const isActive = formTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setFormTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    };
-
-    const renderForm = () => (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-gray-800 dark:text-white">
-                    {editingItem ? 'Edit' : 'Add'} {activeTab === 'Office' ? 'Office Requirement' : activeTab === 'Staffing' ? 'Staffing Requirement' : 'Other Expense'}
-                </h3>
-                <button onClick={() => { setView('list'); setEditingItem(null); }} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">Cancel</button>
-            </div>
-            
-            <form onSubmit={handleFormSubmit}>
-                {editingItem && (
-                    <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                        <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
-                            <TabButton tabName="Details" label="Details" />
-                            <TabButton tabName="Accomplishment" label="Accomplishments" />
-                        </nav>
-                    </div>
-                )}
-
-                <div className="space-y-6">
-                    {(formTab === 'Details' || !editingItem) && (
-                        <>
-                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">General Information</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
-                                        <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={commonInputClasses}>
-                                            {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                                        </select>
-                                    </div>
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
-                                        <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
-                                        <select name="fundType" value={formData.fundType} onChange={handleInputChange as any} className={commonInputClasses}>
-                                            {fundTypes.map(ft => <option key={ft} value={ft}>{ft}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
-                                        <select name="tier" value={formData.tier} onChange={handleInputChange as any} className={commonInputClasses}>
-                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label>
-                                        <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label>
-                                        <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">UACS Classification</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
-                                        <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
-                                            {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label>
-                                        <select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(p => ({...p, uacsCode: ''})); }} className={commonInputClasses}>
-                                            <option value="">Select Particular</option>
-                                            {Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}
-                                        </select>
-                                    </div>
-                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
-                                        <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} disabled={!selectedParticular} className={commonInputClasses}>
-                                            <option value="">Select Code</option>
-                                            {selectedParticular && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
-                                                <option key={code} value={code}>{code} - {desc}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            </fieldset>
-
-                            <fieldset className="border border-gray-200 dark:border-gray-700 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Specific Details</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {activeTab === 'Office' && (
-                                        <>
-                                            <div><label className="block text-sm font-medium">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                            <div><label className="block text-sm font-medium">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                            <div className="md:col-span-2"><label className="block text-sm font-medium">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
-                                            <div><label className="block text-sm font-medium">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
-                                            <div><label className="block text-sm font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                            <div className="md:col-span-2 text-right font-bold text-lg mt-2">Total: {formatCurrency(formData.numberOfUnits * formData.pricePerUnit)}</div>
-                                        </>
-                                    )}
-                                     {activeTab === 'Staffing' && (
-                                        <>
-                                            <div><label className="block text-sm font-medium">Position</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                            <div>
-                                                <label className="block text-sm font-medium">Status</label>
-                                                <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
-                                                    <option value="Permanent">Permanent</option>
-                                                    <option value="Contractual">Contractual</option>
-                                                    <option value="COS">COS</option>
-                                                    <option value="Job Order">Job Order</option>
-                                                </select>
-                                            </div>
-                                            <div><label className="block text-sm font-medium">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
-                                            <div><label className="block text-sm font-medium">Annual Salary + Incentives</label><input type="number" name="annualSalary" value={formData.annualSalary} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                            <div>
-                                                <label className="block text-sm font-medium">Personnel Type</label>
-                                                <select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}>
-                                                    <option value="Technical">Technical</option>
-                                                    <option value="Administrative">Administrative</option>
-                                                    <option value="Support">Support</option>
-                                                </select>
-                                            </div>
-                                        </>
-                                    )}
-                                    {activeTab === 'Other' && (
-                                        <>
-                                             <div className="md:col-span-2"><label className="block text-sm font-medium">Particulars</label><textarea name="particulars" value={formData.particulars} onChange={handleInputChange} rows={3} required className={commonInputClasses} /></div>
-                                             <div><label className="block text-sm font-medium">Amount</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                        </>
-                                    )}
-                                </div>
-                            </fieldset>
-                        </>
-                    )}
-
-                    {formTab === 'Accomplishment' && editingItem && (
-                        <div className="space-y-6">
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Accomplishment</legend>
-                                
-                                {/* Obligation Section */}
-                                <div className="mb-4">
-                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Obligation</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-                                            <input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
-                                            <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Disbursement Section */}
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Disbursement</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
-                                            <input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Amount</label>
-                                            <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </div>
-                            </fieldset>
-                        </div>
-                    )}
-                </div>
-                
-                <div className="flex justify-end gap-4 mt-6">
-                    <button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-md text-sm font-medium">Cancel</button>
-                    <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:brightness-95">Save Record</button>
-                </div>
-            </form>
-        </div>
-    );
-
+    // --- Render ---
     return (
-        <div className="space-y-6">
-             {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div>
+            {/* Delete Modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete this item?</p>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">Are you sure you want to delete this item? This action cannot be undone.</p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700">Cancel</button>
-                            <button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* Multi Delete Modal */}
             {isMultiDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
@@ -741,51 +526,63 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 </div>
             )}
 
-            <div className="flex flex-wrap justify-between items-center gap-4">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Program Management</h2>
-                <div className="flex items-center gap-4">
-                    {canEdit && view === 'list' && (
-                         <button onClick={() => { setEditingItem(null); setView('form'); }} className="px-4 py-2 bg-accent text-white rounded-md font-medium hover:brightness-95 shadow-sm">
-                            + Add New {activeTab === 'Office' ? 'Item' : activeTab === 'Staffing' ? 'Personnel' : 'Expense'}
-                         </button>
-                    )}
-                </div>
-            </div>
+            {view === 'list' ? (
+                <>
+                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Program Management</h2>
+                        {canEdit && (
+                            <button onClick={() => setView('form')} className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium">
+                                + Add New Item
+                            </button>
+                        )}
+                    </div>
 
-            {view === 'list' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden">
-                     {/* Tabs & Filters */}
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-4">
-                        {/* Tabs */}
-                        <div className="flex space-x-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg w-fit">
-                            {(['Office', 'Staffing', 'Other'] as ActiveTab[]).map(tab => (
-                                <button
-                                    key={tab}
-                                    onClick={() => setActiveTab(tab)}
-                                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                                        activeTab === tab ? 'bg-white dark:bg-gray-700 shadow-sm text-accent dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                                    }`}
-                                >
-                                    {tab === 'Office' ? 'Office Requirements' : tab === 'Staffing' ? 'Staffing Requirements' : 'Other Expenses'}
-                                </button>
-                            ))}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
+                            <nav className="-mb-px flex space-x-8">
+                                {(['Office', 'Staffing', 'Other'] as ActiveTab[]).map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setActiveTab(tab)}
+                                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                            activeTab === tab
+                                                ? 'border-accent text-accent'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
+                                        }`}
+                                    >
+                                        {tab === 'Office' ? 'Office Requirements' : tab === 'Staffing' ? 'Staffing Requirements' : 'Other Expenses'}
+                                    </button>
+                                ))}
+                            </nav>
                         </div>
 
-                        {/* Filters & Actions */}
-                        <div className="flex flex-wrap justify-between items-center gap-4">
-                            <div className="flex gap-2">
-                                {canViewAll && (
-                                    <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <label htmlFor="ou-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
+                                    <select 
+                                        id="ou-filter" 
+                                        value={ouFilter} 
+                                        onChange={e => setOuFilter(e.target.value)} 
+                                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 sm:text-sm focus:outline-none focus:ring-accent focus:border-accent"
+                                    >
                                         <option value="All">All OUs</option>
                                         {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                     </select>
-                                )}
-                                <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className="px-3 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-sm">
-                                    <option value="All">All Years</option>
-                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label htmlFor="year-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Year:</label>
+                                    <select 
+                                        id="year-filter" 
+                                        value={yearFilter} 
+                                        onChange={e => setYearFilter(e.target.value)} 
+                                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 sm:text-sm focus:outline-none focus:ring-accent focus:border-accent"
+                                    >
+                                        <option value="All">All Years</option>
+                                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                </div>
                             </div>
-                            
                             <div className="flex items-center gap-2">
                                 {isSelectionMode && selectedIds.length > 0 && (
                                     <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
@@ -809,130 +606,178 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                                 )}
                             </div>
                         </div>
+
+                        {activeTab === 'Office' && (
+                            <OfficeRequirementsTable 
+                                items={getCurrentList() as OfficeRequirement[]} 
+                                canEdit={canEdit} 
+                                isSelectionMode={isSelectionMode} 
+                                selectedIds={selectedIds} 
+                                onSelectRow={handleSelectRow} 
+                                onEdit={handleEdit} 
+                                onDelete={handleDelete} 
+                            />
+                        )}
+                        {activeTab === 'Staffing' && (
+                            <StaffingRequirementsTable 
+                                items={getCurrentList() as StaffingRequirement[]} 
+                                canEdit={canEdit} 
+                                isSelectionMode={isSelectionMode} 
+                                selectedIds={selectedIds} 
+                                onSelectRow={handleSelectRow} 
+                                onEdit={handleEdit} 
+                                onDelete={handleDelete} 
+                            />
+                        )}
+                        {activeTab === 'Other' && (
+                            <OtherExpensesTable 
+                                items={getCurrentList() as OtherProgramExpense[]} 
+                                canEdit={canEdit} 
+                                isSelectionMode={isSelectionMode} 
+                                selectedIds={selectedIds} 
+                                onSelectRow={handleSelectRow} 
+                                onEdit={handleEdit} 
+                                onDelete={handleDelete} 
+                            />
+                        )}
+                    </div>
+                </>
+            ) : (
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
+                            {editingItem ? 'Edit Item' : 'Add New Item'} ({activeTab === 'Office' ? 'Office Requirement' : activeTab === 'Staffing' ? 'Staffing Requirement' : 'Other Expense'})
+                        </h3>
+                        <button onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-md text-sm font-medium">Back to List</button>
                     </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                            <thead className="bg-gray-50 dark:bg-gray-700/50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
-                                    
-                                    {activeTab === 'Office' && (
-                                        <>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Equipment</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Specs/Purpose</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Units</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
-                                        </>
-                                    )}
-                                    {activeTab === 'Staffing' && (
-                                        <>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Position</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Annual Salary</th>
-                                        </>
-                                    )}
-                                    {activeTab === 'Other' && (
-                                        <>
-                                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Particulars</th>
-                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount</th>
-                                        </>
-                                    )}
+                    <form onSubmit={handleFormSubmit} className="space-y-6">
+                        <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
+                            <nav className="-mb-px flex space-x-8">
+                                <button type="button" onClick={() => setFormTab('Details')} className={`pb-2 px-1 border-b-2 font-medium text-sm ${formTab === 'Details' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Details</button>
+                                <button type="button" onClick={() => setFormTab('Accomplishment')} className={`pb-2 px-1 border-b-2 font-medium text-sm ${formTab === 'Accomplishment' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Accomplishment</button>
+                            </nav>
+                        </div>
 
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                        {isSelectionMode ? (
-                                            <div className="flex items-center justify-end gap-2">
-                                                <span className="text-xs">Select All</span>
-                                                <input 
-                                                    type="checkbox" 
-                                                    onChange={handleSelectAll} 
-                                                    checked={currentList.length > 0 && currentList.every(i => selectedIds.includes(i.id))}
-                                                    className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                />
-                                            </div>
-                                        ) : (
-                                            "Actions"
-                                        )}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                {currentList.length === 0 ? (
-                                    <tr><td colSpan={10} className="px-6 py-4 text-center text-gray-500">No records found.</td></tr>
-                                ) : (
-                                    currentList.map((item: any) => (
-                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
-                                            
-                                            {activeTab === 'Office' && (
-                                                <>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.equipment}</td>
-                                                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">
-                                                        <div className="truncate w-48" title={item.specs}>{item.specs}</div>
-                                                        <div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
-                                                </>
-                                            )}
-                                             {activeTab === 'Staffing' && (
-                                                <>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                                        {item.personnelPosition}
-                                                        <div className="text-xs text-gray-400">SG-{item.salaryGrade}</div>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.status}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.personnelType}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.annualSalary)}</td>
-                                                </>
-                                            )}
-                                            {activeTab === 'Other' && (
-                                                <>
-                                                     <td className="px-6 py-4 text-sm text-gray-900 dark:text-white"><div className="truncate w-64" title={item.particulars}>{item.particulars}</div></td>
-                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
-                                                </>
-                                            )}
+                        {formTab === 'Details' && (
+                            <div className="space-y-6">
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Classification & Fund</legend>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
+                                            <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled={!canViewAll}>
+                                                {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
+                                            <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
+                                            <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                                {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
+                                            <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 border-t pt-4 border-gray-200 dark:border-gray-700">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
+                                            <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); }} className={commonInputClasses}>
+                                                {objectTypes.map(ot => <option key={ot} value={ot}>{ot}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expense Class</label>
+                                            <select value={selectedParticular} onChange={e => setSelectedParticular(e.target.value)} className={commonInputClasses}>
+                                                <option value="">Select Class</option>
+                                                {Object.keys(uacsCodes[selectedObjectType]).map(k => <option key={k} value={k}>{k}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                                            <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}>
+                                                <option value="">Select UACS</option>
+                                                {selectedParticular && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
+                                                    <option key={code} value={code}>{code} - {desc}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date (Target)</label>
+                                            <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date (Target)</label>
+                                            <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </fieldset>
 
-                                            <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-                                                <div>{item.fundType} {item.fundYear}</div>
-                                                <div>{item.tier}</div>
-                                                <div className="mt-1 text-xs font-mono">{item.uacsCode}</div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                 {canEdit && (
-                                                    <>
-                                                        {isSelectionMode ? (
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={selectedIds.includes(item.id)} 
-                                                                onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                            />
-                                                        ) : (
-                                                            <>
-                                                                <button onClick={() => { setEditingItem(item); setView('form'); }} className="text-accent hover:text-green-900 mr-3">Edit</button>
-                                                                <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
-                                                            </>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Item Details</legend>
+                                    {activeTab === 'Office' && <OfficeRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                                    {activeTab === 'Staffing' && <StaffingRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                                    {activeTab === 'Other' && <OtherExpensesFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                                </fieldset>
+                            </div>
+                        )}
+
+                        {formTab === 'Accomplishment' && (
+                            <div className="space-y-6">
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label>
+                                            <input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount/Units</label>
+                                            <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </fieldset>
+                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Accomplishment</legend>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
+                                            <input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
+                                            <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label>
+                                            <input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label>
+                                            <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <button type="button" onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-md text-sm font-medium">Cancel</button>
+                            <button type="submit" className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md text-sm font-medium">Save Item</button>
+                        </div>
+                    </form>
                 </div>
             )}
-
-            {view === 'form' && renderForm()}
         </div>
     );
 };

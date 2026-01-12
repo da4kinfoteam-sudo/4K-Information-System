@@ -25,25 +25,27 @@ const Login: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
+        <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
             <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full">
-                <div className="flex flex-col items-center mb-6">
-                    <img 
-                        src="/logo.png" 
-                        alt="DA 4K Logo" 
-                        className="h-20 w-20 mb-2"
-                    />
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">4K Information System</h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Please sign in to continue</p>
+                <div className="flex flex-col items-center mb-8">
+                    <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm">
+                        <img 
+                            src="/assets/4klogo.png" 
+                            alt="DA 4K Logo" 
+                            className="h-24 w-24 object-contain"
+                        />
+                    </div>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white text-center">4K Information System</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Please sign in to continue</p>
                 </div>
                 
                 {error && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6 text-sm" role="alert">
                         <span className="block sm:inline">{error}</span>
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address or Username</label>
                         <input 
@@ -66,7 +68,7 @@ const Login: React.FC = () => {
                     </div>
                     <button 
                         type="submit" 
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-accent hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-accent hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent transition-colors duration-200"
                     >
                         Sign In
                     </button>
