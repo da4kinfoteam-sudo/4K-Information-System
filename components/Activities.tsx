@@ -1,5 +1,6 @@
+
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { Training, OtherActivity, IPO, philippineRegions, OtherActivityComponentType, otherActivityComponents, otherActivityOptions, OtherActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, TrainingComponentType, operatingUnits } from '../constants';
+import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, otherActivityOptions, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,16 +9,11 @@ declare const XLSX: any;
 
 interface ActivitiesProps {
     ipos: IPO[];
-    trainings: Training[];
-    setTrainings: React.Dispatch<React.SetStateAction<Training[]>>;
-    otherActivities: OtherActivity[];
-    setOtherActivities: React.Dispatch<React.SetStateAction<OtherActivity[]>>;
+    activities: Activity[];
+    setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
-
-// Unified type for list view
-type CombinedActivity = (Training & { type: 'Training' }) | (OtherActivity & { type: 'Activity', facilitator: string | undefined });
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -25,9 +21,10 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const defaultFormData = {
+const defaultFormData: Activity = {
     id: 0,
     uid: '',
+    type: 'Activity', // Default type
     name: '',
     date: '',
     description: '',
@@ -36,8 +33,8 @@ const defaultFormData = {
     participatingIpos: [] as string[],
     participantsMale: 0,
     participantsFemale: 0,
-    component: 'Social Preparation' as OtherActivityComponentType, // Shared type base
-    expenses: [] as OtherActivityExpense[],
+    component: 'Social Preparation' as ActivityComponentType,
+    expenses: [] as ActivityExpense[],
     fundingYear: new Date().getFullYear(),
     fundType: fundTypes[0] as FundType,
     tier: tiers[0] as Tier,
@@ -50,12 +47,12 @@ const defaultFormData = {
     actualParticipantsFemale: 0
 };
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings, setTrainings, otherActivities, setOtherActivities, onSelectIpo, uacsCodes }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes }) => {
     const { currentUser } = useAuth();
-    const [formData, setFormData] = useState(defaultFormData);
-    const [editingItem, setEditingItem] = useState<CombinedActivity | null>(null);
+    const [formData, setFormData] = useState<Activity>(defaultFormData);
+    const [editingItem, setEditingItem] = useState<Activity | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<CombinedActivity | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
     const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
@@ -63,20 +60,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
     // Multi-Delete State
     const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [ouFilter, setOuFilter] = useState('All');
-    const [componentFilter, setComponentFilter] = useState<OtherActivityComponentType | 'All'>('All');
+    const [componentFilter, setComponentFilter] = useState<ActivityComponentType | 'All'>('All');
     const [typeFilter, setTypeFilter] = useState<'All' | 'Training' | 'Activity'>('All');
 
     // Sorting
-    type SortKeys = keyof CombinedActivity | 'totalParticipants' | 'budget';
+    type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     
-    const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+    const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -156,41 +153,39 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         return [...base, trainingOption];
     }, [formData.component]);
 
-    // Combine and process list data
+    // Process list data
     const processedActivities = useMemo(() => {
-        const t = trainings.map(x => ({ ...x, type: 'Training' as const }));
-        const o = otherActivities.map(x => ({ ...x, type: 'Activity' as const, facilitator: undefined }));
-        let combined: CombinedActivity[] = [...t, ...o];
+        let filtered = [...activities];
 
         // OU Filtering
         if (!canViewAll && currentUser) {
-            combined = combined.filter(a => a.operatingUnit === currentUser.operatingUnit);
+            filtered = filtered.filter(a => a.operatingUnit === currentUser.operatingUnit);
         } else if (canViewAll && ouFilter !== 'All') {
-            combined = combined.filter(a => a.operatingUnit === ouFilter);
+            filtered = filtered.filter(a => a.operatingUnit === ouFilter);
         }
 
         if (componentFilter !== 'All') {
-            combined = combined.filter(activity => activity.component === componentFilter);
+            filtered = filtered.filter(activity => activity.component === componentFilter);
         }
 
         if (typeFilter !== 'All') {
-            combined = combined.filter(activity => activity.type === typeFilter);
+            filtered = filtered.filter(activity => activity.type === typeFilter);
         }
 
         if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
-            combined = combined.filter(t =>
+            filtered = filtered.filter(t =>
                 t.name.toLowerCase().includes(lowercasedSearchTerm) ||
                 t.location.toLowerCase().includes(lowercasedSearchTerm) ||
                 t.description.toLowerCase().includes(lowercasedSearchTerm) ||
-                (t.type === 'Training' && t.facilitator.toLowerCase().includes(lowercasedSearchTerm)) ||
+                (t.type === 'Training' && t.facilitator?.toLowerCase().includes(lowercasedSearchTerm)) ||
                 t.operatingUnit.toLowerCase().includes(lowercasedSearchTerm) ||
                 (t.uid && t.uid.toLowerCase().includes(lowercasedSearchTerm))
             );
         }
 
         if (sortConfig !== null) {
-            combined.sort((a, b) => {
+            filtered.sort((a, b) => {
                 let aValue: any;
                 let bValue: any;
 
@@ -202,8 +197,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     bValue = b.expenses.reduce((sum, e) => sum + e.amount, 0);
                 }
                 else {
-                    aValue = a[sortConfig.key as keyof CombinedActivity];
-                    bValue = b[sortConfig.key as keyof CombinedActivity];
+                    aValue = a[sortConfig.key as keyof Activity];
+                    bValue = b[sortConfig.key as keyof Activity];
                 }
 
                 if (aValue < bValue) {
@@ -215,8 +210,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 return 0;
             });
         }
-        return combined;
-    }, [trainings, otherActivities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll]);
+        return filtered;
+    }, [activities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll]);
 
     const paginatedActivities = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
@@ -237,16 +232,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         setSortConfig({ key, direction });
     };
     
-    const handleToggleRow = (activityId: number, type: 'Training' | 'Activity') => {
-        const key = `${type}-${activityId}`;
-        setExpandedRowId(prevId => (prevId === key ? null : key));
+    const handleToggleRow = (activityId: number) => {
+        setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
     };
 
     // --- Multi-Delete Handlers ---
     const handleToggleSelectionMode = () => {
         if (isSelectionMode) {
             setIsSelectionMode(false);
-            setSelectedKeys([]);
+            setSelectedIds([]);
         } else {
             setIsSelectionMode(true);
         }
@@ -254,35 +248,28 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
-            const keys = paginatedActivities.map(a => `${a.type}-${a.id}`);
-            setSelectedKeys(prev => Array.from(new Set([...prev, ...keys])));
+            const keys = paginatedActivities.map(a => a.id);
+            setSelectedIds(prev => Array.from(new Set([...prev, ...keys])));
         } else {
-            const keysToRemove = new Set(paginatedActivities.map(a => `${a.type}-${a.id}`));
-            setSelectedKeys(prev => prev.filter(k => !keysToRemove.has(k)));
+            const keysToRemove = new Set(paginatedActivities.map(a => a.id));
+            setSelectedIds(prev => prev.filter(k => !keysToRemove.has(k)));
         }
     };
 
-    const handleSelectRow = (key: string) => {
-        setSelectedKeys(prev => {
-            if (prev.includes(key)) return prev.filter(k => k !== key);
-            return [...prev, key];
+    const handleSelectRow = (id: number) => {
+        setSelectedIds(prev => {
+            if (prev.includes(id)) return prev.filter(k => k !== id);
+            return [...prev, id];
         });
     };
 
     const confirmMultiDelete = () => {
-        const trainingIds = selectedKeys.filter(k => k.startsWith('Training-')).map(k => Number(k.split('-')[1]));
-        const activityIds = selectedKeys.filter(k => k.startsWith('Activity-')).map(k => Number(k.split('-')[1]));
-
-        if (trainingIds.length > 0) {
-            setTrainings(prev => prev.filter(t => !trainingIds.includes(t.id)));
+        if (selectedIds.length > 0) {
+            setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
         }
-        if (activityIds.length > 0) {
-            setOtherActivities(prev => prev.filter(a => !activityIds.includes(a.id)));
-        }
-        
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
-        setSelectedKeys([]);
+        setSelectedIds([]);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -299,19 +286,24 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const value = e.target.value;
         setSelectedActivityType(value);
+        
+        let newType: 'Training' | 'Activity' = 'Activity';
+        let newName = '';
+
         if (value.endsWith(' Training')) {
+            newType = 'Training';
             // If switching to training type
             if (editingItem && editingItem.type === 'Training' && value === `${editingItem.component} Training`) {
                 // If editing and same type, restore original name
-                setFormData(prev => ({ ...prev, name: editingItem.name }));
-            } else {
-                // Otherwise clear name for input
-                setFormData(prev => ({ ...prev, name: '' }));
-            }
+                newName = editingItem.name;
+            } 
         } else {
+            newType = 'Activity';
             // Not a training, name IS the type
-            setFormData(prev => ({ ...prev, name: value }));
+            newName = value;
         }
+        
+        setFormData(prev => ({ ...prev, type: newType, name: newName }));
     };
     
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -335,7 +327,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
             alert('Please fill out all expense fields, including UACS classification.');
             return;
         }
-        const newExpense: OtherActivityExpense = {
+        const newExpense: ActivityExpense = {
             id: Date.now(),
             objectType: currentExpense.objectType,
             expenseParticular: currentExpense.expenseParticular,
@@ -359,7 +351,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
     };
 
-    const handleExpenseAccomplishmentChange = (id: number, field: keyof OtherActivityExpense, value: any) => {
+    const handleExpenseAccomplishmentChange = (id: number, field: keyof ActivityExpense, value: any) => {
         setFormData(prev => ({
             ...prev,
             expenses: prev.expenses.map(e => e.id === id ? { ...e, [field]: value } : e)
@@ -375,36 +367,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
 
         // If editing:
         if (editingItem) {
-            if (isTrainingForm) {
-                // Check if we need to move it from OtherActivities to Trainings (rare case of rename)
-                const updatedTraining: Training = {
-                    ...formData,
-                    component: formData.component as TrainingComponentType, // Cast is safe due to unified types
-                    id: editingItem.id
-                };
-                if (editingItem.type === 'Training') {
-                    setTrainings(prev => prev.map(t => t.id === editingItem.id ? updatedTraining : t));
-                } else {
-                     // Move from OtherActivity to Training (delete old, add new)
-                     setOtherActivities(prev => prev.filter(a => a.id !== editingItem.id));
-                     setTrainings(prev => [...prev, updatedTraining]);
-                }
-            } else {
-                const updatedActivity: OtherActivity = {
-                    ...formData,
-                     id: editingItem.id
-                };
-                 if (editingItem.type === 'Activity') {
-                    setOtherActivities(prev => prev.map(a => a.id === editingItem.id ? updatedActivity : a));
-                } else {
-                     // Move from Training to OtherActivity
-                     setTrainings(prev => prev.filter(t => t.id !== editingItem.id));
-                     setOtherActivities(prev => [...prev, updatedActivity]);
-                }
-            }
+            const updatedActivity: Activity = {
+                ...formData,
+                id: editingItem.id
+            };
+            setActivities(prev => prev.map(a => a.id === editingItem.id ? updatedActivity : a));
         } else {
             // New Item
-            const newId = Math.max(...trainings.map(t => t.id), ...otherActivities.map(a => a.id), 0) + 1;
+            const newId = Math.max(...activities.map(a => a.id), 0) + 1;
             const currentYear = new Date().getFullYear();
             let uid = formData.uid;
             if (!uid) {
@@ -413,28 +383,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 uid = `${prefix}-${currentYear}-${sequence}`;
             }
 
-            if (isTrainingForm) {
-                 const newTraining: Training = {
-                    ...formData,
-                    uid,
-                    component: formData.component as TrainingComponentType,
-                    id: newId,
-                };
-                setTrainings(prev => [newTraining, ...prev]);
-            } else {
-                const newActivity: OtherActivity = {
-                    ...formData,
-                    uid,
-                    id: newId,
-                };
-                setOtherActivities(prev => [newActivity, ...prev]);
-            }
+            const newActivity: Activity = {
+                ...formData,
+                uid,
+                id: newId,
+            };
+            setActivities(prev => [newActivity, ...prev]);
         }
         
         handleCancelEdit();
     };
 
-    const handleEditClick = (activity: CombinedActivity) => {
+    const handleEditClick = (activity: Activity) => {
         setEditingItem(activity);
         setView('edit');
     };
@@ -452,18 +412,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
         setView('list');
     };
 
-    const handleDeleteClick = (activity: CombinedActivity) => {
+    const handleDeleteClick = (activity: Activity) => {
         setItemToDelete(activity);
         setIsDeleteModalOpen(true);
     };
 
     const confirmDelete = () => {
         if (itemToDelete) {
-            if (itemToDelete.type === 'Training') {
-                setTrainings(prev => prev.filter(p => p.id !== itemToDelete.id));
-            } else {
-                setOtherActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
-            }
+            setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
         }
@@ -572,29 +528,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 expense_obligationMonth: '2024-03-01',
                 expense_disbursementMonth: '2024-03-20',
                 expense_amount: 25000
-            },
-             {
-                uid: 'TRN-2024-001',
-                type: 'Training',
-                component: 'Social Preparation',
-                name: 'Basic Leadership Training',
-                date: '2024-03-15',
-                province: 'Rizal',
-                municipality: 'Tanay',
-                facilitator: 'John Doe',
-                description: 'Leadership skills training.',
-                participatingIpos: 'San Isidro Farmers Association',
-                participantsMale: 10,
-                participantsFemale: 15,
-                fundingYear: 2024,
-                fundType: 'Current',
-                tier: 'Tier 1',
-                expense_objectType: 'MOOE',
-                expense_particular: 'Other Supplies',
-                expense_uacsCode: '50203990-00',
-                expense_obligationMonth: '2024-03-05',
-                expense_disbursementMonth: '2024-03-25',
-                expense_amount: 5000
             }
         ];
 
@@ -618,8 +551,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-                let currentTrainingId = trainings.reduce((max, t) => Math.max(max, t.id), 0);
-                let currentActivityId = otherActivities.reduce((max, a) => Math.max(max, a.id), 0);
+                let currentId = activities.reduce((max, a) => Math.max(max, a.id), 0);
                 const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
 
                 const groupedData = new Map<string, any>();
@@ -682,32 +614,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     }
                 });
 
-                const newTrainings: Training[] = [];
-                const newActivities: OtherActivity[] = [];
+                const newActivities: Activity[] = [];
 
                 groupedData.forEach((group) => {
-                    if (group.common.type === 'Training') {
-                        currentTrainingId++;
-                        newTrainings.push({
-                            id: currentTrainingId,
-                            ...group.common,
-                            expenses: group.expenses,
-                        });
-                    } else {
-                        currentActivityId++;
-                        const { facilitator, ...activityCommon } = group.common; // Remove facilitator from Activity
-                        newActivities.push({
-                            id: currentActivityId,
-                            ...activityCommon,
-                            expenses: group.expenses,
-                        });
-                    }
+                    currentId++;
+                    newActivities.push({
+                        id: currentId,
+                        ...group.common,
+                        expenses: group.expenses,
+                    });
                 });
 
-                if (newTrainings.length > 0) setTrainings(prev => [...prev, ...newTrainings]);
-                if (newActivities.length > 0) setOtherActivities(prev => [...prev, ...newActivities]);
+                if (newActivities.length > 0) setActivities(prev => [...prev, ...newActivities]);
 
-                alert(`${newTrainings.length} trainings and ${newActivities.length} other activities imported successfully!`);
+                alert(`${newActivities.length} activities imported successfully!`);
 
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -762,9 +682,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     </div>
                     <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
-                        {isSelectionMode && selectedKeys.length > 0 && (
+                        {isSelectionMode && selectedIds.length > 0 && (
                             <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                                Delete Selected ({selectedKeys.length})
+                                Delete Selected ({selectedIds.length})
                             </button>
                         )}
                         <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
@@ -804,7 +724,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                             <input 
                                                 type="checkbox" 
                                                 onChange={handleSelectAll} 
-                                                checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedKeys.includes(`${a.type}-${a.id}`))}
+                                                checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedIds.includes(a.id))}
                                                 className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                             />
                                         </div>
@@ -818,11 +738,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                             {paginatedActivities.map((activity) => {
                                 const totalActivityBudget = activity.expenses.reduce((sum, e) => sum + e.amount, 0);
                                 const totalParticipants = activity.participantsMale + activity.participantsFemale;
-                                const rowKey = `${activity.type}-${activity.id}`;
+                                
                                 return (
-                                <React.Fragment key={rowKey}>
-                                    <tr onClick={() => handleToggleRow(activity.id, activity.type)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === rowKey ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
+                                <React.Fragment key={activity.id}>
+                                    <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === activity.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
                                             {activity.name}
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
@@ -839,8 +759,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                                     {isSelectionMode && (
                                                         <input 
                                                             type="checkbox" 
-                                                            checked={selectedKeys.includes(rowKey)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(rowKey); }} 
+                                                            checked={selectedIds.includes(activity.id)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(activity.id); }} 
                                                             onClick={(e) => e.stopPropagation()}
                                                             className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                                         />
@@ -851,7 +771,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                                             )}
                                         </td>
                                     </tr>
-                                     {expandedRowId === rowKey && (
+                                     {expandedRowId === activity.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
                                             <td colSpan={9} className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1181,7 +1101,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, trainings
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
                         <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedKeys.length}</strong> selected item(s)? 
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected item(s)? 
                             This action cannot be undone.
                         </p>
                         <div className="flex justify-end gap-4">

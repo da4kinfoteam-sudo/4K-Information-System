@@ -2,7 +2,7 @@
 // Author: AI
 // OS support: Any
 import { 
-    Subproject, Training, OtherActivity, OfficeRequirement, 
+    Subproject, Activity, OfficeRequirement, 
     StaffingRequirement, OtherProgramExpense, initialUacsCodes, 
     initialParticularTypes, ReferenceUacs, ReferenceParticular 
 } from './constants';
@@ -89,7 +89,7 @@ export const sampleSubprojects: Subproject[] = [
         packageType: "Package 2",
         startDate: "2024-01-05",
         estimatedCompletionDate: "2024-04-30",
-        actualCompletionDate: "2024-03-05",
+        actualCompletionDate: "2024-03-05", // Actual completion in 2024
         lat: 8.1574,
         lng: 125.1277,
         fundingYear: 2024,
@@ -157,7 +157,7 @@ export const sampleSubprojects: Subproject[] = [
         location: "La Trinidad, Benguet",
         indigenousPeopleOrganization: "Igorot Organic Farmers",
         ipo_id: 6,
-        status: "Ongoing",
+        status: "Completed",
         details: [
             { id: 7, type: "Crop Commodity", particulars: "Assorted Vegetable Seeds", deliveryDate: "2024-02-15", unitOfMeasure: "packs", pricePerUnit: 150, numberOfUnits: 200, objectType: "MOOE", expenseParticular: "Agricultural and Marine Supplies Expenses", uacsCode: "50203080-00", obligationMonth: "2024-01-30", disbursementMonth: "2024-02-28", actualDeliveryDate: "2024-02-10", actualAmount: 30000, actualObligationDate: "2024-02-01", actualDisbursementDate: "2024-02-25" },
             { id: 8, type: "Crop Commodity", particulars: "Organic Fertilizer", deliveryDate: "2024-02-15", unitOfMeasure: "bags", pricePerUnit: 800, numberOfUnits: 100, objectType: "MOOE", expenseParticular: "Agricultural and Marine Supplies Expenses", uacsCode: "50203080-00", obligationMonth: "2024-01-30", disbursementMonth: "2024-02-28" }
@@ -166,6 +166,7 @@ export const sampleSubprojects: Subproject[] = [
         packageType: "Package 2",
         startDate: "2024-01-15",
         estimatedCompletionDate: "2024-06-30",
+        actualCompletionDate: "2024-05-15", // Actual completion
         lat: 16.4568,
         lng: 120.5896,
         fundingYear: 2024,
@@ -303,11 +304,12 @@ export const sampleSubprojects: Subproject[] = [
     }
 ];
 
-// --- Sample Data: Trainings (10 Entries) ---
-export const sampleTrainings: Training[] = [
+// --- Sample Data: Activities (Trainings & Others Unified) ---
+export const sampleActivities: Activity[] = [
     {
         id: 1,
         uid: "TRN-2024-001",
+        type: 'Training',
         name: "Social Preparation Training",
         date: "2024-01-20",
         description: "Community organizing and leadership basics for IPO members.",
@@ -337,6 +339,7 @@ export const sampleTrainings: Training[] = [
     {
         id: 2,
         uid: "TRN-2024-002",
+        type: 'Training',
         name: "Abaca Fiber Quality Management",
         date: "2024-02-15",
         description: "Training on stripping and grading abaca fiber.",
@@ -357,12 +360,14 @@ export const sampleTrainings: Training[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO 10",
         encodedBy: "Admin User",
+        actualDate: "2024-02-18", // Actual date
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
         id: 3,
         uid: "TRN-2024-003",
+        type: 'Training',
         name: "Cacao Fermentation Techniques",
         date: "2024-06-10",
         description: "Post-harvest processing for cacao.",
@@ -389,6 +394,7 @@ export const sampleTrainings: Training[] = [
     {
         id: 4,
         uid: "TRN-2024-004",
+        type: 'Training',
         name: "Financial Literacy Workshop",
         date: "2024-03-05",
         description: "Basic bookkeeping and financial management.",
@@ -409,12 +415,14 @@ export const sampleTrainings: Training[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO 4A",
         encodedBy: "Admin User",
+        actualDate: "2024-03-05",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
         id: 5,
         uid: "TRN-2024-005",
+        type: 'Training',
         name: "Weaving Design and Marketing",
         date: "2024-07-20",
         description: "Modernizing weaving designs and market trends.",
@@ -441,6 +449,7 @@ export const sampleTrainings: Training[] = [
     {
         id: 6,
         uid: "TRN-2024-006",
+        type: 'Training',
         name: "Organic Vegetable Farming",
         date: "2024-04-10",
         description: "Principles of organic agriculture.",
@@ -461,12 +470,14 @@ export const sampleTrainings: Training[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO CAR",
         encodedBy: "Admin User",
+        actualDate: "2024-04-12",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
         id: 7,
         uid: "TRN-2024-007",
+        type: 'Training',
         name: "Poultry Management",
         date: "2024-08-05",
         description: "Health management and feeding for native chicken.",
@@ -493,6 +504,7 @@ export const sampleTrainings: Training[] = [
     {
         id: 8,
         uid: "TRN-2024-008",
+        type: 'Training',
         name: "Root Crops Value Addition",
         date: "2024-09-15",
         description: "Processing sweet potato into chips and flour.",
@@ -519,6 +531,7 @@ export const sampleTrainings: Training[] = [
     {
         id: 9,
         uid: "TRN-2024-009",
+        type: 'Training',
         name: "Enterprise Development Workshop",
         date: "2023-10-25",
         description: "Business planning for handicraft souvenir shop.",
@@ -545,12 +558,13 @@ export const sampleTrainings: Training[] = [
     {
         id: 10,
         uid: "TRN-2024-010",
+        type: 'Training',
         name: "Project Management Training for RPMO",
         date: "2024-01-15",
         description: "Training for regional staff on 4K program implementation.",
         location: "Quezon City (NCR)",
         facilitator: "NPMO Head",
-        participatingIpos: [], // Staff training
+        participatingIpos: [],
         participating_ipo_ids: [],
         lat: 14.6460,
         lng: 121.0560,
@@ -570,14 +584,11 @@ export const sampleTrainings: Training[] = [
         actualParticipantsFemale: 15,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-    }
-];
-
-// --- Sample Data: Other Activities (10 Entries) ---
-export const sampleOtherActivities: OtherActivity[] = [
+    },
     {
-        id: 1,
+        id: 11,
         uid: "ACT-2024-001",
+        type: 'Activity',
         component: "Social Preparation",
         name: "Meetings",
         date: "2024-01-10",
@@ -602,8 +613,9 @@ export const sampleOtherActivities: OtherActivity[] = [
         updated_at: new Date().toISOString()
     },
     {
-        id: 2,
+        id: 12,
         uid: "ACT-2024-002",
+        type: 'Activity',
         component: "Social Preparation",
         name: "IPO Registration Drive (RSBSA, SEC, DOLE, CDA)",
         date: "2024-02-20",
@@ -621,12 +633,14 @@ export const sampleOtherActivities: OtherActivity[] = [
         tier: "Tier 2",
         operatingUnit: "RPMO 13",
         encodedBy: "Bae Aida",
+        actualDate: "2024-02-22",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
-        id: 3,
+        id: 13,
         uid: "ACT-2024-003",
+        type: 'Activity',
         component: "Program Management",
         name: "Sub-Project Monitoring",
         date: "2024-03-15",
@@ -644,12 +658,14 @@ export const sampleOtherActivities: OtherActivity[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO 4A",
         encodedBy: "Juan Dela Cruz",
+        actualDate: "2024-03-15",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
-        id: 4,
+        id: 14,
         uid: "ACT-2024-004",
+        type: 'Activity',
         component: "Marketing and Enterprise",
         name: "Market Linkaging",
         date: "2024-04-05",
@@ -667,12 +683,14 @@ export const sampleOtherActivities: OtherActivity[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO 10",
         encodedBy: "Admin User",
+        actualDate: "2024-04-05",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
-        id: 5,
+        id: 15,
         uid: "ACT-2024-005",
+        type: 'Activity',
         component: "Social Preparation",
         name: "Community Needs Assessment",
         date: "2024-01-25",
@@ -690,12 +708,14 @@ export const sampleOtherActivities: OtherActivity[] = [
         tier: "Tier 2",
         operatingUnit: "RPMO 3",
         encodedBy: "Kapitan Tubig",
+        actualDate: "2024-01-28",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
-        id: 6,
+        id: 16,
         uid: "ACT-2024-006",
+        type: 'Activity',
         component: "Program Management",
         name: "Performance and Budget Utilization Review (PBUR)",
         date: "2024-06-25",
@@ -717,8 +737,9 @@ export const sampleOtherActivities: OtherActivity[] = [
         updated_at: new Date().toISOString()
     },
     {
-        id: 7,
+        id: 17,
         uid: "ACT-2024-007",
+        type: 'Activity',
         component: "Social Preparation",
         name: "Profiling",
         date: "2024-02-10",
@@ -736,12 +757,14 @@ export const sampleOtherActivities: OtherActivity[] = [
         tier: "Tier 1",
         operatingUnit: "RPMO 12",
         encodedBy: "Admin User",
+        actualDate: "2024-02-10",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
     {
-        id: 8,
+        id: 18,
         uid: "ACT-2024-008",
+        type: 'Activity',
         component: "Program Management",
         name: "Planning and BEDS Preparation",
         date: "2023-11-15",
@@ -763,8 +786,9 @@ export const sampleOtherActivities: OtherActivity[] = [
         updated_at: new Date().toISOString()
     },
     {
-        id: 9,
+        id: 19,
         uid: "ACT-2024-009",
+        type: 'Activity',
         component: "Social Preparation",
         name: "Review and Planning Workshop",
         date: "2024-05-20",
@@ -786,8 +810,9 @@ export const sampleOtherActivities: OtherActivity[] = [
         updated_at: new Date().toISOString()
     },
     {
-        id: 10,
+        id: 20,
         uid: "ACT-2024-010",
+        type: 'Activity',
         component: "Marketing and Enterprise",
         name: "Trade and Promotional Activity",
         date: "2024-08-15",
@@ -853,6 +878,7 @@ export const sampleOfficeRequirements: OfficeRequirement[] = [
         numberOfUnits: 1,
         pricePerUnit: 12000,
         encodedBy: "Admin User",
+        actualDate: "2024-03-05",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },
@@ -1053,6 +1079,7 @@ export const sampleStaffingRequirements: StaffingRequirement[] = [
         annualSalary: 324000,
         personnelType: "Technical",
         encodedBy: "Admin User",
+        actualDate: "2024-01-31",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
     },

@@ -1,5 +1,6 @@
+
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Training, philippineRegions, Commodity, commodityTypes } from '../constants';
+import { IPO, Subproject, Activity, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
@@ -9,7 +10,7 @@ interface IPOsProps {
     ipos: IPO[];
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     subprojects: Subproject[];
-    trainings: Training[];
+    activities: Activity[];
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
@@ -41,7 +42,7 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSelectIpo, onSelectSubproject, particularTypes }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes }) => {
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);
@@ -73,6 +74,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         isScad: false,
     });
 
+    // Calculate derived data from activities
     const calculateTotalInvestment = useMemo(() => {
         const investmentMap = new Map<string, number>();
 
@@ -85,8 +87,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
             }
         });
 
-        // Calculate from trainings
-        trainings.forEach(t => {
+        // Calculate from trainings (filtered from activities)
+        activities.filter(a => a.type === 'Training').forEach(t => {
             const cost = t.expenses.reduce((s, e) => s + e.amount, 0);
             t.participatingIpos.forEach(ipoName => {
                 const currentInvestment = investmentMap.get(ipoName) || 0;
@@ -95,7 +97,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
         });
 
         return (ipoName: string) => investmentMap.get(ipoName) || 0;
-    }, [subprojects, trainings]);
+    }, [subprojects, activities]);
 
     useEffect(() => {
         if (editingIpo) {
@@ -431,6 +433,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
       )
     }
 
+    // Filter activities for display
+    const linkedTrainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
+
     const handleDownloadReport = () => {
         const dataToExport = processedIpos.map(ipo => ({
             'Name': ipo.name,
@@ -621,56 +626,31 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                 className={`w-full md:w-auto ${commonInputClasses} mt-0`}
                             />
                             <div className="flex items-center gap-2">
-                               <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                                <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                                <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
                                     <option value="All">All Regions</option>
-                                    {philippineRegions.map(region => (
-                                        <option key={region} value={region}>{region}</option>
-                                    ))}
+                                    {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                 </select>
                             </div>
                             <div className="flex items-center gap-2">
-                               <label htmlFor="commodityFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Commodity:</label>
-                                <select id="commodityFilter" value={commodityFilter} onChange={(e) => setCommodityFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                    <option value="All">All</option>
-                                    {allCommodities.map(commodity => (
-                                        <option key={commodity} value={commodity}>{commodity}</option>
-                                    ))}
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Commodity:</label>
+                                <select value={commodityFilter} onChange={(e) => setCommodityFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                    <option value="All">All Commodities</option>
+                                    {allCommodities.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
                         </div>
+                        
                         <div className="flex items-center gap-2">
                             {isSelectionMode && selectedIds.length > 0 && (
                                 <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
                                     Delete Selected ({selectedIds.length})
                                 </button>
                             )}
-                             <button 
-                                onClick={handleDownloadReport}
-                                className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-                            >
-                                Download Report
-                            </button>
-                            <button 
-                                onClick={handleDownloadTemplate}
-                                className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
-                            >
-                                Download Template
-                            </button>
-                            <label 
-                                htmlFor="ipo-upload" 
-                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}
-                            >
-                                {isUploading ? 'Uploading...' : 'Upload XLSX'}
-                            </label>
-                            <input 
-                                id="ipo-upload" 
-                                type="file" 
-                                className="hidden" 
-                                onChange={handleFileUpload} 
-                                accept=".xlsx, .xls"
-                                disabled={isUploading}
-                            />
+                            <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                            <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
+                            <input id="ipo-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                             <button
                                 onClick={handleToggleSelectionMode}
                                 className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
@@ -680,23 +660,23 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                             </button>
                         </div>
                     </div>
-                     <div className="flex items-center gap-x-6 gap-y-2 flex-wrap pt-2">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Flags:</span>
-                        <label className="flex items-center gap-2 text-sm font-medium">
+                    
+                    <div className="flex flex-wrap gap-4 pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="womenLed" checked={flagFilter.womenLed} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
-                            Women-led
+                            <span className="text-gray-700 dark:text-gray-300">Women-Led</span>
                         </label>
-                        <label className="flex items-center gap-2 text-sm font-medium">
+                        <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="withinGida" checked={flagFilter.withinGida} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
-                            Within GIDA
+                            <span className="text-gray-700 dark:text-gray-300">Within GIDA</span>
                         </label>
-                        <label className="flex items-center gap-2 text-sm font-medium">
+                        <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="withinElcac" checked={flagFilter.withinElcac} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
-                            Within ELCAC
+                            <span className="text-gray-700 dark:text-gray-300">Within ELCAC</span>
                         </label>
-                         <label className="flex items-center gap-2 text-sm font-medium">
+                        <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" name="withScad" checked={flagFilter.withScad} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
-                            With SCAD
+                            <span className="text-gray-700 dark:text-gray-300">With SCAD</span>
                         </label>
                     </div>
                  </div>
@@ -705,13 +685,15 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th scope="col" className="w-12"></th>
-                                <SortableHeader sortKey="name" label="Name" />
-                                <SortableHeader sortKey="region" label="Region" />
+                                <th className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
+                                <SortableHeader sortKey="name" label="IPO Name" className="min-w-[200px]" />
+                                <SortableHeader sortKey="location" label="Location" />
+                                <SortableHeader sortKey="contactPerson" label="Contact" />
                                 <SortableHeader sortKey="registrationDate" label="Registered" />
-                                <SortableHeader sortKey="contactPerson" label="Contact Person" />
-                                <SortableHeader sortKey="totalInvested" label="Total Invested" />
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Flags</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodities</th>
+                                <SortableHeader sortKey="levelOfDevelopment" label="Level" />
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
                                             <span className="text-xs">Select All</span>
@@ -722,47 +704,49 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                 className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                             />
                                         </div>
-                                    ) : (
-                                        "Actions"
-                                    )}
+                                    ) : "Actions"}
                                 </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedIpos.map((ipo) => {
-                                const linkedSubprojects = subprojects.filter(p => p.indigenousPeopleOrganization === ipo.name);
-                                const linkedTrainings = trainings.filter(t => t.participatingIpos.includes(ipo.name));
+                                const relatedSubprojects = subprojects.filter(sp => sp.indigenousPeopleOrganization === ipo.name);
                                 const totalInvestment = calculateTotalInvestment(ipo.name);
-                                
+                                const trainingCount = linkedTrainings.filter(t => t.participatingIpos.includes(ipo.name)).length;
+
                                 return (
-                                    <React.Fragment key={ipo.id}>
-                                        <tr onClick={() => handleToggleRow(ipo.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                            <td className="px-4 py-4 text-gray-400">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === ipo.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                </svg>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onSelectIpo(ipo);
-                                                    }}
-                                                    className="text-left hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
-                                                >
-                                                    <div>{ipo.name}</div>
-                                                </button>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.region}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                                <div>{ipo.contactPerson}</div>
-                                                <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-600 dark:text-gray-200">
-                                                {formatCurrency(totalInvestment)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <React.Fragment key={ipo.id}>
+                                    <tr onClick={() => handleToggleRow(ipo.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === ipo.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
+                                            <button onClick={(e) => { e.stopPropagation(); onSelectIpo(ipo); }} className="text-left hover:text-accent hover:underline">
+                                                {ipo.name}
+                                            </button>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{ipo.location}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div>{ipo.contactPerson}</div>
+                                            <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                                {ipo.isWomenLed && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-pink-100 text-pink-800 rounded-full" title="Women-Led">WL</span>}
+                                                {ipo.isWithinGida && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded-full" title="GIDA">GIDA</span>}
+                                                {ipo.isWithinElcac && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full" title="ELCAC">ELCAC</span>}
+                                                {ipo.isWithScad && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800 rounded-full" title="SCAD">SCAD</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 max-w-[200px]">
+                                            {ipo.commodities.map(c => c.particular).join(', ')}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{ipo.levelOfDevelopment}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
+                                            <div className="flex items-center justify-end">
                                                 {isSelectionMode ? (
                                                     <input 
                                                         type="checkbox" 
@@ -773,148 +757,73 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                                                     />
                                                 ) : (
                                                     <>
-                                                        <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
-                                                        <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                                        <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 mr-4">Edit</button>
+                                                        <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900">Delete</button>
                                                     </>
                                                 )}
-                                            </td>
-                                        </tr>
-                                         {expandedRowId === ipo.id && (
-                                            <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                                <td colSpan={7} className="p-4">
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Subprojects</h4>
-                                                            {linkedSubprojects.length > 0 ? (
-                                                                <ul className="space-y-2">
-                                                                    {linkedSubprojects.map(p => (
-                                                                        <li key={p.id} className="text-sm p-2 bg-white dark:bg-gray-800 rounded-md shadow-sm">
-                                                                            <div className="flex justify-between items-center">
-                                                                               <button 
-                                                                                    onClick={(e) => { e.stopPropagation(); onSelectSubproject(p); }}
-                                                                                    className="font-medium text-gray-800 dark:text-gray-100 hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline"
-                                                                                >
-                                                                                    {p.name}
-                                                                                </button>
-                                                                               <span className={getStatusBadge(p.status)}>{p.status}</span>
-                                                                            </div>
-                                                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Budget: {formatCurrency(calculateTotalBudget(p.details))}</div>
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            ) : (
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No linked subprojects.</p>
-                                                            )}
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Trainings</h4>
-                                                            {linkedTrainings.length > 0 ? (
-                                                                <ul className="space-y-2">
-                                                                    {linkedTrainings.map(t => (
-                                                                        <li key={t.id} className="text-sm p-2 bg-white dark:bg-gray-800 rounded-md shadow-sm">
-                                                                           <div className="flex justify-between items-center">
-                                                                              <span className="font-medium text-gray-800 dark:text-gray-100">{t.name}</span>
-                                                                              <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(t.date)}</span>
-                                                                           </div>
-                                                                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Facilitator: {t.facilitator}</div>
-                                                                        </li>
-                                                                    ))}
-                                                                </ul>
-                                                            ) : (
-                                                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No linked trainings.</p>
-                                                            )}
-                                                        </div>
-                                                        <div className="space-y-4">
-                                                            <div>
-                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
-                                                                {ipo.commodities && ipo.commodities.length > 0 ? (
-                                                                    <ul className="space-y-1 text-sm">
-                                                                        {ipo.commodities.map((c, i) => (
-                                                                            <li key={i} className="flex justify-between items-center p-1 bg-white dark:bg-gray-800 rounded">
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
-                                                                                    {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
-                                                                                </div>
-                                                                                <span className="font-medium">{c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}</span>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
-                                                            </div>
-                                                            <div>
-                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
-                                                                <p className="text-sm font-semibold text-accent dark:text-green-400 bg-gray-100 dark:bg-gray-900/50 px-3 py-1 rounded-full inline-block">Level {ipo.levelOfDevelopment}</p>
-                                                            </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {expandedRowId === ipo.id && (
+                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                            <td colSpan={9} className="p-4">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                    <div>
+                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">IPO Details</h4>
+                                                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                                                            <p><strong>ICC:</strong> {ipo.indigenousCulturalCommunity}</p>
+                                                            <p><strong>AD No:</strong> {ipo.ancestralDomainNo || 'N/A'}</p>
+                                                            <p><strong>Reg. Body:</strong> {ipo.registeringBody}</p>
                                                         </div>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </React.Fragment>
-                                );
-                            })}
+                                                    <div>
+                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">Engagement Summary</h4>
+                                                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                                                            <p><strong>Total Investment:</strong> {formatCurrency(totalInvestment)}</p>
+                                                            <p><strong>Subprojects:</strong> {relatedSubprojects.length}</p>
+                                                            <p><strong>Trainings Attended:</strong> {trainingCount}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-sm text-gray-700 dark:text-gray-200 mb-2">Subprojects</h4>
+                                                        {relatedSubprojects.length > 0 ? (
+                                                            <ul className="text-xs space-y-1">
+                                                                {relatedSubprojects.map(sp => (
+                                                                    <li key={sp.id} className="flex justify-between">
+                                                                        <span className="truncate max-w-[150px]" title={sp.name}>{sp.name}</span>
+                                                                        <span className={getStatusBadge(sp.status)}>{sp.status}</span>
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        ) : <p className="text-xs text-gray-500 italic">No subprojects linked.</p>}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            )})}
                         </tbody>
                     </table>
                 </div>
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select
-                            value={itemsPerPage}
-                            onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
-                        >
-                            {[10, 20, 50, 100].map(size => (
-                                <option key={size} value={size}>{size}</option>
-                            ))}
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">
+                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                         </select>
                         <span className="text-gray-700 dark:text-gray-300">entries</span>
                     </div>
                      <div className="flex items-center gap-4 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">
-                            Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)} to {Math.min(currentPage * itemsPerPage, processedIpos.length)} of {processedIpos.length} entries
-                        </span>
+                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)} to {Math.min(currentPage * itemsPerPage, processedIpos.length)} of {processedIpos.length} entries</span>
                         <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
-                                Previous
-                            </button>
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
                             <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">
-                                Next
-                            </button>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
                         </div>
                     </div>
                 </div>
             </div>
-
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPO(s)? 
-                            This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </>
     );
 
@@ -1062,7 +971,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                         Cancel
                     </button>
                     <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        Save {view === 'edit' ? 'Changes' : 'IPO'}
+                        Save
                     </button>
                 </div>
              </form>
@@ -1071,13 +980,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
 
     return (
         <div>
-            {view === 'list' ? renderListView() : renderFormView()}
-            
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
+                        <p className="my-4">Are you sure you want to delete the IPO "{ipoToDelete?.name}"? This action cannot be undone.</p>
                         <div className="flex justify-end gap-4">
                             <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
                             <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
@@ -1091,7 +998,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
                         <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPO(s)? 
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPOs? 
                             This action cannot be undone.
                         </p>
                         <div className="flex justify-end gap-4">
@@ -1101,6 +1008,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, trainings, onSe
                     </div>
                 </div>
             )}
+
+            {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );
 };

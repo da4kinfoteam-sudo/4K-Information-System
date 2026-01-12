@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
-import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
+import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import GanttChart from './GanttChart';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
@@ -11,7 +11,7 @@ declare const L: any;
 interface MapDisplayProps {
     ipos: IPO[];
     subprojects: Subproject[];
-    trainings: Training[];
+    trainings: Activity[];
 }
 
 const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings }) => {
@@ -98,7 +98,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 };
 
 
-type ActivityItem = (Subproject & { type: 'Subproject'; activityDate: string }) | (Training & { type: 'Training'; activityDate: string });
+type ActivityItem = (Subproject & { activityType: 'Subproject'; activityDate: string }) | (Activity & { activityType: 'Training' | 'Activity'; activityDate: string });
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -133,8 +133,7 @@ const FinancialsIcon = (props: React.SVGProps<SVGSVGElement>) => (
 interface DashboardProps {
     subprojects: Subproject[];
     ipos: IPO[];
-    trainings: Training[];
-    otherActivities: OtherActivity[];
+    activities: Activity[];
     systemSettings: SystemSettings;
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
@@ -142,7 +141,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-    subprojects, ipos, trainings, otherActivities, systemSettings,
+    subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses
 }) => {
     const [selectedYear, setSelectedYear] = useState<string>('All');
@@ -170,18 +169,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     const availableYears = useMemo(() => {
         const years = new Set<string>();
         subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
-        trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
+        activities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
         ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
-        otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
         officeReqs.forEach(i => years.add(i.fundYear.toString()));
         staffingReqs.forEach(i => years.add(i.fundYear.toString()));
         otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
     
     const filteredData = useMemo(() => {
         let dataToFilter = { 
-            subprojects, ipos, trainings, otherActivities,
+            subprojects, ipos, activities,
             officeReqs, staffingReqs, otherProgramExpenses
         };
 
@@ -190,8 +188,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             dataToFilter = {
                 subprojects: dataToFilter.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
                 ipos: dataToFilter.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear),
-                trainings: dataToFilter.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-                otherActivities: dataToFilter.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
+                activities: dataToFilter.activities.filter(a => a.fundingYear?.toString() === selectedYear || new Date(a.date).getFullYear().toString() === selectedYear),
                 officeReqs: dataToFilter.officeReqs.filter(i => i.fundYear.toString() === selectedYear),
                 staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundYear.toString() === selectedYear),
                 otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear),
@@ -202,8 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             dataToFilter = {
                 ...dataToFilter,
                 subprojects: dataToFilter.subprojects.filter(p => p.tier === selectedTier),
-                trainings: dataToFilter.trainings.filter(t => t.tier === selectedTier),
-                otherActivities: dataToFilter.otherActivities.filter(a => a.tier === selectedTier),
+                activities: dataToFilter.activities.filter(a => a.tier === selectedTier),
                 officeReqs: dataToFilter.officeReqs.filter(i => i.tier === selectedTier),
                 staffingReqs: dataToFilter.staffingReqs.filter(i => i.tier === selectedTier),
                 otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.tier === selectedTier),
@@ -214,8 +210,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             dataToFilter = {
                 ...dataToFilter,
                 subprojects: dataToFilter.subprojects.filter(p => p.fundType === selectedFundType),
-                trainings: dataToFilter.trainings.filter(t => t.fundType === selectedFundType),
-                otherActivities: dataToFilter.otherActivities.filter(a => a.fundType === selectedFundType),
+                activities: dataToFilter.activities.filter(a => a.fundType === selectedFundType),
                 officeReqs: dataToFilter.officeReqs.filter(i => i.fundType === selectedFundType),
                 staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundType === selectedFundType),
                 otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundType === selectedFundType),
@@ -232,19 +227,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         return {
             subprojects: dataToFilter.subprojects.filter(p => p.operatingUnit === selectedOu),
             ipos: dataToFilter.ipos.filter(i => i.region === targetRegion),
-            trainings: dataToFilter.trainings.filter(t => t.operatingUnit === selectedOu),
-            otherActivities: dataToFilter.otherActivities.filter(a => a.operatingUnit === selectedOu),
+            activities: dataToFilter.activities.filter(a => a.operatingUnit === selectedOu),
             officeReqs: dataToFilter.officeReqs.filter(i => i.operatingUnit === selectedOu),
             staffingReqs: dataToFilter.staffingReqs.filter(i => i.operatingUnit === selectedOu),
             otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu),
         };
 
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
-            ...filteredData.subprojects.map(p => ({ ...p, type: 'Subproject' as const, activityDate: p.startDate })),
-            ...filteredData.trainings.map(t => ({ ...t, type: 'Training' as const, activityDate: t.date })),
+            ...filteredData.subprojects.map(p => ({ ...p, activityType: 'Subproject' as const, activityDate: p.startDate })),
+            ...filteredData.activities.map(a => ({ ...a, activityType: a.type as 'Training' | 'Activity', activityDate: a.date })),
         ];
         return combined.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
     }, [filteredData]);
@@ -253,9 +247,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     const displayedActivities = useMemo(() => {
         let items = allActivities;
         if (activitiesFilter === 'Subprojects') {
-            items = items.filter(a => a.type === 'Subproject');
+            items = items.filter(a => a.activityType === 'Subproject');
         } else if (activitiesFilter === 'Trainings') {
-            items = items.filter(a => a.type === 'Training');
+            items = items.filter(a => a.activityType === 'Training');
         }
         return items;
     }, [allActivities, activitiesFilter]);
@@ -286,7 +280,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             }))];
         }
         if (ganttFilter === 'All' || ganttFilter === 'Trainings') {
-            items = [...items, ...filteredData.trainings.map(t => ({
+            items = [...items, ...filteredData.activities.filter(a => a.type === 'Training').map(t => ({
                 id: t.id,
                 name: t.name,
                 startDate: t.date,
@@ -303,15 +297,19 @@ const Dashboard: React.FC<DashboardProps> = ({
             return sum + calculateTotalBudget(project.details);
         }, 0);
 
-        const trainingTotal = filteredData.trainings.reduce((sum, training) => {
-            const trainingBudget = training.expenses.reduce((s, e) => s + e.amount, 0);
-            return sum + trainingBudget;
-        }, 0);
+        const trainingTotal = filteredData.activities
+            .filter(a => a.type === 'Training')
+            .reduce((sum, training) => {
+                const trainingBudget = training.expenses.reduce((s, e) => s + e.amount, 0);
+                return sum + trainingBudget;
+            }, 0);
 
-        const otherActivitiesTotal = filteredData.otherActivities.reduce((sum, activity) => {
-            const activityTotal = activity.expenses.reduce((expenseSum, expense) => expenseSum + expense.amount, 0);
-            return sum + activityTotal;
-        }, 0);
+        const otherActivitiesTotal = filteredData.activities
+            .filter(a => a.type === 'Activity')
+            .reduce((sum, activity) => {
+                const activityTotal = activity.expenses.reduce((expenseSum, expense) => expenseSum + expense.amount, 0);
+                return sum + activityTotal;
+            }, 0);
 
         const pmTotal = 
             filteredData.officeReqs.reduce((sum, item) => sum + (item.numberOfUnits * item.pricePerUnit), 0) +
@@ -327,10 +325,9 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const ipoStats = useMemo(() => {
         const iposInSubprojects = new Set(filteredData.subprojects.map(p => p.indigenousPeopleOrganization));
-        const iposInTrainings = new Set(filteredData.trainings.flatMap(t => t.participatingIpos));
-        const iposInOther = new Set(filteredData.otherActivities.flatMap(a => a.participatingIpos));
+        const iposInActivities = new Set(filteredData.activities.flatMap(a => a.participatingIpos));
 
-        const assistedNames = new Set([...iposInSubprojects, ...iposInTrainings, ...iposInOther]);
+        const assistedNames = new Set([...iposInSubprojects, ...iposInActivities]);
         
         // We compare against filteredData.ipos to respect the filter if applied to IPO list context
         const assistedCount = filteredData.ipos.filter(i => assistedNames.has(i.name)).length;
@@ -341,7 +338,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     const filteredIposForMap = mapFilters.ipos ? filteredData.ipos : [];
     const filteredSubprojectsForMap = mapFilters.subprojects ? filteredData.subprojects : [];
-    const filteredTrainingsForMap = mapFilters.trainings ? filteredData.trainings : [];
+    const filteredTrainingsForMap = mapFilters.trainings ? filteredData.activities.filter(a => a.type === 'Training') : [];
 
     return (
         <div>
@@ -356,13 +353,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                     >
                          <div className="flex justify-between items-start mb-4">
                             <div>
-                                <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${modalData.type === 'Subproject' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>{modalData.type}</span>
+                                <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${modalData.activityType === 'Subproject' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>{modalData.activityType}</span>
                                 <h3 className="text-2xl font-bold mt-2 text-gray-800 dark:text-white">{modalData.name}</h3>
                             </div>
                             <button onClick={() => setModalData(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
                         </div>
                         
-                        {modalData.type === 'Subproject' ? (
+                        {modalData.activityType === 'Subproject' ? (
                             <div className="space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                     <p><strong className="text-gray-500 dark:text-gray-400">IPO:</strong> {modalData.indigenousPeopleOrganization}</p>
@@ -406,7 +403,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                              <div className="space-y-4 text-sm">
                                 <p><strong className="text-gray-500 dark:text-gray-400">Date:</strong> {formatDate(modalData.date)}</p>
                                 <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> {modalData.location}</p>
-                                <p><strong className="text-gray-500 dark:text-gray-400">Facilitator:</strong> {modalData.facilitator}</p>
+                                <p><strong className="text-gray-500 dark:text-gray-400">Facilitator:</strong> {(modalData as any).facilitator || 'N/A'}</p>
                                 {modalData.description && <div>
                                     <h4 className="font-semibold text-md mt-4 mb-2 text-gray-700 dark:text-gray-200">Description</h4>
                                     <p>{modalData.description}</p>
@@ -494,7 +491,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <StatCard title="Total Budget for Sub Projects" value={formatCurrency(financialStats.subprojects)} icon={<FinancialsIcon />} color="text-blue-500" />
                 <StatCard title="Total Budget for Trainings" value={formatCurrency(financialStats.trainings)} icon={<FinancialsIcon />} color="text-green-500" />
                 <StatCard title="Number of Subprojects" value={filteredData.subprojects.length.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-600" />
-                <StatCard title="Number of Trainings" value={filteredData.trainings.length.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" />
+                <StatCard title="Number of Trainings" value={filteredData.activities.filter(a => a.type === 'Training').length.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" />
                 <StatCard title="Number of IPOs assisted" value={ipoStats.assisted.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" />
                 <StatCard title="Number of IPOs with Sub Projects" value={ipoStats.withSubprojects.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-teal-500" />
             </div>
@@ -608,17 +605,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {paginatedActivitiesList.map(activity => (
                         <div 
-                            key={`${activity.type}-${activity.id}`} 
+                            key={`${activity.activityType}-${activity.id}`} 
                             className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transform transition-all duration-300 ease-in-out cursor-pointer"
                             onClick={() => setModalData(activity)}
                         >
                             <div className="flex justify-between items-start">
-                                <span className={`text-xs font-bold uppercase ${activity.type === 'Subproject' ? 'text-blue-500' : 'text-green-500'}`}>{activity.type}</span>
+                                <span className={`text-xs font-bold uppercase ${activity.activityType === 'Subproject' ? 'text-blue-500' : 'text-green-500'}`}>{activity.activityType}</span>
                                 <span className="text-xs text-gray-400">{formatDate(activity.activityDate)}</span>
                             </div>
                             <h4 className="text-lg font-bold mt-2 text-gray-800 dark:text-white">{activity.name}</h4>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                                {activity.type === 'Subproject' ? activity.location : activity.description}
+                                {activity.activityType === 'Subproject' ? activity.location : activity.description}
                             </p>
                         </div>
                     ))}

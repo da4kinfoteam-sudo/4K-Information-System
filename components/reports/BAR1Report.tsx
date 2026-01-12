@@ -52,36 +52,48 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
         };
 
-        const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string) => {
-            const item: any = {
-                indicator,
-                m1: 0, m2: 0, m3: 0, q1: 0,
-                m4: 0, m5: 0, m6: 0, q2: 0,
-                m7: 0, m8: 0, m9: 0, q3: 0,
-                m10: 0, m11: 0, m12: 0, q4: 0,
-                total: 0
-            };
+        const initializeCounter = () => ({
+            m1: 0, m2: 0, m3: 0, q1: 0,
+            m4: 0, m5: 0, m6: 0, q2: 0,
+            m7: 0, m8: 0, m9: 0, q3: 0,
+            m10: 0, m11: 0, m12: 0, q4: 0,
+            total: 0
+        });
 
-            const monthIdx = getMonthIndex(targetDate);
+        const incrementCounter = (counter: any, dateStr?: string, count: number = 1) => {
+            const monthIdx = getMonthIndex(dateStr);
             if (monthIdx !== -1) {
                 const monthKey = `m${monthIdx + 1}`;
-                item[monthKey] = physicalCount;
+                counter[monthKey] += count;
                 
                 // Update Quarter Totals
-                if (monthIdx < 3) item.q1 += physicalCount;
-                else if (monthIdx < 6) item.q2 += physicalCount;
-                else if (monthIdx < 9) item.q3 += physicalCount;
-                else item.q4 += physicalCount;
+                if (monthIdx < 3) counter.q1 += count;
+                else if (monthIdx < 6) counter.q2 += count;
+                else if (monthIdx < 9) counter.q3 += count;
+                else counter.q4 += count;
                 
-                item.total += physicalCount;
+                counter.total += count;
             }
+        };
+
+        const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string) => {
+            const item: any = {
+                indicator,
+                target: initializeCounter(),
+                actual: initializeCounter()
+            };
+
+            incrementCounter(item.target, targetDate, physicalCount);
+            incrementCounter(item.actual, actualDate, physicalCount);
+
             return item;
         };
 
         // Process Subprojects
         data.subprojects.forEach(sp => {
-            // Using estimated completion date as the physical target realization point
-            const item = createBar1Item(sp.name, 1, sp.estimatedCompletionDate);
+            // Target: Estimated completion date
+            // Actual: Actual completion date
+            const item = createBar1Item(sp.name, 1, sp.estimatedCompletionDate, sp.actualCompletionDate);
             const packageKey = sp.packageType;
             if (!finalData['Production and Livelihood'].packages[packageKey]) {
                 finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
@@ -91,7 +103,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         // Process Trainings
         data.trainings.forEach(t => {
-            const item = createBar1Item(t.name, 1, t.date);
+            const item = createBar1Item(t.name, 1, t.date, t.actualDate);
             if (t.component === 'Production and Livelihood') {
                  const packageKey = 'Trainings';
                  if (!finalData['Production and Livelihood'].packages[packageKey]) {
@@ -107,7 +119,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         // Process Other Activities
         data.otherActivities.forEach(oa => {
-            const item = createBar1Item(oa.name, 1, oa.date);
+            const item = createBar1Item(oa.name, 1, oa.date, oa.actualDate);
             if (oa.component === 'Program Management') {
                  finalData['Program Management'].packages['Activities'].items.push(item);
             } else if (finalData[oa.component]) {
@@ -120,8 +132,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             items.forEach(pm => {
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const count = isStaff ? 1 : (pm.numberOfUnits || 1);
-                // Using obligation date as target date for procurement/hiring
-                const item = createBar1Item(indicator, count, pm.obligationDate);
+                // Target: Obligation Date (as a proxy for target completion if not specified)
+                // Actual: Actual Date
+                const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate);
                 finalData['Program Management'].packages[pkgKey].items.push(item);
             });
         }
@@ -138,63 +151,132 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     }, [data]);
 
     const calculateTotals = (items: any[]) => {
-        return items.reduce((acc, item) => {
-            for (let i = 1; i <= 12; i++) {
-                acc[`m${i}`] += (item[`m${i}`] || 0);
-            }
-            acc.q1 += (item.q1 || 0);
-            acc.q2 += (item.q2 || 0);
-            acc.q3 += (item.q3 || 0);
-            acc.q4 += (item.q4 || 0);
-            acc.total += (item.total || 0);
-            return acc;
-        }, { 
+        const initial = {
             m1: 0, m2: 0, m3: 0, q1: 0,
             m4: 0, m5: 0, m6: 0, q2: 0,
             m7: 0, m8: 0, m9: 0, q3: 0,
             m10: 0, m11: 0, m12: 0, q4: 0,
             total: 0
+        };
+
+        const total = {
+            target: { ...initial },
+            actual: { ...initial }
+        };
+
+        items.forEach(item => {
+            for (let i = 1; i <= 12; i++) {
+                total.target[`m${i}`] += (item.target[`m${i}`] || 0);
+                total.actual[`m${i}`] += (item.actual[`m${i}`] || 0);
+            }
+            total.target.q1 += (item.target.q1 || 0); total.actual.q1 += (item.actual.q1 || 0);
+            total.target.q2 += (item.target.q2 || 0); total.actual.q2 += (item.actual.q2 || 0);
+            total.target.q3 += (item.target.q3 || 0); total.actual.q3 += (item.actual.q3 || 0);
+            total.target.q4 += (item.target.q4 || 0); total.actual.q4 += (item.actual.q4 || 0);
+            total.target.total += (item.target.total || 0); total.actual.total += (item.actual.total || 0);
         });
+        return total;
     };
 
-    const renderDataCells = (data: any, isTotal: boolean = false) => {
+    const renderDataCells = (item: any, isTotal: boolean = false) => {
         const cellClass = `${dataCellClass} text-center ${isTotal ? 'font-bold' : ''}`;
         const totalClass = `${dataCellClass} text-center font-bold bg-gray-50 dark:bg-gray-700/50`;
         const calculatedClass = `${dataCellClass} text-center font-bold bg-blue-50 dark:bg-blue-900/30`;
         const yearEndClass = `${dataCellClass} text-center font-bold bg-yellow-50 dark:bg-yellow-900/20`;
+        const percentClass = `${dataCellClass} text-center text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800`;
 
-        const semestralTotal = (data.q1 || 0) + (data.q2 || 0);
-        const asOfSept = semestralTotal + (data.q3 || 0);
-        const yearEndNov = (data.total || 0) - (data.m12 || 0);
-        
+        const getVals = (source: any) => {
+             const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
+             const asOfSept = semestralTotal + (source.q3 || 0);
+             const yearEndNov = (source.total || 0) - (source.m12 || 0);
+             return { ...source, semestralTotal, asOfSept, yearEndNov };
+        }
+
+        const t = getVals(item.target);
+        const a = getVals(item.actual);
+
+        const getPct = (actual: number, target: number) => {
+            if (!target) return '';
+            return `${Math.round((actual / target) * 100)}%`;
+        };
+
+        const renderTargetSection = () => (
+            <>
+                <td className={cellClass}>{t.m1 || ''}</td>
+                <td className={cellClass}>{t.m2 || ''}</td>
+                <td className={cellClass}>{t.m3 || ''}</td>
+                <td className={totalClass}>{t.q1 || ''}</td>
+
+                <td className={cellClass}>{t.m4 || ''}</td>
+                <td className={cellClass}>{t.m5 || ''}</td>
+                <td className={cellClass}>{t.m6 || ''}</td>
+                <td className={totalClass}>{t.q2 || ''}</td>
+
+                <td className={calculatedClass}>{t.semestralTotal || ''}</td>
+
+                <td className={cellClass}>{t.m7 || ''}</td>
+                <td className={cellClass}>{t.m8 || ''}</td>
+                <td className={cellClass}>{t.m9 || ''}</td>
+                <td className={totalClass}>{t.q3 || ''}</td>
+
+                <td className={calculatedClass}>{t.asOfSept || ''}</td>
+
+                <td className={cellClass}>{t.m10 || ''}</td>
+                <td className={cellClass}>{t.m11 || ''}</td>
+                <td className={cellClass}>{t.m12 || ''}</td>
+                <td className={totalClass}>{t.q4 || ''}</td>
+
+                <td className={yearEndClass}>{t.yearEndNov || ''}</td>
+                <td className={`${dataCellClass} text-center font-bold bg-blue-100 dark:bg-blue-900/40`}>{t.total || ''}</td>
+            </>
+        );
+
+        const renderActualSection = () => (
+            <>
+                <td className={cellClass}>{a.m1 || ''}</td>
+                <td className={cellClass}>{a.m2 || ''}</td>
+                <td className={cellClass}>{a.m3 || ''}</td>
+                <td className={totalClass}>{a.q1 || ''}</td>
+                <td className={percentClass}>{getPct(a.q1, t.q1)}</td>
+
+                <td className={cellClass}>{a.m4 || ''}</td>
+                <td className={cellClass}>{a.m5 || ''}</td>
+                <td className={cellClass}>{a.m6 || ''}</td>
+                <td className={totalClass}>{a.q2 || ''}</td>
+                <td className={percentClass}>{getPct(a.q2, t.q2)}</td>
+
+                <td className={calculatedClass}>{a.semestralTotal || ''}</td>
+                <td className={percentClass}>{getPct(a.semestralTotal, t.semestralTotal)}</td>
+
+                <td className={cellClass}>{a.m7 || ''}</td>
+                <td className={cellClass}>{a.m8 || ''}</td>
+                <td className={cellClass}>{a.m9 || ''}</td>
+                <td className={totalClass}>{a.q3 || ''}</td>
+                <td className={percentClass}>{getPct(a.q3, t.q3)}</td>
+
+                <td className={calculatedClass}>{a.asOfSept || ''}</td>
+                <td className={percentClass}>{getPct(a.asOfSept, t.asOfSept)}</td>
+
+                <td className={cellClass}>{a.m10 || ''}</td>
+                <td className={cellClass}>{a.m11 || ''}</td>
+                <td className={cellClass}>{a.m12 || ''}</td>
+                <td className={totalClass}>{a.q4 || ''}</td>
+                <td className={percentClass}>{getPct(a.q4, t.q4)}</td>
+
+                <td className={yearEndClass}>{a.yearEndNov || ''}</td>
+                <td className={percentClass}>{getPct(a.yearEndNov, t.yearEndNov)}</td>
+
+                <td className={`${dataCellClass} text-center font-bold bg-blue-100 dark:bg-blue-900/40`}>{a.total || ''}</td>
+                <td className={percentClass}>{getPct(a.total, t.total)}</td>
+            </>
+        );
+
         return (
             <>
-                <td className={cellClass}>{data.m1 || ''}</td>
-                <td className={cellClass}>{data.m2 || ''}</td>
-                <td className={cellClass}>{data.m3 || ''}</td>
-                <td className={totalClass}>{data.q1 || ''}</td>
-
-                <td className={cellClass}>{data.m4 || ''}</td>
-                <td className={cellClass}>{data.m5 || ''}</td>
-                <td className={cellClass}>{data.m6 || ''}</td>
-                <td className={totalClass}>{data.q2 || ''}</td>
-
-                <td className={calculatedClass}>{semestralTotal || ''}</td>
-
-                <td className={cellClass}>{data.m7 || ''}</td>
-                <td className={cellClass}>{data.m8 || ''}</td>
-                <td className={cellClass}>{data.m9 || ''}</td>
-                <td className={totalClass}>{data.q3 || ''}</td>
-
-                <td className={calculatedClass}>{asOfSept || ''}</td>
-
-                <td className={cellClass}>{data.m10 || ''}</td>
-                <td className={cellClass}>{data.m11 || ''}</td>
-                <td className={cellClass}>{data.m12 || ''}</td>
-                <td className={totalClass}>{data.q4 || ''}</td>
-
-                <td className={yearEndClass}>{yearEndNov || ''}</td>
-                <td className={`${dataCellClass} text-center font-bold bg-blue-100 dark:bg-blue-900/40`}>{data.total || ''}</td>
+                {renderTargetSection()}
+                {/* Visual separator */}
+                <td className="w-1 bg-gray-400 dark:bg-gray-500"></td> 
+                {renderActualSection()}
             </>
         );
     };
@@ -216,7 +298,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                      <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={20} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
+                    {/* Span across targets (20) + separator (1) + actuals (28) = 49 */}
+                    <td colSpan={49} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
                 </tr>
             )
         }
@@ -248,88 +331,154 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     });
 
     const handleDownloadBar1Xlsx = () => {
+        // Headers construction
+        const header1 = ["Program/Activity/Project"];
+        const header2 = [null]; // Placeholder for P/A/P
+
+        const sectionHeaders1 = [
+            "1st Quarter", null, null, null, 
+            "2nd Quarter", null, null, null, 
+            "Semestral Total",
+            "3rd Quarter", null, null, null, 
+            "As of September",
+            "4th Quarter", null, null, null, 
+            "Year End (As of Nov)",
+            "Grand Total"
+        ];
+        
+        const sectionHeadersTarget = [
+            "Jan", "Feb", "Mar", "Total",
+            "Apr", "May", "Jun", "Total",
+            null, // Semestral
+            "Jul", "Aug", "Sep", "Total",
+            null, // As of Sept
+            "Oct", "Nov", "Dec", "Total",
+            null, // Year End
+            null  // Grand Total
+        ];
+
+        const sectionHeadersActual = [
+            "Jan", "Feb", "Mar", "Total", "%",
+            "Apr", "May", "Jun", "Total", "%",
+            "Total", "%",
+            "Jul", "Aug", "Sep", "Total", "%",
+            "Total", "%",
+            "Oct", "Nov", "Dec", "Total", "%",
+            "Total", "%",
+            "Total", "%"
+        ];
+
+        const sectionHeadersActualGroups = [
+            "1st Quarter", null, null, null, null,
+            "2nd Quarter", null, null, null, null, 
+            "Semestral Total", null,
+            "3rd Quarter", null, null, null, null,
+            "As of September", null,
+            "4th Quarter", null, null, null, null,
+            "Year End (As of Nov)", null,
+            "Grand Total", null
+        ];
+
+        // Targets Header
+        header1.push(...sectionHeaders1, null, ...sectionHeadersActualGroups);
+        header2.push(...sectionHeadersTarget, null, ...sectionHeadersActual);
+
         const aoa: (string | number | null)[][] = [
-            [
-                "Program/Activity/Project", 
-                "1st Quarter", null, null, null, 
-                "2nd Quarter", null, null, null, 
-                "Semestral Total",
-                "3rd Quarter", null, null, null, 
-                "As of September",
-                "4th Quarter", null, null, null, 
-                "Year End (As of Nov)",
-                "Grand Total"
-            ],
-            [
-                null,
-                "Jan", "Feb", "Mar", "Total",
-                "Apr", "May", "Jun", "Total",
-                null,
-                "Jul", "Aug", "Sep", "Total",
-                null,
-                "Oct", "Nov", "Dec", "Total",
-                null,
-                null
-            ]
+            [null, "Physical Targets", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Physical Accomplishments", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+            header1,
+            header2
         ];
 
         const processItems = (items: any[]) => {
             items.forEach(item => {
-                const semestralTotal = (item.q1 || 0) + (item.q2 || 0);
-                const asOfSept = semestralTotal + (item.q3 || 0);
-                const yearEndNov = (item.total || 0) - (item.m12 || 0);
+                const getVals = (source: any) => {
+                    const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
+                    const asOfSept = semestralTotal + (source.q3 || 0);
+                    const yearEndNov = (source.total || 0) - (source.m12 || 0);
+                    return { ...source, semestralTotal, asOfSept, yearEndNov };
+               }
+               const t = getVals(item.target);
+               const a = getVals(item.actual);
+
+               const getPct = (act: number, tgt: number) => {
+                   if (!tgt) return null;
+                   return Math.round((act / tgt) * 100) + '%';
+               };
 
                 aoa.push([
                     item.indicator,
-                    item.m1, item.m2, item.m3, item.q1,
-                    item.m4, item.m5, item.m6, item.q2,
-                    semestralTotal,
-                    item.m7, item.m8, item.m9, item.q3,
-                    asOfSept,
-                    item.m10, item.m11, item.m12, item.q4,
-                    yearEndNov,
-                    item.total
+                    // Targets
+                    t.m1, t.m2, t.m3, t.q1,
+                    t.m4, t.m5, t.m6, t.q2,
+                    t.semestralTotal,
+                    t.m7, t.m8, t.m9, t.q3,
+                    t.asOfSept,
+                    t.m10, t.m11, t.m12, t.q4,
+                    t.yearEndNov,
+                    t.total,
+                    null, // Separator
+                    // Actuals with %
+                    a.m1, a.m2, a.m3, a.q1, getPct(a.q1, t.q1),
+                    a.m4, a.m5, a.m6, a.q2, getPct(a.q2, t.q2),
+                    a.semestralTotal, getPct(a.semestralTotal, t.semestralTotal),
+                    a.m7, a.m8, a.m9, a.q3, getPct(a.q3, t.q3),
+                    a.asOfSept, getPct(a.asOfSept, t.asOfSept),
+                    a.m10, a.m11, a.m12, a.q4, getPct(a.q4, t.q4),
+                    a.yearEndNov, getPct(a.yearEndNov, t.yearEndNov),
+                    a.total, getPct(a.total, t.total)
                 ]);
             });
         };
 
         const addTotalsRow = (items: any[], label: string) => {
-            const totals = items.reduce((acc, item) => {
-                for (let i = 1; i <= 12; i++) acc[`m${i}`] = (acc[`m${i}`] || 0) + (item[`m${i}`] || 0);
-                acc.q1 = (acc.q1 || 0) + (item.q1 || 0);
-                acc.q2 = (acc.q2 || 0) + (item.q2 || 0);
-                acc.q3 = (acc.q3 || 0) + (item.q3 || 0);
-                acc.q4 = (acc.q4 || 0) + (item.q4 || 0);
-                acc.total = (acc.total || 0) + (item.total || 0);
-                return acc;
-            }, {});
+            const totals = calculateTotals(items);
+            const getVals = (source: any) => {
+                const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
+                const asOfSept = semestralTotal + (source.q3 || 0);
+                const yearEndNov = (source.total || 0) - (source.m12 || 0);
+                return { ...source, semestralTotal, asOfSept, yearEndNov };
+           }
+           const t = getVals(totals.target);
+           const a = getVals(totals.actual);
 
-            const semestralTotal = totals.q1 + totals.q2;
-            const asOfSept = semestralTotal + totals.q3;
-            const yearEndNov = totals.total - (totals.m12 || 0);
+           const getPct = (act: number, tgt: number) => {
+               if (!tgt) return null;
+               return Math.round((act / tgt) * 100) + '%';
+           };
 
             aoa.push([
                 label,
-                totals.m1, totals.m2, totals.m3, totals.q1,
-                totals.m4, totals.m5, totals.m6, totals.q2,
-                semestralTotal,
-                totals.m7, totals.m8, totals.m9, totals.q3,
-                asOfSept,
-                totals.m10, totals.m11, totals.m12, totals.q4,
-                yearEndNov,
-                totals.total
+                // Targets
+                t.m1, t.m2, t.m3, t.q1,
+                t.m4, t.m5, t.m6, t.q2,
+                t.semestralTotal,
+                t.m7, t.m8, t.m9, t.q3,
+                t.asOfSept,
+                t.m10, t.m11, t.m12, t.q4,
+                t.yearEndNov,
+                t.total,
+                null,
+                // Actuals
+                a.m1, a.m2, a.m3, a.q1, getPct(a.q1, t.q1),
+                a.m4, a.m5, a.m6, a.q2, getPct(a.q2, t.q2),
+                a.semestralTotal, getPct(a.semestralTotal, t.semestralTotal),
+                a.m7, a.m8, a.m9, a.q3, getPct(a.q3, t.q3),
+                a.asOfSept, getPct(a.asOfSept, t.asOfSept),
+                a.m10, a.m11, a.m12, a.q4, getPct(a.q4, t.q4),
+                a.yearEndNov, getPct(a.yearEndNov, t.yearEndNov),
+                a.total, getPct(a.total, t.total)
             ]);
         };
 
         Object.entries(bar1Data).forEach(([component, items]) => {
-            aoa.push([component, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
+            aoa.push([component, ...Array(49).fill(null)]);
             if (Array.isArray(items)) {
                 if (items.length > 0) processItems(items);
             } else if ((items as any).isExpandable) {
                 if ((items as any).items.length > 0) processItems((items as any).items);
             } else if ((items as any).isNestedExpandable) {
                 Object.entries((items as any).packages).forEach(([packageName, packageData]: [string, any]) => {
-                    aoa.push([`  ${packageName}`, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]);
+                    aoa.push([`  ${packageName}`, ...Array(49).fill(null)]);
                     if ((packageData as any).items.length > 0) processItems((packageData as any).items);
                 });
             }
@@ -346,22 +495,106 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         
-        // Merges
+        // Basic Merges for Headers
         if(!ws['!merges']) ws['!merges'] = [];
-        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }); // P/A/P
-        ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 4 } }); // Q1
-        ws['!merges'].push({ s: { r: 0, c: 5 }, e: { r: 0, c: 8 } }); // Q2
-        ws['!merges'].push({ s: { r: 0, c: 9 }, e: { r: 1, c: 9 } }); // Semestral
-        ws['!merges'].push({ s: { r: 0, c: 10 }, e: { r: 0, c: 13 } }); // Q3
-        ws['!merges'].push({ s: { r: 0, c: 14 }, e: { r: 1, c: 14 } }); // As of Sept
-        ws['!merges'].push({ s: { r: 0, c: 15 }, e: { r: 0, c: 18 } }); // Q4
-        ws['!merges'].push({ s: { r: 0, c: 19 }, e: { r: 1, c: 19 } }); // Year End Nov
-        ws['!merges'].push({ s: { r: 0, c: 20 }, e: { r: 1, c: 20 } }); // Grand Total
+        // Top Row Merges
+        ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 20 } }); // Physical Targets
+        ws['!merges'].push({ s: { r: 0, c: 22 }, e: { r: 0, c: 49 } }); // Physical Accomplishments
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "BAR1 Report");
         XLSX.writeFile(wb, `BAR1_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
+
+    const SectionHeaderTarget = ({ bgColor }: { bgColor: string }) => (
+        <>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>1st Quarter</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>2nd Quarter</th>
+            <th rowSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold ${bgColor} opacity-90`}>Semestral Total</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>3rd Quarter</th>
+            <th rowSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold ${bgColor} opacity-90`}>As of September</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>4th Quarter</th>
+            <th rowSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold ${bgColor} opacity-80`}>Year End (As of Nov)</th>
+            <th rowSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold ${bgColor} opacity-90`}>Grand Total</th>
+        </>
+    );
+
+    const SectionHeaderActual = ({ bgColor }: { bgColor: string }) => (
+        <>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>1st Quarter</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>2nd Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Semestral Total</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>3rd Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>As of September</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>4th Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Year End (As of Nov)</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Grand Total</th>
+        </>
+    );
+
+    const SubHeadersTarget = () => (
+        <>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jan</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+        </>
+    );
+
+    const SubHeadersActual = () => (
+        <>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jan</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+        </>
+    );
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
@@ -373,37 +606,18 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
                     <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
-                            <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">1st Quarter</th>
-                            <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">2nd Quarter</th>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-blue-50 dark:bg-blue-900/30">Semestral Total</th>
-                            <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">3rd Quarter</th>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-blue-50 dark:bg-blue-900/30">As of September</th>
-                            <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">4th Quarter</th>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-yellow-50 dark:bg-yellow-900/20">Year End (As of Nov)</th>
-                            <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-blue-100 dark:bg-blue-900/40">Grand Total</th>
+                            <th rowSpan={3} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
+                            <th colSpan={20} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-blue-200 dark:bg-blue-900">Physical Targets</th>
+                            <th rowSpan={3} className="w-2 bg-gray-400 dark:bg-gray-600"></th> {/* Separator */}
+                            <th colSpan={28} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-green-200 dark:bg-green-900">Physical Accomplishments</th>
                         </tr>
                         <tr>
-                            {/* Q1 */}
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jan</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-                            {/* Q2 */}
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-                            {/* Q3 */}
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-                            {/* Q4 */}
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
-                            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+                            <SectionHeaderTarget bgColor="bg-blue-50 dark:bg-blue-900/30" />
+                            <SectionHeaderActual bgColor="bg-green-50 dark:bg-green-900/30" />
+                        </tr>
+                        <tr>
+                            <SubHeadersTarget />
+                            <SubHeadersActual />
                         </tr>
                     </thead>
                     <tbody>

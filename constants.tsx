@@ -214,68 +214,9 @@ export interface Subproject extends BaseEntity {
     newTargetCompletionDate?: string;
 }
 
-export type TrainingComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
+export type ActivityComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
 
-export const trainingComponents: TrainingComponentType[] = [
-    'Social Preparation',
-    'Production and Livelihood',
-    'Marketing and Enterprise',
-    'Program Management'
-];
-
-export const months = [
-    'January', 'February', 'March', 'April', 'May', 'June', 
-    'July', 'August', 'September', 'October', 'November', 'December'
-] as const;
-export type Month = typeof months[number];
-
-export interface OtherActivityExpense {
-    id: number;
-    objectType: ObjectType;
-    expenseParticular: string;
-    uacsCode: string;
-    obligationMonth: string;
-    disbursementMonth: string;
-    amount: number;
-    // Accomplishment Fields
-    actualObligationDate?: string;
-    actualDisbursementDate?: string;
-    actualAmount?: number;
-}
-
-export interface Training extends BaseEntity {
-    id: number;
-    uid?: string;
-    name: string;
-    date: string;
-    description: string;
-    location: string;
-    facilitator: string;
-    participatingIpos: string[];
-    participating_ipo_ids?: number[]; // Foreign Keys for participating IPOs
-    lat?: number;
-    lng?: number;
-    participantsMale: number;
-    participantsFemale: number;
-    expenses: OtherActivityExpense[];
-    component: TrainingComponentType;
-    fundingYear?: number;
-    fundType?: FundType;
-    tier?: Tier;
-    operatingUnit: string;
-    encodedBy: string;
-    // Catch Up Plan
-    catchUpPlanRemarks?: string;
-    newTargetDate?: string;
-    // Accomplishment Fields
-    actualDate?: string;
-    actualParticipantsMale?: number;
-    actualParticipantsFemale?: number;
-}
-
-export type OtherActivityComponentType = 'Social Preparation' | 'Production and Livelihood' | 'Marketing and Enterprise' | 'Program Management';
-
-export const otherActivityComponents: OtherActivityComponentType[] = [
+export const otherActivityComponents: ActivityComponentType[] = [
     'Social Preparation',
     'Production and Livelihood',
     'Marketing and Enterprise',
@@ -295,26 +236,51 @@ export const programManagementActivities = [
     'Sub-Project Monitoring', 'Performance and Budget Utilization Review (PBUR)', 'Planning and BEDS Preparation'
 ] as const;
 
-export const otherActivityOptions: { [key in OtherActivityComponentType]: readonly string[] } = {
+export const otherActivityOptions: { [key in ActivityComponentType]: readonly string[] } = {
     'Social Preparation': socialPreparationActivities,
     'Production and Livelihood': [],
     'Marketing and Enterprise': marketingEnterpriseActivities,
     'Program Management': programManagementActivities,
 };
 
-export interface OtherActivity extends BaseEntity {
+export const months = [
+    'January', 'February', 'March', 'April', 'May', 'June', 
+    'July', 'August', 'September', 'October', 'November', 'December'
+] as const;
+export type Month = typeof months[number];
+
+export interface ActivityExpense {
+    id: number;
+    objectType: ObjectType;
+    expenseParticular: string;
+    uacsCode: string;
+    obligationMonth: string;
+    disbursementMonth: string;
+    amount: number;
+    // Accomplishment Fields
+    actualObligationDate?: string;
+    actualDisbursementDate?: string;
+    actualAmount?: number;
+}
+
+// Unified Activity Interface
+export interface Activity extends BaseEntity {
     id: number;
     uid?: string;
-    component: OtherActivityComponentType;
+    type: 'Training' | 'Activity'; // Database Discriminator
     name: string;
     date: string;
     description: string;
     location: string;
-    participatingIpos: string[]; 
-    participating_ipo_ids?: number[]; // Foreign Keys
+    facilitator?: string; // Specific to Training
+    participatingIpos: string[];
+    participating_ipo_ids?: number[]; // Foreign Keys for participating IPOs
+    lat?: number;
+    lng?: number;
     participantsMale: number;
     participantsFemale: number;
-    expenses: OtherActivityExpense[];
+    expenses: ActivityExpense[];
+    component: ActivityComponentType;
     fundingYear?: number;
     fundType?: FundType;
     tier?: Tier;
@@ -328,6 +294,13 @@ export interface OtherActivity extends BaseEntity {
     actualParticipantsMale?: number;
     actualParticipantsFemale?: number;
 }
+
+// Aliases for backward compatibility with Report components
+export type Training = Activity;
+export type OtherActivity = Activity;
+export type OtherActivityExpense = ActivityExpense;
+export type OtherActivityComponentType = ActivityComponentType;
+export type TrainingComponentType = ActivityComponentType;
 
 // --- Program Management Interfaces ---
 

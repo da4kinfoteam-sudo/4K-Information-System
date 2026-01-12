@@ -17,12 +17,12 @@ import ProgramManagement from './components/ProgramManagement';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
-    initialUacsCodes, initialParticularTypes, Subproject, IPO, Training, OtherActivity, User,
+    initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings
 } from './constants';
 import { sampleIPOs } from './sampleIPOs';
 import {
-    sampleSubprojects, sampleTrainings, sampleOtherActivities, 
+    sampleSubprojects, sampleActivities, 
     sampleReferenceUacsList, sampleReferenceParticularList,
     sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
 } from './samples';
@@ -36,8 +36,7 @@ const AppContent: React.FC = () => {
     // Data States with Sample Defaults
     const [subprojects, setSubprojects] = useLocalStorageState<Subproject[]>('subprojects', sampleSubprojects);
     const [ipos, setIpos] = useLocalStorageState<IPO[]>('ipos', sampleIPOs);
-    const [trainings, setTrainings] = useLocalStorageState<Training[]>('trainings', sampleTrainings);
-    const [otherActivities, setOtherActivities] = useLocalStorageState<OtherActivity[]>('otherActivities', sampleOtherActivities);
+    const [activities, setActivities] = useLocalStorageState<Activity[]>('activities', sampleActivities);
     
     // Program Management States
     const [officeReqs, setOfficeReqs] = useLocalStorageState<OfficeRequirement[]>('officeReqs', sampleOfficeRequirements);
@@ -105,6 +104,9 @@ const AppContent: React.FC = () => {
         return newTypes;
     }, [referenceParticularList]);
 
+    // Derived Activities
+    const trainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
+    const otherActivities = useMemo(() => activities.filter(a => a.type === 'Activity'), [activities]);
 
     // Navigation Handlers
     const handleSelectSubproject = (project: Subproject) => {
@@ -135,15 +137,19 @@ const AppContent: React.FC = () => {
                 return <Dashboard 
                             subprojects={subprojects} 
                             ipos={ipos} 
-                            trainings={trainings} 
-                            otherActivities={otherActivities} 
+                            activities={activities}
                             systemSettings={systemSettings}
                             officeReqs={officeReqs}
                             staffingReqs={staffingReqs}
                             otherProgramExpenses={otherProgramExpenses}
                         />;
             case '/dashboards':
-                 return <DashboardsPage subprojects={subprojects} ipos={ipos} trainings={trainings} otherActivities={otherActivities} />;
+                 return <DashboardsPage 
+                            subprojects={subprojects} 
+                            ipos={ipos} 
+                            trainings={trainings}
+                            otherActivities={otherActivities}
+                        />;
             case '/subprojects':
                 return <Subprojects 
                             ipos={ipos} 
@@ -158,10 +164,8 @@ const AppContent: React.FC = () => {
             case '/activities':
                 return <ActivitiesComponent 
                             ipos={ipos} 
-                            trainings={trainings}
-                            setTrainings={setTrainings}
-                            otherActivities={otherActivities} 
-                            setOtherActivities={setOtherActivities} 
+                            activities={activities}
+                            setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             uacsCodes={derivedUacsCodes}
                         />;
@@ -180,7 +184,7 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             setIpos={setIpos} 
                             subprojects={subprojects} 
-                            trainings={trainings}
+                            activities={activities}
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
@@ -196,7 +200,7 @@ const AppContent: React.FC = () => {
                 return <Reports 
                             ipos={ipos} 
                             subprojects={subprojects} 
-                            trainings={trainings} 
+                            trainings={trainings}
                             otherActivities={otherActivities}
                             officeReqs={officeReqs}
                             staffingReqs={staffingReqs}
