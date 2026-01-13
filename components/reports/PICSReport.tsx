@@ -1,4 +1,4 @@
-
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
@@ -158,7 +158,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
         };
     };
 
-    const groupedData = useMemo(() => {
+    const groupedData = useMemo<Record<string, { provinces: Record<string, { items: any[] }> }>>(() => {
         const regions: Record<string, { provinces: Record<string, { items: any[] }> }> = {};
         picsData.forEach(item => {
             if (!regions[item.region]) regions[item.region] = { provinces: {} };
@@ -266,7 +266,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
                     <tbody>
                         {sortedRegions.map(region => {
                             const regionData = groupedData[region];
-                            const regionItems = Object.values(regionData.provinces).flatMap(p => p.items);
+                            const regionItems = Object.values(regionData.provinces).flatMap((p: any) => p.items);
                             const regionSummary = calculateSummary(regionItems);
                             const isRegionExpanded = expanded[region];
 
@@ -392,3 +392,4 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
 }
 
 export default PICSReport;
+// --- End of components/reports/PICSReport.tsx ---

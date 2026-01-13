@@ -1,6 +1,5 @@
-
 // Author: 4K 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 export function useSupabaseTable<T extends { id: number | string }>(

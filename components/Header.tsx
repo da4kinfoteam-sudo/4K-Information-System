@@ -1,7 +1,9 @@
 
+// Author: 4K 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { SettingsIcon } from '../constants';
+import { supabase } from '../supabaseClient';
 
 interface HeaderProps {
     toggleSidebar: () => void;
@@ -33,10 +35,35 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [dbStatus, setDbStatus] = useState<'connected' | 'offline' | 'loading'>('loading');
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentDate(new Date()), 60000);
         return () => clearInterval(timer);
+    }, []);
+
+    // Check Database Connection
+    useEffect(() => {
+        const checkDb = async () => {
+            if (!supabase) {
+                setDbStatus('offline');
+                return;
+            }
+            try {
+                // Lightweight check against the 'users' table
+                const { error, status } = await supabase.from('users').select('count', { count: 'exact', head: true });
+                if (!error && (status === 200 || status === 204)) {
+                    setDbStatus('connected');
+                } else {
+                    console.warn('DB Check Error:', error);
+                    setDbStatus('offline');
+                }
+            } catch (err) {
+                console.error('DB Check Exception:', err);
+                setDbStatus('offline');
+            }
+        };
+        checkDb();
     }, []);
 
     const formattedDate = currentDate.toLocaleDateString('en-US', {
@@ -75,7 +102,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                     </button>
                     
                     {/* System Date */}
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white hidden sm:inline-block">
                         {formattedDate}
                     </span>
                 </div>
@@ -84,6 +111,20 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 <div className="flex-1"></div>
 
                 <div className="flex items-center space-x-4">
+                    {/* Database Status Indicator */}
+                    <div className={`hidden md:flex items-center px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                        dbStatus === 'connected' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
+                        dbStatus === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
+                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                    }`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data'}>
+                        <span className={`w-2 h-2 rounded-full mr-2 ${
+                            dbStatus === 'connected' ? 'bg-green-500' :
+                            dbStatus === 'offline' ? 'bg-red-500' :
+                            'bg-gray-500 animate-pulse'
+                        }`}></span>
+                        {dbStatus === 'connected' ? 'System Online' : dbStatus === 'offline' ? 'Offline Mode' : 'Connecting...'}
+                    </div>
+
                     {currentUser && (
                         <div className="relative" ref={menuRef}>
                              <div 
@@ -107,6 +148,18 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                                     <div className="sm:hidden px-4 py-2 border-b border-gray-100 dark:border-gray-700 mb-1">
                                         <p className="text-sm font-medium text-gray-900 dark:text-white">{currentUser.fullName}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</p>
+                                    </div>
+                                    
+                                    {/* Mobile DB Status */}
+                                    <div className="md:hidden px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center">
+                                        <span className={`w-2 h-2 rounded-full mr-2 ${
+                                            dbStatus === 'connected' ? 'bg-green-500' :
+                                            dbStatus === 'offline' ? 'bg-red-500' :
+                                            'bg-gray-500'
+                                        }`}></span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            {dbStatus === 'connected' ? 'Online' : 'Offline'}
+                                        </span>
                                     </div>
 
                                     <button
@@ -144,4 +197,4 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
 };
 
 export default Header;
-    
+// --- End of components/Header.tsx ---
