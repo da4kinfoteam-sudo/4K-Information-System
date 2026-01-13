@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import WFPReport from './reports/WFPReport';
@@ -22,7 +23,8 @@ type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
-    const [selectedYear, setSelectedYear] = useState<string>('All');
+    // Default to current year
+    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
@@ -35,6 +37,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         officeReqs.forEach(i => years.add(i.fundYear.toString()));
         staffingReqs.forEach(i => years.add(i.fundYear.toString()));
         otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
+        // Ensure current year is always an option even if no data
+        years.add(new Date().getFullYear().toString());
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
     }, [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
@@ -218,3 +222,4 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 };
 
 export default Reports;
+// --- End of components/Reports.tsx ---

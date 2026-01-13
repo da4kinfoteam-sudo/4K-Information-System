@@ -1,8 +1,10 @@
 
+// Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, otherActivityOptions, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabaseClient';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -94,6 +96,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         disbursementMonth: '',
         amount: ''
     });
+
+    // Helper to refresh data from Supabase
+    const refreshData = async () => {
+        if (!supabase) return;
+        const { data, error } = await supabase.from('activities').select('*').order('id', { ascending: false });
+        if (!error && data) {
+            setActivities(data as Activity[]);
+        }
+    };
 
     // Initialize form data when editing or creating
     useEffect(() => {
@@ -263,9 +274,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         });
     };
 
-    const confirmMultiDelete = () => {
+    const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
-            setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+            if (supabase) {
+                const { error } = await supabase.from('activities').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting items:", error);
+                    alert("Failed to delete selected items.");
+                } else {
+                    refreshData();
+                }
+            } else {
+                // Offline fallback
+                setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+            }
         }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -358,37 +380,63 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         }));
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!formData.name || !formData.date || !formData.location) {
             alert('Please fill out all required fields.');
             return;
         }
 
-        // If editing:
-        if (editingItem) {
-            const updatedActivity: Activity = {
-                ...formData,
-                id: editingItem.id
-            };
-            setActivities(prev => prev.map(a => a.id === editingItem.id ? updatedActivity : a));
-        } else {
-            // New Item
-            const newId = Math.max(...activities.map(a => a.id), 0) + 1;
-            const currentYear = new Date().getFullYear();
-            let uid = formData.uid;
-            if (!uid) {
-                const prefix = isTrainingForm ? 'TRN' : 'ACT';
-                const sequence = String(newId).padStart(3, '0');
-                uid = `${prefix}-${currentYear}-${sequence}`;
-            }
+        // New Item logic
+        let newId = activities.length > 0 ? Math.max(...activities.map(a => a.id), 0) + 1 : 1;
+        const currentYear = new Date().getFullYear();
+        let uid = formData.uid;
+        if (!uid) {
+            const prefix = isTrainingForm ? 'TRN' : 'ACT';
+            const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+            uid = `${prefix}-${currentYear}-${sequence}`;
+        }
 
-            const newActivity: Activity = {
-                ...formData,
-                uid,
-                id: newId,
-            };
-            setActivities(prev => [newActivity, ...prev]);
+        const submissionData = {
+            ...formData,
+            uid: uid || formData.uid,
+            updated_at: new Date().toISOString()
+        };
+
+        if (supabase) {
+            try {
+                if (editingItem) {
+                    const { error } = await supabase.from('activities').update(submissionData).eq('id', editingItem.id);
+                    if (error) throw error;
+                } else {
+                    // Remove ID for insert to let DB auto-generate
+                    const { id, ...insertData } = submissionData;
+                    const { error } = await supabase.from('activities').insert([insertData]);
+                    if (error) throw error;
+                }
+                refreshData();
+            } catch (error: any) {
+                console.error("Error saving activity:", error);
+                alert("Failed to save activity. " + error.message);
+                return;
+            }
+        } else {
+            // Offline fallback
+            if (editingItem) {
+                const updatedActivity: Activity = {
+                    ...formData,
+                    id: editingItem.id
+                };
+                setActivities(prev => prev.map(a => a.id === editingItem.id ? updatedActivity : a));
+            } else {
+                const newActivity: Activity = {
+                    ...formData,
+                    uid,
+                    id: newId,
+                    created_at: new Date().toISOString(),
+                };
+                setActivities(prev => [newActivity, ...prev]);
+            }
         }
         
         handleCancelEdit();
@@ -417,9 +465,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (itemToDelete) {
-            setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
+            if (supabase) {
+                const { error } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
+                if (error) {
+                    console.error("Error deleting activity:", error);
+                    alert("Failed to delete activity.");
+                } else {
+                    refreshData();
+                }
+            } else {
+                // Offline fallback
+                setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
+            }
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
         }
@@ -543,7 +602,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
         setIsUploading(true);
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -595,6 +654,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 operatingUnit: currentUser?.operatingUnit || 'NPMO',
                                 encodedBy: currentUser?.fullName || 'System',
                                 facilitator: String(row.facilitator || ''),
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
                             },
                             expenses: []
                         });
@@ -614,20 +675,27 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     }
                 });
 
-                const newActivities: Activity[] = [];
+                const newActivities: any[] = [];
 
                 groupedData.forEach((group) => {
-                    currentId++;
                     newActivities.push({
-                        id: currentId,
                         ...group.common,
                         expenses: group.expenses,
                     });
                 });
 
-                if (newActivities.length > 0) setActivities(prev => [...prev, ...newActivities]);
-
-                alert(`${newActivities.length} activities imported successfully!`);
+                if (newActivities.length > 0) {
+                    if (supabase) {
+                        const { error } = await supabase.from('activities').insert(newActivities);
+                        if (error) throw error;
+                        refreshData();
+                    } else {
+                        // Offline Fallback
+                        const localActivities = newActivities.map((act, i) => ({ id: currentId + i + 1, ...act }));
+                        setActivities(prev => [...prev, ...localActivities]);
+                    }
+                    alert(`${newActivities.length} activities imported successfully!`);
+                }
 
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -1116,3 +1184,4 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         </div>
     );
 };
+// --- End of components/Activities.tsx ---

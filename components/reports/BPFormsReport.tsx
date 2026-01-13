@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
@@ -91,7 +92,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
     const bpFormsProcessedData = useMemo(() => {
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
         const allUacsCodes: string[] = [];
+        const seenCodes = new Set<string>();
         
+        // 1. Populate headers from Reference List
         for (const objectType of Object.keys(uacsCodes)) {
             // @ts-ignore
             if (!uacsCodes[objectType]) continue;
@@ -100,21 +103,50 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 // @ts-ignore
                 const codes = Object.keys(uacsCodes[objectType][particular]);
                 headers[objectType as keyof typeof headers][particular] = codes;
-                allUacsCodes.push(...codes);
+                codes.forEach(c => {
+                    if (!seenCodes.has(c)) {
+                        allUacsCodes.push(c);
+                        seenCodes.add(c);
+                    }
+                });
             }
         }
 
+        // Helper to ensure code exists in headers (dynamic discovery)
+        const ensureHeader = (objType: string, particular: string, code: string) => {
+            if (!code) return;
+            // Normalize object type if missing or invalid
+            const typeKey = (objType === 'CO' || objType === 'MOOE') ? objType : 'MOOE';
+            
+            if (!headers[typeKey]) headers[typeKey] = {};
+            const partKey = particular || 'Other Expenses';
+            
+            if (!headers[typeKey][partKey]) headers[typeKey][partKey] = [];
+            
+            if (!headers[typeKey][partKey].includes(code)) {
+                headers[typeKey][partKey].push(code);
+            }
+            if (!seenCodes.has(code)) {
+                allUacsCodes.push(code);
+                seenCodes.add(code);
+            }
+        };
+
         const lineItems: any[] = [];
+        
         data.subprojects.forEach(sp => {
             sp.details.forEach(d => {
+                ensureHeader(d.objectType, d.expenseParticular, d.uacsCode);
                 lineItems.push({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
                     objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits
                 });
             });
         });
+        
         data.trainings.forEach(t => {
             t.expenses.forEach(e => {
+                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode);
                 const packageType = t.component === 'Program Management' ? 'Trainings' : undefined;
                 lineItems.push({
                     component: t.component, packageType, activityName: t.name,
@@ -122,8 +154,10 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 });
             });
         });
+        
         data.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
+                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode);
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 lineItems.push({
                     component: oa.component, packageType, activityName: oa.name,
@@ -131,22 +165,33 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 });
             });
         });
+        
         data.staffingReqs.forEach(sr => {
+            const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
+            // Staffing usually falls under PS (Personal Services), mapped here often to MOOE for simplified report or needs own category. 
+            // For now, use derived type.
+            ensureHeader(objType, 'Salaries & Wages', sr.uacsCode);
             lineItems.push({
                 component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
-                objectType: getObjectTypeByCode(sr.uacsCode, uacsCodes), uacsCode: sr.uacsCode, amount: sr.annualSalary
+                objectType: objType, uacsCode: sr.uacsCode, amount: sr.annualSalary
             });
         });
+        
         data.officeReqs.forEach(or => {
+            const objType = getObjectTypeByCode(or.uacsCode, uacsCodes);
+            ensureHeader(objType, 'Office Equipment', or.uacsCode);
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: or.equipment,
-                objectType: getObjectTypeByCode(or.uacsCode, uacsCodes), uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
+                objectType: objType, uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
             });
         });
+        
         data.otherProgramExpenses.forEach(ope => {
+            const objType = getObjectTypeByCode(ope.uacsCode, uacsCodes);
+            ensureHeader(objType, 'Other Expenses', ope.uacsCode);
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: ope.particulars,
-                objectType: getObjectTypeByCode(ope.uacsCode, uacsCodes), uacsCode: ope.uacsCode, amount: ope.amount
+                objectType: objType, uacsCode: ope.uacsCode, amount: ope.amount
             });
         });
 
@@ -197,8 +242,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 targetList.push(activity);
             }
             
-            if(activity.uacsValues.hasOwnProperty(item.uacsCode)) {
-                activity.uacsValues[item.uacsCode] += item.amount;
+            if(item.uacsCode) {
+                activity.uacsValues[item.uacsCode] = (activity.uacsValues[item.uacsCode] || 0) + item.amount;
             }
 
             if (item.objectType === 'MOOE') {
@@ -474,3 +519,4 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 };
 
 export default BPFormsReport;
+// --- End of components/reports/BPFormsReport.tsx ---

@@ -60,8 +60,8 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
         try {
             if (!supabase) throw new Error("Supabase client not initialized. Check VITE_SUPABASE_URL and VITE_SUPABASE_KEY.");
             
-            // Simple query to check connection
-            const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+            // Robust check using standard select instead of HEAD
+            const { error } = await supabase.from('users').select('id').limit(1);
             
             if (error) throw error;
             

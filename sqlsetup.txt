@@ -4,197 +4,205 @@ create extension if not exists "uuid-ossp";
 
 -- 1. Subprojects Table
 create table if not exists subprojects (
-  "id" bigint primary key generated always as identity,
-  "uid" text,
-  "name" text,
-  "location" text,
-  "indigenousPeopleOrganization" text,
-  "ipo_id" bigint,
-  "status" text,
-  "details" jsonb default '[]'::jsonb,
-  "subprojectCommodities" jsonb default '[]'::jsonb,
-  "packageType" text,
-  "startDate" text,
-  "estimatedCompletionDate" text,
-  "actualCompletionDate" text,
-  "remarks" text,
-  "lat" numeric,
-  "lng" numeric,
-  "history" jsonb default '[]'::jsonb,
-  "fundingYear" integer,
-  "fundType" text,
-  "tier" text,
-  "operatingUnit" text,
-  "encodedBy" text,
-  "catchUpPlanRemarks" text,
-  "newTargetCompletionDate" text,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+-- Ensure all columns exist for Subprojects
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "location" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "indigenousPeopleOrganization" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "ipo_id" bigint;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "status" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "details" jsonb default '[]'::jsonb;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "subprojectCommodities" jsonb default '[]'::jsonb;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "packageType" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "startDate" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "estimatedCompletionDate" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "actualCompletionDate" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "remarks" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "lat" numeric;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "lng" numeric;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "history" jsonb default '[]'::jsonb;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "fundingYear" integer;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "catchUpPlanRemarks" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "newTargetCompletionDate" text;
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 2. IPOs Table
 create table if not exists ipos (
-  "id" bigint primary key generated always as identity,
-  "name" text,
-  "location" text,
-  "region" text,
-  "indigenousCulturalCommunity" text,
-  "ancestralDomainNo" text,
-  "registeringBody" text,
-  "isWomenLed" boolean,
-  "isWithinGida" boolean,
-  "isWithinElcac" boolean,
-  "isWithScad" boolean,
-  "contactPerson" text,
-  "contactNumber" text,
-  "registrationDate" text,
-  "commodities" jsonb default '[]'::jsonb,
-  "levelOfDevelopment" integer,
-  "history" jsonb default '[]'::jsonb,
-  "lat" numeric,
-  "lng" numeric,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+-- Ensure all columns exist for IPOs (Fixes 'ancestralDomainNo' missing error)
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "location" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "region" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "indigenousCulturalCommunity" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "ancestralDomainNo" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "registeringBody" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "isWomenLed" boolean;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "isWithinGida" boolean;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "isWithinElcac" boolean;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "isWithScad" boolean;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "contactPerson" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "contactNumber" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "registrationDate" text;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "commodities" jsonb default '[]'::jsonb;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "levelOfDevelopment" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "history" jsonb default '[]'::jsonb;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "lat" numeric;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "lng" numeric;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 3. Activities Table (Covers Trainings and Other Activities)
 create table if not exists activities (
-  "id" bigint primary key generated always as identity,
-  "uid" text,
-  "type" text, -- 'Training' or 'Activity'
-  "name" text,
-  "date" text,
-  "description" text,
-  "location" text,
-  "facilitator" text,
-  "participatingIpos" jsonb default '[]'::jsonb,
-  "participating_ipo_ids" jsonb default '[]'::jsonb,
-  "lat" numeric,
-  "lng" numeric,
-  "participantsMale" integer,
-  "participantsFemale" integer,
-  "expenses" jsonb default '[]'::jsonb,
-  "component" text,
-  "fundingYear" integer,
-  "fundType" text,
-  "tier" text,
-  "operatingUnit" text,
-  "encodedBy" text,
-  "catchUpPlanRemarks" text,
-  "newTargetDate" text,
-  "actualDate" text,
-  "actualParticipantsMale" integer,
-  "actualParticipantsFemale" integer,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "type" text; -- 'Training' or 'Activity'
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "date" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "description" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "location" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "facilitator" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "participatingIpos" jsonb default '[]'::jsonb;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "participating_ipo_ids" jsonb default '[]'::jsonb;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "lat" numeric;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "lng" numeric;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "participantsMale" integer;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "participantsFemale" integer;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "expenses" jsonb default '[]'::jsonb;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "component" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "fundingYear" integer;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "catchUpPlanRemarks" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "newTargetDate" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "actualDate" text;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "actualParticipantsMale" integer;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "actualParticipantsFemale" integer;
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 4. Program Management: Office Requirements
 create table if not exists office_requirements (
-  "id" bigint primary key generated always as identity,
-  "uid" text,
-  "operatingUnit" text,
-  "uacsCode" text,
-  "obligationDate" text,
-  "disbursementDate" text,
-  "fundType" text,
-  "fundYear" integer,
-  "tier" text,
-  "encodedBy" text,
-  "actualDate" text,
-  "actualAmount" numeric,
-  "actualObligationDate" text,
-  "actualDisbursementDate" text,
-  "actualObligationAmount" numeric,
-  "actualDisbursementAmount" numeric,
-  "equipment" text,
-  "specs" text,
-  "purpose" text,
-  "numberOfUnits" numeric,
-  "pricePerUnit" numeric,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "uacsCode" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "obligationDate" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "disbursementDate" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "fundYear" integer;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualDate" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualAmount" numeric;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualObligationDate" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementDate" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualObligationAmount" numeric;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementAmount" numeric;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "equipment" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "specs" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "purpose" text;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "numberOfUnits" numeric;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "pricePerUnit" numeric;
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE office_requirements ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 5. Program Management: Staffing Requirements
 create table if not exists staffing_requirements (
-  "id" bigint primary key generated always as identity,
-  "uid" text,
-  "operatingUnit" text,
-  "uacsCode" text,
-  "obligationDate" text,
-  "disbursementDate" text,
-  "fundType" text,
-  "fundYear" integer,
-  "tier" text,
-  "encodedBy" text,
-  "actualDate" text,
-  "actualAmount" numeric,
-  "actualObligationDate" text,
-  "actualDisbursementDate" text,
-  "actualObligationAmount" numeric,
-  "actualDisbursementAmount" numeric,
-  "personnelPosition" text,
-  "status" text,
-  "salaryGrade" integer,
-  "annualSalary" numeric,
-  "personnelType" text,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "uacsCode" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "obligationDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "fundYear" integer;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualAmount" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualObligationDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualObligationAmount" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementAmount" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "personnelPosition" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "status" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "salaryGrade" integer;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "annualSalary" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "personnelType" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 6. Program Management: Other Expenses
 create table if not exists other_program_expenses (
-  "id" bigint primary key generated always as identity,
-  "uid" text,
-  "operatingUnit" text,
-  "uacsCode" text,
-  "obligationDate" text,
-  "disbursementDate" text,
-  "fundType" text,
-  "fundYear" integer,
-  "tier" text,
-  "encodedBy" text,
-  "actualDate" text,
-  "actualAmount" numeric,
-  "actualObligationDate" text,
-  "actualDisbursementDate" text,
-  "actualObligationAmount" numeric,
-  "actualDisbursementAmount" numeric,
-  "particulars" text,
-  "amount" numeric,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "uacsCode" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "obligationDate" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "disbursementDate" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "fundYear" integer;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualDate" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualAmount" numeric;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualObligationDate" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualDisbursementDate" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualObligationAmount" numeric;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualDisbursementAmount" numeric;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "particulars" text;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "amount" numeric;
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- 7. References: UACS
 create table if not exists reference_uacs (
-  "id" text primary key,
-  "objectType" text,
-  "particular" text,
-  "uacsCode" text,
-  "description" text
+  "id" text primary key
 );
+ALTER TABLE reference_uacs ADD COLUMN IF NOT EXISTS "objectType" text;
+ALTER TABLE reference_uacs ADD COLUMN IF NOT EXISTS "particular" text;
+ALTER TABLE reference_uacs ADD COLUMN IF NOT EXISTS "uacsCode" text;
+ALTER TABLE reference_uacs ADD COLUMN IF NOT EXISTS "description" text;
 
 -- 8. References: Particulars
 create table if not exists reference_particulars (
-  "id" text primary key,
-  "type" text,
-  "particular" text
+  "id" text primary key
 );
+ALTER TABLE reference_particulars ADD COLUMN IF NOT EXISTS "type" text;
+ALTER TABLE reference_particulars ADD COLUMN IF NOT EXISTS "particular" text;
 
 -- 9. Users
 create table if not exists users (
-  "id" bigint primary key generated always as identity,
-  "username" text,
-  "fullName" text,
-  "email" text,
-  "role" text,
-  "operatingUnit" text,
-  "password" text,
-  "created_at" timestamptz default now(),
-  "updated_at" timestamptz default now()
+  "id" bigint primary key generated always as identity
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "username" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "fullName" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "email" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "role" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "password" text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
 -- ================================================================
 -- ROW LEVEL SECURITY POLICIES

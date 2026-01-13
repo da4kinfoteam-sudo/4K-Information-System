@@ -50,12 +50,13 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 return;
             }
             try {
-                // Lightweight check against the 'users' table
-                const { error, status } = await supabase.from('users').select('count', { count: 'exact', head: true });
-                if (!error && (status === 200 || status === 204)) {
+                // Robust check: Simple select query to 'users' table
+                const { error } = await supabase.from('users').select('id').limit(1);
+                
+                if (!error) {
                     setDbStatus('connected');
                 } else {
-                    console.warn('DB Check Error:', error);
+                    console.warn('DB Check Error:', error.message);
                     setDbStatus('offline');
                 }
             } catch (err) {
@@ -63,7 +64,12 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 setDbStatus('offline');
             }
         };
+        
         checkDb();
+        
+        // Poll connection status every 15 seconds
+        const intervalId = setInterval(checkDb, 15000);
+        return () => clearInterval(intervalId);
     }, []);
 
     const formattedDate = currentDate.toLocaleDateString('en-US', {
@@ -116,7 +122,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                         dbStatus === 'connected' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
                         dbStatus === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
                         'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                    }`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data'}>
+                    }`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data / Offline'}>
                         <span className={`w-2 h-2 rounded-full mr-2 ${
                             dbStatus === 'connected' ? 'bg-green-500' :
                             dbStatus === 'offline' ? 'bg-red-500' :
