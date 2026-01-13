@@ -118,16 +118,45 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
         }
     };
 
-    const handleSubmitUser = (e: React.FormEvent) => {
+    const handleSubmitUser = async (e: React.FormEvent) => {
         e.preventDefault();
+        
         if (editingUser) {
+            // Edit Mode: Update local state -> triggers Hook Upsert (works for existing records)
             setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...formData } : u));
         } else {
-            const newUser = {
-                id: Date.now(),
-                ...formData
-            } as User;
-            setUsersList(prev => [...prev, newUser]);
+            // Add Mode
+            if (supabase) {
+                try {
+                    // 1. Direct Insert to let DB generate ID (excludes ID from payload)
+                    const { error } = await supabase.from('users').insert([formData]);
+                    
+                    if (error) throw error;
+
+                    // 2. Fetch updated list to sync local state with real IDs
+                    const { data: refreshedList, error: fetchError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .order('id', { ascending: true });
+                    
+                    if (fetchError) throw fetchError;
+
+                    if (refreshedList) {
+                        setUsersList(refreshedList as User[]); 
+                    }
+                } catch (err: any) {
+                    console.error("Error adding user:", err);
+                    alert("Failed to add user: " + err.message);
+                    return; // Keep modal open on error
+                }
+            } else {
+                // Offline fallback
+                const newUser = {
+                    id: Date.now(),
+                    ...formData
+                } as User;
+                setUsersList(prev => [...prev, newUser]);
+            }
         }
         setIsModalOpen(false);
     };
