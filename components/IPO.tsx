@@ -1,7 +1,9 @@
 
+// Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
+import { supabase } from '../supabaseClient';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -73,6 +75,15 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         value: '',
         isScad: false,
     });
+
+    // Helper to refresh data from Supabase
+    const refreshData = async () => {
+        if (!supabase) return;
+        const { data, error } = await supabase.from('ipos').select('*').order('id', { ascending: true });
+        if (!error && data) {
+            setIpos(data as IPO[]);
+        }
+    };
 
     // Calculate derived data from activities
     const calculateTotalInvestment = useMemo(() => {
@@ -251,8 +262,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         });
     };
 
-    const confirmMultiDelete = () => {
-        setIpos(prev => prev.filter(ipo => !selectedIds.includes(ipo.id)));
+    const confirmMultiDelete = async () => {
+        if (supabase) {
+            const { error } = await supabase.from('ipos').delete().in('id', selectedIds);
+            if (error) {
+                console.error("Error deleting IPOs:", error);
+                alert("Failed to delete selected IPOs.");
+            } else {
+                refreshData();
+            }
+        } else {
+            setIpos(prev => prev.filter(ipo => !selectedIds.includes(ipo.id)));
+        }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
         setSelectedIds([]);
@@ -333,7 +354,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }));
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         const finalRegisteringBody = formData.registeringBody === 'Others' ? otherRegisteringBody : formData.registeringBody;
         
@@ -344,15 +365,38 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         
         const submissionData = { ...formData, registeringBody: finalRegisteringBody };
 
-        if (editingIpo) {
-            const updatedIpo: IPO = { ...editingIpo, ...submissionData };
-            setIpos(prev => prev.map(ipo => ipo.id === editingIpo.id ? updatedIpo : ipo));
+        if (supabase) {
+            try {
+                if (editingIpo) {
+                    const { error } = await supabase
+                        .from('ipos')
+                        .update(submissionData)
+                        .eq('id', editingIpo.id);
+                    if (error) throw error;
+                } else {
+                    const { error } = await supabase
+                        .from('ipos')
+                        .insert([submissionData]);
+                    if (error) throw error;
+                }
+                refreshData();
+            } catch (error: any) {
+                console.error("Error saving IPO:", error);
+                alert("Failed to save IPO. " + error.message);
+                return;
+            }
         } else {
-            const newIpo: IPO = {
-                id: ipos.length > 0 ? Math.max(...ipos.map(ipo => ipo.id)) + 1 : 1,
-                ...submissionData,
-            };
-            setIpos(prev => [newIpo, ...prev]);
+            // Offline fallback
+            if (editingIpo) {
+                const updatedIpo: IPO = { ...editingIpo, ...submissionData };
+                setIpos(prev => prev.map(ipo => ipo.id === editingIpo.id ? updatedIpo : ipo));
+            } else {
+                const newIpo: IPO = {
+                    id: ipos.length > 0 ? Math.max(...ipos.map(ipo => ipo.id)) + 1 : 1,
+                    ...submissionData,
+                };
+                setIpos(prev => [newIpo, ...prev]);
+            }
         }
         handleCancelEdit();
     };
@@ -382,9 +426,19 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (ipoToDelete) {
-            setIpos(prev => prev.filter(p => p.id !== ipoToDelete.id));
+            if (supabase) {
+                const { error } = await supabase.from('ipos').delete().eq('id', ipoToDelete.id);
+                if (error) {
+                    console.error("Error deleting IPO:", error);
+                    alert("Failed to delete IPO.");
+                } else {
+                    refreshData();
+                }
+            } else {
+                setIpos(prev => prev.filter(p => p.id !== ipoToDelete.id));
+            }
             setIsDeleteModalOpen(false);
             setIpoToDelete(null);
         }
@@ -524,7 +578,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         setIsUploading(true);
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -534,7 +588,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
                 let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
                 
-                const newIpos: IPO[] = jsonData.map((row, index) => {
+                const newIpos: Omit<IPO, 'id'>[] = jsonData.map((row, index) => {
                     // Basic validation
                     if (!row.name || !row.province || !row.municipality || !row.registrationDate) {
                         throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality, registrationDate).`);
@@ -548,10 +602,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         commodities = [];
                     }
 
-                    currentMaxId++;
-                    
                     // Construct Location String
-                    // Format: [Brgy list], Municipality, Province
                     let locationString = '';
                     const brgy = row.barangay ? String(row.barangay).trim() : '';
                     const municipality = String(row.municipality).trim();
@@ -570,7 +621,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     const isWithScad = commodities.some(c => c.isScad);
 
                     return {
-                        id: currentMaxId,
                         name: String(row.name),
                         location: locationString,
                         region: region,
@@ -586,10 +636,20 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         registrationDate: String(row.registrationDate),
                         commodities: commodities,
                         levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
                     };
-                }).filter(Boolean); // Filter out any nulls from failed parsing
+                });
 
-                setIpos(prev => [...prev, ...newIpos]);
+                if (supabase) {
+                    const { error } = await supabase.from('ipos').insert(newIpos);
+                    if (error) throw error;
+                    refreshData();
+                } else {
+                    const localIpos = newIpos.map((ipo, idx) => ({ id: currentMaxId + idx + 1, ...ipo }));
+                    setIpos(prev => [...prev, ...localIpos]);
+                }
+                
                 alert(`${newIpos.length} IPO(s) imported successfully!`);
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -1015,3 +1075,4 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 };
 
 export default IPOs;
+// --- End of components/IPO.tsx ---
