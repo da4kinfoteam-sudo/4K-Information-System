@@ -1,6 +1,9 @@
+
+// Author: 4K 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User } from '../constants';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import { useSupabaseTable } from '../hooks/useSupabaseTable';
 
 interface AuthContextType {
     currentUser: User | null;
@@ -15,8 +18,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentUser, setCurrentUser] = useLocalStorageState<User | null>('currentUserSession', null);
     
-    // Centralized user list management for authentication
-    const [usersList, setUsersList] = useLocalStorageState<User[]>('usersList', [
+    // Centralized user list management synced with Supabase 'users' table
+    const [usersList, setUsersList] = useSupabaseTable<User>('users', [
         { id: 1, username: "admin", fullName: "Admin User", email: "admin@da.gov.ph", role: "Administrator", operatingUnit: "NPMO", password: "admin" },
         { id: 2, username: "juan", fullName: "Juan Dela Cruz", email: "juan@da.gov.ph", role: "User", operatingUnit: "RPMO 4A", password: "user" },
     ]);
@@ -43,3 +46,4 @@ export const useAuth = () => {
     }
     return context;
 };
+// --- End of contexts/AuthContext.tsx ---

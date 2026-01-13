@@ -1,16 +1,28 @@
-
+// Author: 4K 
 import { createClient } from '@supabase/supabase-js';
 
-// Instructions:
-// 1. Create a project at https://database.new
-// 2. Get your URL and ANON KEY from Project Settings > API
-// 3. For local development, you can hardcode strings here temporarily or use a .env file if using a bundler.
-// 4. For deployment (Vercel), set these as Environment Variables.
+const getEnvVar = (key: string) => {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+        return (import.meta as any).env[key];
+    }
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+        return process.env[key];
+    }
+    if ((window as any)._env_ && (window as any)._env_[key]) {
+        return (window as any)._env_[key];
+    }
+    return '';
+};
 
-// NOTE: In this specific no-build environment, you might need to paste your keys directly below 
-// replacing process.env... if env vars aren't injected by your runtime.
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
+const supabaseKey = getEnvVar('VITE_SUPABASE_KEY') || getEnvVar('VITE_SUPABASE_ANON_KEY');
 
-const supabaseUrl = (window as any)._env_?.VITE_SUPABASE_URL || 'YOUR_SUPABASE_PROJECT_URL';
-const supabaseKey = (window as any)._env_?.VITE_SUPABASE_KEY || 'YOUR_SUPABASE_ANON_KEY';
+if (!supabaseUrl || !supabaseKey) {
+    console.warn('Supabase URL or Key is missing. Please check your environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_KEY).');
+}
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Fix: Removed invalid non-comment footer line
+export const supabase = (supabaseUrl && supabaseKey) 
+    ? createClient(supabaseUrl, supabaseKey) 
+    : null;
+// --- End of supabaseClient.ts ---

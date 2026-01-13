@@ -1,0 +1,197 @@
+
+-- Enable UUID extension if not already enabled
+create extension if not exists "uuid-ossp";
+
+-- 1. Subprojects Table
+create table if not exists subprojects (
+  "id" bigint primary key generated always as identity,
+  "uid" text,
+  "name" text,
+  "location" text,
+  "indigenousPeopleOrganization" text,
+  "ipo_id" bigint,
+  "status" text,
+  "details" jsonb default '[]'::jsonb,
+  "subprojectCommodities" jsonb default '[]'::jsonb,
+  "packageType" text,
+  "startDate" text,
+  "estimatedCompletionDate" text,
+  "actualCompletionDate" text,
+  "remarks" text,
+  "lat" numeric,
+  "lng" numeric,
+  "history" jsonb default '[]'::jsonb,
+  "fundingYear" integer,
+  "fundType" text,
+  "tier" text,
+  "operatingUnit" text,
+  "encodedBy" text,
+  "catchUpPlanRemarks" text,
+  "newTargetCompletionDate" text,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 2. IPOs Table
+create table if not exists ipos (
+  "id" bigint primary key generated always as identity,
+  "name" text,
+  "location" text,
+  "region" text,
+  "indigenousCulturalCommunity" text,
+  "ancestralDomainNo" text,
+  "registeringBody" text,
+  "isWomenLed" boolean,
+  "isWithinGida" boolean,
+  "isWithinElcac" boolean,
+  "isWithScad" boolean,
+  "contactPerson" text,
+  "contactNumber" text,
+  "registrationDate" text,
+  "commodities" jsonb default '[]'::jsonb,
+  "levelOfDevelopment" integer,
+  "history" jsonb default '[]'::jsonb,
+  "lat" numeric,
+  "lng" numeric,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 3. Activities Table (Covers Trainings and Other Activities)
+create table if not exists activities (
+  "id" bigint primary key generated always as identity,
+  "uid" text,
+  "type" text, -- 'Training' or 'Activity'
+  "name" text,
+  "date" text,
+  "description" text,
+  "location" text,
+  "facilitator" text,
+  "participatingIpos" jsonb default '[]'::jsonb,
+  "participating_ipo_ids" jsonb default '[]'::jsonb,
+  "lat" numeric,
+  "lng" numeric,
+  "participantsMale" integer,
+  "participantsFemale" integer,
+  "expenses" jsonb default '[]'::jsonb,
+  "component" text,
+  "fundingYear" integer,
+  "fundType" text,
+  "tier" text,
+  "operatingUnit" text,
+  "encodedBy" text,
+  "catchUpPlanRemarks" text,
+  "newTargetDate" text,
+  "actualDate" text,
+  "actualParticipantsMale" integer,
+  "actualParticipantsFemale" integer,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 4. Program Management: Office Requirements
+create table if not exists office_requirements (
+  "id" bigint primary key generated always as identity,
+  "uid" text,
+  "operatingUnit" text,
+  "uacsCode" text,
+  "obligationDate" text,
+  "disbursementDate" text,
+  "fundType" text,
+  "fundYear" integer,
+  "tier" text,
+  "encodedBy" text,
+  "actualDate" text,
+  "actualAmount" numeric,
+  "actualObligationDate" text,
+  "actualDisbursementDate" text,
+  "actualObligationAmount" numeric,
+  "actualDisbursementAmount" numeric,
+  "equipment" text,
+  "specs" text,
+  "purpose" text,
+  "numberOfUnits" numeric,
+  "pricePerUnit" numeric,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 5. Program Management: Staffing Requirements
+create table if not exists staffing_requirements (
+  "id" bigint primary key generated always as identity,
+  "uid" text,
+  "operatingUnit" text,
+  "uacsCode" text,
+  "obligationDate" text,
+  "disbursementDate" text,
+  "fundType" text,
+  "fundYear" integer,
+  "tier" text,
+  "encodedBy" text,
+  "actualDate" text,
+  "actualAmount" numeric,
+  "actualObligationDate" text,
+  "actualDisbursementDate" text,
+  "actualObligationAmount" numeric,
+  "actualDisbursementAmount" numeric,
+  "personnelPosition" text,
+  "status" text,
+  "salaryGrade" integer,
+  "annualSalary" numeric,
+  "personnelType" text,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 6. Program Management: Other Expenses
+create table if not exists other_program_expenses (
+  "id" bigint primary key generated always as identity,
+  "uid" text,
+  "operatingUnit" text,
+  "uacsCode" text,
+  "obligationDate" text,
+  "disbursementDate" text,
+  "fundType" text,
+  "fundYear" integer,
+  "tier" text,
+  "encodedBy" text,
+  "actualDate" text,
+  "actualAmount" numeric,
+  "actualObligationDate" text,
+  "actualDisbursementDate" text,
+  "actualObligationAmount" numeric,
+  "actualDisbursementAmount" numeric,
+  "particulars" text,
+  "amount" numeric,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);
+
+-- 7. References: UACS
+create table if not exists reference_uacs (
+  "id" text primary key,
+  "objectType" text,
+  "particular" text,
+  "uacsCode" text,
+  "description" text
+);
+
+-- 8. References: Particulars
+create table if not exists reference_particulars (
+  "id" text primary key,
+  "type" text,
+  "particular" text
+);
+
+-- 9. Users
+create table if not exists users (
+  "id" bigint primary key generated always as identity,
+  "username" text,
+  "fullName" text,
+  "email" text,
+  "role" text,
+  "operatingUnit" text,
+  "password" text,
+  "created_at" timestamptz default now(),
+  "updated_at" timestamptz default now()
+);

@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -15,6 +16,7 @@ import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
 import useLocalStorageState from './hooks/useLocalStorageState';
+import { useSupabaseTable } from './hooks/useSupabaseTable'; // Import the new hook
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
@@ -33,21 +35,24 @@ const AppContent: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
 
-    // Data States with Sample Defaults
-    const [subprojects, setSubprojects] = useLocalStorageState<Subproject[]>('subprojects', sampleSubprojects);
-    const [ipos, setIpos] = useLocalStorageState<IPO[]>('ipos', sampleIPOs);
-    const [activities, setActivities] = useLocalStorageState<Activity[]>('activities', sampleActivities);
+    // --- DATA STATE MANAGEMENT ---
+    // Switched from useLocalStorageState to useSupabaseTable for database synchronization.
+    // 'tableName' must match your Supabase table names exactly.
+    
+    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects);
+    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', sampleIPOs);
+    const [activities, setActivities] = useSupabaseTable<Activity>('activities', sampleActivities);
     
     // Program Management States
-    const [officeReqs, setOfficeReqs] = useLocalStorageState<OfficeRequirement[]>('officeReqs', sampleOfficeRequirements);
-    const [staffingReqs, setStaffingReqs] = useLocalStorageState<StaffingRequirement[]>('staffingReqs', sampleStaffingRequirements);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useLocalStorageState<OtherProgramExpense[]>('otherProgramExpenses', sampleOtherProgramExpenses);
+    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements);
+    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses);
 
-    // Reference States with Sample Defaults
-    const [referenceUacsList, setReferenceUacsList] = useLocalStorageState<ReferenceUacs[]>('referenceUacsList', sampleReferenceUacsList);
-    const [referenceParticularList, setReferenceParticularList] = useLocalStorageState<ReferenceParticular[]>('referenceParticularList', sampleReferenceParticularList);
+    // Reference States
+    const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
+    const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
 
-    // System Settings State
+    // System Settings State (Keep local for now, usually requires a specific table structure)
     const [systemSettings, setSystemSettings] = useLocalStorageState<SystemSettings>('systemSettings', defaultSystemSettings);
 
     // Selection States
@@ -302,3 +307,4 @@ export const App: React.FC = () => {
         </AuthProvider>
     );
 };
+// --- End of App.tsx ---
