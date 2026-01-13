@@ -12,12 +12,11 @@ const Login: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [dbStatus, setDbStatus] = useState<'online' | 'offline'>('offline');
 
-    // Check Supabase connection on mount
+    // Check Supabase connection on mount for UI indicator
     useEffect(() => {
         const checkConnection = async () => {
             if (!supabase) return;
             try {
-                // Lightweight check
                 const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
                 if (!error) setDbStatus('online');
             } catch (e) {
@@ -35,46 +34,77 @@ const Login: React.FC = () => {
 
         try {
             let user = null;
+            let isPasswordInvalid = false;
 
             // 1. Attempt Direct Database Authentication
-            if (supabase && dbStatus === 'online') {
-                // Try finding by username first
-                let { data } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('username', identifier)
-                    .maybeSingle();
-
-                // If not found, try finding by email
-                if (!data) {
-                    const result = await supabase
+            // We attempt this regardless of the initial dbStatus check to ensure we try even if connection was flaky at mount.
+            if (supabase) {
+                try {
+                    // Try finding by username first
+                    let { data, error } = await supabase
                         .from('users')
                         .select('*')
-                        .eq('email', identifier)
+                        .eq('username', identifier)
                         .maybeSingle();
-                    data = result.data;
-                }
 
-                if (data) {
-                    // Verify password (plaintext comparison as per current schema)
-                    if (data.password === password) {
-                        user = data;
-                    } else {
-                        // User found but password mismatch
-                        setError('Invalid password.');
-                        setIsLoading(false);
-                        return; 
+                    if (error) console.warn('Supabase Login Query Error (Username):', error);
+
+                    // If not found, try finding by email
+                    if (!data) {
+                        const result = await supabase
+                            .from('users')
+                            .select('*')
+                            .eq('email', identifier)
+                            .maybeSingle();
+                        data = result.data;
+                        if (result.error) console.warn('Supabase Login Query Error (Email):', result.error);
                     }
+
+                    if (data) {
+                        // User found in DB
+                        // Verify password (plaintext comparison as per current schema)
+                        if (data.password === password) {
+                            user = data;
+                        } else {
+                            isPasswordInvalid = true;
+                        }
+                    }
+                } catch (dbErr) {
+                    console.warn("Database auth exception (Offline?):", dbErr);
+                    // Do not block fallback if DB fails
                 }
             }
 
-            // 2. Fallback to Local Context List (if DB is offline or user not found in DB yet)
-            // This ensures default admins work even if DB is empty or unreachable
+            // If DB explicitly said wrong password, stop.
+            if (isPasswordInvalid) {
+                setError('Invalid password.');
+                setIsLoading(false);
+                return;
+            }
+
+            // 2. Fallback: Check Local Context List
+            // This handles cases where DB might be offline but data was loaded previously (though rare with empty init)
             if (!user) {
                  user = usersList.find(u => 
                     (u.email === identifier || u.username === identifier) && 
                     (u.password === password)
                 );
+            }
+
+            // 3. Fallback: Hardcoded Admin (Offline/Emergency Mode)
+            // Allows login even if DB is empty or unreachable
+            if (!user) {
+                if (identifier === 'admin' && password === 'admin') {
+                    user = {
+                        id: 99999, // Temporary ID
+                        username: 'admin',
+                        fullName: 'System Administrator',
+                        email: 'admin@offline.local',
+                        role: 'Administrator',
+                        operatingUnit: 'NPMO',
+                        password: 'admin'
+                    };
+                }
             }
 
             if (user) {
