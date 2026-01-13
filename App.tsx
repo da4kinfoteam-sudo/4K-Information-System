@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -22,11 +21,8 @@ import {
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings
 } from './constants';
-import { sampleIPOs } from './sampleIPOs';
 import {
-    sampleSubprojects, sampleActivities, 
-    sampleReferenceUacsList, sampleReferenceParticularList,
-    sampleOfficeRequirements, sampleStaffingRequirements, sampleOtherProgramExpenses
+    sampleReferenceUacsList, sampleReferenceParticularList
 } from './samples';
 
 const AppContent: React.FC = () => {
@@ -38,17 +34,18 @@ const AppContent: React.FC = () => {
     // --- DATA STATE MANAGEMENT ---
     // Switched from useLocalStorageState to useSupabaseTable for database synchronization.
     // 'tableName' must match your Supabase table names exactly.
+    // Initialized with empty arrays to read strictly from Database.
     
-    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects);
-    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', sampleIPOs);
-    const [activities, setActivities] = useSupabaseTable<Activity>('activities', sampleActivities);
+    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', []);
+    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', []);
+    const [activities, setActivities] = useSupabaseTable<Activity>('activities', []);
     
     // Program Management States
-    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements);
-    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses);
+    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', []);
+    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', []);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', []);
 
-    // Reference States
+    // Reference States - Kept samples as default fallback for configuration if DB is empty
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
 
