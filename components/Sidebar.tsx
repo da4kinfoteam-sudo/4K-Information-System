@@ -49,7 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                              <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center group">
                                 <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow">
                                     <img 
-                                        src="/public/assets/4klogo.png" 
+                                        src="/assets/4klogo.png" 
                                         alt="DA 4K Logo" 
                                         className="h-16 w-16 object-contain"
                                     />
@@ -61,7 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                          {/* Mobile View */}
                          <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center md:hidden">
                             <img 
-                                src="/public/assets/4klogo.png" 
+                                src="/assets/4klogo.png" 
                                 alt="DA 4K Logo" 
                                 className="h-10 w-10 object-contain mb-1"
                             />

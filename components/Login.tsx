@@ -126,7 +126,7 @@ const Login: React.FC = () => {
                 <div className="flex flex-col items-center mb-8">
                     <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm">
                         <img 
-                            src="/public/assets/4klogo.png" 
+                            src="/assets/4klogo.png" 
                             alt="DA 4K Logo" 
                             className="h-24 w-24 object-contain"
                         />
