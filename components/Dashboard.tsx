@@ -4,6 +4,7 @@ import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
 import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import GanttChart from './GanttChart';
+import { useAuth } from '../contexts/AuthContext';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -144,6 +145,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses
 }) => {
+    const { currentUser } = useAuth();
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
@@ -160,6 +162,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
     const [activitiesPage, setActivitiesPage] = useState(1);
     const itemsPerPageActivities = 9;
+
+    // Enforce User OU restriction on mount/change
+    useEffect(() => {
+        if (currentUser && currentUser.role === 'User') {
+            setSelectedOu(currentUser.operatingUnit);
+        }
+    }, [currentUser]);
 
     const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
@@ -433,7 +442,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            disabled={currentUser?.role === 'User'}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (

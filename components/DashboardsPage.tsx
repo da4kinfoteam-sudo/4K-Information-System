@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
@@ -8,6 +8,7 @@ import IPOLevelDashboard from './dashboards/IPOLevelDashboard';
 import NutritionDashboard from './dashboards/NutritionDashboard';
 import FarmProductivityDashboard from './dashboards/FarmProductivityDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface DashboardsPageProps {
     subprojects: Subproject[];
@@ -19,12 +20,20 @@ export interface DashboardsPageProps {
 type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
     const [selectedYear, setSelectedYear] = useState<string>('All');
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
+
+    // Enforce User OU restriction on mount/change
+    useEffect(() => {
+        if (currentUser && currentUser.role === 'User') {
+            setSelectedOu(currentUser.operatingUnit);
+        }
+    }, [currentUser]);
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
@@ -105,7 +114,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            disabled={currentUser?.role === 'User'}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (

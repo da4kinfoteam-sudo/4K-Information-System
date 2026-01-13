@@ -113,8 +113,18 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         averageYield: 0
     });
 
+    // Management cannot edit. User can edit (their own). Admin can edit all.
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.operatingUnit === 'NPMO';
+    // Logic for viewing all data vs user specific data
+    // Admin & Management see all. User sees own OU.
+    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
+
+    // Enforce User OU restriction on mount
+    useEffect(() => {
+        if (currentUser && currentUser.role === 'User') {
+            setOuFilter(currentUser.operatingUnit);
+        }
+    }, [currentUser]);
 
     useEffect(() => {
         if (editingSubproject) {
@@ -165,7 +175,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const processedSubprojects = useMemo(() => {
         let filtered = [...subprojects];
 
-        if (!canViewAll && currentUser) {
+        if (currentUser?.role === 'User') {
             filtered = filtered.filter(s => s.operatingUnit === currentUser.operatingUnit);
         } else if (canViewAll && ouFilter !== 'All') {
             filtered = filtered.filter(s => s.operatingUnit === ouFilter);
@@ -875,7 +885,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         {canViewAll && (
                             <div className="flex items-center gap-2">
                                 <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
-                                <select id="ouFilter" value={ouFilter} onChange={(e) => setOuFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <select 
+                                    id="ouFilter" 
+                                    value={ouFilter} 
+                                    onChange={(e) => setOuFilter(e.target.value)} 
+                                    disabled={currentUser?.role === 'User'}
+                                    className={`${commonInputClasses} mt-0 disabled:opacity-70 disabled:cursor-not-allowed`}
+                                >
                                     <option value="All">All OUs</option>
                                     {operatingUnits.map(ou => (
                                         <option key={ou} value={ou}>{ou}</option>
@@ -1262,7 +1278,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                     </button>
                                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
                                                 </div>
@@ -1319,7 +1335,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
                                                 <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                 </button>
                                                 <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
                                             </div>
@@ -1339,8 +1355,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     </div>
 
                                     <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                    <div><label className="block text-xs font-medium">Obligation Date</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                    <div><label className="block text-xs font-medium">Disbursement Date</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                    <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                    <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
 
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>

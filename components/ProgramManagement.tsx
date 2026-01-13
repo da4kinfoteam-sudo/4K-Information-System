@@ -48,6 +48,10 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const [view, setView] = useState<'list' | 'form'>('list');
     const [isUploading, setIsUploading] = useState(false);
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
+
     // Multi-Delete State
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -103,6 +107,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 
     const [formData, setFormData] = useState(initialFormState);
 
+    // Permissions
     const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
     const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
@@ -115,10 +120,11 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     }, [currentUser, canViewAll]);
 
-    // Reset selection mode when active tab changes
+    // Reset selection mode and pagination when active tab changes
     useEffect(() => {
         setIsSelectionMode(false);
         setSelectedIds([]);
+        setCurrentPage(1);
     }, [activeTab]);
 
     const availableYears = useMemo(() => {
@@ -278,7 +284,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 }
             } else {
                 // Create
-                // Generate UID if not present (although DB doesn't auto-gen UID, we do it here usually)
+                // Generate UID if not present
                 let uid = formData.uid;
                 if (!uid) {
                     const year = new Date().getFullYear();
@@ -486,32 +492,31 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         let headers: string[] = [];
         let commonHeaders = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode'];
         let exampleData: any[] = [];
-        
-        const commonExample = {
-            operatingUnit: 'RPMO 4A',
-            fundYear: 2024,
-            fundType: 'Current',
-            tier: 'Tier 1',
-            obligationDate: '2024-01-15',
-            disbursementDate: '2024-01-30',
-            uacsCode: '50203010-01'
-        };
 
         if (activeTab === 'Office') {
             headers = [...commonHeaders, 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
-            exampleData = [{ ...commonExample, equipment: 'Laptop', specs: 'i5, 8GB RAM', purpose: 'For Admin', numberOfUnits: 1, pricePerUnit: 45000 }];
+            exampleData = [{
+                operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50203010-00',
+                equipment: 'Laptop', specs: 'i7, 16GB RAM', purpose: 'For administrative use', numberOfUnits: 1, pricePerUnit: 50000
+            }];
         } else if (activeTab === 'Staffing') {
             headers = [...commonHeaders, 'personnelPosition', 'status', 'salaryGrade', 'annualSalary', 'personnelType'];
-            exampleData = [{ ...commonExample, personnelPosition: 'Admin Aide', status: 'Contractual', salaryGrade: 6, annualSalary: 180000, personnelType: 'Administrative' }];
+            exampleData = [{
+                operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50100000-00',
+                personnelPosition: 'Project Development Officer II', status: 'Contractual', salaryGrade: 15, annualSalary: 450000, personnelType: 'Technical'
+            }];
         } else {
             headers = [...commonHeaders, 'particulars', 'amount'];
-            exampleData = [{ ...commonExample, particulars: 'Office Supplies Q1', amount: 15000 }];
+            exampleData = [{
+                operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50299990-99',
+                particulars: 'Miscellaneous Expenses', amount: 10000
+            }];
         }
 
+        const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
         const wb = XLSX.utils.book_new();
-        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-        XLSX.utils.book_append_sheet(wb, ws_data, "Data Template");
-        XLSX.writeFile(wb, `${activeTab}_Upload_Template.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        XLSX.writeFile(wb, `${activeTab}_Template.xlsx`);
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -528,64 +533,54 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 const worksheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
-                const newItems: any[] = [];
+                // Determine table and setter
                 let tableName = '';
-                let prefix = '';
                 let setFunction: any = null;
+                let prefix = '';
+                
+                if (activeTab === 'Office') { tableName = 'office_requirements'; setFunction = setOfficeReqs; prefix = 'OR'; }
+                else if (activeTab === 'Staffing') { tableName = 'staffing_requirements'; setFunction = setStaffingReqs; prefix = 'SR'; }
+                else { tableName = 'other_program_expenses'; setFunction = setOtherProgramExpenses; prefix = 'OE'; }
 
-                if (activeTab === 'Office') { tableName = 'office_requirements'; prefix = 'OR'; setFunction = setOfficeReqs; }
-                else if (activeTab === 'Staffing') { tableName = 'staffing_requirements'; prefix = 'SR'; setFunction = setStaffingReqs; }
-                else { tableName = 'other_program_expenses'; prefix = 'OE'; setFunction = setOtherProgramExpenses; }
-
-                jsonData.forEach((row, index) => {
-                    if (!row.operatingUnit || !row.uacsCode) return;
-
-                    const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${String(Date.now() + index).slice(-4)}`;
-
-                    const commonData = {
-                        uid,
+                const currentTimestamp = new Date().toISOString();
+                const newItems = jsonData.map((row: any, index: number) => {
+                    const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
+                    // Basic parsing
+                    const common = {
                         operatingUnit: row.operatingUnit,
-                        uacsCode: String(row.uacsCode),
-                        obligationDate: row.obligationDate ? String(row.obligationDate) : '',
-                        disbursementDate: row.disbursementDate ? String(row.disbursementDate) : '',
-                        fundType: row.fundType || 'Current',
-                        fundYear: Number(row.fundYear) || new Date().getFullYear(),
-                        tier: row.tier || 'Tier 1',
-                        encodedBy: currentUser?.fullName || 'System Upload',
-                        created_at: new Date().toISOString()
+                        fundYear: row.fundYear,
+                        fundType: row.fundType,
+                        tier: row.tier,
+                        obligationDate: row.obligationDate,
+                        disbursementDate: row.disbursementDate,
+                        uacsCode: row.uacsCode,
+                        encodedBy: currentUser?.fullName || 'Upload',
+                        created_at: currentTimestamp,
+                        updated_at: currentTimestamp
                     };
 
-                    // Note: We don't assign ID here for supabase insert, let DB auto-gen
-                    if (activeTab === 'Office') {
-                        newItems.push(parseOfficeRequirementRow(row, commonData));
-                    } else if (activeTab === 'Staffing') {
-                        newItems.push(parseStaffingRequirementRow(row, commonData));
-                    } else {
-                        newItems.push(parseOtherExpenseRow(row, commonData));
-                    }
+                    if (activeTab === 'Office') return parseOfficeRequirementRow(row, { uid, ...common });
+                    if (activeTab === 'Staffing') return parseStaffingRequirementRow(row, { uid, ...common });
+                    return parseOtherExpenseRow(row, { uid, ...common });
                 });
 
-                if (newItems.length > 0) {
-                    if (supabase) {
-                        const { data, error } = await supabase.from(tableName).insert(newItems).select();
-                        if (error) {
-                            console.error("Error bulk insert:", error);
-                            alert("Failed to upload data.");
-                        } else if (data) {
-                            setFunction((prev: any[]) => [...data, ...prev]);
-                            alert(`${data.length} records imported successfully!`);
-                        }
-                    } else {
-                        // Offline fallback
-                        const offlineItems = newItems.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-                        setFunction((prev: any[]) => [...offlineItems, ...prev]);
-                        alert(`${offlineItems.length} records imported locally!`);
-                    }
+                if (supabase) {
+                    const { error } = await supabase.from(tableName).insert(newItems);
+                    if (error) throw error;
+                    
+                    // Refresh data
+                    const { data } = await supabase.from(tableName).select('*').order('id', { ascending: true });
+                    if (data) setFunction(data);
+                } else {
+                    // Offline
+                    setFunction((prev: any[]) => [...newItems.map((i, idx) => ({ ...i, id: Date.now() + idx })), ...prev]);
                 }
+                
+                alert(`${newItems.length} items imported successfully.`);
 
             } catch (error: any) {
-                console.error("Error processing XLSX file:", error);
-                alert(`Failed to import file. ${error.message}`);
+                console.error("Error processing file:", error);
+                alert(`Failed to import: ${error.message}`);
             } finally {
                 setIsUploading(false);
                 if (e.target) e.target.value = '';
@@ -594,290 +589,293 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         reader.readAsArrayBuffer(file);
     };
 
-    // --- Render ---
-    return (
-        <div>
-            {/* Delete Modal */}
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">Are you sure you want to delete this item? This action cannot be undone.</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+    // --- Render Logic ---
+    const renderList = () => {
+        const currentList = getCurrentList();
+        
+        // Pagination logic
+        const totalPages = Math.ceil(currentList.length / itemsPerPage);
+        const paginatedList = currentList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-            {/* Multi Delete Modal */}
-            {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected item(s)? 
-                            This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
-                        </div>
+        return (
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+                    <div className="flex items-center gap-4">
+                        {canViewAll && (
+                            <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className={commonInputClasses}>
+                                <option value="All">All OUs</option>
+                                {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                            </select>
+                        )}
+                        <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={commonInputClasses}>
+                            <option value="All">All Years</option>
+                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
                     </div>
-                </div>
-            )}
-
-            {view === 'list' ? (
-                <>
-                    <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Program Management</h2>
-                        {canEdit && (
-                            <button onClick={() => setView('form')} className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium">
-                                + Add New Item
+                    
+                    <div className="flex items-center gap-2">
+                        {isSelectionMode && selectedIds.length > 0 && (
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                                Delete Selected ({selectedIds.length})
                             </button>
                         )}
-                    </div>
-
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <div className="mb-4 border-b border-gray-200 dark:border-gray-700">
-                            <nav className="-mb-px flex space-x-8">
-                                {(['Office', 'Staffing', 'Other'] as ActiveTab[]).map(tab => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setActiveTab(tab)}
-                                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                                            activeTab === tab
-                                                ? 'border-accent text-accent'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-                                        }`}
-                                    >
-                                        {tab === 'Office' ? 'Office Requirements' : tab === 'Staffing' ? 'Staffing Requirements' : 'Other Expenses'}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
-
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex flex-wrap items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <label htmlFor="ou-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
-                                    <select 
-                                        id="ou-filter" 
-                                        value={ouFilter} 
-                                        onChange={e => setOuFilter(e.target.value)} 
-                                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 sm:text-sm focus:outline-none focus:ring-accent focus:border-accent"
-                                    >
-                                        <option value="All">All OUs</option>
-                                        {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                                    </select>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <label htmlFor="year-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Year:</label>
-                                    <select 
-                                        id="year-filter" 
-                                        value={yearFilter} 
-                                        onChange={e => setYearFilter(e.target.value)} 
-                                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 sm:text-sm focus:outline-none focus:ring-accent focus:border-accent"
-                                    >
-                                        <option value="All">All Years</option>
-                                        {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {isSelectionMode && selectedIds.length > 0 && (
-                                    <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                                        Delete Selected ({selectedIds.length})
-                                    </button>
-                                )}
-                                <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
-                                {canEdit && (
-                                    <>
-                                        <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
-                                        <label htmlFor="pm-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                                        <input id="pm-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
-                                        <button
-                                            onClick={handleToggleSelectionMode}
-                                            className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                                            title="Toggle Multi-Delete Mode"
-                                        >
-                                            <TrashIcon />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {activeTab === 'Office' && (
-                            <OfficeRequirementsTable 
-                                items={getCurrentList() as OfficeRequirement[]} 
-                                canEdit={canEdit} 
-                                isSelectionMode={isSelectionMode} 
-                                selectedIds={selectedIds} 
-                                onSelectRow={handleSelectRow} 
-                                onEdit={handleEdit} 
-                                onDelete={handleDelete} 
-                            />
-                        )}
-                        {activeTab === 'Staffing' && (
-                            <StaffingRequirementsTable 
-                                items={getCurrentList() as StaffingRequirement[]} 
-                                canEdit={canEdit} 
-                                isSelectionMode={isSelectionMode} 
-                                selectedIds={selectedIds} 
-                                onSelectRow={handleSelectRow} 
-                                onEdit={handleEdit} 
-                                onDelete={handleDelete} 
-                            />
-                        )}
-                        {activeTab === 'Other' && (
-                            <OtherExpensesTable 
-                                items={getCurrentList() as OtherProgramExpense[]} 
-                                canEdit={canEdit} 
-                                isSelectionMode={isSelectionMode} 
-                                selectedIds={selectedIds} 
-                                onSelectRow={handleSelectRow} 
-                                onEdit={handleEdit} 
-                                onDelete={handleDelete} 
-                            />
+                        <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        {canEdit && (
+                            <>
+                                <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                                <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
+                                </label>
+                                <button onClick={handleToggleSelectionMode} className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} title="Toggle Multi-Delete Mode">
+                                    <TrashIcon />
+                                </button>
+                            </>
                         )}
                     </div>
-                </>
-            ) : (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                    <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-2xl font-bold text-gray-800 dark:text-white">
-                            {editingItem ? 'Edit Item' : 'Add New Item'} ({activeTab === 'Office' ? 'Office Requirement' : activeTab === 'Staffing' ? 'Staffing Requirement' : 'Other Expense'})
-                        </h3>
-                        <button onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-md text-sm font-medium">Back to List</button>
+                </div>
+
+                {activeTab === 'Office' && (
+                    <OfficeRequirementsTable 
+                        items={paginatedList as OfficeRequirement[]} 
+                        canEdit={canEdit} 
+                        isSelectionMode={isSelectionMode} 
+                        selectedIds={selectedIds} 
+                        onSelectRow={handleSelectRow} 
+                        onEdit={handleEdit} 
+                        onDelete={handleDelete} 
+                    />
+                )}
+                {activeTab === 'Staffing' && (
+                    <StaffingRequirementsTable 
+                        items={paginatedList as StaffingRequirement[]} 
+                        canEdit={canEdit} 
+                        isSelectionMode={isSelectionMode} 
+                        selectedIds={selectedIds} 
+                        onSelectRow={handleSelectRow} 
+                        onEdit={handleEdit} 
+                        onDelete={handleDelete} 
+                    />
+                )}
+                {activeTab === 'Other' && (
+                    <OtherExpensesTable 
+                        items={paginatedList as OtherProgramExpense[]} 
+                        canEdit={canEdit} 
+                        isSelectionMode={isSelectionMode} 
+                        selectedIds={selectedIds} 
+                        onSelectRow={handleSelectRow} 
+                        onEdit={handleEdit} 
+                        onDelete={handleDelete} 
+                    />
+                )}
+
+                {/* Pagination */}
+                <div className="py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">
+                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
                     </div>
+                     <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, currentList.length)} to {Math.min(currentPage * itemsPerPage, currentList.length)} of {currentList.length} entries</span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
-                    <form onSubmit={handleFormSubmit} className="space-y-6">
-                        <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-                            <nav className="-mb-px flex space-x-8">
-                                <button type="button" onClick={() => setFormTab('Details')} className={`pb-2 px-1 border-b-2 font-medium text-sm ${formTab === 'Details' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Details</button>
-                                <button type="button" onClick={() => setFormTab('Accomplishment')} className={`pb-2 px-1 border-b-2 font-medium text-sm ${formTab === 'Accomplishment' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}>Accomplishment</button>
-                            </nav>
+    const renderForm = () => (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white">
+                    {editingItem ? 'Edit' : 'Add'} {activeTab === 'Office' ? 'Office Requirement' : activeTab === 'Staffing' ? 'Staffing Requirement' : 'Other Expense'}
+                </h3>
+                <button onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+            </div>
+
+            <form onSubmit={handleFormSubmit} className="space-y-6">
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
+                    <nav className="-mb-px flex space-x-4">
+                        <button type="button" onClick={() => setFormTab('Details')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Details' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Details</button>
+                        <button type="button" onClick={() => setFormTab('Accomplishment')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Accomplishment' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Accomplishment</button>
+                    </nav>
+                </div>
+
+                {formTab === 'Details' && (
+                    <>
+                        {/* Common Fields */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
+                                <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}>
+                                    <option value="">Select OU</option>
+                                    {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
+                                <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
+                                <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                    {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
+                                <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                    {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label>
+                                <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label>
+                                <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
                         </div>
 
-                        {formTab === 'Details' && (
-                            <div className="space-y-6">
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Classification & Fund</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
-                                            <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled={!canViewAll}>
-                                                {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label>
-                                            <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label>
-                                            <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
-                                                {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label>
-                                            <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 border-t pt-4 border-gray-200 dark:border-gray-700">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
-                                            <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); }} className={commonInputClasses}>
-                                                {objectTypes.map(ot => <option key={ot} value={ot}>{ot}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Expense Class</label>
-                                            <select value={selectedParticular} onChange={e => setSelectedParticular(e.target.value)} className={commonInputClasses}>
-                                                <option value="">Select Class</option>
-                                                {Object.keys(uacsCodes[selectedObjectType]).map(k => <option key={k} value={k}>{k}</option>)}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
-                                            <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}>
-                                                <option value="">Select UACS</option>
-                                                {selectedParticular && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
-                                                    <option key={code} value={code}>{code} - {desc}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date (Target)</label>
-                                            <input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date (Target)</label>
-                                            <input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </fieldset>
-
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Item Details</legend>
-                                    {activeTab === 'Office' && <OfficeRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
-                                    {activeTab === 'Staffing' && <StaffingRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
-                                    {activeTab === 'Other' && <OtherExpensesFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
-                                </fieldset>
+                        {/* UACS Selection */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label>
+                                <select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>
+                                    {objectTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
                             </div>
-                        )}
-
-                        {formTab === 'Accomplishment' && (
-                            <div className="space-y-6">
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label>
-                                            <input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount/Units</label>
-                                            <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </fieldset>
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Accomplishment</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
-                                            <input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
-                                            <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label>
-                                            <input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label>
-                                            <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </fieldset>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label>
+                                <select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>
+                                    <option value="">Select</option>
+                                    {uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
                             </div>
-                        )}
-
-                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white rounded-md text-sm font-medium">Cancel</button>
-                            <button type="submit" className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md text-sm font-medium">Save Item</button>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                                <select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}>
+                                    <option value="">Select Code</option>
+                                    {selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (
+                                        <option key={code} value={code}>{code} - {desc}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                    </form>
+
+                        {/* Specific Fields */}
+                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                            {activeTab === 'Office' && <OfficeRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                            {activeTab === 'Staffing' && <StaffingRequirementsFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                            {activeTab === 'Other' && <OtherExpensesFormFields formData={formData} handleInputChange={handleInputChange} commonInputClasses={commonInputClasses} />}
+                        </div>
+                    </>
+                )}
+
+                {formTab === 'Accomplishment' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label>
+                            <input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Total)</label>
+                            <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                        </div>
+                        <div className="md:col-span-2 border-t border-gray-200 dark:border-gray-700 my-2"></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
+                            <input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
+                            <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label>
+                            <input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label>
+                            <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex justify-end gap-4">
+                    <button type="button" onClick={handleCancelForm} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                    <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button>
+                </div>
+            </form>
+        </div>
+    );
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Program Management</h2>
+                {canEdit && view === 'list' && (
+                    <button onClick={() => setView('form')} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                        + Add New Item
+                    </button>
+                )}
+            </div>
+
+            {view === 'list' && (
+                <div className="border-b border-gray-200 dark:border-gray-700">
+                    <nav className="-mb-px flex space-x-8">
+                        {(['Office', 'Staffing', 'Other'] as ActiveTab[]).map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                    activeTab === tab
+                                        ? 'border-accent text-accent'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                }`}
+                            >
+                                {tab === 'Office' ? 'Office Requirements' : tab === 'Staffing' ? 'Staffing Requirements' : 'Other Expenses'}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            )}
+
+            {view === 'list' ? renderList() : renderForm()}
+
+            {/* Modal for Deletion */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-sm w-full">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Deletion</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">Are you sure you want to delete this item? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal for Multi-Deletion */}
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-sm w-full">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Bulk Deletion</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">Are you sure you want to delete {selectedIds.length} items? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">Delete All</button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -885,3 +883,4 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 };
 
 export default ProgramManagement;
+// --- End of components/ProgramManagement.tsx ---

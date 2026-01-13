@@ -1,12 +1,13 @@
 
 // Author: 4K 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
 import WFPReport from './reports/WFPReport';
 import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
 import PICSReport from './reports/PICSReport';
 import BAR1Report from './reports/BAR1Report';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ReportsProps {
     ipos: IPO[];
@@ -22,12 +23,20 @@ interface ReportsProps {
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     // Default to current year
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
+
+    // Enforce User OU restriction on mount/change
+    useEffect(() => {
+        if (currentUser && currentUser.role === 'User') {
+            setSelectedOu(currentUser.operatingUnit);
+        }
+    }, [currentUser]);
 
     const availableYears = useMemo(() => {
         const years = new Set<string>();
@@ -151,7 +160,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            disabled={currentUser?.role === 'User'}
+                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (
@@ -222,4 +232,3 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 };
 
 export default Reports;
-// --- End of components/Reports.tsx ---
