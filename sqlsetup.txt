@@ -195,3 +195,53 @@ create table if not exists users (
   "created_at" timestamptz default now(),
   "updated_at" timestamptz default now()
 );
+
+-- ================================================================
+-- ROW LEVEL SECURITY POLICIES
+-- ================================================================
+-- Note: Supabase enables RLS by default. Since this app uses a custom
+-- authentication scheme (users table) instead of Supabase Auth, requests
+-- come from the 'anon' role. We must allow access for the app to function.
+
+-- Users Table
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+-- Drop existing policy if exists to avoid conflicts when re-running
+DROP POLICY IF EXISTS "Public Access Users" ON users;
+CREATE POLICY "Public Access Users" ON users FOR ALL USING (true) WITH CHECK (true);
+
+-- Subprojects
+ALTER TABLE subprojects ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Subprojects" ON subprojects;
+CREATE POLICY "Public Access Subprojects" ON subprojects FOR ALL USING (true) WITH CHECK (true);
+
+-- IPOs
+ALTER TABLE ipos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access IPOs" ON ipos;
+CREATE POLICY "Public Access IPOs" ON ipos FOR ALL USING (true) WITH CHECK (true);
+
+-- Activities
+ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Activities" ON activities;
+CREATE POLICY "Public Access Activities" ON activities FOR ALL USING (true) WITH CHECK (true);
+
+-- Program Management Tables
+ALTER TABLE office_requirements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access OR" ON office_requirements;
+CREATE POLICY "Public Access OR" ON office_requirements FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE staffing_requirements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access SR" ON staffing_requirements;
+CREATE POLICY "Public Access SR" ON staffing_requirements FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE other_program_expenses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access OE" ON other_program_expenses;
+CREATE POLICY "Public Access OE" ON other_program_expenses FOR ALL USING (true) WITH CHECK (true);
+
+-- References
+ALTER TABLE reference_uacs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access UACS" ON reference_uacs;
+CREATE POLICY "Public Access UACS" ON reference_uacs FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE reference_particulars ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Particulars" ON reference_particulars;
+CREATE POLICY "Public Access Particulars" ON reference_particulars FOR ALL USING (true) WITH CHECK (true);

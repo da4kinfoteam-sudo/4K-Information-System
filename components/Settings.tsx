@@ -131,7 +131,12 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
                     // 1. Direct Insert to let DB generate ID (excludes ID from payload)
                     const { error } = await supabase.from('users').insert([formData]);
                     
-                    if (error) throw error;
+                    if (error) {
+                        if (error.message.includes('row-level security policy')) {
+                            throw new Error("Database Permission Error. Please run the provided SQL setup script in your Supabase Dashboard to enable access.");
+                        }
+                        throw error;
+                    }
 
                     // 2. Fetch updated list to sync local state with real IDs
                     const { data: refreshedList, error: fetchError } = await supabase
