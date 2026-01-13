@@ -1,3 +1,4 @@
+
 // Author: 4K 
 // OS support: Any
 import { 
@@ -8,22 +9,8 @@ import {
 
 // --- Helper Functions for Reference Lists ---
 const flattenUacs = () => {
-    const list: any[] = [];
-    let id = 1;
-    for (const objType in initialUacsCodes) {
-        for (const particular in initialUacsCodes[objType]) {
-             for (const code in initialUacsCodes[objType][particular]) {
-                 list.push({
-                     id: String(id++),
-                     objectType: objType,
-                     particular: particular,
-                     uacsCode: code,
-                     description: initialUacsCodes[objType][particular][code]
-                 });
-             }
-        }
-    }
-    return list;
+    // Empty default
+    return [];
 };
 
 const flattenParticulars = () => {
@@ -41,7 +28,7 @@ const flattenParticulars = () => {
     return list;
 }
 
-export const sampleReferenceUacsList: ReferenceUacs[] = flattenUacs();
+export const sampleReferenceUacsList: ReferenceUacs[] = [];
 export const sampleReferenceParticularList: ReferenceParticular[] = flattenParticulars();
 
 // --- Sample Data: Cleared for DB Connection ---
@@ -50,4 +37,3 @@ export const sampleActivities: Activity[] = [];
 export const sampleOfficeRequirements: OfficeRequirement[] = [];
 export const sampleStaffingRequirements: StaffingRequirement[] = [];
 export const sampleOtherProgramExpenses: OtherProgramExpense[] = [];
-// --- End of samples.tsx ---

@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { 
@@ -6,9 +5,10 @@ import {
     fundTypes, FundType, tiers, Tier, operatingUnits, objectTypes, ObjectType 
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
-import { OfficeRequirementsTable, OfficeRequirementsFormFields, constructOfficeRequirement, parseOfficeRequirementRow } from './program_management/OfficeRequirementsTab';
-import { StaffingRequirementsTable, StaffingRequirementsFormFields, constructStaffingRequirement, parseStaffingRequirementRow } from './program_management/StaffingRequirementsTab';
-import { OtherExpensesTable, OtherExpensesFormFields, constructOtherExpense, parseOtherExpenseRow } from './program_management/OtherExpensesTab';
+import { supabase } from '../supabaseClient';
+import { OfficeRequirementsTable, OfficeRequirementsFormFields, parseOfficeRequirementRow } from './program_management/OfficeRequirementsTab';
+import { StaffingRequirementsTable, StaffingRequirementsFormFields, parseStaffingRequirementRow } from './program_management/StaffingRequirementsTab';
+import { OtherExpensesTable, OtherExpensesFormFields, parseOtherExpenseRow } from './program_management/OtherExpensesTab';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -185,7 +185,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleFormSubmit = (e: React.FormEvent) => {
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (!formData.operatingUnit) {
@@ -197,6 +197,25 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             return;
         }
 
+        // Determine table and state setter
+        let tableName = '';
+        let setFunction: any = null;
+        let prefix = '';
+
+        if (activeTab === 'Office') {
+            tableName = 'office_requirements';
+            setFunction = setOfficeReqs;
+            prefix = 'OR';
+        } else if (activeTab === 'Staffing') {
+            tableName = 'staffing_requirements';
+            setFunction = setStaffingReqs;
+            prefix = 'SR';
+        } else {
+            tableName = 'other_program_expenses';
+            setFunction = setOtherProgramExpenses;
+            prefix = 'OE';
+        }
+
         const commonFields = {
             operatingUnit: formData.operatingUnit,
             uacsCode: formData.uacsCode,
@@ -206,44 +225,93 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
             fundYear: Number(formData.fundYear),
             tier: formData.tier,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System',
-            updated_at: new Date().toISOString()
-        };
-
-        const accomplishmentFields = {
+            
+            // Accomplishment Fields
             actualDate: formData.actualDate,
             actualAmount: Number(formData.actualAmount),
             actualObligationDate: formData.actualObligationDate,
             actualDisbursementDate: formData.actualDisbursementDate,
             actualObligationAmount: Number(formData.actualObligationAmount),
-            actualDisbursementAmount: Number(formData.actualDisbursementAmount)
+            actualDisbursementAmount: Number(formData.actualDisbursementAmount),
+            updated_at: new Date().toISOString()
         };
 
-        if (editingItem) {
-             const updateId = editingItem.id;
-             if (activeTab === 'Office') {
-                 setOfficeReqs(prev => prev.map(item => item.id === updateId ? constructOfficeRequirement(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
-             } else if (activeTab === 'Staffing') {
-                 setStaffingReqs(prev => prev.map(item => item.id === updateId ? constructStaffingRequirement(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
-             } else {
-                 setOtherProgramExpenses(prev => prev.map(item => item.id === updateId ? constructOtherExpense(updateId, item.uid, formData, commonFields, accomplishmentFields) : item));
-             }
+        let specificFields = {};
+        if (activeTab === 'Office') {
+            specificFields = {
+                equipment: formData.equipment,
+                specs: formData.specs,
+                purpose: formData.purpose,
+                numberOfUnits: Number(formData.numberOfUnits),
+                pricePerUnit: Number(formData.pricePerUnit)
+            };
+        } else if (activeTab === 'Staffing') {
+            specificFields = {
+                personnelPosition: formData.personnelPosition,
+                status: formData.status,
+                salaryGrade: Number(formData.salaryGrade),
+                annualSalary: Number(formData.annualSalary),
+                personnelType: formData.personnelType
+            };
         } else {
-            const newId = Date.now();
-            let newUid = formData.uid;
-            
-            if (!newUid) {
-                const year = new Date().getFullYear();
-                const prefix = activeTab === 'Office' ? 'OR' : activeTab === 'Staffing' ? 'SR' : 'OE';
-                const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-                newUid = `${prefix}-${year}-${sequence}`;
-            }
-            
-            if (activeTab === 'Office') {
-                 setOfficeReqs(prev => [constructOfficeRequirement(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
-            } else if (activeTab === 'Staffing') {
-                 setStaffingReqs(prev => [constructStaffingRequirement(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
+            specificFields = {
+                particulars: formData.particulars,
+                amount: Number(formData.amount)
+            };
+        }
+
+        if (supabase) {
+            if (editingItem) {
+                // Update
+                const { data, error } = await supabase
+                    .from(tableName)
+                    .update({ ...commonFields, ...specificFields })
+                    .eq('id', editingItem.id)
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error("Error updating item:", error);
+                    alert("Failed to update item.");
+                } else if (data) {
+                    setFunction((prev: any[]) => prev.map(i => i.id === data.id ? data : i));
+                }
             } else {
-                 setOtherProgramExpenses(prev => [constructOtherExpense(newId, newUid, formData, { ...commonFields, created_at: new Date().toISOString() }, accomplishmentFields), ...prev]);
+                // Create
+                // Generate UID if not present (although DB doesn't auto-gen UID, we do it here usually)
+                let uid = formData.uid;
+                if (!uid) {
+                    const year = new Date().getFullYear();
+                    const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+                    uid = `${prefix}-${year}-${sequence}`;
+                }
+
+                const { data, error } = await supabase
+                    .from(tableName)
+                    .insert([{ ...commonFields, ...specificFields, uid, created_at: new Date().toISOString() }])
+                    .select()
+                    .single();
+
+                if (error) {
+                    console.error("Error creating item:", error);
+                    alert("Failed to create item.");
+                } else if (data) {
+                    setFunction((prev: any[]) => [data, ...prev]);
+                }
+            }
+        } else {
+            // Fallback for offline mode (using random ID)
+            const newItem = {
+                ...commonFields,
+                ...specificFields,
+                id: editingItem ? editingItem.id : Date.now(),
+                uid: formData.uid || `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`
+            };
+            
+            if (editingItem) {
+                setFunction((prev: any[]) => prev.map(i => i.id === newItem.id ? newItem : i));
+            } else {
+                setFunction((prev: any[]) => [newItem, ...prev]);
             }
         }
         
@@ -266,14 +334,25 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (itemToDelete) {
-            if (activeTab === 'Office') {
-                setOfficeReqs(prev => prev.filter(i => i.id !== itemToDelete.id));
-            } else if (activeTab === 'Staffing') {
-                setStaffingReqs(prev => prev.filter(i => i.id !== itemToDelete.id));
+            let tableName = '';
+            let setFunction: any = null;
+
+            if (activeTab === 'Office') { tableName = 'office_requirements'; setFunction = setOfficeReqs; }
+            else if (activeTab === 'Staffing') { tableName = 'staffing_requirements'; setFunction = setStaffingReqs; }
+            else { tableName = 'other_program_expenses'; setFunction = setOtherProgramExpenses; }
+
+            if (supabase) {
+                const { error } = await supabase.from(tableName).delete().eq('id', itemToDelete.id);
+                if (error) {
+                    console.error("Error deleting item:", error);
+                    alert("Failed to delete item.");
+                } else {
+                    setFunction((prev: any[]) => prev.filter(i => i.id !== itemToDelete.id));
+                }
             } else {
-                setOtherProgramExpenses(prev => prev.filter(i => i.id !== itemToDelete.id));
+                setFunction((prev: any[]) => prev.filter(i => i.id !== itemToDelete.id));
             }
             setIsDeleteModalOpen(false);
             setItemToDelete(null);
@@ -294,13 +373,24 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
-    const confirmMultiDelete = () => {
-        if (activeTab === 'Office') {
-            setOfficeReqs(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else if (activeTab === 'Staffing') {
-            setStaffingReqs(prev => prev.filter(i => !selectedIds.includes(i.id)));
+    const confirmMultiDelete = async () => {
+        let tableName = '';
+        let setFunction: any = null;
+
+        if (activeTab === 'Office') { tableName = 'office_requirements'; setFunction = setOfficeReqs; }
+        else if (activeTab === 'Staffing') { tableName = 'staffing_requirements'; setFunction = setStaffingReqs; }
+        else { tableName = 'other_program_expenses'; setFunction = setOtherProgramExpenses; }
+
+        if (supabase) {
+            const { error } = await supabase.from(tableName).delete().in('id', selectedIds);
+            if (error) {
+                console.error("Error deleting items:", error);
+                alert("Failed to delete selected items.");
+            } else {
+                setFunction((prev: any[]) => prev.filter(i => !selectedIds.includes(i.id)));
+            }
         } else {
-            setOtherProgramExpenses(prev => prev.filter(i => !selectedIds.includes(i.id)));
+            setFunction((prev: any[]) => prev.filter(i => !selectedIds.includes(i.id)));
         }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -430,7 +520,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 
         setIsUploading(true);
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -439,17 +529,20 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                 const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
 
                 const newItems: any[] = [];
-                let currentIdStart = Date.now();
+                let tableName = '';
+                let prefix = '';
+                let setFunction: any = null;
+
+                if (activeTab === 'Office') { tableName = 'office_requirements'; prefix = 'OR'; setFunction = setOfficeReqs; }
+                else if (activeTab === 'Staffing') { tableName = 'staffing_requirements'; prefix = 'SR'; setFunction = setStaffingReqs; }
+                else { tableName = 'other_program_expenses'; prefix = 'OE'; setFunction = setOtherProgramExpenses; }
 
                 jsonData.forEach((row, index) => {
                     if (!row.operatingUnit || !row.uacsCode) return;
 
-                    const newId = currentIdStart + index;
-                    const prefix = activeTab === 'Office' ? 'OR' : activeTab === 'Staffing' ? 'SR' : 'OE';
-                    const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${String(newId).slice(-4)}`;
+                    const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${String(Date.now() + index).slice(-4)}`;
 
                     const commonData = {
-                        id: newId,
                         uid,
                         operatingUnit: row.operatingUnit,
                         uacsCode: String(row.uacsCode),
@@ -462,6 +555,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         created_at: new Date().toISOString()
                     };
 
+                    // Note: We don't assign ID here for supabase insert, let DB auto-gen
                     if (activeTab === 'Office') {
                         newItems.push(parseOfficeRequirementRow(row, commonData));
                     } else if (activeTab === 'Staffing') {
@@ -471,15 +565,23 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                     }
                 });
 
-                if (activeTab === 'Office') {
-                    setOfficeReqs(prev => [...newItems, ...prev]);
-                } else if (activeTab === 'Staffing') {
-                    setStaffingReqs(prev => [...newItems, ...prev]);
-                } else {
-                    setOtherProgramExpenses(prev => [...newItems, ...prev]);
+                if (newItems.length > 0) {
+                    if (supabase) {
+                        const { data, error } = await supabase.from(tableName).insert(newItems).select();
+                        if (error) {
+                            console.error("Error bulk insert:", error);
+                            alert("Failed to upload data.");
+                        } else if (data) {
+                            setFunction((prev: any[]) => [...data, ...prev]);
+                            alert(`${data.length} records imported successfully!`);
+                        }
+                    } else {
+                        // Offline fallback
+                        const offlineItems = newItems.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+                        setFunction((prev: any[]) => [...offlineItems, ...prev]);
+                        alert(`${offlineItems.length} records imported locally!`);
+                    }
                 }
-
-                alert(`${newItems.length} records imported successfully!`);
 
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);

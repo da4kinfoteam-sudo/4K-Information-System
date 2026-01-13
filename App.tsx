@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -15,7 +16,8 @@ import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
 import useLocalStorageState from './hooks/useLocalStorageState';
-import { useSupabaseTable } from './hooks/useSupabaseTable'; // Import the new hook
+import { useSupabaseTable } from './hooks/useSupabaseTable'; 
+import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
@@ -32,24 +34,38 @@ const AppContent: React.FC = () => {
     const [currentPage, setCurrentPage] = useState('/');
 
     // --- DATA STATE MANAGEMENT ---
-    // Switched from useLocalStorageState to useSupabaseTable for database synchronization.
-    // 'tableName' must match your Supabase table names exactly.
-    // Initialized with empty arrays to read strictly from Database.
     
+    // Subprojects, IPOs, Activities use the sync hook
     const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', []);
     const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', []);
     const [activities, setActivities] = useSupabaseTable<Activity>('activities', []);
     
-    // Program Management States
-    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', []);
-    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', []);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', []);
+    // Program Management States - Managed manually to support direct CRUD with generated IDs
+    const [officeReqs, setOfficeReqs] = useState<OfficeRequirement[]>([]);
+    const [staffingReqs, setStaffingReqs] = useState<StaffingRequirement[]>([]);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useState<OtherProgramExpense[]>([]);
 
-    // Reference States - Kept samples as default fallback for configuration if DB is empty
+    // Fetch Program Management Data on mount
+    useEffect(() => {
+        if (!supabase) return;
+        const fetchPMData = async () => {
+            const { data: or } = await supabase.from('office_requirements').select('*').order('id', { ascending: false });
+            if (or) setOfficeReqs(or as OfficeRequirement[]);
+
+            const { data: sr } = await supabase.from('staffing_requirements').select('*').order('id', { ascending: false });
+            if (sr) setStaffingReqs(sr as StaffingRequirement[]);
+
+            const { data: oe } = await supabase.from('other_program_expenses').select('*').order('id', { ascending: false });
+            if (oe) setOtherProgramExpenses(oe as OtherProgramExpense[]);
+        };
+        fetchPMData();
+    }, [currentUser]);
+
+    // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
 
-    // System Settings State (Keep local for now, usually requires a specific table structure)
+    // System Settings State
     const [systemSettings, setSystemSettings] = useLocalStorageState<SystemSettings>('systemSettings', defaultSystemSettings);
 
     // Selection States
@@ -61,7 +77,6 @@ const AppContent: React.FC = () => {
     const prevUserRef = useRef<User | null>(null);
 
     useEffect(() => {
-        // If user just logged in (was null, now is set), reset to homepage
         if (currentUser && !prevUserRef.current) {
             setCurrentPage('/');
         }
@@ -74,7 +89,6 @@ const AppContent: React.FC = () => {
         document.documentElement.classList.toggle('dark');
     };
 
-    // Initialize dark mode class
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark');
@@ -163,7 +177,25 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                         />;
-            case '/activities':
+            case '/trainings':
+                return <ActivitiesComponent 
+                            ipos={ipos} 
+                            activities={activities}
+                            setActivities={setActivities}
+                            onSelectIpo={handleSelectIpo}
+                            uacsCodes={derivedUacsCodes}
+                            forcedType="Training"
+                        />;
+            case '/other-activities':
+                return <ActivitiesComponent 
+                            ipos={ipos} 
+                            activities={activities}
+                            setActivities={setActivities}
+                            onSelectIpo={handleSelectIpo}
+                            uacsCodes={derivedUacsCodes}
+                            forcedType="Activity"
+                        />;
+            case '/activities': 
                 return <ActivitiesComponent 
                             ipos={ipos} 
                             activities={activities}
@@ -304,4 +336,3 @@ export const App: React.FC = () => {
         </AuthProvider>
     );
 };
-// --- End of App.tsx ---

@@ -82,58 +82,10 @@ export const defaultSystemSettings: SystemSettings = {
     ]
 };
 
+// Initial UACS Codes cleared to allow user uploads
 export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
-  MOOE: {
-    "Travelling Expenses": {
-      "50201010-00": "Travelling Expenses - Local",
-      "50201020-00": "Travelling Expenses - Foreign",
-    },
-    "Training and Scholarship Expenses": {
-        "50202010-01": "Training Expenses",
-        "50202020-01": "Scholarship Grants/Expenses"
-    },
-    "Supplies and Materials Expenses": {
-        "50203010-01": "Office Supplies Expenses",
-        "50203080-00": "Agricultural and Marine Supplies Expenses",
-        "50203990-00": "Other Supplies and Materials Expenses",
-    },
-    "Utility Expenses": {
-        "50204010-00": "Water Expenses",
-        "50204020-00": "Electricity Expenses",
-    },
-    "Professional Services": {
-        "50211010-00": "Legal Services",
-        "50211990-00": "Other Professional Services (Labor)",
-    },
-    "Repairs and Maintenance": {
-        "50213040-00": "Repairs and Maintenance - Buildings and Other Structures",
-        "50213050-00": "Repairs and Maintenance - Machinery and Equipment",
-    },
-    "Other MOOE": {
-        "50299070-00": "Rent Expenses",
-        "50299990-99": "Other MOOE",
-    },
-    "Personal Services": {
-        "50101010-01": "Salaries and Wages - Casual/Contractual",
-    },
-  },
-  CO: {
-    "Buildings and Other Structures": {
-        "10604020-00": "Buildings",
-        "10604070-00": "Irrigation, Canals and Laterals"
-    },
-    "Machinery and Equipment": {
-        "10605010-00": "Machinery",
-        "10605030-00": "Agricultural, Fishery and Forestry Equipment",
-        "10605150-00": "Technical and Scientific Equipment",
-    },
-    "Transportation Equipment": {
-        "10606010-00": "Motor Vehicles",
-    },
-    "Breeding Stocks": {
-        "10607010-00": "Breeding Stocks"
-    }
-  }
+  MOOE: {},
+  CO: {}
 };
 
 export const uacsCodes = initialUacsCodes;

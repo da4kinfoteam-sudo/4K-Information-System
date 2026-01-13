@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, otherActivityOptions, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits } from '../constants';
@@ -15,6 +14,7 @@ interface ActivitiesProps {
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    forcedType?: 'Training' | 'Activity';
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -49,7 +49,7 @@ const defaultFormData: Activity = {
     actualParticipantsFemale: 0
 };
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes, forcedType }) => {
     const { currentUser } = useAuth();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
     const [editingItem, setEditingItem] = useState<Activity | null>(null);
@@ -69,7 +69,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [searchTerm, setSearchTerm] = useState('');
     const [ouFilter, setOuFilter] = useState('All');
     const [componentFilter, setComponentFilter] = useState<ActivityComponentType | 'All'>('All');
-    const [typeFilter, setTypeFilter] = useState<'All' | 'Training' | 'Activity'>('All');
+    const [typeFilter, setTypeFilter] = useState<'All' | 'Training' | 'Activity'>(forcedType || 'All');
 
     // Sorting
     type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
@@ -106,6 +106,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         }
     };
 
+    // Update typeFilter if forcedType changes
+    useEffect(() => {
+        if (forcedType) setTypeFilter(forcedType);
+    }, [forcedType]);
+
     // Initialize form data when editing or creating
     useEffect(() => {
         if (editingItem) {
@@ -136,12 +141,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         } else {
             setFormData({
                 ...defaultFormData,
+                type: forcedType || 'Activity',
                 operatingUnit: currentUser?.operatingUnit || '',
                 encodedBy: currentUser?.fullName || ''
             });
             setSelectedActivityType('');
         }
-    }, [editingItem, currentUser]);
+    }, [editingItem, currentUser, forcedType]);
 
     // When component changes in form, reset types unless editing
     useEffect(() => {
@@ -741,7 +747,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                         </div>
                          <div className="flex items-center gap-2">
                            <label htmlFor="typeFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Type:</label>
-                            <select id="typeFilter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
+                            <select id="typeFilter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`} disabled={!!forcedType}>
                                 <option value="All">All Types</option>
                                 <option value="Training">Trainings Only</option>
                                 <option value="Activity">Other Activities Only</option>
@@ -1184,4 +1190,3 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         </div>
     );
 };
-// --- End of components/Activities.tsx ---

@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { objectTypes } from '../constants';
+import { supabase } from '../supabaseClient';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -226,7 +227,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
         setIsUploading(true);
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const data = event.target?.result;
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -243,8 +244,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         description: row.description || ''
                     })).filter(i => i.uacsCode && i.particular);
 
-                    setUacsList(prev => [...newItems, ...prev]);
-                    alert(`${newItems.length} UACS codes imported successfully.`);
+                    if (supabase) {
+                        const { error } = await supabase.from('reference_uacs').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            // Update local state to reflect changes without full reload
+                            setUacsList(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} UACS codes uploaded successfully to database.`);
+                        }
+                    } else {
+                        setUacsList(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} UACS codes imported locally.`);
+                    }
                 } else {
                     const newItems: ReferenceParticular[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
@@ -252,8 +265,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         particular: row.particular || ''
                     })).filter(i => i.particular);
 
-                    setParticularList(prev => [...newItems, ...prev]);
-                    alert(`${newItems.length} items imported successfully.`);
+                    if (supabase) {
+                        const { error } = await supabase.from('reference_particulars').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setParticularList(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} items uploaded successfully to database.`);
+                        }
+                    } else {
+                        setParticularList(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} items imported locally.`);
+                    }
                 }
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
