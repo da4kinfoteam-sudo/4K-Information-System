@@ -8,11 +8,17 @@ import { supabase } from '../supabaseClient';
 interface SettingsProps {
     isDarkMode: boolean;
     toggleDarkMode: () => void;
-    systemSettings: SystemSettings;
-    setSystemSettings: React.Dispatch<React.SetStateAction<SystemSettings>>;
+    deadlines: Deadline[];
+    setDeadlines: React.Dispatch<React.SetStateAction<Deadline[]>>;
+    planningSchedules: PlanningSchedule[];
+    setPlanningSchedules: React.Dispatch<React.SetStateAction<PlanningSchedule[]>>;
 }
 
-const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemSettings, setSystemSettings }) => {
+const Settings: React.FC<SettingsProps> = ({ 
+    isDarkMode, toggleDarkMode, 
+    deadlines, setDeadlines,
+    planningSchedules, setPlanningSchedules
+}) => {
     const { currentUser, usersList, setUsersList, login } = useAuth();
     const [activeTab, setActiveTab] = useState<'profile' | 'management' | 'system'>('profile');
     
@@ -166,20 +172,26 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
         setIsModalOpen(false);
     };
 
-    // CRUD Handlers for System Settings
+    // CRUD Handlers for System Settings (Deadlines)
     const handleDeadlineSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!deadlineForm.name || !deadlineForm.date) return;
 
         if (editingDeadline) {
-            setSystemSettings(prev => ({
-                ...prev,
-                deadlines: prev.deadlines.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d)
-            }));
+            setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d));
             setEditingDeadline(null);
         } else {
-            const newDeadline: Deadline = { id: Date.now(), ...deadlineForm };
-            setSystemSettings(prev => ({ ...prev, deadlines: [...prev.deadlines, newDeadline] }));
+            const newDeadline: Deadline = { id: Date.now(), ...deadlineForm }; // ID will be managed by Supabase hook upsert if > 0 or new
+            // For new items in Supabase sync hook, we can rely on state update. 
+            // If offline, Date.now() works. If online, hook might need real ID or let DB handle it. 
+            // The useSupabaseTable hook uses Upsert based on ID. 
+            // For new items without real ID, we should likely let the DB generate it.
+            // But the current useSupabaseTable implementation upserts everything in `next`.
+            // To properly insert new items and get ID back, we might need direct DB call here similar to Users, 
+            // OR rely on the hook which is "simple diff".
+            // Ideally, we treat new items with a temp ID or let the hook handle. 
+            // Given useSupabaseTable implementation: it upserts items that are new/changed.
+            setDeadlines(prev => [...prev, newDeadline]);
         }
         setDeadlineForm({ name: '', date: '' });
     };
@@ -195,25 +207,23 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
     };
 
     const handleDeleteDeadline = (id: number) => {
-        setSystemSettings(prev => ({ ...prev, deadlines: prev.deadlines.filter(d => d.id !== id) }));
+        setDeadlines(prev => prev.filter(d => d.id !== id));
         if (editingDeadline?.id === id) {
             handleCancelDeadlineEdit();
         }
     };
 
+    // CRUD Handlers for System Settings (Planning Schedules)
     const handleScheduleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!scheduleForm.name || !scheduleForm.startDate || !scheduleForm.endDate) return;
 
         if (editingSchedule) {
-            setSystemSettings(prev => ({
-                ...prev,
-                planningSchedules: prev.planningSchedules.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s)
-            }));
+            setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s));
             setEditingSchedule(null);
         } else {
             const newSchedule: PlanningSchedule = { id: Date.now(), ...scheduleForm };
-            setSystemSettings(prev => ({ ...prev, planningSchedules: [...prev.planningSchedules, newSchedule] }));
+            setPlanningSchedules(prev => [...prev, newSchedule]);
         }
         setScheduleForm({ name: '', startDate: '', endDate: '' });
     };
@@ -229,7 +239,7 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
     };
 
     const handleDeleteSchedule = (id: number) => {
-        setSystemSettings(prev => ({ ...prev, planningSchedules: prev.planningSchedules.filter(s => s.id !== id) }));
+        setPlanningSchedules(prev => prev.filter(s => s.id !== id));
         if (editingSchedule?.id === id) {
             handleCancelScheduleEdit();
         }
@@ -461,9 +471,9 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
                                         </form>
                                     </div>
                                     <div className="flex-[2]">
-                                        {systemSettings.deadlines.length > 0 ? (
+                                        {deadlines.length > 0 ? (
                                             <ul className="space-y-2">
-                                                {systemSettings.deadlines.map(d => (
+                                                {deadlines.map(d => (
                                                     <li key={d.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
                                                         <div>
                                                             <span className="font-medium text-gray-900 dark:text-white block">{d.name}</span>
@@ -517,9 +527,9 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
                                         </form>
                                     </div>
                                     <div className="flex-[2]">
-                                        {systemSettings.planningSchedules.length > 0 ? (
+                                        {planningSchedules.length > 0 ? (
                                             <ul className="space-y-2">
-                                                {systemSettings.planningSchedules.map(s => (
+                                                {planningSchedules.map(s => (
                                                     <li key={s.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
                                                         <div>
                                                             <span className="font-medium text-gray-900 dark:text-white block">{s.name}</span>
@@ -597,4 +607,3 @@ const Settings: React.FC<SettingsProps> = ({ isDarkMode, toggleDarkMode, systemS
 };
 
 export default Settings;
-// --- End of components/Settings.tsx ---

@@ -21,7 +21,8 @@ import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
-    OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings
+    OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
+    Deadline, PlanningSchedule
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList
@@ -65,8 +66,16 @@ const AppContent: React.FC = () => {
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
 
-    // System Settings State
-    const [systemSettings, setSystemSettings] = useLocalStorageState<SystemSettings>('systemSettings', defaultSystemSettings);
+    // System Settings State from Supabase
+    // [Fix] Replaced LocalStorage with Supabase hooks for Deadlines and Planning Schedules
+    const [deadlines, setDeadlines] = useSupabaseTable<Deadline>('deadlines', defaultSystemSettings.deadlines);
+    const [planningSchedules, setPlanningSchedules] = useSupabaseTable<PlanningSchedule>('planning_schedules', defaultSystemSettings.planningSchedules);
+
+    // Construct systemSettings object for child components that expect it
+    const systemSettings = useMemo(() => ({
+        deadlines,
+        planningSchedules
+    }), [deadlines, planningSchedules]);
 
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
@@ -165,6 +174,9 @@ const AppContent: React.FC = () => {
                             ipos={ipos} 
                             trainings={trainings}
                             otherActivities={otherActivities}
+                            officeReqs={officeReqs}
+                            staffingReqs={staffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
                         />;
             case '/subprojects':
                 return <Subprojects 
@@ -298,8 +310,10 @@ const AppContent: React.FC = () => {
                 return <Settings 
                             isDarkMode={isDarkMode} 
                             toggleDarkMode={toggleDarkMode}
-                            systemSettings={systemSettings}
-                            setSystemSettings={setSystemSettings}
+                            deadlines={deadlines}
+                            setDeadlines={setDeadlines}
+                            planningSchedules={planningSchedules}
+                            setPlanningSchedules={setPlanningSchedules}
                         />;
             default:
                 return <div className="p-6">Page not found</div>;

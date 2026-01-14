@@ -1,6 +1,7 @@
 
+// Author: 4K 
 import React, { useMemo } from 'react';
-import { Subproject, Training, OtherActivity, IPO } from '../../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { parseLocation } from '../LocationPicker';
 
@@ -10,6 +11,9 @@ interface FinancialDashboardProps {
         trainings: Training[];
         otherActivities: OtherActivity[];
         ipos: IPO[];
+        officeReqs: OfficeRequirement[];
+        staffingReqs: StaffingRequirement[];
+        otherProgramExpenses: OtherProgramExpense[];
     };
 }
 
@@ -117,6 +121,78 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         data.trainings.forEach(processActivity);
         data.otherActivities.forEach(processActivity);
+
+        // 3. Process Office Requirements
+        data.officeReqs.forEach(or => {
+            const targetAmount = or.pricePerUnit * or.numberOfUnits;
+            const actualOb = or.actualObligationAmount || 0;
+            const actualDisb = or.actualDisbursementAmount || 0;
+
+            const targetMonth = getMonth(or.obligationDate);
+            if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
+
+            const obMonth = getMonth(or.actualObligationDate);
+            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+
+            const disbMonth = getMonth(or.actualDisbursementDate);
+            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+
+            totalAllocation += targetAmount;
+            totalObligation += actualOb;
+            totalDisbursement += actualDisb;
+
+            components['Program Management'].target += targetAmount;
+            components['Program Management'].obligation += actualOb;
+            components['Program Management'].disbursement += actualDisb;
+        });
+
+        // 4. Process Staffing Requirements
+        data.staffingReqs.forEach(sr => {
+            const targetAmount = sr.annualSalary;
+            const actualOb = sr.actualObligationAmount || 0;
+            const actualDisb = sr.actualDisbursementAmount || 0;
+
+            const targetMonth = getMonth(sr.obligationDate);
+            if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
+
+            const obMonth = getMonth(sr.actualObligationDate);
+            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+
+            const disbMonth = getMonth(sr.actualDisbursementDate);
+            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+
+            totalAllocation += targetAmount;
+            totalObligation += actualOb;
+            totalDisbursement += actualDisb;
+
+            components['Program Management'].target += targetAmount;
+            components['Program Management'].obligation += actualOb;
+            components['Program Management'].disbursement += actualDisb;
+        });
+
+        // 5. Process Other Program Expenses
+        data.otherProgramExpenses.forEach(oe => {
+            const targetAmount = oe.amount;
+            const actualOb = oe.actualObligationAmount || 0;
+            const actualDisb = oe.actualDisbursementAmount || 0;
+
+            const targetMonth = getMonth(oe.obligationDate);
+            if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
+
+            const obMonth = getMonth(oe.actualObligationDate);
+            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+
+            const disbMonth = getMonth(oe.actualDisbursementDate);
+            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+
+            totalAllocation += targetAmount;
+            totalObligation += actualOb;
+            totalDisbursement += actualDisb;
+
+            components['Program Management'].target += targetAmount;
+            components['Program Management'].obligation += actualOb;
+            components['Program Management'].disbursement += actualDisb;
+        });
 
         return { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData };
     }, [data]);

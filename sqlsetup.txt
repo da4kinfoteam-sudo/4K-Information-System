@@ -204,6 +204,23 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS "password" text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
+-- 10. Deadlines
+create table if not exists deadlines (
+  "id" bigint primary key generated always as identity
+);
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS "date" text;
+ALTER TABLE deadlines ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+
+-- 11. Planning Schedules
+create table if not exists planning_schedules (
+  "id" bigint primary key generated always as identity
+);
+ALTER TABLE planning_schedules ADD COLUMN IF NOT EXISTS "name" text;
+ALTER TABLE planning_schedules ADD COLUMN IF NOT EXISTS "startDate" text;
+ALTER TABLE planning_schedules ADD COLUMN IF NOT EXISTS "endDate" text;
+ALTER TABLE planning_schedules ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+
 -- ================================================================
 -- ROW LEVEL SECURITY POLICIES
 -- ================================================================
@@ -253,3 +270,12 @@ CREATE POLICY "Public Access UACS" ON reference_uacs FOR ALL USING (true) WITH C
 ALTER TABLE reference_particulars ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Access Particulars" ON reference_particulars;
 CREATE POLICY "Public Access Particulars" ON reference_particulars FOR ALL USING (true) WITH CHECK (true);
+
+-- System Settings (Deadlines & Planning Schedules)
+ALTER TABLE deadlines ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Deadlines" ON deadlines;
+CREATE POLICY "Public Access Deadlines" ON deadlines FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE planning_schedules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Planning Schedules" ON planning_schedules;
+CREATE POLICY "Public Access Planning Schedules" ON planning_schedules FOR ALL USING (true) WITH CHECK (true);

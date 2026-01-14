@@ -1,6 +1,7 @@
 
+// Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
 import GADDashboard from './dashboards/GADDashboard';
@@ -15,6 +16,9 @@ export interface DashboardsPageProps {
     ipos: IPO[];
     trainings: Training[];
     otherActivities: OtherActivity[];
+    officeReqs: OfficeRequirement[];
+    staffingReqs: StaffingRequirement[];
+    otherProgramExpenses: OtherProgramExpense[];
 }
 
 type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income';
@@ -41,15 +45,24 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         props.trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
         props.ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
         props.otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
+        
+        // Add PM years
+        props.officeReqs.forEach(i => years.add(i.fundYear.toString()));
+        props.staffingReqs.forEach(i => years.add(i.fundYear.toString()));
+        props.otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
+
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [props.subprojects, props.trainings, props.ipos, props.otherActivities]);
+    }, [props]);
 
     const filteredData = useMemo(() => {
         let data = {
             subprojects: [...props.subprojects],
             ipos: [...props.ipos],
             trainings: [...props.trainings],
-            otherActivities: [...props.otherActivities]
+            otherActivities: [...props.otherActivities],
+            officeReqs: [...props.officeReqs],
+            staffingReqs: [...props.staffingReqs],
+            otherProgramExpenses: [...props.otherProgramExpenses]
         };
 
         // Filter by Year
@@ -58,6 +71,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.ipos = data.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear);
             data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
             data.otherActivities = data.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear);
+            data.officeReqs = data.officeReqs.filter(i => i.fundYear.toString() === selectedYear);
+            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear.toString() === selectedYear);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear);
         }
 
         // Filter by Tier
@@ -65,6 +81,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.subprojects = data.subprojects.filter(p => p.tier === selectedTier);
             data.trainings = data.trainings.filter(t => t.tier === selectedTier);
             data.otherActivities = data.otherActivities.filter(a => a.tier === selectedTier);
+            data.officeReqs = data.officeReqs.filter(i => i.tier === selectedTier);
+            data.staffingReqs = data.staffingReqs.filter(i => i.tier === selectedTier);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.tier === selectedTier);
         }
 
         // Filter by Fund Type
@@ -72,6 +91,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.subprojects = data.subprojects.filter(p => p.fundType === selectedFundType);
             data.trainings = data.trainings.filter(t => t.fundType === selectedFundType);
             data.otherActivities = data.otherActivities.filter(a => a.fundType === selectedFundType);
+            data.officeReqs = data.officeReqs.filter(i => i.fundType === selectedFundType);
+            data.staffingReqs = data.staffingReqs.filter(i => i.fundType === selectedFundType);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundType === selectedFundType);
         }
 
         // Filter by OU
@@ -81,6 +103,9 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.trainings = data.trainings.filter(t => t.operatingUnit === selectedOu);
             data.otherActivities = data.otherActivities.filter(a => a.operatingUnit === selectedOu);
             data.ipos = data.ipos.filter(i => i.region === targetRegion);
+            data.officeReqs = data.officeReqs.filter(i => i.operatingUnit === selectedOu);
+            data.staffingReqs = data.staffingReqs.filter(i => i.operatingUnit === selectedOu);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu);
         }
 
         return data;
@@ -186,7 +211,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             <div className="mt-4">
                 {activeTab === 'Physical' && <PhysicalDashboard data={filteredData} setModalData={setModalData} />}
                 {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
-                {activeTab === 'GAD' && <GADDashboard />}
+                {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
                 {activeTab === 'Farm Productivity and Income' && <FarmProductivityDashboard />}
