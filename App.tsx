@@ -46,10 +46,15 @@ const AppContent: React.FC = () => {
     const [staffingReqs, setStaffingReqs] = useState<StaffingRequirement[]>([]);
     const [otherProgramExpenses, setOtherProgramExpenses] = useState<OtherProgramExpense[]>([]);
 
-    // Fetch Program Management Data on mount
+    // System Settings States (Deadlines and Schedules)
+    // Managed manually to support direct DB operations
+    const [deadlines, setDeadlines] = useState<Deadline[]>([]);
+    const [planningSchedules, setPlanningSchedules] = useState<PlanningSchedule[]>([]);
+
+    // Fetch Program Management & System Settings Data on mount
     useEffect(() => {
         if (!supabase) return;
-        const fetchPMData = async () => {
+        const fetchAllData = async () => {
             const { data: or } = await supabase.from('office_requirements').select('*').order('id', { ascending: false });
             if (or) setOfficeReqs(or as OfficeRequirement[]);
 
@@ -58,18 +63,20 @@ const AppContent: React.FC = () => {
 
             const { data: oe } = await supabase.from('other_program_expenses').select('*').order('id', { ascending: false });
             if (oe) setOtherProgramExpenses(oe as OtherProgramExpense[]);
+
+            // Fetch System Settings
+            const { data: dl } = await supabase.from('deadlines').select('*').order('date', { ascending: true });
+            if (dl) setDeadlines(dl as Deadline[]);
+
+            const { data: ps } = await supabase.from('planning_schedules').select('*').order('startDate', { ascending: true });
+            if (ps) setPlanningSchedules(ps as PlanningSchedule[]);
         };
-        fetchPMData();
+        fetchAllData();
     }, [currentUser]);
 
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
-
-    // System Settings State from Supabase
-    // [Fix] Replaced LocalStorage with Supabase hooks for Deadlines and Planning Schedules
-    const [deadlines, setDeadlines] = useSupabaseTable<Deadline>('deadlines', defaultSystemSettings.deadlines);
-    const [planningSchedules, setPlanningSchedules] = useSupabaseTable<PlanningSchedule>('planning_schedules', defaultSystemSettings.planningSchedules);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({

@@ -173,27 +173,44 @@ const Settings: React.FC<SettingsProps> = ({
     };
 
     // CRUD Handlers for System Settings (Deadlines)
-    const handleDeadlineSubmit = (e: React.FormEvent) => {
+    const handleDeadlineSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!deadlineForm.name || !deadlineForm.date) return;
 
-        if (editingDeadline) {
-            setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d));
-            setEditingDeadline(null);
-        } else {
-            const newDeadline: Deadline = { id: Date.now(), ...deadlineForm }; // ID will be managed by Supabase hook upsert if > 0 or new
-            // For new items in Supabase sync hook, we can rely on state update. 
-            // If offline, Date.now() works. If online, hook might need real ID or let DB handle it. 
-            // The useSupabaseTable hook uses Upsert based on ID. 
-            // For new items without real ID, we should likely let the DB generate it.
-            // But the current useSupabaseTable implementation upserts everything in `next`.
-            // To properly insert new items and get ID back, we might need direct DB call here similar to Users, 
-            // OR rely on the hook which is "simple diff".
-            // Ideally, we treat new items with a temp ID or let the hook handle. 
-            // Given useSupabaseTable implementation: it upserts items that are new/changed.
-            setDeadlines(prev => [...prev, newDeadline]);
+        try {
+            if (editingDeadline) {
+                if (supabase) {
+                    const { data, error } = await supabase
+                        .from('deadlines')
+                        .update(deadlineForm)
+                        .eq('id', editingDeadline.id)
+                        .select()
+                        .single();
+                    if (error) throw error;
+                    if (data) setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? data : d));
+                } else {
+                    setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d));
+                }
+                setEditingDeadline(null);
+            } else {
+                if (supabase) {
+                    const { data, error } = await supabase
+                        .from('deadlines')
+                        .insert([deadlineForm])
+                        .select()
+                        .single();
+                    if (error) throw error;
+                    if (data) setDeadlines(prev => [...prev, data]);
+                } else {
+                    const newDeadline: Deadline = { id: Date.now(), ...deadlineForm };
+                    setDeadlines(prev => [...prev, newDeadline]);
+                }
+            }
+            setDeadlineForm({ name: '', date: '' });
+        } catch (error: any) {
+            console.error("Error saving deadline:", error);
+            alert("Failed to save deadline: " + error.message);
         }
-        setDeadlineForm({ name: '', date: '' });
     };
 
     const handleEditDeadline = (deadline: Deadline) => {
@@ -206,26 +223,62 @@ const Settings: React.FC<SettingsProps> = ({
         setDeadlineForm({ name: '', date: '' });
     };
 
-    const handleDeleteDeadline = (id: number) => {
-        setDeadlines(prev => prev.filter(d => d.id !== id));
-        if (editingDeadline?.id === id) {
-            handleCancelDeadlineEdit();
+    const handleDeleteDeadline = async (id: number) => {
+        if (!window.confirm("Are you sure you want to delete this deadline?")) return;
+        try {
+            if (supabase) {
+                const { error } = await supabase.from('deadlines').delete().eq('id', id);
+                if (error) throw error;
+            }
+            setDeadlines(prev => prev.filter(d => d.id !== id));
+            if (editingDeadline?.id === id) {
+                handleCancelDeadlineEdit();
+            }
+        } catch (error: any) {
+            console.error("Error deleting deadline:", error);
+            alert("Failed to delete deadline.");
         }
     };
 
     // CRUD Handlers for System Settings (Planning Schedules)
-    const handleScheduleSubmit = (e: React.FormEvent) => {
+    const handleScheduleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!scheduleForm.name || !scheduleForm.startDate || !scheduleForm.endDate) return;
 
-        if (editingSchedule) {
-            setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s));
-            setEditingSchedule(null);
-        } else {
-            const newSchedule: PlanningSchedule = { id: Date.now(), ...scheduleForm };
-            setPlanningSchedules(prev => [...prev, newSchedule]);
+        try {
+            if (editingSchedule) {
+                if (supabase) {
+                    const { data, error } = await supabase
+                        .from('planning_schedules')
+                        .update(scheduleForm)
+                        .eq('id', editingSchedule.id)
+                        .select()
+                        .single();
+                    if (error) throw error;
+                    if (data) setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? data : s));
+                } else {
+                    setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s));
+                }
+                setEditingSchedule(null);
+            } else {
+                if (supabase) {
+                    const { data, error } = await supabase
+                        .from('planning_schedules')
+                        .insert([scheduleForm])
+                        .select()
+                        .single();
+                    if (error) throw error;
+                    if (data) setPlanningSchedules(prev => [...prev, data]);
+                } else {
+                    const newSchedule: PlanningSchedule = { id: Date.now(), ...scheduleForm };
+                    setPlanningSchedules(prev => [...prev, newSchedule]);
+                }
+            }
+            setScheduleForm({ name: '', startDate: '', endDate: '' });
+        } catch (error: any) {
+            console.error("Error saving schedule:", error);
+            alert("Failed to save schedule: " + error.message);
         }
-        setScheduleForm({ name: '', startDate: '', endDate: '' });
     };
 
     const handleEditSchedule = (schedule: PlanningSchedule) => {
@@ -238,10 +291,20 @@ const Settings: React.FC<SettingsProps> = ({
         setScheduleForm({ name: '', startDate: '', endDate: '' });
     };
 
-    const handleDeleteSchedule = (id: number) => {
-        setPlanningSchedules(prev => prev.filter(s => s.id !== id));
-        if (editingSchedule?.id === id) {
-            handleCancelScheduleEdit();
+    const handleDeleteSchedule = async (id: number) => {
+        if (!window.confirm("Are you sure you want to delete this schedule?")) return;
+        try {
+            if (supabase) {
+                const { error } = await supabase.from('planning_schedules').delete().eq('id', id);
+                if (error) throw error;
+            }
+            setPlanningSchedules(prev => prev.filter(s => s.id !== id));
+            if (editingSchedule?.id === id) {
+                handleCancelScheduleEdit();
+            }
+        } catch (error: any) {
+            console.error("Error deleting schedule:", error);
+            alert("Failed to delete schedule.");
         }
     };
 
