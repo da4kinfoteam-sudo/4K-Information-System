@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { 
-    AccomplishmentCard, QuarterlyBarChart, IpoEngagementChart, 
+    QuarterlyBarChart, IpoEngagementChart, 
     ProvincialComparisonChart, RankingList, ModalItem, IndicatorData 
 } from './DashboardComponents';
 
@@ -22,6 +22,18 @@ const formatDate = (dateString?: string) => {
     const date = new Date(dateString + 'T00:00:00Z');
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
+
+const PhysicalStatCard: React.FC<{ label: string; value: number; gradient: string; onClick?: () => void; }> = ({ label, value, gradient, onClick }) => (
+    <div 
+        className={`bg-gradient-to-br ${gradient} text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105 cursor-pointer`}
+        onClick={onClick}
+    >
+        <div className="flex flex-col items-center justify-center h-full">
+            <p className="text-4xl font-bold drop-shadow-md">{value.toLocaleString()}</p>
+            <p className="text-sm font-medium uppercase tracking-wider opacity-90 mt-2 text-center">{label}</p>
+        </div>
+    </div>
+);
 
 const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalData }) => {
     
@@ -272,11 +284,11 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
              <section aria-labelledby="overall-performance">
                 <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance</h3>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <AccomplishmentCard label="Total IPOs" value={data.ipos.length} onClick={handleShowTotalIpos} />
-                    <AccomplishmentCard label="IPOs Trained" value={ipoEngagementData['IPOs Trained']} onClick={handleShowIposTrained} />
-                    <AccomplishmentCard label="IPOs w/ Completed Subprojects" value={ipoEngagementData['IPOs w/ Subprojects']} onClick={handleShowIposWithSubprojects} />
-                    <AccomplishmentCard label="Subprojects Completed" value={completedSubprojectsCount} onClick={handleShowCompletedSubprojects} />
-                    <AccomplishmentCard label="ADs Assisted" value={ipoEngagementData['ADs Assisted']} onClick={handleShowAdsAssisted} />
+                    <PhysicalStatCard label="Total IPOs" value={data.ipos.length} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalIpos} />
+                    <PhysicalStatCard label="IPOs Trained" value={ipoEngagementData['IPOs Trained']} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
+                    <PhysicalStatCard label="IPOs w/ Subprojects" value={ipoEngagementData['IPOs w/ Subprojects']} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
+                    <PhysicalStatCard label="Subprojects Completed" value={completedSubprojectsCount} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
+                    <PhysicalStatCard label="ADs Assisted" value={ipoEngagementData['ADs Assisted']} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
                 </div>
             </section>
 
@@ -317,8 +329,8 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                     <RankingList 
                         title="By Subprojects" 
                         items={rankingData.bySubprojects.map(i => ({ name: i.name, count: i.subprojectsCount }))}
-                        colorClass="text-blue-600 dark:text-blue-400"
-                        icon={<ProjectsIcon className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+                        colorClass="text-emerald-600 dark:text-emerald-400"
+                        icon={<ProjectsIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
                     />
                      <RankingList 
                         title="By Trainings" 

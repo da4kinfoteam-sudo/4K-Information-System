@@ -26,9 +26,9 @@ export const QuarterlyBarChart: React.FC<{
     const yAxisMax = maxVal === 1 ? 2 : Math.ceil(maxVal / 1.1 / 5) * 5;
 
     const indicators: { key: 'subprojects' | 'ipos' | 'trainings'; label: string; color: string }[] = [
-        { key: 'subprojects', label: 'Subprojects', color: 'bg-accent dark:bg-green-700' },
-        { key: 'ipos', label: 'IPOs', color: 'bg-teal-400 dark:bg-teal-600' },
-        { key: 'trainings', label: 'Trainings', color: 'bg-green-300 dark:bg-green-500' }
+        { key: 'subprojects', label: 'Subprojects', color: 'bg-emerald-500' },
+        { key: 'ipos', label: 'IPOs', color: 'bg-teal-500' },
+        { key: 'trainings', label: 'Trainings', color: 'bg-green-500' }
     ];
 
     return (
@@ -80,7 +80,7 @@ export const IpoEngagementChart: React.FC<{
     const maxVal = Math.max(...(Object.values(data) as number[]));
     const yAxisMax = maxVal === 0 ? 10 : Math.ceil(maxVal / 1.1 / 5) * 5;
     const categories = Object.keys(data);
-    const colors = ['bg-accent', 'bg-green-500', 'bg-teal-500', 'bg-cyan-500'];
+    const colors = ['bg-emerald-500', 'bg-teal-500', 'bg-green-500', 'bg-lime-500'];
 
     return (
          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-full flex flex-col">
@@ -124,10 +124,10 @@ export const ProvincialComparisonChart: React.FC<{ data: { [province: string]: {
     }
 
     const indicators = [
-        { key: 'subprojects', label: 'Subproj.', color: 'bg-accent' },
+        { key: 'subprojects', label: 'Subproj.', color: 'bg-emerald-500' },
         { key: 'ipos', label: 'IPOs', color: 'bg-teal-500' },
         { key: 'trainings', label: 'Trainings', color: 'bg-green-500' },
-        { key: 'ads', label: 'ADs', color: 'bg-cyan-500' },
+        { key: 'ads', label: 'ADs', color: 'bg-lime-500' },
     ];
     
 
