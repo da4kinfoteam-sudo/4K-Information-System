@@ -83,10 +83,7 @@ export const defaultSystemSettings: SystemSettings = {
 };
 
 // Initial UACS Codes cleared to allow user uploads
-export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {
-  MOOE: {},
-  CO: {}
-};
+export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } } = {};
 
 export const uacsCodes = initialUacsCodes;
 
@@ -307,8 +304,12 @@ export interface NavLink {
 export const commodityTypes: string[] = ['Crop Commodity', 'Livestock'];
 
 export const initialParticularTypes: { [key: string]: string[] } = {
-  'Livestock': ['Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'],
-  'Crop Commodity': ['Rice Seeds', 'Corn Seeds', 'Fertilizer', 'Pesticides', 'Coffee Seedlings', 'Vegetable Seeds', 'Fruit Tree Seedlings', 'Rubber Seedlings', 'Abaca Corms'],
+  'Agricultural Inputs': [
+      // Combined list
+      'Rice Seeds', 'Corn Seeds', 'Fertilizer', 'Pesticides', 'Coffee Seedlings', 
+      'Vegetable Seeds', 'Fruit Tree Seedlings', 'Rubber Seedlings', 'Abaca Corms',
+      'Cattle', 'Goats', 'Pigs', 'Chicken', 'Carabao'
+  ],
   'Equipment': ['Tractor', 'Water Pump', 'Thresher', 'Harvester', 'Processing Equipment', 'Floating cages', 'Solar Dryer', 'Weighing Scale'],
   'Infrastructure': ['Cement', 'Gravel and Sand', 'Pipes and Fittings', 'Skilled Labor', 'Installation Labor', 'Processing Shed', 'Warehouse', 'Storage unit', 'Multi-purpose Drying Pavement'],
   'Others': ['Project Management', 'Heavy Equipment Rental', 'Training Materials', 'Catering Services', 'Fuel and Oil', 'Office Supplies']

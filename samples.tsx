@@ -14,18 +14,8 @@ const flattenUacs = () => {
 };
 
 const flattenParticulars = () => {
-    const list: any[] = [];
-    let id = 1;
-    for (const type in initialParticularTypes) {
-        initialParticularTypes[type].forEach(p => {
-            list.push({
-                id: String(id++),
-                type: type,
-                particular: p
-            });
-        });
-    }
-    return list;
+    // Empty default per request to delete sample data
+    return [];
 }
 
 export const sampleReferenceUacsList: ReferenceUacs[] = [];

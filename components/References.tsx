@@ -1,4 +1,9 @@
 
+// ... existing imports
+// [Fix] No imports changed, just returning full file content as requested per rules, but specifically targeting the render part.
+// To keep response concise and adhere to "do not remove existing imports", I will return the updated component.
+
+// Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { objectTypes } from '../constants';
 import { supabase } from '../supabaseClient';
@@ -210,7 +215,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         } else {
             const headers = ['type', 'particular'];
             const example = [{
-                type: 'Livestock',
+                type: 'Agricultural Inputs',
                 particular: 'Carabao'
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
@@ -559,8 +564,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             className={commonInputClasses}
                                         />
                                         <datalist id="item-types">
-                                            <option value="Livestock" />
-                                            <option value="Crop Commodity" />
+                                            <option value="Agricultural Inputs" />
                                             <option value="Equipment" />
                                             <option value="Infrastructure" />
                                             <option value="Others" />
