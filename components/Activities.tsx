@@ -1022,7 +1022,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 </div>
                                 <select multiple name="participatingIpos" value={formData.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-40`}>
                                     {filteredIposForSelection.map(ipo => (
-                                        <option key={ipo.id} value={ipo.name}>{ipo.name} ({ipo.location})</option>
+                                        <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
                                     ))}
                                 </select>
                                 <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
