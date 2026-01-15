@@ -303,6 +303,19 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
     }, [rows, allUacsCodes]);
 
+    const getDescription = (objType: string, particular: string, code: string) => {
+        if (uacsCodes[objType] && uacsCodes[objType][particular] && uacsCodes[objType][particular][code]) {
+            return uacsCodes[objType][particular][code];
+        }
+        // Fallback search
+        if (uacsCodes[objType]) {
+            for (const p in uacsCodes[objType]) {
+                if (uacsCodes[objType][p][code]) return uacsCodes[objType][p][code];
+            }
+        }
+        return '';
+    };
+
     const handleDownloadBpFormsXlsx = () => {
         const flatData: any[] = [];
         Object.entries(rows).forEach(([componentName, componentData]) => {
@@ -403,14 +416,26 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
                     <thead className="sticky top-0 z-10">
                         <tr className="bg-gray-200 dark:bg-gray-800">
-                            <th rowSpan={3} className={`${headerCellClass} min-w-[300px]`}>Program/Activity/Project</th>
+                            <th rowSpan={4} className={`${headerCellClass} min-w-[300px]`}>Program/Activity/Project</th>
                             {mooeUacsCount > 0 && <th colSpan={mooeUacsCount} className={`${headerCellClass}`}>MOOE</th>}
                             {coUacsCount > 0 && <th colSpan={coUacsCount} className={`${headerCellClass}`}>CO</th>}
-                            <th colSpan={3} rowSpan={2} className={`${headerCellClass}`}>Totals</th>
+                            <th colSpan={3} rowSpan={3} className={`${headerCellClass}`}>Totals</th>
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/80">
                             {mooeParticulars.map(p => <th key={p} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
                             {coParticulars.map(p => <th key={p} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                        </tr>
+                        <tr className="bg-gray-50 dark:bg-gray-700/60">
+                            {mooeParticulars.flatMap(p => headers.MOOE[p].map(code => ({ code, p }))).map(({ code, p }) => (
+                                <th key={`desc-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                    {getDescription('MOOE', p, code)}
+                                </th>
+                            ))}
+                            {coParticulars.flatMap(p => headers.CO[p].map(code => ({ code, p }))).map(({ code, p }) => (
+                                <th key={`desc-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                    {getDescription('CO', p, code)}
+                                </th>
+                            ))}
                         </tr>
                         <tr className="bg-gray-5 dark:bg-gray-700/50">
                             {mooeParticulars.flatMap(p => headers.MOOE[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
@@ -519,4 +544,3 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 };
 
 export default BPFormsReport;
-// --- End of components/reports/BPFormsReport.tsx ---

@@ -1,12 +1,9 @@
 
-// ... existing imports
-// [Fix] No imports changed, just returning full file content as requested per rules, but specifically targeting the render part.
-// To keep response concise and adhere to "do not remove existing imports", I will return the updated component.
-
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { objectTypes } from '../constants';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -40,6 +37,7 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList }) => {
+    const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<'UACS' | 'Items'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,10 +45,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [deleteItem, setDeleteItem] = useState<any>(null);
     const [isUploading, setIsUploading] = useState(false);
 
+    // Sorting State
+    type SortConfig = { key: string; direction: 'ascending' | 'descending' } | null;
+    const [sortConfig, setSortConfig] = useState<SortConfig>(null);
+
     // Multi-Delete State
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
+
+    // Access Control: User role is Read-Only
+    const canEdit = currentUser?.role !== 'User';
 
     // --- UACS Form State ---
     const [uacsForm, setUacsForm] = useState({
@@ -66,31 +71,86 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         particular: ''
     });
 
-    // Reset selection mode on tab change
+    // Reset selection mode and sort on tab change
     useEffect(() => {
         setIsSelectionMode(false);
         setSelectedIds([]);
+        setSortConfig(null);
     }, [activeTab]);
 
-    // --- Filtering ---
-    const filteredUacs = useMemo(() => {
-        if (!searchTerm) return uacsList;
-        const lower = searchTerm.toLowerCase();
-        return uacsList.filter(i => 
-            i.uacsCode.toLowerCase().includes(lower) || 
-            i.description.toLowerCase().includes(lower) || 
-            i.particular.toLowerCase().includes(lower)
-        );
-    }, [uacsList, searchTerm]);
+    // --- Sorting Logic ---
+    const requestSort = (key: string) => {
+        let direction: 'ascending' | 'descending' = 'ascending';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
 
-    const filteredParticulars = useMemo(() => {
-        if (!searchTerm) return particularList;
-        const lower = searchTerm.toLowerCase();
-        return particularList.filter(i => 
-            i.particular.toLowerCase().includes(lower) || 
-            i.type.toLowerCase().includes(lower)
+    const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => {
+        const isSorted = sortConfig?.key === sortKey;
+        const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
+        return (
+            <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group select-none"
+                onClick={() => requestSort(sortKey)}
+            >
+                <div className="flex items-center gap-1">
+                    {label}
+                    <span className={`text-xs ${isSorted ? 'text-accent opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-50'}`}>{directionIcon}</span>
+                </div>
+            </th>
         );
-    }, [particularList, searchTerm]);
+    };
+
+    // --- Filtering & Sorting ---
+    const processedUacs = useMemo(() => {
+        let items = [...uacsList];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.uacsCode.toLowerCase().includes(lower) || 
+                i.description.toLowerCase().includes(lower) || 
+                i.particular.toLowerCase().includes(lower) ||
+                (i.objectType && i.objectType.toLowerCase().includes(lower))
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [uacsList, searchTerm, sortConfig]);
+
+    const processedParticulars = useMemo(() => {
+        let items = [...particularList];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.particular.toLowerCase().includes(lower) || 
+                i.type.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [particularList, searchTerm, sortConfig]);
 
     // --- Handlers ---
     const handleOpenAdd = () => {
@@ -165,7 +225,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const currentList = activeTab === 'UACS' ? filteredUacs : filteredParticulars;
+        const currentList = activeTab === 'UACS' ? processedUacs : processedParticulars;
         if (e.target.checked) {
             const ids = currentList.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
@@ -300,7 +360,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     return (
         <div className="space-y-6">
             {/* Multi Delete Modal */}
-            {isMultiDeleteModalOpen && (
+            {isMultiDeleteModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
@@ -319,12 +379,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             {/* Header with Title and Add Button */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">System References</h2>
-                <button 
-                    onClick={handleOpenAdd}
-                    className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
-                >
-                    + Add New {activeTab === 'UACS' ? 'UACS Code' : 'Item'}
-                </button>
+                {canEdit && (
+                    <button 
+                        onClick={handleOpenAdd}
+                        className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
+                    >
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : 'Item'}
+                    </button>
+                )}
             </div>
 
             {/* Tabs */}
@@ -365,40 +427,42 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     />
                 </div>
                 
-                <div className="flex flex-wrap gap-2 items-center">
-                    {isSelectionMode && selectedIds.length > 0 && (
-                        <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                            Delete Selected ({selectedIds.length})
+                {canEdit && (
+                    <div className="flex flex-wrap gap-2 items-center">
+                        {isSelectionMode && selectedIds.length > 0 && (
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                                Delete Selected ({selectedIds.length})
+                            </button>
+                        )}
+                        <button 
+                            onClick={handleDownloadTemplate}
+                            className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
+                        >
+                            Download Template
                         </button>
-                    )}
-                    <button 
-                        onClick={handleDownloadTemplate}
-                        className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
-                    >
-                        Download Template
-                    </button>
-                    <label 
-                        htmlFor="ref-upload" 
-                        className={`inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                        {isUploading ? 'Uploading...' : 'Upload XLSX'}
-                    </label>
-                    <input 
-                        id="ref-upload" 
-                        type="file" 
-                        className="hidden" 
-                        onChange={handleFileUpload} 
-                        accept=".xlsx, .xls"
-                        disabled={isUploading}
-                    />
-                    <button
-                        onClick={handleToggleSelectionMode}
-                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                        title="Toggle Multi-Delete Mode"
-                    >
-                        <TrashIcon />
-                    </button>
-                </div>
+                        <label 
+                            htmlFor="ref-upload" 
+                            className={`inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        >
+                            {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                        </label>
+                        <input 
+                            id="ref-upload" 
+                            type="file" 
+                            className="hidden" 
+                            onChange={handleFileUpload} 
+                            accept=".xlsx, .xls"
+                            disabled={isUploading}
+                        />
+                        <button
+                            onClick={handleToggleSelectionMode}
+                            className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                            title="Toggle Multi-Delete Mode"
+                        >
+                            <TrashIcon />
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Table Area */}
@@ -409,90 +473,96 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             <tr>
                                 {activeTab === 'UACS' ? (
                                     <>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Object Type</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Particular</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UACS Code</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Description</th>
+                                        <SortableHeader label="Object Type" sortKey="objectType" />
+                                        <SortableHeader label="Particular" sortKey="particular" />
+                                        <SortableHeader label="UACS Code" sortKey="uacsCode" />
+                                        <SortableHeader label="Description" sortKey="description" />
                                     </>
                                 ) : (
                                     <>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Item Type</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Item Particular</th>
+                                        <SortableHeader label="Item Type" sortKey="type" />
+                                        <SortableHeader label="Item Particular" sortKey="particular" />
                                     </>
                                 )}
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                                    {isSelectionMode ? (
-                                        <div className="flex items-center justify-end gap-2">
-                                            <span className="text-xs">Select All</span>
-                                            <input 
-                                                type="checkbox" 
-                                                onChange={handleSelectAll} 
-                                                checked={(activeTab === 'UACS' ? filteredUacs : filteredParticulars).length > 0 && (activeTab === 'UACS' ? filteredUacs : filteredParticulars).every(i => selectedIds.includes(i.id))}
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                            />
-                                        </div>
-                                    ) : (
-                                        "Actions"
-                                    )}
-                                </th>
+                                {canEdit && (
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                        {isSelectionMode ? (
+                                            <div className="flex items-center justify-end gap-2">
+                                                <span className="text-xs">Select All</span>
+                                                <input 
+                                                    type="checkbox" 
+                                                    onChange={handleSelectAll} 
+                                                    checked={(activeTab === 'UACS' ? processedUacs : processedParticulars).length > 0 && (activeTab === 'UACS' ? processedUacs : processedParticulars).every(i => selectedIds.includes(i.id))}
+                                                    className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                />
+                                            </div>
+                                        ) : (
+                                            "Actions"
+                                        )}
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {activeTab === 'UACS' ? (
-                                filteredUacs.length > 0 ? (
-                                    filteredUacs.map(item => (
+                                processedUacs.length > 0 ? (
+                                    processedUacs.map(item => (
                                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
                                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                {isSelectionMode ? (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.includes(item.id)} 
-                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                    </>
-                                                )}
-                                            </td>
+                                            {canEdit && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    {isSelectionMode ? (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.includes(item.id)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
+                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                        </>
+                                                    )}
+                                                </td>
+                                            )}
                                         </tr>
                                     ))
                                 ) : (
-                                    <tr><td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">No UACS codes found.</td></tr>
+                                    <tr><td colSpan={canEdit ? 5 : 4} className="px-6 py-4 text-center text-sm text-gray-500">No UACS codes found.</td></tr>
                                 )
                             ) : (
-                                filteredParticulars.length > 0 ? (
-                                    filteredParticulars.map(item => (
+                                processedParticulars.length > 0 ? (
+                                    processedParticulars.map(item => (
                                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                {isSelectionMode ? (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.includes(item.id)} 
-                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                    </>
-                                                )}
-                                            </td>
+                                            {canEdit && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    {isSelectionMode ? (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.includes(item.id)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
+                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                        </>
+                                                    )}
+                                                </td>
+                                            )}
                                         </tr>
                                     ))
                                 ) : (
-                                    <tr><td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                    <tr><td colSpan={canEdit ? 3 : 2} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                                 )
                             )}
                         </tbody>
@@ -501,7 +571,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             </div>
 
             {/* Add/Edit Modal */}
-            {isModalOpen && (
+            {isModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
@@ -603,7 +673,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             )}
 
             {/* Delete Confirmation Modal */}
-            {deleteItem && (
+            {deleteItem && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Delete</h3>

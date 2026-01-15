@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { User, operatingUnits, SystemSettings, Deadline, PlanningSchedule } from '../constants';
 import { supabase } from '../supabaseClient';
@@ -13,6 +13,13 @@ interface SettingsProps {
     planningSchedules: PlanningSchedule[];
     setPlanningSchedules: React.Dispatch<React.SetStateAction<PlanningSchedule[]>>;
 }
+
+// Local TrashIcon since it's used for UI actions
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
 
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
@@ -39,12 +46,25 @@ const Settings: React.FC<SettingsProps> = ({
         password: ''
     });
 
-    // System Management Form State
+    // --- System Management State (New) ---
+    const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    
+    // Forms
     const [deadlineForm, setDeadlineForm] = useState({ name: '', date: '' });
     const [scheduleForm, setScheduleForm] = useState({ name: '', startDate: '', endDate: '' });
     
+    // Edit Selection
     const [editingDeadline, setEditingDeadline] = useState<Deadline | null>(null);
     const [editingSchedule, setEditingSchedule] = useState<PlanningSchedule | null>(null);
+
+    // Sorting State
+    const [deadlineSort, setDeadlineSort] = useState<{ key: keyof Deadline; direction: 'asc' | 'desc' } | null>(null);
+    const [scheduleSort, setScheduleSort] = useState<{ key: keyof PlanningSchedule; direction: 'asc' | 'desc' } | null>(null);
+
+    // Bulk Selection State
+    const [selectedDeadlines, setSelectedDeadlines] = useState<number[]>([]);
+    const [selectedSchedules, setSelectedSchedules] = useState<number[]>([]);
 
     // Profile Update State
     const [profileData, setProfileData] = useState<User | null>(null);
@@ -172,7 +192,112 @@ const Settings: React.FC<SettingsProps> = ({
         setIsModalOpen(false);
     };
 
-    // CRUD Handlers for System Settings (Deadlines)
+    // --- System Settings Logic ---
+
+    // 1. Sorting Helpers
+    const handleSort = (key: string, type: 'deadline' | 'schedule') => {
+        if (type === 'deadline') {
+            setDeadlineSort(prev => ({
+                key: key as keyof Deadline,
+                direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+            }));
+        } else {
+            setScheduleSort(prev => ({
+                key: key as keyof PlanningSchedule,
+                direction: prev?.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+            }));
+        }
+    };
+
+    const getSortedDeadlines = useMemo(() => {
+        if (!deadlineSort) return deadlines;
+        return [...deadlines].sort((a, b) => {
+            const aVal = a[deadlineSort.key];
+            const bVal = b[deadlineSort.key];
+            if (aVal < bVal) return deadlineSort.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return deadlineSort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [deadlines, deadlineSort]);
+
+    const getSortedSchedules = useMemo(() => {
+        if (!scheduleSort) return planningSchedules;
+        return [...planningSchedules].sort((a, b) => {
+            const aVal = a[scheduleSort.key];
+            const bVal = b[scheduleSort.key];
+            if (aVal < bVal) return scheduleSort.direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return scheduleSort.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }, [planningSchedules, scheduleSort]);
+
+    // 2. Selection Helpers
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>, type: 'deadline' | 'schedule') => {
+        if (type === 'deadline') {
+            setSelectedDeadlines(e.target.checked ? deadlines.map(d => d.id) : []);
+        } else {
+            setSelectedSchedules(e.target.checked ? planningSchedules.map(s => s.id) : []);
+        }
+    };
+
+    const handleSelectRow = (id: number, type: 'deadline' | 'schedule') => {
+        if (type === 'deadline') {
+            setSelectedDeadlines(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+        } else {
+            setSelectedSchedules(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+        }
+    };
+
+    // 3. Bulk Delete
+    const handleBulkDelete = async (type: 'deadline' | 'schedule') => {
+        const ids = type === 'deadline' ? selectedDeadlines : selectedSchedules;
+        if (!ids.length) return;
+        
+        if (!window.confirm(`Are you sure you want to delete ${ids.length} items?`)) return;
+
+        try {
+            const table = type === 'deadline' ? 'deadlines' : 'planning_schedules';
+            if (supabase) {
+                const { error } = await supabase.from(table).delete().in('id', ids);
+                if (error) throw error;
+            }
+            
+            if (type === 'deadline') {
+                setDeadlines(prev => prev.filter(d => !ids.includes(d.id)));
+                setSelectedDeadlines([]);
+            } else {
+                setPlanningSchedules(prev => prev.filter(s => !ids.includes(s.id)));
+                setSelectedSchedules([]);
+            }
+        } catch (error: any) {
+            console.error("Error bulk deleting:", error);
+            alert("Failed to delete items.");
+        }
+    };
+
+    // 4. CRUD Handlers adapted for Modals
+    const openDeadlineModal = (deadline?: Deadline) => {
+        if (deadline) {
+            setEditingDeadline(deadline);
+            setDeadlineForm({ name: deadline.name, date: deadline.date });
+        } else {
+            setEditingDeadline(null);
+            setDeadlineForm({ name: '', date: '' });
+        }
+        setIsDeadlineModalOpen(true);
+    };
+
+    const openScheduleModal = (schedule?: PlanningSchedule) => {
+        if (schedule) {
+            setEditingSchedule(schedule);
+            setScheduleForm({ name: schedule.name, startDate: schedule.startDate, endDate: schedule.endDate });
+        } else {
+            setEditingSchedule(null);
+            setScheduleForm({ name: '', startDate: '', endDate: '' });
+        }
+        setIsScheduleModalOpen(true);
+    };
+
     const handleDeadlineSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!deadlineForm.name || !deadlineForm.date) return;
@@ -180,67 +305,28 @@ const Settings: React.FC<SettingsProps> = ({
         try {
             if (editingDeadline) {
                 if (supabase) {
-                    const { data, error } = await supabase
-                        .from('deadlines')
-                        .update(deadlineForm)
-                        .eq('id', editingDeadline.id)
-                        .select()
-                        .single();
+                    const { data, error } = await supabase.from('deadlines').update(deadlineForm).eq('id', editingDeadline.id).select().single();
                     if (error) throw error;
                     if (data) setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? data : d));
                 } else {
                     setDeadlines(prev => prev.map(d => d.id === editingDeadline.id ? { ...d, ...deadlineForm } : d));
                 }
-                setEditingDeadline(null);
             } else {
                 if (supabase) {
-                    const { data, error } = await supabase
-                        .from('deadlines')
-                        .insert([deadlineForm])
-                        .select()
-                        .single();
+                    const { data, error } = await supabase.from('deadlines').insert([deadlineForm]).select().single();
                     if (error) throw error;
                     if (data) setDeadlines(prev => [...prev, data]);
                 } else {
-                    const newDeadline: Deadline = { id: Date.now(), ...deadlineForm };
-                    setDeadlines(prev => [...prev, newDeadline]);
+                    setDeadlines(prev => [...prev, { id: Date.now(), ...deadlineForm }]);
                 }
             }
-            setDeadlineForm({ name: '', date: '' });
+            setIsDeadlineModalOpen(false);
         } catch (error: any) {
             console.error("Error saving deadline:", error);
             alert("Failed to save deadline: " + error.message);
         }
     };
 
-    const handleEditDeadline = (deadline: Deadline) => {
-        setEditingDeadline(deadline);
-        setDeadlineForm({ name: deadline.name, date: deadline.date });
-    };
-
-    const handleCancelDeadlineEdit = () => {
-        setEditingDeadline(null);
-        setDeadlineForm({ name: '', date: '' });
-    };
-
-    const handleDeleteDeadline = async (id: number) => {
-        if (!window.confirm("Are you sure you want to delete this deadline?")) return;
-        try {
-            if (supabase) {
-                const { error } = await supabase.from('deadlines').delete().eq('id', id);
-                if (error) throw error;
-            }
-            setDeadlines(prev => prev.filter(d => d.id !== id));
-            if (editingDeadline?.id === id) {
-                handleCancelDeadlineEdit();
-            }
-        } catch (error: any) {
-            console.error("Error deleting deadline:", error);
-            alert("Failed to delete deadline.");
-        }
-    };
-
-    // CRUD Handlers for System Settings (Planning Schedules)
     const handleScheduleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!scheduleForm.name || !scheduleForm.startDate || !scheduleForm.endDate) return;
@@ -248,64 +334,46 @@ const Settings: React.FC<SettingsProps> = ({
         try {
             if (editingSchedule) {
                 if (supabase) {
-                    const { data, error } = await supabase
-                        .from('planning_schedules')
-                        .update(scheduleForm)
-                        .eq('id', editingSchedule.id)
-                        .select()
-                        .single();
+                    const { data, error } = await supabase.from('planning_schedules').update(scheduleForm).eq('id', editingSchedule.id).select().single();
                     if (error) throw error;
                     if (data) setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? data : s));
                 } else {
                     setPlanningSchedules(prev => prev.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleForm } : s));
                 }
-                setEditingSchedule(null);
             } else {
                 if (supabase) {
-                    const { data, error } = await supabase
-                        .from('planning_schedules')
-                        .insert([scheduleForm])
-                        .select()
-                        .single();
+                    const { data, error } = await supabase.from('planning_schedules').insert([scheduleForm]).select().single();
                     if (error) throw error;
                     if (data) setPlanningSchedules(prev => [...prev, data]);
                 } else {
-                    const newSchedule: PlanningSchedule = { id: Date.now(), ...scheduleForm };
-                    setPlanningSchedules(prev => [...prev, newSchedule]);
+                    setPlanningSchedules(prev => [...prev, { id: Date.now(), ...scheduleForm }]);
                 }
             }
-            setScheduleForm({ name: '', startDate: '', endDate: '' });
+            setIsScheduleModalOpen(false);
         } catch (error: any) {
             console.error("Error saving schedule:", error);
             alert("Failed to save schedule: " + error.message);
         }
     };
 
-    const handleEditSchedule = (schedule: PlanningSchedule) => {
-        setEditingSchedule(schedule);
-        setScheduleForm({ name: schedule.name, startDate: schedule.startDate, endDate: schedule.endDate });
-    };
-
-    const handleCancelScheduleEdit = () => {
-        setEditingSchedule(null);
-        setScheduleForm({ name: '', startDate: '', endDate: '' });
-    };
-
-    const handleDeleteSchedule = async (id: number) => {
-        if (!window.confirm("Are you sure you want to delete this schedule?")) return;
-        try {
-            if (supabase) {
-                const { error } = await supabase.from('planning_schedules').delete().eq('id', id);
-                if (error) throw error;
-            }
-            setPlanningSchedules(prev => prev.filter(s => s.id !== id));
-            if (editingSchedule?.id === id) {
-                handleCancelScheduleEdit();
-            }
-        } catch (error: any) {
-            console.error("Error deleting schedule:", error);
-            alert("Failed to delete schedule.");
-        }
+    const SortableHeader = ({ label, sortKey, type }: { label: string, sortKey: string, type: 'deadline' | 'schedule' }) => {
+        const currentSort = type === 'deadline' ? deadlineSort : scheduleSort;
+        const isSorted = currentSort?.key === sortKey;
+        const directionIcon = isSorted ? (currentSort?.direction === 'asc' ? '▲' : '▼') : '↕';
+        
+        return (
+            <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none group"
+                onClick={() => handleSort(sortKey, type)}
+            >
+                <div className="flex items-center gap-1">
+                    {label}
+                    <span className={`text-gray-400 group-hover:text-gray-600 ${isSorted ? 'text-accent opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        {directionIcon}
+                    </span>
+                </div>
+            </th>
+        );
     };
 
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
@@ -370,11 +438,6 @@ const Settings: React.FC<SettingsProps> = ({
                         </div>
                     </div>
                 </div>
-                {connectionStatus === 'error' && (
-                    <p className="text-xs text-gray-500 mt-3 ml-1">
-                        If connection fails, please ensure <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_KEY</code> are correctly set in your Vercel Project Settings.
-                    </p>
-                )}
              </div>
 
              <div className="bg-white dark:bg-gray-800 shadow rounded-lg mb-6">
@@ -408,6 +471,7 @@ const Settings: React.FC<SettingsProps> = ({
                 <div className="p-6">
                     {activeTab === 'profile' && (
                          <div className="space-y-6 max-w-2xl">
+                            {/* Profile Form Content */}
                             <div>
                                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Personal Information</h3>
                                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your account details.</p>
@@ -505,117 +569,149 @@ const Settings: React.FC<SettingsProps> = ({
                     )}
 
                     {activeTab === 'system' && canAccessSystem && (
-                        <div className="space-y-10">
-                            {/* Deadlines Section */}
-                            <div>
-                                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">System Deadlines</h3>
-                                <div className="flex flex-col md:flex-row gap-6">
-                                    <div className="flex-1">
-                                        <form onSubmit={handleDeadlineSubmit} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{editingDeadline ? 'Edit Deadline' : 'Add New Deadline'}</h4>
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
-                                                    <input type="text" required value={deadlineForm.name} onChange={e => setDeadlineForm({...deadlineForm, name: e.target.value})} className={commonInputClasses} />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Date</label>
-                                                    <input type="date" required value={deadlineForm.date} onChange={e => setDeadlineForm({...deadlineForm, date: e.target.value})} className={commonInputClasses} />
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    {editingDeadline && (
-                                                        <button type="button" onClick={handleCancelDeadlineEdit} className="flex-1 py-2 px-4 bg-gray-300 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-400">Cancel</button>
-                                                    )}
-                                                    <button type="submit" className="flex-1 py-2 px-4 bg-accent text-white text-sm font-medium rounded-md hover:bg-opacity-90">
-                                                        {editingDeadline ? 'Update' : 'Add'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </form>
-                                    </div>
-                                    <div className="flex-[2]">
-                                        {deadlines.length > 0 ? (
-                                            <ul className="space-y-2">
-                                                {deadlines.map(d => (
-                                                    <li key={d.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
-                                                        <div>
-                                                            <span className="font-medium text-gray-900 dark:text-white block">{d.name}</span>
-                                                            <span className="text-sm text-gray-500 dark:text-gray-400">{d.date}</span>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button onClick={() => handleEditDeadline(d)} className="text-accent hover:text-green-700 text-sm font-medium">Edit</button>
-                                                            <button onClick={() => handleDeleteDeadline(d.id)} className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No deadlines set.</p>
+                        <div className="space-y-12">
+                            
+                            {/* 1. Deadlines Management */}
+                            <section>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">System Deadlines</h3>
+                                    <div className="flex gap-2">
+                                        {selectedDeadlines.length > 0 && (
+                                            <button 
+                                                onClick={() => handleBulkDelete('deadline')}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 flex items-center gap-2"
+                                            >
+                                                Delete Selected ({selectedDeadlines.length})
+                                            </button>
                                         )}
+                                        <button 
+                                            onClick={() => openDeadlineModal()} 
+                                            className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:bg-opacity-90"
+                                        >
+                                            + Add Deadline
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
+                                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left w-12">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            onChange={(e) => handleSelectAll(e, 'deadline')}
+                                                            checked={deadlines.length > 0 && selectedDeadlines.length === deadlines.length}
+                                                            className="rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    </th>
+                                                    <SortableHeader label="Name" sortKey="name" type="deadline" />
+                                                    <SortableHeader label="Date" sortKey="date" type="deadline" />
+                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                {getSortedDeadlines.length === 0 ? (
+                                                    <tr><td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500 italic">No deadlines set.</td></tr>
+                                                ) : (
+                                                    getSortedDeadlines.map(d => (
+                                                        <tr key={d.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                            <td className="px-4 py-4">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={selectedDeadlines.includes(d.id)}
+                                                                    onChange={() => handleSelectRow(d.id, 'deadline')}
+                                                                    className="rounded border-gray-300 text-accent focus:ring-accent"
+                                                                />
+                                                            </td>
+                                                            <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{d.name}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{d.date}</td>
+                                                            <td className="px-6 py-4 text-right text-sm font-medium">
+                                                                <button onClick={() => openDeadlineModal(d)} className="text-accent hover:text-green-900 mr-4">Edit</button>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </section>
 
-                            {/* Planning Schedules Section */}
-                            <div>
-                                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Planning Schedules</h3>
-                                <div className="flex flex-col md:flex-row gap-6">
-                                    <div className="flex-1">
-                                        <form onSubmit={handleScheduleSubmit} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                                            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">{editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}</h4>
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
-                                                    <input type="text" required value={scheduleForm.name} onChange={e => setScheduleForm({...scheduleForm, name: e.target.value})} className={commonInputClasses} />
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Start Date</label>
-                                                        <input type="date" required value={scheduleForm.startDate} onChange={e => setScheduleForm({...scheduleForm, startDate: e.target.value})} className={commonInputClasses} />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">End Date</label>
-                                                        <input type="date" required value={scheduleForm.endDate} onChange={e => setScheduleForm({...scheduleForm, endDate: e.target.value})} className={commonInputClasses} />
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    {editingSchedule && (
-                                                        <button type="button" onClick={handleCancelScheduleEdit} className="flex-1 py-2 px-4 bg-gray-300 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-400">Cancel</button>
-                                                    )}
-                                                    <button type="submit" className="flex-1 py-2 px-4 bg-accent text-white text-sm font-medium rounded-md hover:bg-opacity-90">
-                                                        {editingSchedule ? 'Update' : 'Add'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </form>
-                                    </div>
-                                    <div className="flex-[2]">
-                                        {planningSchedules.length > 0 ? (
-                                            <ul className="space-y-2">
-                                                {planningSchedules.map(s => (
-                                                    <li key={s.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 rounded-md shadow-sm border border-gray-200 dark:border-gray-600">
-                                                        <div>
-                                                            <span className="font-medium text-gray-900 dark:text-white block">{s.name}</span>
-                                                            <span className="text-sm text-gray-500 dark:text-gray-400">{s.startDate} to {s.endDate}</span>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button onClick={() => handleEditSchedule(s)} className="text-accent hover:text-green-700 text-sm font-medium">Edit</button>
-                                                            <button onClick={() => handleDeleteSchedule(s.id)} className="text-red-500 hover:text-red-700 text-sm font-medium">Delete</button>
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No planning schedules set.</p>
+                            {/* 2. Planning Schedules Management */}
+                            <section>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Planning Schedules</h3>
+                                    <div className="flex gap-2">
+                                        {selectedSchedules.length > 0 && (
+                                            <button 
+                                                onClick={() => handleBulkDelete('schedule')}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700 flex items-center gap-2"
+                                            >
+                                                Delete Selected ({selectedSchedules.length})
+                                            </button>
                                         )}
+                                        <button 
+                                            onClick={() => openScheduleModal()} 
+                                            className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:bg-opacity-90"
+                                        >
+                                            + Add Schedule
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
+                                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left w-12">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            onChange={(e) => handleSelectAll(e, 'schedule')}
+                                                            checked={planningSchedules.length > 0 && selectedSchedules.length === planningSchedules.length}
+                                                            className="rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    </th>
+                                                    <SortableHeader label="Event Name" sortKey="name" type="schedule" />
+                                                    <SortableHeader label="Start Date" sortKey="startDate" type="schedule" />
+                                                    <SortableHeader label="End Date" sortKey="endDate" type="schedule" />
+                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                                {getSortedSchedules.length === 0 ? (
+                                                    <tr><td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500 italic">No schedules set.</td></tr>
+                                                ) : (
+                                                    getSortedSchedules.map(s => (
+                                                        <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                                            <td className="px-4 py-4">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={selectedSchedules.includes(s.id)}
+                                                                    onChange={() => handleSelectRow(s.id, 'schedule')}
+                                                                    className="rounded border-gray-300 text-accent focus:ring-accent"
+                                                                />
+                                                            </td>
+                                                            <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white">{s.name}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{s.startDate}</td>
+                                                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{s.endDate}</td>
+                                                            <td className="px-6 py-4 text-right text-sm font-medium">
+                                                                <button onClick={() => openScheduleModal(s)} className="text-accent hover:text-green-900 mr-4">Edit</button>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </section>
                         </div>
                     )}
                 </div>
              </div>
              
+             {/* User Modal */}
              {isModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
@@ -623,6 +719,7 @@ const Settings: React.FC<SettingsProps> = ({
                             {editingUser ? 'Edit User' : 'Add New User'}
                         </h3>
                         <form onSubmit={handleSubmitUser} className="space-y-4">
+                            {/* ... (User Form Fields same as before) ... */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
                                 <input type="text" required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className={commonInputClasses} />
@@ -655,6 +752,70 @@ const Settings: React.FC<SettingsProps> = ({
                             </div>
                             <div className="flex justify-end space-x-3 pt-4">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-opacity-90">
+                                    Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+             )}
+
+             {/* Deadline Modal */}
+             {isDeadlineModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                            {editingDeadline ? 'Edit Deadline' : 'Add New Deadline'}
+                        </h3>
+                        <form onSubmit={handleDeadlineSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                                <input type="text" required value={deadlineForm.name} onChange={e => setDeadlineForm({...deadlineForm, name: e.target.value})} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+                                <input type="date" required value={deadlineForm.date} onChange={e => setDeadlineForm({...deadlineForm, date: e.target.value})} className={commonInputClasses} />
+                            </div>
+                            <div className="flex justify-end space-x-3 pt-4">
+                                <button type="button" onClick={() => setIsDeadlineModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600">
+                                    Cancel
+                                </button>
+                                <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-opacity-90">
+                                    Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+             )}
+
+             {/* Schedule Modal */}
+             {isScheduleModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                            {editingSchedule ? 'Edit Schedule' : 'Add New Schedule'}
+                        </h3>
+                        <form onSubmit={handleScheduleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Event Name</label>
+                                <input type="text" required value={scheduleForm.name} onChange={e => setScheduleForm({...scheduleForm, name: e.target.value})} className={commonInputClasses} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                                    <input type="date" required value={scheduleForm.startDate} onChange={e => setScheduleForm({...scheduleForm, startDate: e.target.value})} className={commonInputClasses} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
+                                    <input type="date" required value={scheduleForm.endDate} onChange={e => setScheduleForm({...scheduleForm, endDate: e.target.value})} className={commonInputClasses} />
+                                </div>
+                            </div>
+                            <div className="flex justify-end space-x-3 pt-4">
+                                <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-md text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600">
                                     Cancel
                                 </button>
                                 <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:bg-opacity-90">
