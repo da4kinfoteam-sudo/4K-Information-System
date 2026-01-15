@@ -1,7 +1,8 @@
 
+// Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, targetCommodities, targetCommodityCategories } from '../constants';
-import LocationPicker from './LocationPicker';
+import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SubprojectDetailProps {
@@ -50,7 +51,7 @@ const DetailItem: React.FC<{ label: string; value?: string | React.ReactNode }> 
 
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes }) => {
     const { currentUser } = useAuth();
-    const [isEditing, setIsEditing] = useState(false);
+    const [editMode, setEditMode] = useState<'none' | 'full' | 'budget'>('none');
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'accomplishments'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
@@ -82,12 +83,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         setEditedSubproject(subproject);
         setDetailItems(subproject.details.map(({ id, ...rest }) => rest));
-        setActiveTab('details');
-    }, [subproject, isEditing]);
+        if (editMode === 'full') setActiveTab('details');
+        if (editMode === 'budget') setActiveTab('budget');
+    }, [subproject, editMode]);
 
     // Check completion status whenever details change (similar to Subprojects.tsx)
     useEffect(() => {
-        if (isEditing && detailItems.length > 0) {
+        if (editMode !== 'none' && detailItems.length > 0) {
             // detailItems has Omit<SubprojectDetail, 'id'>, but may carry accomplishments
             const allItemsDelivered = detailItems.every((d: any) => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '');
             
@@ -114,7 +116,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 }
             }
         }
-    }, [detailItems, isEditing]);
+    }, [detailItems, editMode]);
 
     const totalBudget = useMemo(() => {
        return detailItems.reduce((acc, item) => acc + (Number(item.pricePerUnit) * Number(item.numberOfUnits)), 0);
@@ -270,7 +272,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         
         const historyEntry = {
             date: new Date().toISOString(),
-            event: "Updated via Detail View",
+            event: editMode === 'budget' ? "Updated Budget via Detail View" : "Updated via Detail View",
             user: currentUser?.fullName || "System"
         };
 
@@ -280,7 +282,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             history: [...(subproject.history || []), historyEntry]
         };
         onUpdateSubproject(updatedSubprojectWithDetails);
-        setIsEditing(false);
+        setEditMode('none');
     };
 
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
@@ -302,26 +304,31 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         );
     };
 
-    if (isEditing) {
+    if (editMode !== 'none') {
         return (
             <div className="space-y-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing: {subproject.name}</h1>
-                    <button onClick={() => setIsEditing(false)} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
+                        {editMode === 'budget' ? 'Editing Budget Items: ' : 'Editing: '}{subproject.name}
+                    </h1>
+                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit}>
-                        <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                            <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
-                                <TabButton tabName="details" label="Subproject Details" />
-                                <TabButton tabName="commodity" label="Subproject Commodity" />
-                                <TabButton tabName="budget" label="Budget Items" />
-                                <TabButton tabName="accomplishments" label="Accomplishments" />
-                            </nav>
-                        </div>
+                        {editMode === 'full' && (
+                            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                                <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
+                                    <TabButton tabName="details" label="Subproject Details" />
+                                    <TabButton tabName="commodity" label="Subproject Commodity" />
+                                    <TabButton tabName="budget" label="Budget Items" />
+                                    <TabButton tabName="accomplishments" label="Accomplishments" />
+                                </nav>
+                            </div>
+                        )}
+                        
                         <div className="min-h-[400px]">
-                            {activeTab === 'details' && (
+                            {activeTab === 'details' && editMode === 'full' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
@@ -402,7 +409,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </fieldset>
                                  </div>
                             )}
-                            {activeTab === 'commodity' && (
+                            {activeTab === 'commodity' && editMode === 'full' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Subproject Commodities</legend>
@@ -419,7 +426,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                             </button>
                                                             <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
                                                         </div>
@@ -471,13 +478,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
                                                     <div>
                                                         <span className="font-semibold">{d.particulars}</span>
-                                                        <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}</div>
+                                                        <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
-                                                        <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
+                                                        <span className="font-bold">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
                                                         <div className="flex items-center gap-2">
                                                             <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                             </button>
                                                             <button type="button" onClick={() => handleRemoveDetail(index)} className="text-red-500 hover:text-red-700">&times;</button>
                                                         </div>
@@ -493,8 +500,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             
                                             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                                 <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                                <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
+                                                <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{uacsCodes[currentDetail.objectType] && Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                             </div>
 
                                             <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
@@ -509,7 +516,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                      </fieldset>
                                 </div>
                             )}
-                            {activeTab === 'accomplishments' && (
+                            {activeTab === 'accomplishments' && editMode === 'full' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
@@ -610,7 +617,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             )}
                         </div>
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
+                            <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
                             <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Changes</button>
                         </div>
                     </form>
@@ -627,7 +634,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     <p className="text-md text-gray-500 dark:text-gray-400">{subproject.location}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">
+                     <button onClick={() => setEditMode('full')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                         Edit
                     </button>
@@ -685,7 +692,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      </div>
 
                      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Budget Breakdown</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Breakdown</h3>
+                            <button onClick={() => setEditMode('budget')} className="text-sm text-accent hover:underline flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                Edit Budget
+                            </button>
+                        </div>
                         <div className="overflow-x-auto">
                            <table className="min-w-full text-sm">
                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
