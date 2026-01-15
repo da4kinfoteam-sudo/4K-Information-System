@@ -4,6 +4,7 @@ import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect
 import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, targetCommodities, targetCommodityCategories } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
+import { useLogAction } from '../hooks/useLogAction';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -48,6 +49,7 @@ const defaultFormData: Subproject = {
 
 const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes }) => {
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const [formData, setFormData] = useState<Subproject>(defaultFormData);
     const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -321,6 +323,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     };
 
     const confirmMultiDelete = () => {
+        // Logging for bulk delete
+        const deletedNames = subprojects.filter(s => selectedIds.includes(s.id)).map(s => s.name).join(', ');
+        logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
+
         setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -514,6 +520,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         };
 
         if (editingSubproject) {
+            // Log Update
+            logAction('Updated Subproject', formData.name, formData.indigenousPeopleOrganization);
+
             const updated = { 
                 ...formData, 
                 id: editingSubproject.id,
@@ -522,6 +531,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             };
             setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
         } else {
+            // Log Create
+            logAction('Created Subproject', formData.name, formData.indigenousPeopleOrganization);
+
             const newId = Math.max(...subprojects.map(s => s.id), 0) + 1;
             // Generate simple UID if not present
             const uid = formData.uid || `SP-${new Date().getFullYear()}-${String(newId).padStart(3, '0')}`;
@@ -586,6 +598,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const confirmDelete = () => {
         if (subprojectToDelete) {
+            logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization);
             setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
             setIsDeleteModalOpen(false);
             setSubprojectToDelete(null);
@@ -795,6 +808,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 });
 
                 const newSubprojects = Array.from(groupedData.values());
+                logAction('Imported Subprojects', `Imported ${newSubprojects.length} subprojects from Excel`);
                 setSubprojects(prev => [...prev, ...newSubprojects]);
                 alert(`${newSubprojects.length} subprojects imported successfully!`);
 

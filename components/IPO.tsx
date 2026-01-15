@@ -1,9 +1,9 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
+import { useLogAction } from '../hooks/useLogAction';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -52,6 +52,7 @@ const defaultFormData = {
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes }) => {
+    const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null);
@@ -278,6 +279,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const confirmMultiDelete = async () => {
         if (supabase) {
+            // Log Bulk Delete
+            const deletedNames = ipos.filter(i => selectedIds.includes(i.id)).map(i => i.name).join(', ');
+            logAction('Deleted IPOs', `Bulk deleted ${selectedIds.length} IPOs: ${deletedNames}`);
+
             const { error } = await supabase.from('ipos').delete().in('id', selectedIds);
             if (error) {
                 console.error("Error deleting IPOs:", error);
@@ -382,12 +387,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         if (supabase) {
             try {
                 if (editingIpo) {
+                    // Log Update
+                    logAction('Updated IPO', formData.name);
+
                     const { error } = await supabase
                         .from('ipos')
                         .update(submissionData)
                         .eq('id', editingIpo.id);
                     if (error) throw error;
                 } else {
+                    // Log Create
+                    logAction('Created IPO', formData.name);
+
                     const { error } = await supabase
                         .from('ipos')
                         .insert([submissionData]);
@@ -442,6 +453,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const confirmDelete = async () => {
         if (ipoToDelete) {
+            // Log Delete
+            logAction('Deleted IPO', ipoToDelete.name);
+
             if (supabase) {
                 const { error } = await supabase.from('ipos').delete().eq('id', ipoToDelete.id);
                 if (error) {
@@ -656,6 +670,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 });
 
                 if (supabase) {
+                    // Log Import
+                    logAction('Imported IPOs', `Imported ${newIpos.length} IPOs from Excel`);
+
                     const { error } = await supabase.from('ipos').insert(newIpos);
                     if (error) throw error;
                     refreshData();
@@ -991,11 +1008,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     <span className="font-semibold">{commodity.particular}</span>
                                     <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                     <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
-                                    {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
+                                    {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                 </div>
-                                <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -1011,7 +1030,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
                             <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
                                 <option value="">Select Particular</option>
-                                {currentCommodity.type && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
+                                {currentCommodity.type && particularTypes[currentCommodity.type] && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                             </select>
                         </div>
                          <div className="flex items-end gap-2">
@@ -1083,7 +1102,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         Cancel
                     </button>
                     <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        Save
+                        {editingIpo ? 'Save Changes' : 'Create IPO'}
                     </button>
                 </div>
              </form>
@@ -1091,12 +1110,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     );
 
     return (
-        <div>
+        <div className="space-y-8">
+            {/* Delete Modal */}
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete the IPO "{ipoToDelete?.name}"? This action cannot be undone.</p>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
                         <div className="flex justify-end gap-4">
                             <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
                             <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
@@ -1105,6 +1125,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 </div>
             )}
 
+            {/* Multi Delete Modal */}
             {isMultiDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">

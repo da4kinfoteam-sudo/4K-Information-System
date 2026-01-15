@@ -5,6 +5,7 @@ import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityC
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
+import { useLogAction } from '../hooks/useLogAction';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -52,6 +53,7 @@ const defaultFormData: Activity = {
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes, forcedType }) => {
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
     const [editingItem, setEditingItem] = useState<Activity | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -290,6 +292,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
+            // Log Bulk Delete
+            const deletedItems = activities.filter(a => selectedIds.includes(a.id)).map(a => a.name).join(', ');
+            logAction('Deleted Activities', `Bulk deleted ${selectedIds.length} items: ${deletedItems}`);
+
             if (supabase) {
                 const { error } = await supabase.from('activities').delete().in('id', selectedIds);
                 if (error) {
@@ -417,12 +423,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             updated_at: new Date().toISOString()
         };
 
+        const participatingIposList = formData.participatingIpos.join(', ');
+
         if (supabase) {
             try {
                 if (editingItem) {
+                    // Log Update
+                    logAction(`Updated ${formData.type}`, formData.name, participatingIposList);
+
                     const { error } = await supabase.from('activities').update(submissionData).eq('id', editingItem.id);
                     if (error) throw error;
                 } else {
+                    // Log Create
+                    logAction(`Created ${formData.type}`, formData.name, participatingIposList);
+
                     // Remove ID for insert to let DB auto-generate
                     const { id, ...insertData } = submissionData;
                     const { error } = await supabase.from('activities').insert([insertData]);
@@ -481,6 +495,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const confirmDelete = async () => {
         if (itemToDelete) {
+            // Log Delete
+            logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '));
+
             if (supabase) {
                 const { error } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
                 if (error) {
@@ -699,6 +716,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 });
 
                 if (newActivities.length > 0) {
+                    // Log Import
+                    logAction('Imported Activities', `Imported ${newActivities.length} activities from Excel`);
+
                     if (supabase) {
                         const { error } = await supabase.from('activities').insert(newActivities);
                         if (error) throw error;
