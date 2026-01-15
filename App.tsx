@@ -8,7 +8,7 @@ import DashboardsPage from './components/DashboardsPage';
 import Subprojects from './components/Subprojects';
 import { ActivitiesComponent } from './components/Activities';
 import IPOs from './components/IPO';
-import References, { ReferenceUacs, ReferenceParticular } from './components/References';
+import References, { ReferenceUacs, ReferenceParticular, ReferenceCommodity } from './components/References';
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
@@ -25,7 +25,7 @@ import {
     Deadline, PlanningSchedule
 } from './constants';
 import {
-    sampleReferenceUacsList, sampleReferenceParticularList
+    sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
 } from './samples';
 
 const AppContent: React.FC = () => {
@@ -77,6 +77,7 @@ const AppContent: React.FC = () => {
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
+    const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
@@ -248,6 +249,8 @@ const AppContent: React.FC = () => {
                             setUacsList={setReferenceUacsList}
                             particularList={referenceParticularList}
                             setParticularList={setReferenceParticularList}
+                            commodityList={referenceCommodityList}
+                            setCommodityList={setReferenceCommodityList}
                         />;
             case '/reports':
                 return <Reports 

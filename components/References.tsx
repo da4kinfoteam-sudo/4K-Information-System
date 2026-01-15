@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { objectTypes } from '../constants';
+import { objectTypes, referenceCommodityTypes } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,11 +23,19 @@ export interface ReferenceParticular {
     particular: string;
 }
 
+export interface ReferenceCommodity {
+    id: string;
+    type: string;
+    particular: string;
+}
+
 interface ReferencesProps {
     uacsList: ReferenceUacs[];
     setUacsList: React.Dispatch<React.SetStateAction<ReferenceUacs[]>>;
     particularList: ReferenceParticular[];
     setParticularList: React.Dispatch<React.SetStateAction<ReferenceParticular[]>>;
+    commodityList: ReferenceCommodity[];
+    setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -36,9 +44,9 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -68,6 +76,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     // --- Items Form State ---
     const [itemForm, setItemForm] = useState({
         type: '',
+        particular: ''
+    });
+
+    // --- Commodities Form State ---
+    const [commodityForm, setCommodityForm] = useState({
+        type: 'Crop Commodity',
         particular: ''
     });
 
@@ -152,11 +166,35 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [particularList, searchTerm, sortConfig]);
 
+    const processedCommodities = useMemo(() => {
+        let items = [...commodityList];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.particular.toLowerCase().includes(lower) || 
+                i.type.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [commodityList, searchTerm, sortConfig]);
+
     // --- Handlers ---
     const handleOpenAdd = () => {
         setEditingItem(null);
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
+        setCommodityForm({ type: 'Crop Commodity', particular: '' });
         setIsModalOpen(true);
     };
 
@@ -169,8 +207,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 uacsCode: item.uacsCode,
                 description: item.description
             });
-        } else {
+        } else if (activeTab === 'Items') {
             setItemForm({
+                type: item.type,
+                particular: item.particular
+            });
+        } else {
+            setCommodityForm({
                 type: item.type,
                 particular: item.particular
             });
@@ -180,25 +223,28 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
+        const id = editingItem ? editingItem.id : crypto.randomUUID();
+
         if (activeTab === 'UACS') {
+            const newData = { id, ...uacsForm };
             if (editingItem) {
-                setUacsList(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...uacsForm } : i));
+                setUacsList(prev => prev.map(i => i.id === id ? newData : i));
             } else {
-                const newItem: ReferenceUacs = {
-                    id: crypto.randomUUID(),
-                    ...uacsForm
-                };
-                setUacsList(prev => [newItem, ...prev]);
+                setUacsList(prev => [newData, ...prev]);
+            }
+        } else if (activeTab === 'Items') {
+            const newData = { id, ...itemForm };
+            if (editingItem) {
+                setParticularList(prev => prev.map(i => i.id === id ? newData : i));
+            } else {
+                setParticularList(prev => [newData, ...prev]);
             }
         } else {
+            const newData = { id, ...commodityForm };
             if (editingItem) {
-                setParticularList(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...itemForm } : i));
+                setCommodityList(prev => prev.map(i => i.id === id ? newData : i));
             } else {
-                const newItem: ReferenceParticular = {
-                    id: crypto.randomUUID(),
-                    ...itemForm
-                };
-                setParticularList(prev => [newItem, ...prev]);
+                setCommodityList(prev => [newData, ...prev]);
             }
         }
         setIsModalOpen(false);
@@ -208,8 +254,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (!deleteItem) return;
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else {
+        } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else {
+            setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
         }
         setDeleteItem(null);
     };
@@ -225,7 +273,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const currentList = activeTab === 'UACS' ? processedUacs : processedParticulars;
+        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : processedCommodities);
         if (e.target.checked) {
             const ids = currentList.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
@@ -248,8 +296,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const confirmMultiDelete = () => {
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else {
+        } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else {
+            setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -272,7 +322,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'UACS_Template.xlsx';
-        } else {
+        } else if (activeTab === 'Items') {
             const headers = ['type', 'particular'];
             const example = [{
                 type: 'Agricultural Inputs',
@@ -280,6 +330,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Items_Template.xlsx';
+        } else {
+            const headers = ['type', 'particular'];
+            const example = [{
+                type: 'Crop Commodity',
+                particular: 'Coffee'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Commodities_Template.xlsx';
         }
 
         XLSX.utils.book_append_sheet(wb, ws, "Template");
@@ -323,7 +381,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setUacsList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} UACS codes imported locally.`);
                     }
-                } else {
+                } else if (activeTab === 'Items') {
                     const newItems: ReferenceParticular[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
                         type: row.type || 'Others',
@@ -343,6 +401,26 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setParticularList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} items imported locally.`);
                     }
+                } else {
+                    const newItems: ReferenceCommodity[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        type: row.type || 'Crop Commodity',
+                        particular: row.particular || ''
+                    })).filter(i => i.particular);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('reference_commodities').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setCommodityList(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} commodities uploaded successfully to database.`);
+                        }
+                    } else {
+                        setCommodityList(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} commodities imported locally.`);
+                    }
                 }
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -356,6 +434,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+
+    const getCurrentList = () => {
+        if (activeTab === 'UACS') return processedUacs;
+        if (activeTab === 'Items') return processedParticulars;
+        return processedCommodities;
+    }
 
     return (
         <div className="space-y-6">
@@ -384,7 +468,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : 'Item'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : 'Commodity'}
                     </button>
                 )}
             </div>
@@ -411,6 +495,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         }`}
                     >
                         Subproject Items
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('Commodities'); setSearchTerm(''); }}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'Commodities'
+                                ? 'border-accent text-accent'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        Commodities
                     </button>
                 </nav>
             </div>
@@ -478,10 +572,15 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="UACS Code" sortKey="uacsCode" />
                                         <SortableHeader label="Description" sortKey="description" />
                                     </>
-                                ) : (
+                                ) : activeTab === 'Items' ? (
                                     <>
                                         <SortableHeader label="Item Type" sortKey="type" />
                                         <SortableHeader label="Item Particular" sortKey="particular" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <SortableHeader label="Commodity Type" sortKey="type" />
+                                        <SortableHeader label="Particulars" sortKey="particular" />
                                     </>
                                 )}
                                 {canEdit && (
@@ -492,7 +591,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 <input 
                                                     type="checkbox" 
                                                     onChange={handleSelectAll} 
-                                                    checked={(activeTab === 'UACS' ? processedUacs : processedParticulars).length > 0 && (activeTab === 'UACS' ? processedUacs : processedParticulars).every(i => selectedIds.includes(i.id))}
+                                                    checked={getCurrentList().length > 0 && getCurrentList().every((i: any) => selectedIds.includes(i.id))}
                                                     className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                                 />
                                             </div>
@@ -504,66 +603,44 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {activeTab === 'UACS' ? (
-                                processedUacs.length > 0 ? (
-                                    processedUacs.map(item => (
-                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
-                                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
-                                            {canEdit && (
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    {isSelectionMode ? (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.includes(item.id)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                        />
-                                                    ) : (
-                                                        <>
-                                                            <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                        </>
-                                                    )}
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr><td colSpan={canEdit ? 5 : 4} className="px-6 py-4 text-center text-sm text-gray-500">No UACS codes found.</td></tr>
-                                )
+                            {getCurrentList().length > 0 ? (
+                                getCurrentList().map((item: any) => (
+                                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                        {activeTab === 'UACS' ? (
+                                            <>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
+                                            </>
+                                        )}
+                                        {canEdit && (
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                {isSelectionMode ? (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.includes(item.id)} 
+                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
+                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                    </>
+                                                )}
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))
                             ) : (
-                                processedParticulars.length > 0 ? (
-                                    processedParticulars.map(item => (
-                                        <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
-                                            {canEdit && (
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    {isSelectionMode ? (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.includes(item.id)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                        />
-                                                    ) : (
-                                                        <>
-                                                            <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                        </>
-                                                    )}
-                                                </td>
-                                            )}
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr><td colSpan={canEdit ? 3 : 2} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
-                                )
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : 3) : (activeTab === 'UACS' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -575,7 +652,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : 'Subproject Item'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : 'Commodity'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -621,7 +698,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         />
                                     </div>
                                 </>
-                            ) : (
+                            ) : activeTab === 'Items' ? (
                                 <>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Item Type</label>
@@ -647,6 +724,30 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             required
                                             value={itemForm.particular}
                                             onChange={e => setItemForm({...itemForm, particular: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Commodity Type</label>
+                                        <select
+                                            required
+                                            value={commodityForm.type}
+                                            onChange={e => setCommodityForm({...commodityForm, type: e.target.value})}
+                                            className={commonInputClasses}
+                                        >
+                                            {referenceCommodityTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particulars</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={commodityForm.particular}
+                                            onChange={e => setCommodityForm({...commodityForm, particular: e.target.value})}
                                             className={commonInputClasses}
                                         />
                                     </div>

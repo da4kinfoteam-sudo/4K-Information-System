@@ -447,3 +447,11 @@ export interface ReferenceParticular {
     type: string;
     particular: string;
 }
+
+export interface ReferenceCommodity {
+    id: string;
+    type: string;
+    particular: string;
+}
+
+export const referenceCommodityTypes: string[] = ['Crop Commodity', 'Animal Commodity', 'Industrial Commodity'];

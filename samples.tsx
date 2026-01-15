@@ -4,7 +4,7 @@
 import { 
     Subproject, Activity, OfficeRequirement, 
     StaffingRequirement, OtherProgramExpense, initialUacsCodes, 
-    initialParticularTypes, ReferenceUacs, ReferenceParticular 
+    initialParticularTypes, ReferenceUacs, ReferenceParticular, ReferenceCommodity
 } from './constants';
 
 // --- Helper Functions for Reference Lists ---
@@ -18,8 +18,14 @@ const flattenParticulars = () => {
     return [];
 }
 
+const flattenCommodities = () => {
+    // Empty default
+    return [];
+}
+
 export const sampleReferenceUacsList: ReferenceUacs[] = [];
 export const sampleReferenceParticularList: ReferenceParticular[] = flattenParticulars();
+export const sampleReferenceCommodityList: ReferenceCommodity[] = flattenCommodities();
 
 // --- Sample Data: Cleared for DB Connection ---
 export const sampleSubprojects: Subproject[] = [];
