@@ -28,6 +28,18 @@ import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
 } from './samples';
 
+// Helper to format page names for "Back to..." buttons
+const getPageName = (path: string) => {
+    if (path === '/') return 'Dashboard';
+    if (path === '/ipo-detail') return 'IPO Details';
+    if (path === '/ipo') return 'IPO List';
+    
+    // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
+    return path.substring(1)
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+};
+
 const AppContent: React.FC = () => {
     const { currentUser } = useAuth();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -157,7 +169,11 @@ const AppContent: React.FC = () => {
     const handleBack = () => {
         setCurrentPage(previousPage);
         setSelectedSubproject(null);
-        setSelectedIpo(null);
+        // Only clear selected IPO if NOT returning to IPO Details page.
+        // This fixes the issue where going back to IPO Details showed a blank page.
+        if (previousPage !== '/ipo-detail') {
+            setSelectedIpo(null);
+        }
     };
 
     if (!currentUser) {
@@ -269,7 +285,7 @@ const AppContent: React.FC = () => {
                             subproject={selectedSubproject} 
                             ipos={ipos}
                             onBack={handleBack} 
-                            previousPageName={previousPage === '/' ? 'Dashboard' : previousPage.slice(1)}
+                            previousPageName={getPageName(previousPage)}
                             onUpdateSubproject={(updated) => {
                                 setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
                                 setSelectedSubproject(updated);
@@ -308,7 +324,7 @@ const AppContent: React.FC = () => {
                             subprojects={subprojects.filter(s => s.indigenousPeopleOrganization === selectedIpo.name)}
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
                             onBack={handleBack}
-                            previousPageName={previousPage === '/' ? 'Dashboard' : previousPage.slice(1)}
+                            previousPageName={getPageName(previousPage)}
                             onUpdateIpo={(updated) => {
                                 setIpos(prev => prev.map(i => i.id === updated.id ? updated : i));
                                 setSelectedIpo(updated);
