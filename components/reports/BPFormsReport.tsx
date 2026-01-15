@@ -20,20 +20,30 @@ interface BPFormsReportProps {
 
 const ActivityRow: React.FC<{
     activity: any;
-    allUacsCodes: string[];
+    mooeCodes: string[];
+    coCodes: string[];
     indentLevel: number;
     dataCellClass: string;
     indentClasses: string[];
-}> = ({ activity, allUacsCodes, indentLevel, dataCellClass, indentClasses }) => {
+}> = ({ activity, mooeCodes, coCodes, indentLevel, dataCellClass, indentClasses }) => {
     return (
         <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>{activity.name}</td>
-            {allUacsCodes.map((code: string) => (
-                <td key={code} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>{activity.name}</td>
+            
+            {/* MOOE Columns */}
+            {mooeCodes.map((code: string) => (
+                <td key={`mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
             ))}
-            <td className={`${dataCellClass} font-semibold text-right whitespace-nowrap`}>{activity.totalMOOE > 0 ? formatCurrency(activity.totalMOOE) : ''}</td>
-            <td className={`${dataCellClass} font-semibold text-right whitespace-nowrap`}>{activity.totalCO > 0 ? formatCurrency(activity.totalCO) : ''}</td>
-            <td className={`${dataCellClass} font-bold bg-gray-50 dark:bg-gray-700/30 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrency(activity.totalMOOE + activity.totalCO) : ''}</td>
+            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-blue-50 dark:bg-blue-900/20`}>{activity.totalMOOE > 0 ? formatCurrency(activity.totalMOOE) : ''}</td>
+            
+            {/* CO Columns */}
+            {coCodes.map((code: string) => (
+                <td key={`co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
+            ))}
+            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-orange-50 dark:bg-orange-900/20`}>{activity.totalCO > 0 ? formatCurrency(activity.totalCO) : ''}</td>
+            
+            {/* Grand Total */}
+            <td className={`${dataCellClass} font-bold bg-green-50 dark:bg-green-900/20 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrency(activity.totalMOOE + activity.totalCO) : ''}</td>
         </tr>
     );
 };
@@ -44,18 +54,21 @@ const SummaryRow: React.FC<{
     rowKey: string;
     isExpanded: boolean;
     indentLevel: number;
-    allUacsCodes: string[];
+    mooeCodes: string[];
+    coCodes: string[];
     toggleRow: (key: string) => void;
     dataCellClass: string;
     indentClasses: string[];
-}> = ({ items, label, rowKey, isExpanded, indentLevel, allUacsCodes, toggleRow, dataCellClass, indentClasses }) => {
+}> = ({ items, label, rowKey, isExpanded, indentLevel, mooeCodes, coCodes, toggleRow, dataCellClass, indentClasses }) => {
+    const totalCols = mooeCodes.length + coCodes.length + 3; // + MOOE Total, CO Total, Grand Total
+
     if (!items || items.length === 0) {
         return (
              <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
+                <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                      <span className="inline-block w-5 text-center"></span> {label}
                 </td>
-                <td colSpan={allUacsCodes.length + 3} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this item.</td>
+                <td colSpan={totalCols} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this item.</td>
             </tr>
         );
     }
@@ -63,25 +76,34 @@ const SummaryRow: React.FC<{
     const summary = useMemo(() => items.reduce((acc, item) => {
         acc.totalMOOE += item.totalMOOE;
         acc.totalCO += item.totalCO;
-        allUacsCodes.forEach((code: string) => {
-            acc.uacsValues[code] = (acc.uacsValues[code] || 0) + item.uacsValues[code];
+        [...mooeCodes, ...coCodes].forEach((code: string) => {
+            acc.uacsValues[code] = (acc.uacsValues[code] || 0) + (item.uacsValues[code] || 0);
         });
         return acc;
-    }, { totalMOOE: 0, totalCO: 0, uacsValues: allUacsCodes.reduce((acc: any, code: string) => ({...acc, [code]: 0}), {}) }), [items, allUacsCodes]);
+    }, { totalMOOE: 0, totalCO: 0, uacsValues: [...mooeCodes, ...coCodes].reduce((acc: any, code: string) => ({...acc, [code]: 0}), {}) }), [items, mooeCodes, coCodes]);
     
     const numberCellClass = `${dataCellClass} text-right whitespace-nowrap`;
 
     return (
         <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
-            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]}`}>
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                 <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
             </td>
-            {allUacsCodes.map((code: string) => (
-                <td key={code} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
+            
+            {/* MOOE Summary */}
+            {mooeCodes.map((code: string) => (
+                <td key={`mooe-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
             ))}
-            <td className={numberCellClass}>{summary.totalMOOE > 0 ? formatCurrency(summary.totalMOOE) : ''}</td>
-            <td className={numberCellClass}>{summary.totalCO > 0 ? formatCurrency(summary.totalCO) : ''}</td>
-            <td className={numberCellClass}>{(summary.totalMOOE + summary.totalCO) > 0 ? formatCurrency(summary.totalMOOE + summary.totalCO) : ''}</td>
+            <td className={`${numberCellClass} bg-blue-100 dark:bg-blue-900/30`}>{summary.totalMOOE > 0 ? formatCurrency(summary.totalMOOE) : ''}</td>
+
+            {/* CO Summary */}
+            {coCodes.map((code: string) => (
+                <td key={`co-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
+            ))}
+            <td className={`${numberCellClass} bg-orange-100 dark:bg-orange-900/30`}>{summary.totalCO > 0 ? formatCurrency(summary.totalCO) : ''}</td>
+
+            {/* Grand Total Summary */}
+            <td className={`${numberCellClass} bg-green-100 dark:bg-green-900/30`}>{(summary.totalMOOE + summary.totalCO) > 0 ? formatCurrency(summary.totalMOOE + summary.totalCO) : ''}</td>
         </tr>
     );
 };
@@ -91,7 +113,6 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     const bpFormsProcessedData = useMemo(() => {
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
-        const allUacsCodes: string[] = [];
         const seenCodes = new Set<string>();
         
         // 1. Populate headers from Reference List
@@ -102,12 +123,13 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             for (const particular of Object.keys(uacsCodes[objectType])) {
                 // @ts-ignore
                 const codes = Object.keys(uacsCodes[objectType][particular]);
-                headers[objectType as keyof typeof headers][particular] = codes;
+                const typeKey = (objectType === 'CO') ? 'CO' : 'MOOE';
+                
+                if(!headers[typeKey][particular]) headers[typeKey][particular] = [];
+                
                 codes.forEach(c => {
-                    if (!seenCodes.has(c)) {
-                        allUacsCodes.push(c);
-                        seenCodes.add(c);
-                    }
+                    if (!headers[typeKey][particular].includes(c)) headers[typeKey][particular].push(c);
+                    seenCodes.add(c);
                 });
             }
         }
@@ -115,8 +137,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         // Helper to ensure code exists in headers (dynamic discovery)
         const ensureHeader = (objType: string, particular: string, code: string) => {
             if (!code) return;
-            // Normalize object type if missing or invalid
-            const typeKey = (objType === 'CO' || objType === 'MOOE') ? objType : 'MOOE';
+            // Normalize object type
+            const typeKey = (objType === 'CO') ? 'CO' : 'MOOE';
             
             if (!headers[typeKey]) headers[typeKey] = {};
             const partKey = particular || 'Other Expenses';
@@ -126,10 +148,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             if (!headers[typeKey][partKey].includes(code)) {
                 headers[typeKey][partKey].push(code);
             }
-            if (!seenCodes.has(code)) {
-                allUacsCodes.push(code);
-                seenCodes.add(code);
-            }
+            seenCodes.add(code);
         };
 
         const lineItems: any[] = [];
@@ -168,8 +187,6 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.staffingReqs.forEach(sr => {
             const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
-            // Staffing usually falls under PS (Personal Services), mapped here often to MOOE for simplified report or needs own category. 
-            // For now, use derived type.
             ensureHeader(objType, 'Salaries & Wages', sr.uacsCode);
             lineItems.push({
                 component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
@@ -195,7 +212,18 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             });
         });
 
-        const initialUacsValues = allUacsCodes.reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
+        // Derive flat lists of codes for rendering columns
+        const mooeCodes: string[] = [];
+        Object.values(headers.MOOE).forEach(codes => {
+            codes.forEach(c => { if (!mooeCodes.includes(c)) mooeCodes.push(c); });
+        });
+        const coCodes: string[] = [];
+        Object.values(headers.CO).forEach(codes => {
+            codes.forEach(c => { if (!coCodes.includes(c)) coCodes.push(c); });
+        });
+
+        const initialUacsValues = [...mooeCodes, ...coCodes].reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
+        
         const groupedData: { [key: string]: any } = {
             'Social Preparation': [], 
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
@@ -246,10 +274,12 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 activity.uacsValues[item.uacsCode] = (activity.uacsValues[item.uacsCode] || 0) + item.amount;
             }
 
-            if (item.objectType === 'MOOE') {
-                activity.totalMOOE += item.amount;
-            } else if (item.objectType === 'CO') {
+            // Determine if MOOE or CO for Total calc (can infer from code presence in mooeCodes/coCodes too)
+            if (item.objectType === 'CO') {
                 activity.totalCO += item.amount;
+            } else {
+                // Default to MOOE
+                activity.totalMOOE += item.amount;
             }
         });
         
@@ -263,10 +293,10 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         for (const key of plPackageKeys) { plSortedPackages[key] = groupedData['Production and Livelihood'].packages[key]; }
         groupedData['Production and Livelihood'].packages = plSortedPackages;
 
-        return { headers, rows: groupedData, allUacsCodes };
+        return { headers, rows: groupedData, mooeCodes, coCodes };
     }, [data, uacsCodes]);
 
-    const { headers, rows, allUacsCodes } = bpFormsProcessedData;
+    const { headers, rows, mooeCodes, coCodes } = bpFormsProcessedData;
 
     const toggleRow = (key: string) => {
         setExpandedRows(prev => {
@@ -292,16 +322,16 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         return allActivities.reduce((acc, item) => {
             acc.totalMOOE += item.totalMOOE;
             acc.totalCO += item.totalCO;
-            allUacsCodes.forEach((code: string) => {
+            [...mooeCodes, ...coCodes].forEach((code: string) => {
                 acc.uacsValues[code] = (acc.uacsValues[code] || 0) + (item.uacsValues[code] || 0);
             });
             return acc;
         }, {
             totalMOOE: 0,
             totalCO: 0,
-            uacsValues: allUacsCodes.reduce((acc: any, code: string) => ({...acc, [code]: 0}), {})
+            uacsValues: [...mooeCodes, ...coCodes].reduce((acc: any, code: string) => ({...acc, [code]: 0}), {})
         });
-    }, [rows, allUacsCodes]);
+    }, [rows, mooeCodes, coCodes]);
 
     const getDescription = (objType: string, particular: string, code: string) => {
         if (uacsCodes[objType] && uacsCodes[objType][particular] && uacsCodes[objType][particular][code]) {
@@ -318,13 +348,15 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     const handleDownloadBpFormsXlsx = () => {
         const flatData: any[] = [];
+        const allCodes = [...mooeCodes, ...coCodes];
+
         Object.entries(rows).forEach(([componentName, componentData]) => {
             if (Array.isArray(componentData) && componentData.length > 0) {
                 componentData.forEach((activity: any) => {
                     const row: { [key: string]: string | number } = {
                         'Program/Activity/Project': `${componentName} - ${activity.name}`,
                     };
-                    allUacsCodes.forEach((code: string) => {
+                    allCodes.forEach((code: string) => {
                         row[code] = activity.uacsValues[code] || 0;
                     });
                     row['Total MOOE'] = activity.totalMOOE;
@@ -339,7 +371,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                              const row: { [key: string]: string | number } = {
                                 'Program/Activity/Project': `${componentName} - ${pkgName} - ${activity.name}`,
                             };
-                            allUacsCodes.forEach((code: string) => {
+                            allCodes.forEach((code: string) => {
                                 row[code] = activity.uacsValues[code] || 0;
                             });
                             row['Total MOOE'] = activity.totalMOOE;
@@ -353,8 +385,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
 
         if (flatData.length > 0) {
-            const grandTotals = flatData.reduce((acc, row) => {
-                 allUacsCodes.forEach(code => {
+            const grandTotalsRow = flatData.reduce((acc, row) => {
+                 allCodes.forEach(code => {
                     acc[code] = (acc[code] || 0) + (row[code] as number);
                  });
                  acc['Total MOOE'] += (row['Total MOOE'] as number);
@@ -363,17 +395,17 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                  return acc;
             }, {
                  'Program/Activity/Project': 'GRAND TOTAL',
-                 ...allUacsCodes.reduce((acc, code) => ({...acc, [code]: 0}), {}),
+                 ...allCodes.reduce((acc, code) => ({...acc, [code]: 0}), {}),
                  'Total MOOE': 0,
                  'Total CO': 0,
                  'Grand Total': 0,
             });
-            flatData.push(grandTotals);
+            flatData.push(grandTotalsRow);
         }
 
         const ws = XLSX.utils.json_to_sheet(flatData);
         
-        const currencyColumns = [...allUacsCodes, 'Total MOOE', 'Total CO', 'Grand Total'];
+        const currencyColumns = [...allCodes, 'Total MOOE', 'Total CO', 'Grand Total'];
         const headers = Object.keys(flatData.length > 0 ? flatData[0] : {});
         currencyColumns.forEach(colName => {
             const colIndex = headers.indexOf(colName);
@@ -398,8 +430,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     const mooeParticulars = Object.keys(headers.MOOE);
     const coParticulars = Object.keys(headers.CO);
-    const mooeUacsCount = mooeParticulars.reduce((sum, p) => sum + headers.MOOE[p].length, 0);
-    const coUacsCount = coParticulars.reduce((sum, p) => sum + headers.CO[p].length, 0);
+    
+    // Ensure all MOOE cols + 1 for Total MOOE
+    const mooeColSpan = mooeCodes.length + 1; 
+    // Ensure all CO cols + 1 for Total CO
+    const coColSpan = coCodes.length + 1;
 
     const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
     const borderClass = "border border-gray-300 dark:border-gray-600";
@@ -412,37 +447,50 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
                  <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
             </div>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto relative">
                 <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
-                    <thead className="sticky top-0 z-10">
+                    <thead className="sticky top-0 z-20 shadow-sm">
                         <tr className="bg-gray-200 dark:bg-gray-800">
-                            <th rowSpan={4} className={`${headerCellClass} min-w-[300px]`}>Program/Activity/Project</th>
-                            {mooeUacsCount > 0 && <th colSpan={mooeUacsCount} className={`${headerCellClass}`}>MOOE</th>}
-                            {coUacsCount > 0 && <th colSpan={coUacsCount} className={`${headerCellClass}`}>CO</th>}
-                            <th colSpan={3} rowSpan={3} className={`${headerCellClass}`}>Totals</th>
+                            {/* PAP Column: Frozen */}
+                            <th rowSpan={4} className={`${headerCellClass} min-w-[300px] sticky left-0 bg-gray-200 dark:bg-gray-800 z-30 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>Program/Activity/Project</th>
+                            
+                            {/* MOOE Group */}
+                            {mooeColSpan > 1 && <th colSpan={mooeColSpan} className={`${headerCellClass}`}>MOOE</th>}
+                            
+                            {/* CO Group */}
+                            {coColSpan > 1 && <th colSpan={coColSpan} className={`${headerCellClass}`}>CO</th>}
+                            
+                            {/* Grand Total */}
+                            <th rowSpan={4} className={`${headerCellClass} min-w-[100px]`}>Grand Total</th>
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/80">
-                            {mooeParticulars.map(p => <th key={p} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
-                            {coParticulars.map(p => <th key={p} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                            {/* MOOE Particulars + Total MOOE */}
+                            {mooeParticulars.map(p => <th key={`p-mooe-${p}`} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                            <th rowSpan={3} className={`${headerCellClass} bg-blue-100 dark:bg-blue-900/40 font-bold min-w-[100px]`}>Total MOOE</th>
+
+                            {/* CO Particulars + Total CO */}
+                            {coParticulars.map(p => <th key={`p-co-${p}`} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                            <th rowSpan={3} className={`${headerCellClass} bg-orange-100 dark:bg-orange-900/40 font-bold min-w-[100px]`}>Total CO</th>
                         </tr>
-                        <tr className="bg-gray-50 dark:bg-gray-700/60">
+                        <tr className="bg-gray-5 dark:bg-gray-700/60">
+                            {/* MOOE Descriptions */}
                             {mooeParticulars.flatMap(p => headers.MOOE[p].map(code => ({ code, p }))).map(({ code, p }) => (
-                                <th key={`desc-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                <th key={`desc-mooe-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
                                     {getDescription('MOOE', p, code)}
                                 </th>
                             ))}
+                            {/* CO Descriptions */}
                             {coParticulars.flatMap(p => headers.CO[p].map(code => ({ code, p }))).map(({ code, p }) => (
-                                <th key={`desc-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                <th key={`desc-co-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
                                     {getDescription('CO', p, code)}
                                 </th>
                             ))}
                         </tr>
                         <tr className="bg-gray-5 dark:bg-gray-700/50">
+                            {/* MOOE Codes */}
                             {mooeParticulars.flatMap(p => headers.MOOE[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                            {/* CO Codes */}
                             {coParticulars.flatMap(p => headers.CO[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
-                            <th className={`${headerCellClass}`}>MOOE</th>
-                            <th className={`${headerCellClass}`}>CO</th>
-                            <th className={`${headerCellClass}`}>Grand Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -457,7 +505,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                             rowKey={componentName}
                                             isExpanded={isComponentExpanded}
                                             indentLevel={0}
-                                            allUacsCodes={allUacsCodes}
+                                            mooeCodes={mooeCodes}
+                                            coCodes={coCodes}
                                             toggleRow={toggleRow}
                                             dataCellClass={dataCellClass}
                                             indentClasses={indentClasses}
@@ -466,7 +515,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                             <ActivityRow 
                                                 key={`${componentName}-${i}`}
                                                 activity={act}
-                                                allUacsCodes={allUacsCodes}
+                                                mooeCodes={mooeCodes}
+                                                coCodes={coCodes}
                                                 indentLevel={1}
                                                 dataCellClass={dataCellClass}
                                                 indentClasses={indentClasses}
@@ -485,7 +535,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                             rowKey={componentName}
                                             isExpanded={isComponentExpanded}
                                             indentLevel={0}
-                                            allUacsCodes={allUacsCodes}
+                                            mooeCodes={mooeCodes}
+                                            coCodes={coCodes}
                                             toggleRow={toggleRow}
                                             dataCellClass={dataCellClass}
                                             indentClasses={indentClasses}
@@ -500,7 +551,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                                         rowKey={pkgName}
                                                         isExpanded={isPkgExpanded}
                                                         indentLevel={1}
-                                                        allUacsCodes={allUacsCodes}
+                                                        mooeCodes={mooeCodes}
+                                                        coCodes={coCodes}
                                                         toggleRow={toggleRow}
                                                         dataCellClass={dataCellClass}
                                                         indentClasses={indentClasses}
@@ -509,7 +561,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                                         <ActivityRow 
                                                             key={`${pkgName}-${i}`}
                                                             activity={act}
-                                                            allUacsCodes={allUacsCodes}
+                                                            mooeCodes={mooeCodes}
+                                                            coCodes={coCodes}
                                                             indentLevel={2}
                                                             dataCellClass={dataCellClass}
                                                             indentClasses={indentClasses}
@@ -526,15 +579,26 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     </tbody>
                     <tfoot>
                         <tr className="font-bold bg-gray-200 dark:bg-gray-700">
-                            <td className={`${dataCellClass} text-left`}>GRAND TOTAL</td>
-                            {allUacsCodes.map((code: string) => (
-                                <td key={`total-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
+                            <td className={`${dataCellClass} text-left sticky left-0 bg-gray-200 dark:bg-gray-700 z-10 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>GRAND TOTAL</td>
+                            
+                            {/* MOOE Totals */}
+                            {mooeCodes.map((code: string) => (
+                                <td key={`total-mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
                                     {grandTotals.uacsValues[code] > 0 ? formatCurrency(grandTotals.uacsValues[code]) : ''}
                                 </td>
                             ))}
-                            <td className={`${dataCellClass} text-right whitespace-nowrap`}>{grandTotals.totalMOOE > 0 ? formatCurrency(grandTotals.totalMOOE) : ''}</td>
-                            <td className={`${dataCellClass} text-right whitespace-nowrap`}>{grandTotals.totalCO > 0 ? formatCurrency(grandTotals.totalCO) : ''}</td>
-                            <td className={`${dataCellClass} text-right whitespace-nowrap`}>{(grandTotals.totalMOOE + grandTotals.totalCO) > 0 ? formatCurrency(grandTotals.totalMOOE + grandTotals.totalCO) : ''}</td>
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-blue-100 dark:bg-blue-900/40`}>{grandTotals.totalMOOE > 0 ? formatCurrency(grandTotals.totalMOOE) : ''}</td>
+
+                            {/* CO Totals */}
+                            {coCodes.map((code: string) => (
+                                <td key={`total-co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
+                                    {grandTotals.uacsValues[code] > 0 ? formatCurrency(grandTotals.uacsValues[code]) : ''}
+                                </td>
+                            ))}
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-orange-100 dark:bg-orange-900/40`}>{grandTotals.totalCO > 0 ? formatCurrency(grandTotals.totalCO) : ''}</td>
+
+                            {/* Grand Total */}
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-green-100 dark:bg-green-900/40`}>{(grandTotals.totalMOOE + grandTotals.totalCO) > 0 ? formatCurrency(grandTotals.totalMOOE + grandTotals.totalCO) : ''}</td>
                         </tr>
                     </tfoot>
                 </table>
