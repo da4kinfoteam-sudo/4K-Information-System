@@ -40,6 +40,13 @@ const defaultFormData = {
     isWithScad: false,
     commodities: [] as Commodity[],
     levelOfDevelopment: 1 as IPO['levelOfDevelopment'],
+    totalMembers: 0,
+    totalIpMembers: 0,
+    totalMaleMembers: 0,
+    totalFemaleMembers: 0,
+    totalYouthMembers: 0,
+    totalSeniorMembers: 0,
+    total4PsMembers: 0,
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
@@ -128,6 +135,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 isWithScad: editingIpo.isWithScad,
                 commodities: editingIpo.commodities || [],
                 levelOfDevelopment: editingIpo.levelOfDevelopment || 1,
+                totalMembers: editingIpo.totalMembers || 0,
+                totalIpMembers: editingIpo.totalIpMembers || 0,
+                totalMaleMembers: editingIpo.totalMaleMembers || 0,
+                totalFemaleMembers: editingIpo.totalFemaleMembers || 0,
+                totalYouthMembers: editingIpo.totalYouthMembers || 0,
+                totalSeniorMembers: editingIpo.totalSeniorMembers || 0,
+                total4PsMembers: editingIpo.total4PsMembers || 0,
             });
             if (!registeringBodyOptions.includes(editingIpo.registeringBody)) {
                 setOtherRegisteringBody(editingIpo.registeringBody);
@@ -285,8 +299,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         if (type === 'checkbox') {
             const { checked } = e.target as HTMLInputElement;
             setFormData(prev => ({ ...prev, [name]: checked }));
-        } else if (name === 'levelOfDevelopment') {
-            setFormData(prev => ({ ...prev, levelOfDevelopment: parseInt(value, 10) as IPO['levelOfDevelopment'] }));
+        } else if (name === 'levelOfDevelopment' || name.startsWith('total')) {
+            setFormData(prev => ({ ...prev, [name]: parseInt(value, 10) || 0 }));
         }
          else {
             setFormData(prev => ({ ...prev, [name]: value }));
@@ -1026,6 +1040,44 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     </div>
                 </fieldset>
 
+                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label htmlFor="totalMembers" className="block text-sm font-medium">Total Members</label>
+                            <input type="number" name="totalMembers" id="totalMembers" value={formData.totalMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label htmlFor="totalIpMembers" className="block text-sm font-medium">Total IP Members</label>
+                            <input type="number" name="totalIpMembers" id="totalIpMembers" value={formData.totalIpMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label htmlFor="total4PsMembers" className="block text-sm font-medium">Total 4Ps Beneficiaries</label>
+                            <input type="number" name="total4PsMembers" id="total4PsMembers" value={formData.total4PsMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label htmlFor="totalMaleMembers" className="block text-sm font-medium">Male Members</label>
+                            <input type="number" name="totalMaleMembers" id="totalMaleMembers" value={formData.totalMaleMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label htmlFor="totalFemaleMembers" className="block text-sm font-medium">Female Members</label>
+                            <input type="number" name="totalFemaleMembers" id="totalFemaleMembers" value={formData.totalFemaleMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium">&nbsp;</label>
+                            <span className="text-sm text-gray-500">Total: {(formData.totalMaleMembers || 0) + (formData.totalFemaleMembers || 0)}</span>
+                        </div>
+                        <div>
+                            <label htmlFor="totalYouthMembers" className="block text-sm font-medium">Youth Members</label>
+                            <input type="number" name="totalYouthMembers" id="totalYouthMembers" value={formData.totalYouthMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                        <div>
+                            <label htmlFor="totalSeniorMembers" className="block text-sm font-medium">Senior Citizen Members</label>
+                            <input type="number" name="totalSeniorMembers" id="totalSeniorMembers" value={formData.totalSeniorMembers} onChange={handleInputChange} className={commonInputClasses} />
+                        </div>
+                    </div>
+                </fieldset>
+
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                         Cancel
@@ -1075,4 +1127,3 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 };
 
 export default IPOs;
-// --- End of components/IPO.tsx ---

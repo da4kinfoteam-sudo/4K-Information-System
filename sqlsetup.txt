@@ -58,6 +58,13 @@ ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "levelOfDevelopment" integer;
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "history" jsonb default '[]'::jsonb;
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "lat" numeric;
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "lng" numeric;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalIpMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalMaleMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalFemaleMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalYouthMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "totalSeniorMembers" integer;
+ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "total4PsMembers" integer;
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 ALTER TABLE ipos ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 

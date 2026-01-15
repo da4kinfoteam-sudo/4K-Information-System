@@ -128,8 +128,10 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         });
 
         // Process PM Items
-        const processPm = (items: any[], pkgKey: string, isStaff = false) => {
+        const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
+                if (isOtherExpense) return; // Other Expenses do not have physical targets for BAR 1
+
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const count = isStaff ? 1 : (pm.numberOfUnits || 1);
                 // Target: Obligation Date (as a proxy for target completion if not specified)
@@ -140,7 +142,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         }
         processPm(data.staffingReqs, 'Staff Requirements', true);
         processPm(data.officeReqs, 'Office Requirements');
-        processPm(data.otherProgramExpenses, 'Office Requirements');
+        processPm(data.otherProgramExpenses, 'Office Requirements', false, true);
 
         const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages).sort();
         const sortedPLPackageData: { [key: string]: any } = {};

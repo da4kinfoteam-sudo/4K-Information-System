@@ -266,8 +266,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
         });
 
         // PM Items
-        const processPm = (items: any[], pkgKey: string, isStaff = false) => {
+        const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
             items.filter(filterItem).forEach(pm => {
+                // If generating Physical report (BED 2) and item is Other Expense, skip it.
+                if (type === 'Physical' && isOtherExpense) return;
+
                 const vals = initializeMonths();
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const date = type === 'Physical' ? pm.obligationDate : pm.disbursementDate; 
@@ -283,7 +286,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
         };
         processPm(data.staffingReqs, 'Staff Requirements', true);
         processPm(data.officeReqs, 'Office Requirements');
-        processPm(data.otherProgramExpenses, 'Office Requirements');
+        processPm(data.otherProgramExpenses, 'Office Requirements', false, true);
 
         return finalData;
     };

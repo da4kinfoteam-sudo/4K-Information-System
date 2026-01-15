@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useState, useEffect, FormEvent } from 'react';
 import { IPO, Subproject, Training, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
@@ -94,8 +95,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         if (type === 'checkbox') {
             const { checked } = e.target as HTMLInputElement;
             setEditedIpo(prev => ({ ...prev, [name]: checked }));
-        } else if (name === 'levelOfDevelopment') {
-            setEditedIpo(prev => ({ ...prev, levelOfDevelopment: parseInt(value, 10) as IPO['levelOfDevelopment'] }));
+        } else if (name === 'levelOfDevelopment' || name.startsWith('total')) {
+            setEditedIpo(prev => ({ ...prev, [name]: parseInt(value, 10) || 0 }));
         } else {
             setEditedIpo(prev => ({ ...prev, [name]: value }));
         }
@@ -314,6 +315,44 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                         </div>
                     </fieldset>
 
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label htmlFor="totalMembers" className="block text-sm font-medium">Total Members</label>
+                                <input type="number" name="totalMembers" id="totalMembers" value={editedIpo.totalMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="totalIpMembers" className="block text-sm font-medium">Total IP Members</label>
+                                <input type="number" name="totalIpMembers" id="totalIpMembers" value={editedIpo.totalIpMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="total4PsMembers" className="block text-sm font-medium">Total 4Ps Beneficiaries</label>
+                                <input type="number" name="total4PsMembers" id="total4PsMembers" value={editedIpo.total4PsMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="totalMaleMembers" className="block text-sm font-medium">Male Members</label>
+                                <input type="number" name="totalMaleMembers" id="totalMaleMembers" value={editedIpo.totalMaleMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="totalFemaleMembers" className="block text-sm font-medium">Female Members</label>
+                                <input type="number" name="totalFemaleMembers" id="totalFemaleMembers" value={editedIpo.totalFemaleMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium">&nbsp;</label>
+                                <span className="text-sm text-gray-500">Total: {(editedIpo.totalMaleMembers || 0) + (editedIpo.totalFemaleMembers || 0)}</span>
+                            </div>
+                            <div>
+                                <label htmlFor="totalYouthMembers" className="block text-sm font-medium">Youth Members</label>
+                                <input type="number" name="totalYouthMembers" id="totalYouthMembers" value={editedIpo.totalYouthMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                            <div>
+                                <label htmlFor="totalSeniorMembers" className="block text-sm font-medium">Senior Citizen Members</label>
+                                <input type="number" name="totalSeniorMembers" id="totalSeniorMembers" value={editedIpo.totalSeniorMembers} onChange={handleInputChange} className={commonInputClasses} />
+                            </div>
+                        </div>
+                    </fieldset>
+
                     <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                             Cancel
@@ -483,6 +522,41 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                 </ul>
                             ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
                         </div>
+                    </div>
+
+                    {/* Membership Information Card */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Membership Information</h3>
+                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 text-sm">
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Total Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Total IP Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalIpMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Male</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMaleMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Female</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalFemaleMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Youth</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalYouthMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Senior Citizens</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalSeniorMembers || 0}</dd>
+                            </div>
+                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2 sm:col-span-2">
+                                <dt className="text-gray-500 dark:text-gray-400">4Ps Beneficiaries</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.total4PsMembers || 0}</dd>
+                            </div>
+                        </dl>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React from 'react';
 
 // --- Base Interface for Database Fields ---
@@ -41,6 +42,14 @@ export interface IPO extends BaseEntity {
     history?: HistoryEntry[];
     lat?: number;
     lng?: number;
+    // Membership Information
+    totalMembers?: number;
+    totalIpMembers?: number;
+    totalMaleMembers?: number;
+    totalFemaleMembers?: number;
+    totalYouthMembers?: number;
+    totalSeniorMembers?: number;
+    total4PsMembers?: number;
 }
 
 export interface User extends BaseEntity {
