@@ -115,33 +115,26 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         const headers: { [objectType: string]: { [particular: string]: string[] } } = { MOOE: {}, CO: {} };
         const seenCodes = new Set<string>();
         
-        // 1. Populate headers from Reference List
-        for (const objectType of Object.keys(uacsCodes)) {
-            // @ts-ignore
-            if (!uacsCodes[objectType]) continue;
-            // @ts-ignore
-            for (const particular of Object.keys(uacsCodes[objectType])) {
-                // @ts-ignore
-                const codes = Object.keys(uacsCodes[objectType][particular]);
-                const typeKey = (objectType === 'CO') ? 'CO' : 'MOOE';
-                
-                if(!headers[typeKey][particular]) headers[typeKey][particular] = [];
-                
-                codes.forEach(c => {
-                    if (!headers[typeKey][particular].includes(c)) headers[typeKey][particular].push(c);
-                    seenCodes.add(c);
-                });
-            }
-        }
-
         // Helper to ensure code exists in headers (dynamic discovery)
-        const ensureHeader = (objType: string, particular: string, code: string) => {
-            if (!code) return;
+        const ensureHeader = (objType: string, particular: string, code: string, amount: number) => {
+            if (!code || amount <= 0) return;
             // Normalize object type
             const typeKey = (objType === 'CO') ? 'CO' : 'MOOE';
             
             if (!headers[typeKey]) headers[typeKey] = {};
-            const partKey = particular || 'Other Expenses';
+            // Attempt to look up the "official" particular name from reference if possible, 
+            // otherwise use the one stored in the record.
+            let officialParticular = particular || 'Other Expenses';
+            if (uacsCodes[typeKey]) {
+                for (const part in uacsCodes[typeKey]) {
+                    if (uacsCodes[typeKey][part][code]) {
+                        officialParticular = part;
+                        break;
+                    }
+                }
+            }
+
+            const partKey = officialParticular;
             
             if (!headers[typeKey][partKey]) headers[typeKey][partKey] = [];
             
@@ -155,7 +148,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.subprojects.forEach(sp => {
             sp.details.forEach(d => {
-                ensureHeader(d.objectType, d.expenseParticular, d.uacsCode);
+                ensureHeader(d.objectType, d.expenseParticular, d.uacsCode, d.pricePerUnit * d.numberOfUnits);
                 lineItems.push({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
                     objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits
@@ -165,7 +158,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.trainings.forEach(t => {
             t.expenses.forEach(e => {
-                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode);
+                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
                 const packageType = t.component === 'Program Management' ? 'Trainings' : undefined;
                 lineItems.push({
                     component: t.component, packageType, activityName: t.name,
@@ -176,7 +169,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
-                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode);
+                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 lineItems.push({
                     component: oa.component, packageType, activityName: oa.name,
@@ -187,7 +180,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.staffingReqs.forEach(sr => {
             const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Salaries & Wages', sr.uacsCode);
+            ensureHeader(objType, 'Salaries & Wages', sr.uacsCode, sr.annualSalary);
             lineItems.push({
                 component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
                 objectType: objType, uacsCode: sr.uacsCode, amount: sr.annualSalary
@@ -196,7 +189,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.officeReqs.forEach(or => {
             const objType = getObjectTypeByCode(or.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Office Equipment', or.uacsCode);
+            ensureHeader(objType, 'Office Equipment', or.uacsCode, or.pricePerUnit * or.numberOfUnits);
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: or.equipment,
                 objectType: objType, uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
@@ -205,21 +198,21 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.otherProgramExpenses.forEach(ope => {
             const objType = getObjectTypeByCode(ope.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Other Expenses', ope.uacsCode);
+            ensureHeader(objType, 'Other Expenses', ope.uacsCode, ope.amount);
             lineItems.push({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: ope.particulars,
                 objectType: objType, uacsCode: ope.uacsCode, amount: ope.amount
             });
         });
 
-        // Derive flat lists of codes for rendering columns
+        // Derive flat lists of codes for rendering columns, sorting them
         const mooeCodes: string[] = [];
-        Object.values(headers.MOOE).forEach(codes => {
-            codes.forEach(c => { if (!mooeCodes.includes(c)) mooeCodes.push(c); });
+        Object.keys(headers.MOOE).sort().forEach(part => {
+            headers.MOOE[part].sort().forEach(c => { if (!mooeCodes.includes(c)) mooeCodes.push(c); });
         });
         const coCodes: string[] = [];
-        Object.values(headers.CO).forEach(codes => {
-            codes.forEach(c => { if (!coCodes.includes(c)) coCodes.push(c); });
+        Object.keys(headers.CO).sort().forEach(part => {
+            headers.CO[part].sort().forEach(c => { if (!coCodes.includes(c)) coCodes.push(c); });
         });
 
         const initialUacsValues = [...mooeCodes, ...coCodes].reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
@@ -240,6 +233,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
         
         lineItems.forEach(item => {
+            if (item.amount <= 0) return;
+
             let targetList;
             if (item.component === 'Production and Livelihood') {
                 const packageKey = item.packageType || 'Trainings';
@@ -274,11 +269,13 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 activity.uacsValues[item.uacsCode] = (activity.uacsValues[item.uacsCode] || 0) + item.amount;
             }
 
-            // Determine if MOOE or CO for Total calc (can infer from code presence in mooeCodes/coCodes too)
-            if (item.objectType === 'CO') {
+            // Determine if MOOE or CO for Total calc
+            // Use the determined header grouping to check where it belongs
+            const isCO = coCodes.includes(item.uacsCode) || item.objectType === 'CO';
+            
+            if (isCO) {
                 activity.totalCO += item.amount;
             } else {
-                // Default to MOOE
                 activity.totalMOOE += item.amount;
             }
         });
@@ -346,90 +343,199 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         return '';
     };
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     const handleDownloadBpFormsXlsx = () => {
-        const flatData: any[] = [];
-        const allCodes = [...mooeCodes, ...coCodes];
+        // Construct grouped headers for XLSX
+        const mooeParticulars = Object.keys(headers.MOOE).sort();
+        const coParticulars = Object.keys(headers.CO).sort();
+
+        // Row 1: Object Types
+        // PAP (A), MOOE (B..X), Total MOOE (Y), CO (Z..AA), Total CO (AB), Grand Total (AC)
+        
+        // Calculate dynamic spans
+        const mooeSpan = mooeCodes.length;
+        const coSpan = coCodes.length;
+        
+        const row1 = ["Program/Activity/Project"];
+        const row2 = [null]; // Placeholder for PAP
+        const row3 = [null]; // Placeholder for PAP
+
+        // MOOE Section
+        if (mooeSpan > 0) {
+            row1.push("MOOE");
+            for(let i=1; i<mooeSpan; i++) row1.push(null);
+        }
+        // Total MOOE Column in Row 1 (actually it sits beside MOOE cols)
+        row1.push("Total MOOE");
+
+        // CO Section
+        if (coSpan > 0) {
+            row1.push("CO");
+            for(let i=1; i<coSpan; i++) row1.push(null);
+        }
+        // Total CO Column
+        row1.push("Total CO");
+        row1.push("Grand Total");
+
+        // Populate Rows 2 and 3
+        
+        // MOOE
+        mooeParticulars.forEach(part => {
+            const codes = headers.MOOE[part].sort();
+            if(codes.length > 0) {
+                row2.push(part);
+                // Push nulls for span
+                for(let i=1; i<codes.length; i++) row2.push(null);
+                
+                codes.forEach(code => {
+                    row3.push(`${code} - ${getDescription('MOOE', part, code)}`);
+                });
+            }
+        });
+        row2.push(null); // Under Total MOOE
+        row3.push(null); // Under Total MOOE
+
+        // CO
+        coParticulars.forEach(part => {
+            const codes = headers.CO[part].sort();
+            if(codes.length > 0) {
+                row2.push(part);
+                for(let i=1; i<codes.length; i++) row2.push(null);
+                
+                codes.forEach(code => {
+                    row3.push(`${code} - ${getDescription('CO', part, code)}`);
+                });
+            }
+        });
+        row2.push(null); // Under Total CO
+        row3.push(null); // Under Total CO
+        
+        row2.push(null); // Under Grand Total
+        row3.push(null); // Under Grand Total
+
+        // Flatten Data
+        const flatDataRows: any[][] = [];
+        const allCodesOrdered = [
+            ...mooeParticulars.flatMap(p => headers.MOOE[p].sort()),
+            ...coParticulars.flatMap(p => headers.CO[p].sort())
+        ];
+
+        const processRows = (items: any[], prefix: string) => {
+            items.forEach((activity: any) => {
+                const row = [`${prefix}${activity.name}`];
+                
+                // Add values according to ordered codes
+                allCodesOrdered.forEach(code => {
+                    row.push(activity.uacsValues[code] || 0);
+                });
+                
+                row.push(activity.totalMOOE);
+                row.push(activity.totalCO);
+                row.push(activity.totalMOOE + activity.totalCO);
+                flatDataRows.push(row);
+            });
+        };
 
         Object.entries(rows).forEach(([componentName, componentData]) => {
             if (Array.isArray(componentData) && componentData.length > 0) {
-                componentData.forEach((activity: any) => {
-                    const row: { [key: string]: string | number } = {
-                        'Program/Activity/Project': `${componentName} - ${activity.name}`,
-                    };
-                    allCodes.forEach((code: string) => {
-                        row[code] = activity.uacsValues[code] || 0;
-                    });
-                    row['Total MOOE'] = activity.totalMOOE;
-                    row['Total CO'] = activity.totalCO;
-                    row['Grand Total'] = activity.totalMOOE + activity.totalCO;
-                    flatData.push(row);
-                });
+                flatDataRows.push([componentName, ...Array(allCodesOrdered.length + 3).fill(null)]);
+                processRows(componentData, "  ");
             } else if ((componentData as any).isNestedExpandable) {
-                Object.entries((componentData as any).packages).forEach(([pkgName, pkgData]: [string, any]) => {
-                    if (pkgData.items.length > 0) {
-                        pkgData.items.forEach((activity: any) => {
-                             const row: { [key: string]: string | number } = {
-                                'Program/Activity/Project': `${componentName} - ${pkgName} - ${activity.name}`,
-                            };
-                            allCodes.forEach((code: string) => {
-                                row[code] = activity.uacsValues[code] || 0;
-                            });
-                            row['Total MOOE'] = activity.totalMOOE;
-                            row['Total CO'] = activity.totalCO;
-                            row['Grand Total'] = activity.totalMOOE + activity.totalCO;
-                            flatData.push(row);
-                        });
-                    }
+                let hasData = false;
+                // Check if any package has items
+                Object.values((componentData as any).packages).forEach((pkg: any) => {
+                    if (pkg.items.length > 0) hasData = true;
                 });
-            }
-        });
 
-        if (flatData.length > 0) {
-            const grandTotalsRow = flatData.reduce((acc, row) => {
-                 allCodes.forEach(code => {
-                    acc[code] = (acc[code] || 0) + (row[code] as number);
-                 });
-                 acc['Total MOOE'] += (row['Total MOOE'] as number);
-                 acc['Total CO'] += (row['Total CO'] as number);
-                 acc['Grand Total'] += (row['Grand Total'] as number);
-                 return acc;
-            }, {
-                 'Program/Activity/Project': 'GRAND TOTAL',
-                 ...allCodes.reduce((acc, code) => ({...acc, [code]: 0}), {}),
-                 'Total MOOE': 0,
-                 'Total CO': 0,
-                 'Grand Total': 0,
-            });
-            flatData.push(grandTotalsRow);
-        }
-
-        const ws = XLSX.utils.json_to_sheet(flatData);
-        
-        const currencyColumns = [...allCodes, 'Total MOOE', 'Total CO', 'Grand Total'];
-        const headers = Object.keys(flatData.length > 0 ? flatData[0] : {});
-        currencyColumns.forEach(colName => {
-            const colIndex = headers.indexOf(colName);
-            if (colIndex !== -1) {
-                const colLetter = XLSX.utils.encode_col(colIndex);
-                for (let i = 2; i <= flatData.length + 1; i++) {
-                    const cellAddress = colLetter + i;
-                    if(ws[cellAddress] && ws[cellAddress].v > 0) {
-                         ws[cellAddress].t = 'n';
-                         ws[cellAddress].z = '₱#,##0.00';
-                    } else if (ws[cellAddress]) {
-                        ws[cellAddress].v = ''; 
-                    }
+                if(hasData) {
+                    flatDataRows.push([componentName, ...Array(allCodesOrdered.length + 3).fill(null)]);
+                    Object.entries((componentData as any).packages).forEach(([pkgName, pkgData]: [string, any]) => {
+                        if (pkgData.items.length > 0) {
+                            flatDataRows.push([`  ${pkgName}`, ...Array(allCodesOrdered.length + 3).fill(null)]);
+                            processRows(pkgData.items, "    ");
+                        }
+                    });
                 }
             }
         });
+
+        // Add Grand Total Row
+        const totalRow = ["GRAND TOTAL"];
+        allCodesOrdered.forEach(code => totalRow.push(grandTotals.uacsValues[code] || 0));
+        totalRow.push(grandTotals.totalMOOE, grandTotals.totalCO, grandTotals.totalMOOE + grandTotals.totalCO);
+        flatDataRows.push(totalRow);
+
+        // Combine all
+        const aoa = [row1, row2, row3, ...flatDataRows];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+        // Setup Merges
+        if(!ws['!merges']) ws['!merges'] = [];
         
+        let colIdx = 1; // Start after PAP
+        // Row 1 merges (Object Types)
+        if(mooeSpan > 0) {
+            ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + mooeSpan - 1 } });
+            colIdx += mooeSpan;
+        }
+        colIdx++; // Total MOOE (No merge needed if just 1 cell, but rows 1-3 should likely merge vertically?)
+        // Let's merge vertical titles: Total MOOE, Total CO, Grand Total
+        ws['!merges'].push({ s: { r: 0, c: colIdx - 1 }, e: { r: 2, c: colIdx - 1 } }); // Total MOOE
+
+        if(coSpan > 0) {
+            ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + coSpan - 1 } });
+            colIdx += coSpan;
+        }
+        colIdx++; // Total CO
+        ws['!merges'].push({ s: { r: 0, c: colIdx - 1 }, e: { r: 2, c: colIdx - 1 } }); // Total CO
+        
+        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 2, c: colIdx } }); // Grand Total (Last col)
+
+        // PAP Vertical Merge
+        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } });
+
+        // Row 2 merges (Particulars)
+        colIdx = 1;
+        mooeParticulars.forEach(part => {
+            const count = headers.MOOE[part].length;
+            if (count > 1) {
+                ws['!merges'].push({ s: { r: 1, c: colIdx }, e: { r: 1, c: colIdx + count - 1 } });
+            }
+            colIdx += count;
+        });
+        colIdx++; // Skip Total MOOE
+        coParticulars.forEach(part => {
+            const count = headers.CO[part].length;
+            if (count > 1) {
+                ws['!merges'].push({ s: { r: 1, c: colIdx }, e: { r: 1, c: colIdx + count - 1 } });
+            }
+            colIdx += count;
+        });
+
+        // Formatting Currency
+        // Get range
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for(let R = 3; R <= range.e.r; ++R) {
+            for(let C = 1; C <= range.e.c; ++C) {
+                const cell_address = { c: C, r: R };
+                const cell_ref = XLSX.utils.encode_cell(cell_address);
+                if(ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
+                    ws[cell_ref].t = 'n';
+                    ws[cell_ref].z = '#,##0.00';
+                }
+            }
+        }
+
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "BP Forms Report");
+        XLSX.utils.book_append_sheet(wb, ws, "BP Forms");
         XLSX.writeFile(wb, `BP_Forms_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
 
-    const mooeParticulars = Object.keys(headers.MOOE);
-    const coParticulars = Object.keys(headers.CO);
+    const mooeParticulars = Object.keys(headers.MOOE).sort();
+    const coParticulars = Object.keys(headers.CO).sort();
     
     // Ensure all MOOE cols + 1 for Total MOOE
     const mooeColSpan = mooeCodes.length + 1; 
@@ -442,12 +548,15 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
     const dataCellClass = `p-1 ${borderClass}`;
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div id="bp-forms-container" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
-                 <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                <div className="flex gap-2">
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print PDF</button>
+                    <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                </div>
             </div>
-            <div className="overflow-x-auto relative">
+            <div id="bp-forms-table" className="overflow-x-auto relative">
                 <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
                     <thead className="sticky top-0 z-20 shadow-sm">
                         <tr className="bg-gray-200 dark:bg-gray-800">
@@ -455,42 +564,42 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                             <th rowSpan={4} className={`${headerCellClass} min-w-[300px] sticky left-0 bg-gray-200 dark:bg-gray-800 z-30 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>Program/Activity/Project</th>
                             
                             {/* MOOE Group */}
-                            {mooeColSpan > 1 && <th colSpan={mooeColSpan} className={`${headerCellClass}`}>MOOE</th>}
+                            {mooeCodes.length > 0 && <th colSpan={mooeCodes.length} className={`${headerCellClass}`}>MOOE</th>}
+                            <th rowSpan={4} className={`${headerCellClass} bg-blue-100 dark:bg-blue-900/40 font-bold min-w-[100px]`}>Total MOOE</th>
                             
                             {/* CO Group */}
-                            {coColSpan > 1 && <th colSpan={coColSpan} className={`${headerCellClass}`}>CO</th>}
+                            {coCodes.length > 0 && <th colSpan={coCodes.length} className={`${headerCellClass}`}>CO</th>}
+                            <th rowSpan={4} className={`${headerCellClass} bg-orange-100 dark:bg-orange-900/40 font-bold min-w-[100px]`}>Total CO</th>
                             
                             {/* Grand Total */}
-                            <th rowSpan={4} className={`${headerCellClass} min-w-[100px]`}>Grand Total</th>
+                            <th rowSpan={4} className={`${headerCellClass} bg-green-100 dark:bg-green-900/40 min-w-[100px]`}>Grand Total</th>
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/80">
-                            {/* MOOE Particulars + Total MOOE */}
+                            {/* MOOE Particulars */}
                             {mooeParticulars.map(p => <th key={`p-mooe-${p}`} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
-                            <th rowSpan={3} className={`${headerCellClass} bg-blue-100 dark:bg-blue-900/40 font-bold min-w-[100px]`}>Total MOOE</th>
-
-                            {/* CO Particulars + Total CO */}
+                            
+                            {/* CO Particulars */}
                             {coParticulars.map(p => <th key={`p-co-${p}`} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
-                            <th rowSpan={3} className={`${headerCellClass} bg-orange-100 dark:bg-orange-900/40 font-bold min-w-[100px]`}>Total CO</th>
                         </tr>
                         <tr className="bg-gray-5 dark:bg-gray-700/60">
                             {/* MOOE Descriptions */}
-                            {mooeParticulars.flatMap(p => headers.MOOE[p].map(code => ({ code, p }))).map(({ code, p }) => (
+                            {mooeParticulars.flatMap(p => headers.MOOE[p].sort().map(code => ({ code, p }))).map(({ code, p }) => (
                                 <th key={`desc-mooe-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
                                     {getDescription('MOOE', p, code)}
                                 </th>
                             ))}
                             {/* CO Descriptions */}
-                            {coParticulars.flatMap(p => headers.CO[p].map(code => ({ code, p }))).map(({ code, p }) => (
+                            {coParticulars.flatMap(p => headers.CO[p].sort().map(code => ({ code, p }))).map(({ code, p }) => (
                                 <th key={`desc-co-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
                                     {getDescription('CO', p, code)}
                                 </th>
                             ))}
                         </tr>
-                        <tr className="bg-gray-5 dark:bg-gray-700/50">
+                        <tr className="bg-gray-50 dark:bg-gray-700/50">
                             {/* MOOE Codes */}
-                            {mooeParticulars.flatMap(p => headers.MOOE[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                            {mooeParticulars.flatMap(p => headers.MOOE[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                             {/* CO Codes */}
-                            {coParticulars.flatMap(p => headers.CO[p]).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                            {coParticulars.flatMap(p => headers.CO[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                         </tr>
                     </thead>
                     <tbody>
