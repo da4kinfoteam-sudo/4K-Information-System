@@ -6,6 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -563,234 +564,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
     };
 
-    // --- Imports / Exports ---
-
-    const handleDownloadReport = () => {
-        const data = processedSubprojects.map(s => ({
-            UID: s.uid,
-            Name: s.name,
-            IPO: s.indigenousPeopleOrganization,
-            Location: s.location,
-            Status: s.status,
-            Budget: calculateTotalBudget(s.details),
-            'Start Date': s.startDate,
-            'End Date': s.estimatedCompletionDate
-        }));
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Subprojects");
-        XLSX.writeFile(wb, "Subprojects_Report.xlsx");
-    };
-
-    const handleDownloadTemplate = () => {
-        const headers = [
-            'uid', 'name', 'indigenousPeopleOrganization', 'province', 'municipality', 'status', 'packageType', 
-            'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
-            'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
-            'detail_objectType', 'detail_expenseParticular', 'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
-        ];
-
-        const exampleData = [
-            {
-                uid: 'SP-TEMP-001',
-                name: 'Sample Coffee Production',
-                indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
-                province: 'Rizal',
-                municipality: 'Tanay',
-                status: 'Ongoing',
-                packageType: 'Package 1',
-                startDate: '2024-01-15',
-                estimatedCompletionDate: '2024-06-15',
-                actualCompletionDate: '',
-                fundingYear: 2024,
-                fundType: 'Current',
-                tier: 'Tier 1',
-                operatingUnit: 'RPMO 4A',
-                remarks: 'Sample upload with multiple items',
-                detail_type: 'Equipment',
-                detail_particulars: 'Coffee Roaster',
-                detail_deliveryDate: '2024-03-01',
-                detail_unitOfMeasure: 'unit',
-                detail_pricePerUnit: 150000,
-                detail_numberOfUnits: 1,
-                detail_objectType: 'CO',
-                detail_expenseParticular: 'Machinery and Equipment',
-                detail_uacsCode: '10605030-00',
-                detail_obligationMonth: '2024-02-01',
-                detail_disbursementMonth: '2024-03-15'
-            }
-        ];
-
-        const instructions = [
-            ["Column", "Description"],
-            ["uid", "Unique Identifier. REQUIRED. Rows with the same UID will be grouped into one subproject."],
-            ["name", "Name of the subproject."],
-            ["indigenousPeopleOrganization", "Name of the IPO."],
-            ["province", "Province name. (Required)"],
-            ["municipality", "City or Municipality name. (Required)"],
-            ["status", "Proposed, Ongoing, Completed, or Cancelled."],
-            ["packageType", "Package 1, Package 2, etc."],
-            ["startDate", "YYYY-MM-DD"],
-            ["estimatedCompletionDate", "YYYY-MM-DD"],
-            ["actualCompletionDate", "YYYY-MM-DD (Optional)"],
-            ["fundingYear", "Year (e.g., 2024)"],
-            ["fundType", "Current, Continuing, or Insertion"],
-            ["tier", "Tier 1 or Tier 2"],
-            ["operatingUnit", "e.g., RPMO 4A"],
-            ["remarks", "Optional remarks"],
-            ["detail_type", "Item Type (e.g., Equipment, Livestock, etc.)"],
-            ["detail_particulars", "Specific item name."],
-            ["detail_deliveryDate", "YYYY-MM-DD"],
-            ["detail_unitOfMeasure", "pcs, kgs, unit, lot, heads"],
-            ["detail_pricePerUnit", "Number"],
-            ["detail_numberOfUnits", "Number"],
-            ["detail_objectType", "MOOE or CO"],
-            ["detail_expenseParticular", "Expense Class"],
-            ["detail_uacsCode", "Specific UACS Code"],
-            ["detail_obligationMonth", "YYYY-MM-DD (Date of Obligation)"],
-            ["detail_disbursementMonth", "YYYY-MM-DD (Date of Disbursement)"]
-        ];
-
-        const wb = XLSX.utils.book_new();
-        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
-
-        XLSX.utils.book_append_sheet(wb, ws_data, "Subprojects Data");
-        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
-
-        XLSX.writeFile(wb, "Subprojects_Upload_Template.xlsx");
-    };
-
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsUploading(true);
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const data = event.target?.result;
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
-
-                const groupedData = new Map<string, any>();
-                let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
-                const currentTimestamp = new Date().toISOString();
-
-                jsonData.forEach((row, index) => {
-                    if (!row.uid) return; // Skip rows without UID
-                    
-                    if (!groupedData.has(row.uid)) {
-                        maxId++;
-                        
-                        // Construct Location String from Province and Municipality
-                        const municipality = String(row.municipality || '').trim();
-                        const province = String(row.province || '').trim();
-                        const locationString = `${municipality}, ${province}`;
-
-                        groupedData.set(row.uid, {
-                            id: maxId,
-                            uid: String(row.uid),
-                            name: String(row.name),
-                            location: locationString,
-                            indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
-                            status: row.status,
-                            packageType: row.packageType,
-                            startDate: String(row.startDate),
-                            estimatedCompletionDate: String(row.estimatedCompletionDate),
-                            actualCompletionDate: row.actualCompletionDate ? String(row.actualCompletionDate) : undefined,
-                            fundingYear: Number(row.fundingYear),
-                            fundType: row.fundType,
-                            tier: row.tier,
-                            operatingUnit: row.operatingUnit,
-                            encodedBy: currentUser?.fullName || 'System Upload',
-                            remarks: row.remarks,
-                            // Mock Lat/Lng for map display since parsing assumes structure, could be enhanced with proper Geocoding
-                            lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
-                            lng: 120.9842 + (Math.random() * 0.1 - 0.05),
-                            details: [],
-                            subprojectCommodities: [],
-                            created_at: currentTimestamp,
-                            updated_at: currentTimestamp
-                        });
-                    }
-
-                    const subproject = groupedData.get(row.uid);
-                    
-                    if (row.detail_particulars) {
-                        let objectType = row.detail_objectType;
-                        let expenseParticular = row.detail_expenseParticular;
-                        let uacsCode = String(row.detail_uacsCode || '').trim();
-
-                        // Normalize for flexible matching (remove non-alphanumeric)
-                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
-                        let matchFound = false;
-
-                        // 1. Try to find within the provided Object Type and Particular if they exist in reference
-                        if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
-                            const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
-                            // Try exact match or normalized match
-                            const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                            if (match) {
-                                uacsCode = match;
-                                matchFound = true;
-                            }
-                        }
-
-                        // 2. If no match found yet (or path was invalid), search entire UACS tree
-                        if (!matchFound && uacsCodes) {
-                            outerLoop:
-                            for (const ot of Object.keys(uacsCodes)) {
-                                for (const part of Object.keys(uacsCodes[ot])) {
-                                    const validCodes = Object.keys(uacsCodes[ot][part]);
-                                    const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                                    if (match) {
-                                        uacsCode = match;
-                                        // Auto-correct OT and Particular if they match the found UACS code
-                                        objectType = ot;
-                                        expenseParticular = part;
-                                        matchFound = true;
-                                        break outerLoop;
-                                    }
-                                }
-                            }
-                        }
-
-                        subproject.details.push({
-                            id: Date.now() + index, // Temp ID
-                            type: row.detail_type,
-                            particulars: row.detail_particulars,
-                            deliveryDate: String(row.detail_deliveryDate),
-                            unitOfMeasure: row.detail_unitOfMeasure,
-                            pricePerUnit: Number(row.detail_pricePerUnit),
-                            numberOfUnits: Number(row.detail_numberOfUnits),
-                            objectType: objectType,
-                            expenseParticular: expenseParticular,
-                            uacsCode: uacsCode,
-                            obligationMonth: String(row.detail_obligationMonth),
-                            disbursementMonth: String(row.detail_disbursementMonth)
-                        });
-                    }
-                });
-
-                const newSubprojects = Array.from(groupedData.values());
-                logAction('Imported Subprojects', `Imported ${newSubprojects.length} subprojects from Excel`);
-                setSubprojects(prev => [...prev, ...newSubprojects]);
-                alert(`${newSubprojects.length} subprojects imported successfully!`);
-
-            } catch (error: any) {
-                console.error("Error processing XLSX file:", error);
-                alert(`Failed to import file. ${error.message}`);
-            } finally {
-                setIsUploading(false);
-                if (e.target) e.target.value = '';
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    };
-
     // --- Render Helpers ---
 
     const formatDate = (dateString?: string) => {
@@ -918,12 +691,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
-                        <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
                         {canEdit && (
                             <>
-                                <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                                <button onClick={downloadSubprojectsTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
                                 <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                                <input id="subproject-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+                                <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
                                 <button
                                     onClick={toggleSelectionMode}
                                     className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}

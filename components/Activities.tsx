@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -524,225 +525,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             </button>
         );
     }
-    
-    const handleDownloadReport = () => {
-        const dataToExport = processedActivities.map(a => ({
-            'UID': a.uid || '',
-            'Type': a.type,
-            'Component': a.component,
-            'Activity Name': a.name,
-            'Date': a.date,
-            'Location': a.location,
-            'Male Participants': a.participantsMale,
-            'Female Participants': a.participantsFemale,
-            'Total Budget': a.expenses.reduce((sum, e) => sum + e.amount, 0),
-            'Funding Year': a.fundingYear,
-            'Fund Type': a.fundType,
-            'Tier': a.tier,
-            'Operating Unit': a.operatingUnit,
-            'Encoded By': a.encodedBy,
-            'Participating IPOs': a.participatingIpos.join(', '),
-            'Facilitator': a.type === 'Training' ? a.facilitator : 'N/A',
-            'Description': a.description,
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Activities Report");
-        XLSX.writeFile(wb, "Activities_Report.xlsx");
-    };
-
-    const handleDownloadTemplate = () => {
-        const headers = [
-            'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
-            'participatingIpos', 'participantsMale', 'participantsFemale',
-            'fundingYear', 'fundType', 'tier', 
-            'expense_objectType', 'expense_particular', 'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
-        ];
-        const exampleData = [
-            {
-                uid: 'TRN-2024-001',
-                type: 'Training',
-                component: 'Social Preparation',
-                name: 'Basic Leadership Training',
-                date: '2024-03-15',
-                province: 'Rizal',
-                municipality: 'Tanay',
-                facilitator: 'John Doe',
-                description: 'Leadership skills training.',
-                participatingIpos: 'San Isidro Farmers Association',
-                participantsMale: 10,
-                participantsFemale: 15,
-                fundingYear: 2024,
-                fundType: 'Current',
-                tier: 'Tier 1',
-                expense_objectType: 'MOOE',
-                expense_particular: 'Training Expenses',
-                expense_uacsCode: '50202010-01',
-                expense_obligationMonth: '2024-03-01',
-                expense_disbursementMonth: '2024-03-20',
-                expense_amount: 25000
-            }
-        ];
-
-        const wb = XLSX.utils.book_new();
-        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-        XLSX.utils.book_append_sheet(wb, ws_data, "Activities Data");
-        XLSX.writeFile(wb, "Activities_Upload_Template.xlsx");
-    };
-
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsUploading(true);
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                const data = event.target?.result;
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
-
-                let currentId = activities.reduce((max, a) => Math.max(max, a.id), 0);
-                const existingIpoNames = new Set(ipos.map(ipo => ipo.name));
-
-                const groupedData = new Map<string, any>();
-
-                jsonData.forEach((row, index) => {
-                    const rowNum = index + 2;
-                    const uid = row.uid;
-                    if (!uid) throw new Error(`Row ${rowNum}: Missing UID.`);
-
-                    if (!groupedData.has(uid)) {
-                        // Basic validation for new group
-                        if (!row.type || !row.component || !row.name || !row.date || !row.province || !row.municipality) {
-                            throw new Error(`Row ${rowNum} (UID: ${uid}): Missing required common fields.`);
-                        }
-
-                        const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
-                        for (const ipoName of participatingIpos) {
-                            if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found.`);
-                        }
-
-                        // Construct Location String from Province and Municipality
-                        const municipality = String(row.municipality || '').trim();
-                        const province = String(row.province || '').trim();
-                        const locationString = `${municipality}, ${province}`;
-
-                        groupedData.set(uid, {
-                            common: {
-                                uid: String(uid),
-                                type: row.type,
-                                component: row.component as any,
-                                name: String(row.name),
-                                date: String(row.date),
-                                description: String(row.description || ''),
-                                location: locationString,
-                                participatingIpos: participatingIpos,
-                                participantsMale: Number(row.participantsMale) || 0,
-                                participantsFemale: Number(row.participantsFemale) || 0,
-                                fundingYear: Number(row.fundingYear) || undefined,
-                                fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
-                                tier: tiers.includes(row.tier) ? row.tier : undefined,
-                                operatingUnit: currentUser?.operatingUnit || 'NPMO',
-                                encodedBy: currentUser?.fullName || 'System',
-                                facilitator: String(row.facilitator || ''),
-                                created_at: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                            },
-                            expenses: []
-                        });
-                    }
-
-                    // Add expense from this row if present
-                    if (row.expense_amount && row.expense_objectType) {
-                        let objectType = row.expense_objectType;
-                        let expenseParticular = String(row.expense_particular || '');
-                        let uacsCode = String(row.expense_uacsCode || '').trim();
-
-                        // Normalize for flexible matching (remove non-alphanumeric)
-                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
-                        let matchFound = false;
-
-                        // 1. Try to find within the provided Object Type and Particular if they exist in reference
-                        if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
-                            const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
-                            // Try exact match or normalized match
-                            const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                            if (match) {
-                                uacsCode = match;
-                                matchFound = true;
-                            }
-                        }
-
-                        // 2. If no match found yet (or path was invalid), search entire UACS tree
-                        if (!matchFound && uacsCodes) {
-                            outerLoop:
-                            for (const ot of Object.keys(uacsCodes)) {
-                                for (const part of Object.keys(uacsCodes[ot])) {
-                                    const validCodes = Object.keys(uacsCodes[ot][part]);
-                                    const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                                    if (match) {
-                                        uacsCode = match;
-                                        // Auto-correct OT and Particular if they match the found UACS code
-                                        objectType = ot;
-                                        expenseParticular = part;
-                                        matchFound = true;
-                                        break outerLoop;
-                                    }
-                                }
-                            }
-                        }
-
-                        groupedData.get(uid).expenses.push({
-                            id: Date.now() + index * 10, // Unique temporary ID
-                            objectType: objectType,
-                            expenseParticular: expenseParticular,
-                            uacsCode: uacsCode,
-                            obligationMonth: String(row.expense_obligationMonth || ''),
-                            disbursementMonth: String(row.expense_disbursementMonth || ''),
-                            amount: Number(row.expense_amount)
-                        });
-                    }
-                });
-
-                const newActivities: any[] = [];
-
-                groupedData.forEach((group) => {
-                    newActivities.push({
-                        ...group.common,
-                        expenses: group.expenses,
-                    });
-                });
-
-                if (newActivities.length > 0) {
-                    // Log Import
-                    logAction('Imported Activities', `Imported ${newActivities.length} activities from Excel`);
-
-                    if (supabase) {
-                        const { error } = await supabase.from('activities').insert(newActivities);
-                        if (error) throw error;
-                        refreshData();
-                    } else {
-                        // Offline Fallback
-                        const localActivities = newActivities.map((act, i) => ({ id: currentId + i + 1, ...act }));
-                        setActivities(prev => [...prev, ...localActivities]);
-                    }
-                    alert(`${newActivities.length} activities imported successfully!`);
-                }
-
-            } catch (error: any) {
-                console.error("Error processing XLSX file:", error);
-                alert(`Failed to import file. ${error.message}`);
-            } finally {
-                setIsUploading(false);
-                if(e.target) e.target.value = '';
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    };
 
     const renderListView = () => (
         <>
@@ -797,12 +579,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
-                        <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
                         {canEdit && (
                             <>
-                                <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
+                                <button onClick={downloadActivitiesTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
                                 <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                                <input id="activity-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+                                <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
                                 <button
                                     onClick={toggleSelectionMode}
                                     className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}

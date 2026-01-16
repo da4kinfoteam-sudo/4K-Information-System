@@ -1,9 +1,12 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, commodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
+import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -518,182 +521,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     // Filter activities for display
     const linkedTrainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
 
-    const handleDownloadReport = () => {
-        const dataToExport = processedIpos.map(ipo => ({
-            'Name': ipo.name,
-            'Location': ipo.location,
-            'Region': ipo.region,
-            'ICC': ipo.indigenousCulturalCommunity,
-            'AD No.': ipo.ancestralDomainNo,
-            'Registering Body': ipo.registeringBody,
-            'Women-Led': ipo.isWomenLed ? 'Yes' : 'No',
-            'GIDA': ipo.isWithinGida ? 'Yes' : 'No',
-            'ELCAC': ipo.isWithinElcac ? 'Yes' : 'No',
-            'With SCAD': ipo.isWithScad ? 'Yes' : 'No',
-            'Contact Person': ipo.contactPerson,
-            'Contact Number': ipo.contactNumber,
-            'Registration Date': ipo.registrationDate,
-            'Commodities': JSON.stringify(ipo.commodities),
-            'Level of Development': ipo.levelOfDevelopment
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "IPO Report");
-        XLSX.writeFile(wb, "IPO_Report.xlsx");
-    };
-
-    const handleDownloadTemplate = () => {
-        const headers = [
-            'name', 'province', 'municipality', 'barangay', 'indigenousCulturalCommunity', 
-            'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida', 'isWithinElcac', 'isWithScad',
-            'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
-            'levelOfDevelopment'
-        ];
-        
-        const exampleData = [{
-            name: 'Sample Farmers Association',
-            province: 'Rizal',
-            municipality: 'Tanay',
-            barangay: 'Brgy. Daraitan',
-            indigenousCulturalCommunity: 'Dumagat',
-            ancestralDomainNo: 'AD-12345',
-            registeringBody: 'CDA',
-            isWomenLed: 'TRUE',
-            isWithinGida: 'FALSE',
-            isWithinElcac: 'TRUE',
-            isWithScad: 'TRUE',
-            contactPerson: 'Juan Dela Cruz',
-            contactNumber: '09171234567',
-            registrationDate: '2023-01-15',
-            commodities: '[{"type":"Crop Commodity","particular":"Rice Seeds","value":50,"isScad":true}]',
-            levelOfDevelopment: 2
-        }];
-
-        const instructions = [
-            ["Column", "Description"],
-            ["name", "Full name of the IPO. (Required)"],
-            ["province", "Province name. (Required)"],
-            ["municipality", "City or Municipality name. (Required)"],
-            ["barangay", "Barangay name(s). Optional. Separate multiple barangays with a comma (e.g., 'Brgy A, Brgy B')."],
-            ["indigenousCulturalCommunity", "The name of the indigenous cultural community."],
-            ["ancestralDomainNo", "The ancestral domain number, if any."],
-            ["registeringBody", "e.g., SEC, DOLE, CDA, National Commission on Indigenous Peoples."],
-            ["isWomenLed", "Enter TRUE or FALSE."],
-            ["isWithinGida", "Enter TRUE or FALSE."],
-            ["isWithinElcac", "Enter TRUE or FALSE."],
-            ["isWithScad", "Enter TRUE or FALSE. Note: This will be auto-recalculated based on commodities upon upload to ensure consistency."],
-            ["contactPerson", "Name of the contact person."],
-            ["contactNumber", "Contact phone number."],
-            ["registrationDate", "Date in YYYY-MM-DD format. (Required)"],
-            ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number,"isScad":boolean}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100,"isScad":false}]'. Use '[]' for none.`],
-            ["levelOfDevelopment", "A number from 1 to 5."]
-        ];
-
-        const wb = XLSX.utils.book_new();
-        const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-        const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
-        
-        XLSX.utils.book_append_sheet(wb, ws_data, "IPO Data");
-        XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
-
-        XLSX.writeFile(wb, "IPO_Upload_Template.xlsx");
-    };
-
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        setIsUploading(true);
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                const data = event.target?.result;
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
-
-                let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
-                
-                const newIpos: Omit<IPO, 'id'>[] = jsonData.map((row, index) => {
-                    // Basic validation
-                    if (!row.name || !row.province || !row.municipality || !row.registrationDate) {
-                        throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality, registrationDate).`);
-                    }
-
-                    let commodities: Commodity[];
-                    try {
-                        commodities = typeof row.commodities === 'string' ? JSON.parse(row.commodities) : [];
-                    } catch {
-                        console.warn(`Row ${index + 2}: Invalid JSON in 'commodities' column. Defaulting to empty.`);
-                        commodities = [];
-                    }
-
-                    // Construct Location String
-                    let locationString = '';
-                    const brgy = row.barangay ? String(row.barangay).trim() : '';
-                    const municipality = String(row.municipality).trim();
-                    const province = String(row.province).trim();
-
-                    if (brgy) {
-                        const brgyList = brgy.split(',').map(b => b.trim()).filter(b => b !== '');
-                        // Add Brgy prefix if missing for consistency
-                        const formattedBrgys = brgyList.map(b => b.startsWith('Brgy.') || b.startsWith('Sitio') ? b : `Brgy. ${b}`);
-                        locationString = `${formattedBrgys.join(', ')}, ${municipality}, ${province}`;
-                    } else {
-                        locationString = `${municipality}, ${province}`;
-                    }
-
-                    const { region } = parseLocation(locationString);
-                    const isWithScad = commodities.some(c => c.isScad);
-
-                    return {
-                        name: String(row.name),
-                        location: locationString,
-                        region: region,
-                        indigenousCulturalCommunity: String(row.indigenousCulturalCommunity || ''),
-                        ancestralDomainNo: String(row.ancestralDomainNo || ''),
-                        registeringBody: String(row.registeringBody || ''),
-                        isWomenLed: String(row.isWomenLed).toUpperCase() === 'TRUE',
-                        isWithinGida: String(row.isWithinGida).toUpperCase() === 'TRUE',
-                        isWithinElcac: String(row.isWithinElcac).toUpperCase() === 'TRUE',
-                        isWithScad: isWithScad,
-                        contactPerson: String(row.contactPerson || ''),
-                        contactNumber: String(row.contactNumber || ''),
-                        registrationDate: String(row.registrationDate),
-                        commodities: commodities,
-                        levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
-                        created_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    };
-                });
-
-                if (supabase) {
-                    // Log Import
-                    logAction('Imported IPOs', `Imported ${newIpos.length} IPOs from Excel`);
-
-                    const { error } = await supabase.from('ipos').insert(newIpos);
-                    if (error) throw error;
-                    refreshData();
-                } else {
-                    const localIpos = newIpos.map((ipo, idx) => ({ id: currentMaxId + idx + 1, ...ipo }));
-                    setIpos(prev => [...prev, ...localIpos]);
-                }
-                
-                alert(`${newIpos.length} IPO(s) imported successfully!`);
-            } catch (error: any) {
-                console.error("Error processing XLSX file:", error);
-                alert(`Failed to import file. ${error.message}`);
-            } finally {
-                setIsUploading(false);
-                // Reset file input value
-                if(e.target) e.target.value = '';
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    };
-    
     const renderListView = () => (
         <>
             <div className="flex justify-between items-center mb-6">
@@ -738,10 +565,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     Delete Selected ({selectedIds.length})
                                 </button>
                             )}
-                            <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
-                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                            <button onClick={() => downloadIposReport(processedIpos)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                            <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
                             <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
-                            <input id="ipo-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
+                            <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading)} accept=".xlsx, .xls" disabled={isUploading} />
                             <button
                                 onClick={handleToggleSelectionMode}
                                 className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
