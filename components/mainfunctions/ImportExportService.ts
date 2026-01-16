@@ -292,7 +292,7 @@ export const downloadActivitiesTemplate = () => {
             municipality: 'Tanay',
             facilitator: 'John Doe',
             description: 'Leadership skills training.',
-            participatingIpos: 'San Isidro Farmers Association',
+            participatingIpos: 'San Isidro Farmers Association; Other IPO',
             participantsMale: 10,
             participantsFemale: 15,
             fundingYear: 2024,
@@ -307,9 +307,18 @@ export const downloadActivitiesTemplate = () => {
         }
     ];
 
+    const instructions = [
+        ["Column", "Description"],
+        ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
+        ["province", "Province name."],
+        ["municipality", "City or Municipality name."]
+    ];
+
     const wb = XLSX.utils.book_new();
     const ws_data = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+    const ws_instructions = XLSX.utils.aoa_to_sheet(instructions);
     XLSX.utils.book_append_sheet(wb, ws_data, "Activities Data");
+    XLSX.utils.book_append_sheet(wb, ws_instructions, "Instructions");
     XLSX.writeFile(wb, "Activities_Upload_Template.xlsx");
 };
 
@@ -347,18 +356,37 @@ export const handleActivitiesUpload = (
                 if (!uid) throw new Error(`Row ${rowNum}: Missing UID.`);
 
                 if (!groupedData.has(uid)) {
-                    if (!row.type || !row.component || !row.name || !row.date || !row.province || !row.municipality) {
-                        throw new Error(`Row ${rowNum} (UID: ${uid}): Missing required common fields.`);
+                    // Removed required check for province and municipality
+                    if (!row.type || !row.component || !row.name || !row.date) {
+                        throw new Error(`Row ${rowNum} (UID: ${uid}): Missing required common fields (type, component, name, date).`);
                     }
 
-                    const participatingIpos = (row.participatingIpos || '').toString().split(',').map((s: string) => s.trim()).filter(Boolean);
+                    let participatingIpos: string[] = [];
+                    const rawIpos = (row.participatingIpos || '').toString().trim();
+
+                    if (rawIpos) {
+                        // 1. Exact match check (handles "Name, Inc" single entry)
+                        if (existingIpoNames.has(rawIpos)) {
+                            participatingIpos = [rawIpos];
+                        } 
+                        // 2. Semicolon delimiter check (Preferred for multiple)
+                        else if (rawIpos.includes(';')) {
+                            participatingIpos = rawIpos.split(';').map((s: string) => s.trim()).filter(Boolean);
+                        } 
+                        // 3. Fallback to comma (Legacy, risky for names with Inc.)
+                        else {
+                            participatingIpos = rawIpos.split(',').map((s: string) => s.trim()).filter(Boolean);
+                        }
+                    }
+
                     for (const ipoName of participatingIpos) {
-                        if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found.`);
+                        if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found in system.`);
                     }
 
                     const municipality = String(row.municipality || '').trim();
                     const province = String(row.province || '').trim();
-                    const locationString = `${municipality}, ${province}`;
+                    // Handle empty location fields gracefully
+                    const locationString = (municipality && province) ? `${municipality}, ${province}` : (municipality || province || '');
 
                     groupedData.set(uid, {
                         common: {

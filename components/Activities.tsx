@@ -184,6 +184,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             .map(ra => ra.activity_name);
     }, [formData.component, referenceActivities, forcedType]);
 
+    // Get unique regions from actual IPO data for filtering
+    const availableRegions = useMemo(() => {
+        const regions = new Set(ipos.map(i => i.region).filter(Boolean));
+        return Array.from(regions).sort();
+    }, [ipos]);
+
     // Process list data
     const processedActivities = useMemo(() => {
         let filtered = [...activities];
@@ -370,8 +376,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        if (!formData.name || !formData.date || !formData.location) {
-            alert('Please fill out all required fields.');
+        // Location check removed as per request
+        if (!formData.name || !formData.date) {
+            alert('Please fill out all required fields (Name and Date).');
             return;
         }
 
@@ -825,7 +832,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                         <label className="text-xs">Filter by Region:</label>
                                         <select value={ipoRegionFilter} onChange={e => setIpoRegionFilter(e.target.value)} className="text-xs border rounded p-1 dark:bg-gray-700 dark:border-gray-600">
                                             <option value="All">All</option>
-                                            {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                         </select>
                                     </div>
                                 </div>
