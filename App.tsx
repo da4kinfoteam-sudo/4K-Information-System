@@ -22,7 +22,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule
+    Deadline, PlanningSchedule, ReferenceActivity
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -90,6 +90,7 @@ const AppContent: React.FC = () => {
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
+    const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
@@ -220,6 +221,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
                             forcedType="Training"
                         />;
             case '/other-activities':
@@ -229,6 +231,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
                             forcedType="Activity"
                         />;
             case '/activities': 
@@ -238,6 +241,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
                         />;
             case '/program-management':
                 return <ProgramManagement

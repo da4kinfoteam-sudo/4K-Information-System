@@ -246,6 +246,81 @@ ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "username" text;
 ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "operating_unit" text;
 ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 
+-- 14. References: Activities (New)
+create table if not exists reference_activities (
+  "id" bigint primary key generated always as identity
+);
+ALTER TABLE reference_activities ADD COLUMN IF NOT EXISTS "component" text;
+ALTER TABLE reference_activities ADD COLUMN IF NOT EXISTS "activity_name" text;
+ALTER TABLE reference_activities ADD COLUMN IF NOT EXISTS "type" text; -- 'Activity' or 'Training'
+ALTER TABLE reference_activities ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+
+-- Seed data for reference_activities if empty
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Meetings', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Meetings');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Orientation', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Orientation');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Profiling', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Profiling');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Community Needs Assessment', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Community Needs Assessment');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Review and Planning Workshop', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Review and Planning Workshop');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'IPO Registration Drive', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'IPO Registration Drive');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Social Preparation', 'Social Trainings', 'Training'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Social Trainings');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Production and Livelihood', 'Technical Training', 'Training'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Technical Training');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Production and Livelihood', 'Livelihood Project Monitoring', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Livelihood Project Monitoring');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Marketing and Enterprise', 'Market Linkaging', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Market Linkaging');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Marketing and Enterprise', 'Trade and Promotional Activity', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Trade and Promotional Activity');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Marketing and Enterprise', 'Enterprise Development Training', 'Training'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Enterprise Development Training');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Program Management', 'Sub-Project Monitoring', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Sub-Project Monitoring');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Program Management', 'Performance and Budget Utilization Review (PBUR)', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Performance and Budget Utilization Review (PBUR)');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Program Management', 'Planning and BEDS Preparation', 'Activity'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Planning and BEDS Preparation');
+
+INSERT INTO reference_activities (component, activity_name, type)
+SELECT 'Program Management', 'Staff Training', 'Training'
+WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Staff Training');
+
+
 -- ================================================================
 -- ROW LEVEL SECURITY POLICIES
 -- ================================================================
@@ -299,6 +374,11 @@ CREATE POLICY "Public Access Particulars" ON reference_particulars FOR ALL USING
 ALTER TABLE reference_commodities ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Access Commodities" ON reference_commodities;
 CREATE POLICY "Public Access Commodities" ON reference_commodities FOR ALL USING (true) WITH CHECK (true);
+
+-- Reference Activities
+ALTER TABLE reference_activities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access Ref Activities" ON reference_activities;
+CREATE POLICY "Public Access Ref Activities" ON reference_activities FOR ALL USING (true) WITH CHECK (true);
 
 -- System Settings (Deadlines & Planning Schedules)
 ALTER TABLE deadlines ENABLE ROW LEVEL SECURITY;

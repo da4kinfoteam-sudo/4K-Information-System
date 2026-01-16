@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
-import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, otherActivityOptions, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits } from '../constants';
+import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
@@ -18,6 +18,7 @@ interface ActivitiesProps {
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    referenceActivities?: ReferenceActivity[]; // New prop for activity lookup
     forcedType?: 'Training' | 'Activity';
 }
 
@@ -53,7 +54,7 @@ const defaultFormData: Activity = {
     actualParticipantsFemale: 0
 };
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes, forcedType }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
@@ -63,7 +64,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
     const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
-    const [selectedActivityType, setSelectedActivityType] = useState('');
+    const [selectedActivityType, setSelectedActivityType] = useState(''); // Stores the specific activity name from dropdown
 
     // Shared Hooks
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -85,11 +86,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
-
-    // Determine if current form state represents a Training based on selected Activity Type
-    const isTrainingForm = useMemo(() => {
-        return selectedActivityType.endsWith(' Training');
-    }, [selectedActivityType]);
 
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
@@ -140,10 +136,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 actualParticipantsFemale: editingItem.actualParticipantsFemale || 0,
             });
             
-            // Set Activity Type
+            // Set Selected Activity Type based on current item state and reference table
             if (editingItem.type === 'Training') {
-                setSelectedActivityType(`${editingItem.component} Training`);
+                // If it's a training, we try to find the matching category name from the reference list
+                const ref = referenceActivities.find(ra => ra.component === editingItem.component && ra.type === 'Training');
+                if (ref) {
+                    setSelectedActivityType(ref.activity_name);
+                } else {
+                    // Fallback if not found in reference list, though less ideal
+                    setSelectedActivityType(`${editingItem.component} Training`);
+                }
             } else {
+                // For activities, the name usually matches the dropdown selection directly
                 setSelectedActivityType(editingItem.name);
             }
 
@@ -151,13 +155,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         } else {
             setFormData({
                 ...defaultFormData,
-                type: forcedType || 'Activity',
+                type: forcedType || 'Activity', // Use forced type initially if available
                 operatingUnit: currentUser?.operatingUnit || '',
                 encodedBy: currentUser?.fullName || ''
             });
             setSelectedActivityType('');
         }
-    }, [editingItem, currentUser, forcedType]);
+    }, [editingItem, currentUser, forcedType, referenceActivities]);
 
     // When component changes in form, reset types unless editing
     useEffect(() => {
@@ -173,12 +177,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     }, [ipoRegionFilter, ipos]);
 
     const activityOptions = useMemo(() => {
-        const base = otherActivityOptions[formData.component] || [];
-        const trainingOption = `${formData.component} Training`;
-        // Ensure unique
-        if (base.includes(trainingOption)) return base;
-        return [...base, trainingOption];
-    }, [formData.component]);
+        // Filter available activities based on selected Component and optionally Forced Type (if in filtered route)
+        return referenceActivities
+            .filter(ra => ra.component === formData.component)
+            .filter(ra => forcedType ? ra.type === forcedType : true) // Filter by forcedType if present
+            .map(ra => ra.activity_name);
+    }, [formData.component, referenceActivities, forcedType]);
 
     // Process list data
     const processedActivities = useMemo(() => {
@@ -291,26 +295,25 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const value = e.target.value;
-        setSelectedActivityType(value);
+        const selectedName = e.target.value;
+        setSelectedActivityType(selectedName);
         
-        let newType: 'Training' | 'Activity' = 'Activity';
-        let newName = '';
-
-        if (value.endsWith(' Training')) {
-            newType = 'Training';
-            // If switching to training type
-            if (editingItem && editingItem.type === 'Training' && value === `${editingItem.component} Training`) {
-                // If editing and same type, restore original name
-                newName = editingItem.name;
-            } 
+        // Find the reference activity to determine Type (Activity vs Training)
+        const ref = referenceActivities.find(ra => ra.activity_name === selectedName && ra.component === formData.component);
+        const type = ref?.type || 'Activity'; // Default to Activity if not found (shouldn't happen with correct data)
+        
+        if (type === 'Training') {
+            // If user selects a Training type (e.g. "Social Trainings"), we want them to input a specific title
+            // But if we are editing and the type hasn't changed, keep the existing name
+            if (view === 'edit' && editingItem && editingItem.type === 'Training' && selectedName === selectedActivityType) {
+                 // Keep existing name
+            } else {
+                 setFormData(prev => ({ ...prev, name: '', type: 'Training' })); 
+            }
         } else {
-            newType = 'Activity';
-            // Not a training, name IS the type
-            newName = value;
+            // If it's a standard Activity (e.g. "Meetings"), the name IS the activity type
+            setFormData(prev => ({ ...prev, name: selectedName, type: 'Activity' }));
         }
-        
-        setFormData(prev => ({ ...prev, type: newType, name: newName }));
     };
     
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -377,7 +380,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         const currentYear = new Date().getFullYear();
         let uid = formData.uid;
         if (!uid) {
-            const prefix = isTrainingForm ? 'TRN' : 'ACT';
+            const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
             const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
             uid = `${prefix}-${currentYear}-${sequence}`;
         }
@@ -525,6 +528,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             </button>
         );
     }
+    
+    // ... [No changes needed in handleDownloadReport, handleDownloadTemplate, handleFileUpload because they are imported] ...
 
     const renderListView = () => (
         <>
@@ -763,13 +768,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium">Activity Type</label>
+                                    <label className="block text-sm font-medium">Activity Name</label>
                                     <select value={selectedActivityType} onChange={handleActivityTypeChange} className={commonInputClasses}>
-                                        <option value="">Select Type</option>
+                                        <option value="">Select Activity</option>
                                         {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
                                 </div>
-                                {isTrainingForm && (
+                                {formData.type === 'Training' && (
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-medium">Training Name</label>
                                         <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} placeholder="Specific Training Title" />
@@ -787,7 +792,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     <label className="block text-sm font-medium">Location</label>
                                     <LocationPicker value={formData.location} onChange={(val) => setFormData(prev => ({...prev, location: val}))} />
                                 </div>
-                                {isTrainingForm && (
+                                {formData.type === 'Training' && (
                                     <div>
                                         <label className="block text-sm font-medium">Facilitator</label>
                                         <input type="text" name="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} />

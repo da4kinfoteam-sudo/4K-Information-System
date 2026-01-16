@@ -455,3 +455,10 @@ export interface ReferenceCommodity {
 }
 
 export const referenceCommodityTypes: string[] = ['Crop Commodity', 'Animal Commodity', 'Industrial Commodity'];
+
+export interface ReferenceActivity {
+    id: number;
+    component: string;
+    activity_name: string;
+    type: 'Activity' | 'Training';
+}
