@@ -352,8 +352,8 @@ export const handleActivitiesUpload = (
 
             jsonData.forEach((row: any, index: number) => {
                 const rowNum = index + 2;
-                const uid = row.uid;
-                if (!uid) throw new Error(`Row ${rowNum}: Missing UID.`);
+                const uid = String(row.uid || '').trim();
+                if (!uid) return; // Skip empty rows
 
                 if (!groupedData.has(uid)) {
                     // Removed required check for province and municipality
@@ -390,7 +390,7 @@ export const handleActivitiesUpload = (
 
                     groupedData.set(uid, {
                         common: {
-                            uid: String(uid),
+                            uid: uid,
                             type: row.type,
                             component: row.component as any,
                             name: String(row.name),
@@ -413,7 +413,7 @@ export const handleActivitiesUpload = (
                     });
                 }
 
-                if (row.expense_amount && row.expense_objectType) {
+                if (row.expense_amount !== undefined && row.expense_objectType) {
                     let objectType = row.expense_objectType;
                     let expenseParticular = String(row.expense_particular || '');
                     let uacsCode = String(row.expense_uacsCode || '').trim();
