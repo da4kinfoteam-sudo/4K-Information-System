@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, targetCommodities, targetCommodityCategories } from '../constants';
+import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -20,6 +20,7 @@ interface SubprojectsProps {
     onSelectSubproject: (subproject: Subproject) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     particularTypes: { [key: string]: string[] };
+    commodityCategories: { [key: string]: string[] };
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -49,7 +50,7 @@ const defaultFormData: Subproject = {
     encodedBy: ''
 };
 
-const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes }) => {
+const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState<Subproject>(defaultFormData);
@@ -406,15 +407,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     };
 
     const handleAddCommodity = () => {
-        const isLivestock = currentCommodity.typeName === 'Livestock';
-        if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area || (!isLivestock && !currentCommodity.averageYield)) {
-            alert(`Please fill in all commodity fields (Type, Name, ${isLivestock ? 'Heads' : 'Area, Yield'}).`);
+        const isAnimal = currentCommodity.typeName === 'Animal Commodity';
+        if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area || (!isAnimal && !currentCommodity.averageYield)) {
+            alert(`Please fill in all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
         const newCommodity: SubprojectCommodity = {
             ...currentCommodity,
             area: Number(currentCommodity.area),
-            averageYield: isLivestock ? undefined : Number(currentCommodity.averageYield)
+            averageYield: isAnimal ? undefined : Number(currentCommodity.averageYield)
         };
         setFormData(prev => ({
             ...prev,
@@ -754,7 +755,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
                                 const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
                                 const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 
-                                    ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ')
+                                    ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Animal Commodity' ? 'heads' : 'ha'})`).join(', ')
                                     : 'N/A';
 
                                 return (
@@ -881,7 +882,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                                     {s.subprojectCommodities.map((c, i) => (
                                                                         <div key={i} className="flex justify-between text-xs">
                                                                             <span>{c.name}</span>
-                                                                            <span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Livestock' ? 'heads' : 'yield'} (Actual)</span>
+                                                                            <span className="font-medium">
+                                                                                {c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)
+                                                                            </span>
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -1029,7 +1032,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                     <span className="font-semibold">{c.name}</span>
                                                     <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
                                                     <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {c.typeName === 'Livestock' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Livestock' && `| Yield: ${c.averageYield}`}
+                                                        {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && `| Yield: ${c.averageYield}`}
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
@@ -1050,22 +1053,22 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <label className="block text-xs font-medium">Type</label>
                                         <select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}>
                                             <option value="">Select Type</option>
-                                            {Object.keys(targetCommodityCategories).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                            {referenceCommodityTypes.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium">Commodity</label>
                                         <select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}>
                                             <option value="">Select Commodity</option>
-                                            {currentCommodity.typeName && targetCommodityCategories[currentCommodity.typeName].map(c => <option key={c} value={c}>{c}</option>)}
+                                            {currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium">{currentCommodity.typeName === 'Livestock' ? 'No. of Heads' : 'Area (ha)'}</label>
+                                        <label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'No. of Heads' : 'Area (ha)'}</label>
                                         <input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                     </div>
                                     <div className="flex gap-2 items-end">
-                                        {currentCommodity.typeName !== 'Livestock' && (
+                                        {currentCommodity.typeName !== 'Animal Commodity' && (
                                             <div className="flex-grow">
                                                 <label className="block text-xs font-medium">Average Yield</label>
                                                 <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
@@ -1185,12 +1188,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                     <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
                                                     <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
                                                         {commodity.averageYield ? `${commodity.averageYield} (Yield)` : ''} 
-                                                        {commodity.typeName === 'Livestock' ? ' (Heads)' : ''}
+                                                        {commodity.typeName === 'Animal Commodity' ? ' (Heads)' : ''}
                                                     </td>
                                                     <td className="px-3 py-2">
                                                         <div className="flex items-center gap-2">
                                                             <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, parseFloat(e.target.value))} className="w-32 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
-                                                            <span className="text-xs text-gray-500">{commodity.typeName === 'Livestock' ? 'heads' : 'yield'}</span>
+                                                            <span className="text-xs text-gray-500">{commodity.typeName === 'Animal Commodity' ? 'heads' : 'yield'}</span>
                                                         </div>
                                                     </td>
                                                 </tr>

@@ -19,6 +19,7 @@ export interface Commodity {
     type: string;
     particular: string;
     value: number; 
+    yield?: number;
     isScad?: boolean;
 }
 

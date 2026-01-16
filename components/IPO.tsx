@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Activity, philippineRegions, Commodity, commodityTypes } from '../constants';
+import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -19,6 +19,7 @@ interface IPOsProps {
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
+    commodityCategories: { [key: string]: string[] };
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -54,7 +55,7 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
@@ -84,6 +85,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         type: '',
         particular: '',
         value: '',
+        yield: '',
         isScad: false,
     });
 
@@ -322,21 +324,23 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             const { checked } = e.target as HTMLInputElement;
             setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
         } else if (name === 'type') {
-            setCurrentCommodity({ type: value, particular: '', value: '', isScad: false });
+            setCurrentCommodity({ type: value, particular: '', value: '', yield: '', isScad: false });
         } else {
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
     };
 
     const handleAddCommodity = () => {
-        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value) {
-            alert('Please fill out all commodity fields.');
+        const isAnimal = currentCommodity.type === 'Animal Commodity';
+        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value || (!isAnimal && !currentCommodity.yield)) {
+            alert(`Please fill out all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
         const newCommodity: Commodity = {
             type: currentCommodity.type,
             particular: currentCommodity.particular,
             value: parseFloat(currentCommodity.value),
+            yield: isAnimal ? undefined : parseFloat(currentCommodity.yield),
             isScad: currentCommodity.isScad,
         };
 
@@ -348,7 +352,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             commodities: updatedCommodities,
             isWithScad: hasScad,
         }));
-        setCurrentCommodity({ type: '', particular: '', value: '', isScad: false });
+        setCurrentCommodity({ type: '', particular: '', value: '', yield: '', isScad: false });
     };
 
     const handleRemoveCommodity = (indexToRemove: number) => {
@@ -444,7 +448,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         setEditingIpo(null);
         setFormData(defaultFormData);
         setOtherRegisteringBody('');
-        setCurrentCommodity({ type: '', particular: '', value: '', isScad: false });
+        setCurrentCommodity({ type: '', particular: '', value: '', yield: '', isScad: false });
         setView('list');
     };
 
@@ -709,7 +713,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                                                 {relatedSubprojects.map(sp => (
                                                                     <li key={sp.id} className="flex justify-between">
                                                                         <span className="truncate max-w-[150px]" title={sp.name}>{sp.name}</span>
-                                                                        <span className={getStatusBadge(sp.status)}>{sp.status}</span>
+                                                                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">{sp.status}</span>
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -834,7 +838,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <div className="flex items-center gap-2">
                                     <span className="font-semibold">{commodity.particular}</span>
                                     <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
-                                    <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                    <span>
+                                        {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                        {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
+                                    </span>
                                     {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -850,21 +857,27 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
                             <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
                                 <option value="">Select Type</option>
-                                {commodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
+                                {referenceCommodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
                             </select>
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
                             <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
                                 <option value="">Select Particular</option>
-                                {currentCommodity.type && particularTypes[currentCommodity.type] && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
+                                {currentCommodity.type && commodityCategories[currentCommodity.type] && commodityCategories[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                             </select>
                         </div>
                          <div className="flex items-end gap-2">
                             <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Hectares'}</label>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Animal Commodity' ? 'Number of Heads' : 'Area (ha)'}</label>
                                 <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                             </div>
+                            {currentCommodity.type !== 'Animal Commodity' && (
+                                <div className="flex-1">
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Avg Yield</label>
+                                    <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                </div>
+                            )}
                             <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                         </div>
                     </div>

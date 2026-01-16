@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -150,6 +149,24 @@ const AppContent: React.FC = () => {
         return newTypes;
     }, [referenceParticularList]);
 
+    const derivedCommodityCategories = useMemo(() => {
+        const categories: { [key: string]: string[] } = {
+            'Animal Commodity': [],
+            'Crop Commodity': [],
+            'Industrial Commodity': []
+        };
+        referenceCommodityList.forEach(item => {
+            if (categories[item.type]) {
+                if (!categories[item.type].includes(item.particular)) {
+                    categories[item.type].push(item.particular);
+                }
+            }
+        });
+        // Sort items
+        Object.keys(categories).forEach(key => categories[key].sort());
+        return categories;
+    }, [referenceCommodityList]);
+
     // Derived Activities
     const trainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
     const otherActivities = useMemo(() => activities.filter(a => a.type === 'Activity'), [activities]);
@@ -213,6 +230,7 @@ const AppContent: React.FC = () => {
                             onSelectSubproject={handleSelectSubproject}
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/trainings':
                 return <ActivitiesComponent 
@@ -262,6 +280,7 @@ const AppContent: React.FC = () => {
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/references':
                 return <References 
@@ -320,6 +339,7 @@ const AppContent: React.FC = () => {
                             }}
                             particularTypes={derivedParticularTypes}
                             uacsCodes={derivedUacsCodes}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/ipo-detail':
                 if (!selectedIpo) return <div>Select an IPO</div>;
@@ -335,6 +355,7 @@ const AppContent: React.FC = () => {
                             }}
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/settings':
                 return <Settings 

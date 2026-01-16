@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, FormEvent } from 'react';
-import { IPO, Subproject, Training, Commodity, commodityTypes } from '../constants';
+import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 
 
@@ -14,6 +14,7 @@ interface IPODetailProps {
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
+    commodityCategories: { [key: string]: string[] };
 }
 
 const formatDate = (dateString?: string) => {
@@ -48,12 +49,12 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, particularTypes }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-    const [currentCommodity, setCurrentCommodity] = useState({ type: '', particular: '', value: '', isScad: false });
+    const [currentCommodity, setCurrentCommodity] = useState({ type: '', particular: '', value: '', yield: '', isScad: false });
     
     useEffect(() => {
         // Reset form state if the viewed IPO changes or when exiting edit mode
@@ -122,21 +123,23 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
             const { checked } = e.target as HTMLInputElement;
             setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
         } else if (name === 'type') {
-            setCurrentCommodity({ type: value, particular: '', value: '', isScad: false });
+            setCurrentCommodity({ type: value, particular: '', value: '', yield: '', isScad: false });
         } else {
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
     };
 
     const handleAddCommodity = () => {
-        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value) {
-            alert('Please fill out all commodity fields.');
+        const isAnimal = currentCommodity.type === 'Animal Commodity';
+        if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value || (!isAnimal && !currentCommodity.yield)) {
+            alert(`Please fill out all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
         const newCommodity: Commodity = {
             type: currentCommodity.type,
             particular: currentCommodity.particular,
             value: parseFloat(currentCommodity.value),
+            yield: isAnimal ? undefined : parseFloat(currentCommodity.yield),
             isScad: currentCommodity.isScad,
         };
         const updatedCommodities = [...editedIpo.commodities, newCommodity];
@@ -146,7 +149,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
             commodities: updatedCommodities,
             isWithScad: hasScad 
         }));
-        setCurrentCommodity({ type: '', particular: '', value: '', isScad: false });
+        setCurrentCommodity({ type: '', particular: '', value: '', yield: '', isScad: false });
     };
 
     const handleRemoveCommodity = (indexToRemove: number) => {
@@ -265,7 +268,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                     <div className="flex items-center gap-2">
                                         <span className="font-semibold">{commodity.particular}</span>
                                         <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
-                                        <span>{commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                        <span>
+                                            {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                            {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
+                                        </span>
                                         {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
                                     </div>
                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
@@ -279,21 +285,27 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
                                 <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
                                     <option value="">Select Type</option>
-                                    {commodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
+                                    {referenceCommodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
                                 </select>
                             </div>
                             <div className="md:col-span-2">
                                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
                                 <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
                                     <option value="">Select Particular</option>
-                                    {currentCommodity.type && particularTypes[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
+                                    {currentCommodity.type && commodityCategories[currentCommodity.type] && commodityCategories[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                                 </select>
                             </div>
                              <div className="flex items-end gap-2">
                                 <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Hectares'}</label>
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Animal Commodity' ? 'Number of Heads' : 'Area (ha)'}</label>
                                     <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                                 </div>
+                                {currentCommodity.type !== 'Animal Commodity' && (
+                                    <div className="flex-1">
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Avg Yield</label>
+                                        <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                    </div>
+                                )}
                                 <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
                             </div>
                         </div>
@@ -516,7 +528,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                                 <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
                                                 {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                             </div>
-                                            <span className="font-medium">{c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}</span>
+                                            <span className="font-medium">
+                                                {c.value.toLocaleString()} {c.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                                {c.yield ? ` | Yield: ${c.yield}` : ''}
+                                            </span>
                                         </li>
                                     ))}
                                 </ul>
