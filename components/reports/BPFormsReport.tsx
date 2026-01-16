@@ -549,10 +549,30 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     return (
         <div id="bp-forms-container" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <style>{`
+                @media print {
+                    @page { size: landscape; }
+                    #bp-forms-table {
+                        overflow: visible !important;
+                        display: block !important;
+                    }
+                    #bp-forms-table table {
+                        width: 100% !important;
+                        table-layout: auto !important;
+                    }
+                    /* Ensure full width and no clipping */
+                    body, #root, #bp-forms-container {
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: visible !important;
+                    }
+                }
+            `}</style>
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
                 <div className="flex gap-2">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print PDF</button>
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
                     <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
                 </div>
             </div>
