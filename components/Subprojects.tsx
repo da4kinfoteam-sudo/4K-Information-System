@@ -5,6 +5,7 @@ import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, Obje
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
+import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -55,10 +56,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
     
-    // Multi-Delete State
-    const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
+    // Use Shared Permissions Hook
+    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+
+    // Use Shared Selection Hook
+    const { 
+        isSelectionMode, setIsSelectionMode, selectedIds, setSelectedIds, 
+        isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
+        handleSelectAll, handleSelectRow, resetSelection 
+    } = useSelection<Subproject>();
 
     // Error Modal State
     const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
@@ -80,8 +86,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     // Scroll persistence
     const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -115,12 +119,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         area: 0,
         averageYield: 0
     });
-
-    // Management cannot edit. User can edit (their own). Admin can edit all.
-    const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    // Logic for viewing all data vs user specific data
-    // Admin & Management see all. User sees own OU.
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
     // Enforce User OU restriction on mount
     useEffect(() => {
@@ -263,16 +261,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         return filtered;
     }, [subprojects, searchTerm, regionFilter, ouFilter, packageFilter, statusFilter, sortConfig, ipos, currentUser, canViewAll]);
 
-    const paginatedSubprojects = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return processedSubprojects.slice(startIndex, startIndex + itemsPerPage);
-    }, [processedSubprojects, currentPage, itemsPerPage]);
-
-    const totalPages = Math.ceil(processedSubprojects.length / itemsPerPage);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, regionFilter, ouFilter, packageFilter, statusFilter, sortConfig, itemsPerPage]);
+    // Use Shared Pagination Hook
+    const { 
+        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedSubprojects 
+    } = usePagination(processedSubprojects, [searchTerm, regionFilter, ouFilter, packageFilter, statusFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -290,47 +282,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     };
 
-    // --- Multi-Delete Handlers ---
-    const handleToggleSelectionMode = () => {
-        if (isSelectionMode) {
-            setIsSelectionMode(false);
-            setSelectedIds([]);
-        } else {
-            setIsSelectionMode(true);
-        }
-    };
-
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.checked) {
-            // Select all currently visible (paginated) items
-            const ids = paginatedSubprojects.map(s => s.id);
-            setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
-        } else {
-            // Deselect currently visible items
-            const idsToRemove = new Set(paginatedSubprojects.map(s => s.id));
-            setSelectedIds(prev => prev.filter(id => !idsToRemove.has(id)));
-        }
-    };
-
-    const handleSelectRow = (id: number) => {
-        setSelectedIds(prev => {
-            if (prev.includes(id)) {
-                return prev.filter(i => i !== id);
-            } else {
-                return [...prev, id];
-            }
-        });
-    };
-
     const confirmMultiDelete = () => {
         // Logging for bulk delete
         const deletedNames = subprojects.filter(s => selectedIds.includes(s.id)).map(s => s.name).join(', ');
         logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
 
         setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
-        setIsMultiDeleteModalOpen(false);
-        setIsSelectionMode(false);
-        setSelectedIds([]);
+        resetSelection();
     };
 
     // --- Form Handlers ---
@@ -660,34 +618,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 detail_uacsCode: '10605030-00',
                 detail_obligationMonth: '2024-02-01',
                 detail_disbursementMonth: '2024-03-15'
-            },
-            {
-                uid: 'SP-TEMP-001',
-                name: 'Sample Coffee Production',
-                indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
-                province: 'Rizal',
-                municipality: 'Tanay',
-                status: 'Ongoing',
-                packageType: 'Package 1',
-                startDate: '2024-01-15',
-                estimatedCompletionDate: '2024-06-15',
-                actualCompletionDate: '',
-                fundingYear: 2024,
-                fundType: 'Current',
-                tier: 'Tier 1',
-                operatingUnit: 'RPMO 4A',
-                remarks: 'Sample upload with multiple items',
-                detail_type: 'Infrastructure',
-                detail_particulars: 'Coffee Processing Shed',
-                detail_deliveryDate: '2024-04-01',
-                detail_unitOfMeasure: 'unit',
-                detail_pricePerUnit: 500000,
-                detail_numberOfUnits: 1,
-                detail_objectType: 'CO',
-                detail_expenseParticular: 'Buildings and Other Structures',
-                detail_uacsCode: '10604020-00',
-                detail_obligationMonth: '2024-02-15',
-                detail_disbursementMonth: '2024-04-15'
             }
         ];
 
@@ -790,6 +720,44 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     const subproject = groupedData.get(row.uid);
                     
                     if (row.detail_particulars) {
+                        let objectType = row.detail_objectType;
+                        let expenseParticular = row.detail_expenseParticular;
+                        let uacsCode = String(row.detail_uacsCode || '').trim();
+
+                        // Normalize for flexible matching (remove non-alphanumeric)
+                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
+                        let matchFound = false;
+
+                        // 1. Try to find within the provided Object Type and Particular if they exist in reference
+                        if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
+                            const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
+                            // Try exact match or normalized match
+                            const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
+                            if (match) {
+                                uacsCode = match;
+                                matchFound = true;
+                            }
+                        }
+
+                        // 2. If no match found yet (or path was invalid), search entire UACS tree
+                        if (!matchFound && uacsCodes) {
+                            outerLoop:
+                            for (const ot of Object.keys(uacsCodes)) {
+                                for (const part of Object.keys(uacsCodes[ot])) {
+                                    const validCodes = Object.keys(uacsCodes[ot][part]);
+                                    const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
+                                    if (match) {
+                                        uacsCode = match;
+                                        // Auto-correct OT and Particular if they match the found UACS code
+                                        objectType = ot;
+                                        expenseParticular = part;
+                                        matchFound = true;
+                                        break outerLoop;
+                                    }
+                                }
+                            }
+                        }
+
                         subproject.details.push({
                             id: Date.now() + index, // Temp ID
                             type: row.detail_type,
@@ -798,9 +766,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             unitOfMeasure: row.detail_unitOfMeasure,
                             pricePerUnit: Number(row.detail_pricePerUnit),
                             numberOfUnits: Number(row.detail_numberOfUnits),
-                            objectType: row.detail_objectType,
-                            expenseParticular: row.detail_expenseParticular,
-                            uacsCode: String(row.detail_uacsCode),
+                            objectType: objectType,
+                            expenseParticular: expenseParticular,
+                            uacsCode: uacsCode,
                             obligationMonth: String(row.detail_obligationMonth),
                             disbursementMonth: String(row.detail_disbursementMonth)
                         });
@@ -957,7 +925,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
                                 <input id="subproject-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                                 <button
-                                    onClick={handleToggleSelectionMode}
+                                    onClick={toggleSelectionMode}
                                     className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
                                     title="Toggle Multi-Delete Mode"
                                 >
@@ -993,7 +961,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             <span className="text-xs">Select All</span>
                                             <input 
                                                 type="checkbox" 
-                                                onChange={handleSelectAll} 
+                                                onChange={(e) => handleSelectAll(e, paginatedSubprojects)} 
                                                 checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(s => selectedIds.includes(s.id))}
                                                 className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                             />

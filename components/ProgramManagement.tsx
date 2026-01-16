@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { 
@@ -9,6 +10,7 @@ import { supabase } from '../supabaseClient';
 import { OfficeRequirementsTable, OfficeRequirementsFormFields, parseOfficeRequirementRow } from './program_management/OfficeRequirementsTab';
 import { StaffingRequirementsTable, StaffingRequirementsFormFields, parseStaffingRequirementRow } from './program_management/StaffingRequirementsTab';
 import { OtherExpensesTable, OtherExpensesFormFields, parseOtherExpenseRow } from './program_management/OtherExpensesTab';
+import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -48,15 +50,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const [view, setView] = useState<'list' | 'form'>('list');
     const [isUploading, setIsUploading] = useState(false);
 
-    // Pagination State
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
-
-    // Multi-Delete State
-    const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
-
     // Filter State
     const [ouFilter, setOuFilter] = useState('All');
     const [yearFilter, setYearFilter] = useState('All');
@@ -64,6 +57,14 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     // UACS Selection State
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
+
+    // Shared Hooks
+    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { 
+        isSelectionMode, setIsSelectionMode, selectedIds, setSelectedIds, 
+        isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
+        handleSelectAll, handleSelectRow, resetSelection 
+    } = useSelection<any>();
 
     // Generic Form State
     const initialFormState = {
@@ -107,10 +108,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 
     const [formData, setFormData] = useState(initialFormState);
 
-    // Permissions
-    const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
-
     // Set default OU filter for restricted users
     useEffect(() => {
         if (currentUser && !canViewAll) {
@@ -120,11 +117,9 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     }, [currentUser, canViewAll]);
 
-    // Reset selection mode and pagination when active tab changes
+    // Reset selection mode when active tab changes
     useEffect(() => {
-        setIsSelectionMode(false);
-        setSelectedIds([]);
-        setCurrentPage(1);
+        resetSelection();
     }, [activeTab]);
 
     const availableYears = useMemo(() => {
@@ -365,20 +360,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         }
     };
 
-    // --- Multi-Delete ---
-    const handleToggleSelectionMode = () => {
-        if (isSelectionMode) {
-            setIsSelectionMode(false);
-            setSelectedIds([]);
-        } else {
-            setIsSelectionMode(true);
-        }
-    };
-
-    const handleSelectRow = (id: number) => {
-        setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
-    };
-
     const confirmMultiDelete = async () => {
         let tableName = '';
         let setFunction: any = null;
@@ -398,9 +379,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         } else {
             setFunction((prev: any[]) => prev.filter(i => !selectedIds.includes(i.id)));
         }
-        setIsMultiDeleteModalOpen(false);
-        setIsSelectionMode(false);
-        setSelectedIds([]);
+        resetSelection();
     };
 
     // --- Filtering ---
@@ -422,6 +401,11 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
         if (activeTab === 'Staffing') return filterList(staffingReqs);
         return filterList(otherProgramExpenses);
     }
+
+    // Use Shared Pagination Hook
+    const { 
+        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedList 
+    } = usePagination(getCurrentList(), [activeTab, ouFilter, yearFilter]);
 
     // --- Report Handler ---
     const handleDownloadReport = () => {
@@ -591,12 +575,6 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 
     // --- Render Logic ---
     const renderList = () => {
-        const currentList = getCurrentList();
-        
-        // Pagination logic
-        const totalPages = Math.ceil(currentList.length / itemsPerPage);
-        const paginatedList = currentList.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
         return (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                 <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
@@ -627,7 +605,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                                     {isUploading ? 'Uploading...' : 'Upload XLSX'}
                                     <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                                 </label>
-                                <button onClick={handleToggleSelectionMode} className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} title="Toggle Multi-Delete Mode">
+                                <button onClick={toggleSelectionMode} className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} title="Toggle Multi-Delete Mode">
                                     <TrashIcon />
                                 </button>
                             </>
@@ -679,7 +657,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                         <span className="text-gray-700 dark:text-gray-300">entries</span>
                     </div>
                      <div className="flex items-center gap-4 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, currentList.length)} to {Math.min(currentPage * itemsPerPage, currentList.length)} of {currentList.length} entries</span>
+                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, getCurrentList().length)} to {Math.min(currentPage * itemsPerPage, getCurrentList().length)} of {getCurrentList().length} entries</span>
                         <div className="flex items-center gap-2">
                             <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
                             <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
@@ -883,4 +861,3 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
 };
 
 export default ProgramManagement;
-// --- End of components/ProgramManagement.tsx ---

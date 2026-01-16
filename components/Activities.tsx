@@ -6,6 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
+import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -63,10 +64,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [isUploading, setIsUploading] = useState(false);
     const [selectedActivityType, setSelectedActivityType] = useState('');
 
-    // Multi-Delete State
-    const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
+    // Shared Hooks
+    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { 
+        isSelectionMode, setIsSelectionMode, selectedIds, setSelectedIds, 
+        isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
+        handleSelectAll, handleSelectRow, resetSelection 
+    } = useSelection<Activity>();
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,16 +84,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     // Determine if current form state represents a Training based on selected Activity Type
     const isTrainingForm = useMemo(() => {
         return selectedActivityType.endsWith(' Training');
     }, [selectedActivityType]);
-
-    const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
@@ -240,16 +239,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         return filtered;
     }, [activities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll]);
 
-    const paginatedActivities = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return processedActivities.slice(startIndex, startIndex + itemsPerPage);
-    }, [processedActivities, currentPage, itemsPerPage]);
-
-    const totalPages = Math.ceil(processedActivities.length / itemsPerPage);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, componentFilter, typeFilter, ouFilter, sortConfig, itemsPerPage]);
+    // Use Shared Pagination Hook
+    const { 
+        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedActivities 
+    } = usePagination(processedActivities, [searchTerm, componentFilter, typeFilter, ouFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -261,33 +254,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     
     const handleToggleRow = (activityId: number) => {
         setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
-    };
-
-    // --- Multi-Delete Handlers ---
-    const handleToggleSelectionMode = () => {
-        if (isSelectionMode) {
-            setIsSelectionMode(false);
-            setSelectedIds([]);
-        } else {
-            setIsSelectionMode(true);
-        }
-    };
-
-    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.checked) {
-            const keys = paginatedActivities.map(a => a.id);
-            setSelectedIds(prev => Array.from(new Set([...prev, ...keys])));
-        } else {
-            const keysToRemove = new Set(paginatedActivities.map(a => a.id));
-            setSelectedIds(prev => prev.filter(k => !keysToRemove.has(k)));
-        }
-    };
-
-    const handleSelectRow = (id: number) => {
-        setSelectedIds(prev => {
-            if (prev.includes(id)) return prev.filter(k => k !== id);
-            return [...prev, id];
-        });
     };
 
     const confirmMultiDelete = async () => {
@@ -309,9 +275,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
             }
         }
-        setIsMultiDeleteModalOpen(false);
-        setIsSelectionMode(false);
-        setSelectedIds([]);
+        resetSelection();
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -694,11 +658,49 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
                     // Add expense from this row if present
                     if (row.expense_amount && row.expense_objectType) {
+                        let objectType = row.expense_objectType;
+                        let expenseParticular = String(row.expense_particular || '');
+                        let uacsCode = String(row.expense_uacsCode || '').trim();
+
+                        // Normalize for flexible matching (remove non-alphanumeric)
+                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
+                        let matchFound = false;
+
+                        // 1. Try to find within the provided Object Type and Particular if they exist in reference
+                        if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
+                            const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
+                            // Try exact match or normalized match
+                            const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
+                            if (match) {
+                                uacsCode = match;
+                                matchFound = true;
+                            }
+                        }
+
+                        // 2. If no match found yet (or path was invalid), search entire UACS tree
+                        if (!matchFound && uacsCodes) {
+                            outerLoop:
+                            for (const ot of Object.keys(uacsCodes)) {
+                                for (const part of Object.keys(uacsCodes[ot])) {
+                                    const validCodes = Object.keys(uacsCodes[ot][part]);
+                                    const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
+                                    if (match) {
+                                        uacsCode = match;
+                                        // Auto-correct OT and Particular if they match the found UACS code
+                                        objectType = ot;
+                                        expenseParticular = part;
+                                        matchFound = true;
+                                        break outerLoop;
+                                    }
+                                }
+                            }
+                        }
+
                         groupedData.get(uid).expenses.push({
                             id: Date.now() + index * 10, // Unique temporary ID
-                            objectType: row.expense_objectType,
-                            expenseParticular: String(row.expense_particular || ''),
-                            uacsCode: String(row.expense_uacsCode || ''),
+                            objectType: objectType,
+                            expenseParticular: expenseParticular,
+                            uacsCode: uacsCode,
                             obligationMonth: String(row.expense_obligationMonth || ''),
                             disbursementMonth: String(row.expense_disbursementMonth || ''),
                             amount: Number(row.expense_amount)
@@ -802,7 +804,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
                                 <input id="activity-upload" type="file" className="hidden" onChange={handleFileUpload} accept=".xlsx, .xls" disabled={isUploading} />
                                 <button
-                                    onClick={handleToggleSelectionMode}
+                                    onClick={toggleSelectionMode}
                                     className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
                                     title="Toggle Multi-Delete Mode"
                                 >
@@ -831,7 +833,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             <span className="text-xs">Select All</span>
                                             <input 
                                                 type="checkbox" 
-                                                onChange={handleSelectAll} 
+                                                onChange={(e) => handleSelectAll(e, paginatedActivities)} 
                                                 checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedIds.includes(a.id))}
                                                 className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                             />
