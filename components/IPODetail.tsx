@@ -17,7 +17,7 @@ interface IPODetailProps {
     commodityCategories: { [key: string]: string[] };
 }
 
-const formatDate = (dateString?: string) => {
+const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
     // Ensure date is parsed as UTC to avoid timezone issues
     const date = new Date(dateString + 'T00:00:00Z');
@@ -63,7 +63,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         
         setEditedIpo({
             ...ipo,
-            registeringBody: registrationBodyValue
+            registeringBody: registrationBodyValue,
+            registrationDate: ipo.registrationDate || '' // Ensure string for input
         });
 
         if (isOther) {
@@ -85,7 +86,11 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
 
     const handleConfirmSave = () => {
         const finalRegisteringBody = editedIpo.registeringBody === 'Others' ? otherRegisteringBody : editedIpo.registeringBody;
-        onUpdateIpo({ ...editedIpo, registeringBody: finalRegisteringBody });
+        onUpdateIpo({ 
+            ...editedIpo, 
+            registeringBody: finalRegisteringBody,
+            registrationDate: editedIpo.registrationDate || null // Convert empty string to null for DB
+        });
         setIsConfirmModalOpen(false);
         setIsEditing(false);
     };
@@ -227,7 +232,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                              )}
                               <div className={editedIpo.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
                                 <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
-                                <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate} onChange={handleInputChange} className={commonInputClasses} />
+                                <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
 
                              <div>
@@ -272,7 +277,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                             {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
                                             {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                         </span>
-                                        {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
+                                        {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                     </div>
                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>

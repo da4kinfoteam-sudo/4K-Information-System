@@ -37,7 +37,7 @@ export interface IPO extends BaseEntity {
     isWithScad: boolean;
     contactPerson: string;
     contactNumber: string;
-    registrationDate: string;
+    registrationDate: string | null;
     commodities: Commodity[];
     levelOfDevelopment: 1 | 2 | 3 | 4 | 5;
     history?: HistoryEntry[];

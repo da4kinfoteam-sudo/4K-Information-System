@@ -646,7 +646,7 @@ export const handleIposUpload = (
                     isWithScad: isWithScad,
                     contactPerson: String(row.contactPerson || ''),
                     contactNumber: String(row.contactNumber || ''),
-                    registrationDate: row.registrationDate ? String(row.registrationDate) : '',
+                    registrationDate: row.registrationDate ? String(row.registrationDate) : null,
                     commodities: commodities,
                     levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
                     created_at: new Date().toISOString(),

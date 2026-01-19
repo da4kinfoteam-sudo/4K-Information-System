@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes } from '../constants';
@@ -78,9 +77,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
-    const [currentPage, setCurrentPage] = useState(1);
-    const [itemsPerPage, setItemsPerPage] = useState(10);
-
     const [currentCommodity, setCurrentCommodity] = useState({
         type: '',
         particular: '',
@@ -134,7 +130,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 registeringBody: registeringBodyOptions.includes(editingIpo.registeringBody) ? editingIpo.registeringBody : 'Others',
                 contactPerson: editingIpo.contactPerson,
                 contactNumber: editingIpo.contactNumber,
-                registrationDate: editingIpo.registrationDate,
+                registrationDate: editingIpo.registrationDate || '',
                 isWomenLed: editingIpo.isWomenLed,
                 isWithinGida: editingIpo.isWithinGida,
                 isWithinElcac: editingIpo.isWithinElcac,
@@ -228,16 +224,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         return filteredIpos;
     }, [ipos, searchTerm, regionFilter, sortConfig, commodityFilter, flagFilter, calculateTotalInvestment]);
     
-    const paginatedIpos = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return processedIpos.slice(startIndex, startIndex + itemsPerPage);
-    }, [processedIpos, currentPage, itemsPerPage]);
-
-    const totalPages = Math.ceil(processedIpos.length / itemsPerPage);
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, regionFilter, commodityFilter, flagFilter, sortConfig, itemsPerPage]);
+    // Use Shared Pagination Hook
+    const { 
+        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedIpos 
+    } = usePagination(processedIpos, [searchTerm, regionFilter, commodityFilter, flagFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -384,13 +374,17 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         e.preventDefault();
         const finalRegisteringBody = formData.registeringBody === 'Others' ? otherRegisteringBody : formData.registeringBody;
         
-        // Removed validation for registeringBody and registrationDate
         if (!formData.name || !formData.location) {
             alert('Please fill out all required fields: Name and Location.');
             return;
         }
         
-        const submissionData = { ...formData, registeringBody: finalRegisteringBody };
+        const submissionData = { 
+            ...formData, 
+            registeringBody: finalRegisteringBody,
+            registrationDate: formData.registrationDate || null,
+            updated_at: new Date().toISOString()
+        };
 
         if (supabase) {
             try {
@@ -407,9 +401,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     // Log Create
                     logAction('Created IPO', formData.name);
 
+                    // Remove generated fields if creating new
                     const { error } = await supabase
                         .from('ipos')
-                        .insert([submissionData]);
+                        .insert([{ ...submissionData, created_at: new Date().toISOString() }]);
                     if (error) throw error;
                 }
                 refreshData();
@@ -427,6 +422,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 const newIpo: IPO = {
                     id: ipos.length > 0 ? Math.max(...ipos.map(ipo => ipo.id)) + 1 : 1,
                     ...submissionData,
+                    created_at: new Date().toISOString()
                 };
                 setIpos(prev => [newIpo, ...prev]);
             }
@@ -480,7 +476,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
     };
     
-    const formatDate = (dateString?: string) => {
+    const formatDate = (dateString?: string | null) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
@@ -493,21 +489,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
       return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
     }
     
-    const calculateTotalBudget = (details: Subproject['details']) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
-    }
-
-    const getStatusBadge = (status: Subproject['status']) => {
-        const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
-        switch (status) {
-            case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
-            case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-            case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-            case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-            default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
-        }
-    }
-
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
     
     const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
@@ -729,6 +710,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         </tbody>
                     </table>
                 </div>
+                 {/* Pagination */}
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
@@ -793,7 +775,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                          {formData.registeringBody === 'Others' && (
                             <div>
                                 <label htmlFor="otherRegisteringBody" className="block text-sm font-medium">Please Specify</label>
-                                <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} className={commonInputClasses} />
+                                <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
                             </div>
                          )}
                           <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
@@ -843,13 +825,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                         {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
                                         {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                     </span>
-                                    {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
+                                    {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                    </button>
-                                </div>
+                                <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
                             </div>
                         ))}
                     </div>
@@ -943,41 +923,38 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         Cancel
                     </button>
                     <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        {editingIpo ? 'Save Changes' : 'Create IPO'}
+                        Save Changes
                     </button>
                 </div>
-             </form>
+            </form>
         </div>
     );
 
     return (
-        <div className="space-y-8">
+        <div>
             {/* Delete Modal */}
             {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">Are you sure you want to delete "{ipoToDelete?.name}"? This action cannot be undone.</p>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Deletion</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">Are you sure you want to delete <strong>{ipoToDelete?.name}</strong>? This action cannot be undone.</p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">Delete</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Multi Delete Modal */}
+            {/* Multi-Delete Modal */}
             {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected IPOs? 
-                            This action cannot be undone.
-                        </p>
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Bulk Deletion</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">Are you sure you want to delete {selectedIds.length} selected IPOs? This action cannot be undone.</p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 bg-red-600 text-white rounded-md text-sm hover:bg-red-700">Delete All</button>
                         </div>
                     </div>
                 </div>
