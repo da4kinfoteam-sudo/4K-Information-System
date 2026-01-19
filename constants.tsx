@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -245,6 +244,7 @@ export interface Activity extends BaseEntity {
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
+    history?: HistoryEntry[];
     // Catch Up Plan
     catchUpPlanRemarks?: string;
     newTargetDate?: string;
@@ -463,3 +463,4 @@ export interface ReferenceActivity {
     activity_name: string;
     type: 'Activity' | 'Training';
 }
+// --- End of constants.tsx ---

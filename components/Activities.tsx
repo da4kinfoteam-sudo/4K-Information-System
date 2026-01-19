@@ -17,6 +17,7 @@ interface ActivitiesProps {
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
+    onSelectActivity: (activity: Activity) => void; // New prop for selecting activity
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[]; // New prop for activity lookup
     forcedType?: 'Training' | 'Activity';
@@ -54,7 +55,7 @@ const defaultFormData: Activity = {
     actualParticipantsFemale: 0
 };
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, uacsCodes, referenceActivities = [], forcedType }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
@@ -648,7 +649,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                         <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === activity.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
-                                            {activity.name}
+                                            <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-accent hover:underline focus:outline-none">
+                                                {activity.name}
+                                            </button>
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-1 rounded-full font-semibold ${activity.type === 'Training' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{activity.type}</span></td>
@@ -727,6 +730,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                         </tbody>
                     </table>
                 </div>
+                 {/* Pagination - Reuse existing code */}
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>

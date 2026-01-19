@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -11,6 +12,7 @@ import References, { ReferenceUacs, ReferenceParticular, ReferenceCommodity } fr
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
+import ActivityDetail from './components/ActivityDetail';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
@@ -32,6 +34,7 @@ const getPageName = (path: string) => {
     if (path === '/') return 'Dashboard';
     if (path === '/ipo-detail') return 'IPO Details';
     if (path === '/ipo') return 'IPO List';
+    if (path === '/activity-detail') return 'Activity Details';
     
     // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
     return path.substring(1)
@@ -100,6 +103,7 @@ const AppContent: React.FC = () => {
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
+    const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
     const [previousPage, setPreviousPage] = useState('/');
 
     // Track previous user to redirect to home on login
@@ -184,13 +188,20 @@ const AppContent: React.FC = () => {
         setCurrentPage('/ipo-detail');
     };
 
+    const handleSelectActivity = (activity: Activity) => {
+        setSelectedActivity(activity);
+        setPreviousPage(currentPage);
+        setCurrentPage('/activity-detail');
+    };
+
     const handleBack = () => {
         setCurrentPage(previousPage);
         setSelectedSubproject(null);
-        // Only clear selected IPO if NOT returning to IPO Details page.
-        // This fixes the issue where going back to IPO Details showed a blank page.
         if (previousPage !== '/ipo-detail') {
             setSelectedIpo(null);
+        }
+        if (previousPage !== '/activity-detail') {
+            setSelectedActivity(null);
         }
     };
 
@@ -238,6 +249,7 @@ const AppContent: React.FC = () => {
                             activities={activities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
+                            onSelectActivity={handleSelectActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Training"
@@ -248,6 +260,7 @@ const AppContent: React.FC = () => {
                             activities={activities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
+                            onSelectActivity={handleSelectActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
@@ -258,6 +271,7 @@ const AppContent: React.FC = () => {
                             activities={activities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
+                            onSelectActivity={handleSelectActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                         />;
@@ -356,6 +370,19 @@ const AppContent: React.FC = () => {
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
+                        />;
+            case '/activity-detail':
+                if (!selectedActivity) return <div>Select an activity</div>;
+                return <ActivityDetail
+                            activity={selectedActivity}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            previousPageName={getPageName(previousPage)}
+                            onUpdateActivity={(updated) => {
+                                setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+                                setSelectedActivity(updated);
+                            }}
+                            uacsCodes={derivedUacsCodes}
                         />;
             case '/settings':
                 return <Settings 
