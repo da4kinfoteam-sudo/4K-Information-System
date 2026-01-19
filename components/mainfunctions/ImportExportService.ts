@@ -60,7 +60,8 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
         Status: s.status,
         Budget: calculateTotalBudget(s.details),
         'Start Date': s.startDate,
-        'End Date': s.estimatedCompletionDate
+        'End Date': s.estimatedCompletionDate,
+        'Operating Unit': s.operatingUnit
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -122,7 +123,7 @@ export const downloadSubprojectsTemplate = () => {
         ["fundingYear", "Year (e.g., 2024)"],
         ["fundType", "Current, Continuing, or Insertion"],
         ["tier", "Tier 1 or Tier 2"],
-        ["operatingUnit", "e.g., RPMO 4A"],
+        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."],
         ["remarks", "Optional remarks"],
         ["detail_type", "Item Type (e.g., Equipment, Livestock, etc.)"],
         ["detail_particulars", "Specific item name."],
@@ -196,7 +197,7 @@ export const handleSubprojectsUpload = (
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
                         tier: row.tier,
-                        operatingUnit: row.operatingUnit,
+                        operatingUnit: row.operatingUnit || currentUser?.operatingUnit || '',
                         encodedBy: currentUser?.fullName || 'System Upload',
                         remarks: row.remarks,
                         lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
@@ -311,7 +312,7 @@ export const downloadActivitiesTemplate = () => {
     const headers = [
         'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
-        'fundingYear', 'fundType', 'tier', 
+        'fundingYear', 'fundType', 'tier', 'operatingUnit',
         'expense_objectType', 'expense_particular', 'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
     ];
     const exampleData = [
@@ -331,6 +332,7 @@ export const downloadActivitiesTemplate = () => {
             fundingYear: 2024,
             fundType: 'Current',
             tier: 'Tier 1',
+            operatingUnit: 'RPMO 4A',
             expense_objectType: 'MOOE',
             expense_particular: 'Training Expenses',
             expense_uacsCode: '50202010-01',
@@ -344,7 +346,8 @@ export const downloadActivitiesTemplate = () => {
         ["Column", "Description"],
         ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
         ["province", "Province name."],
-        ["municipality", "City or Municipality name."]
+        ["municipality", "City or Municipality name."],
+        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -436,7 +439,7 @@ export const handleActivitiesUpload = (
                             fundingYear: Number(row.fundingYear) || undefined,
                             fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
                             tier: tiers.includes(row.tier) ? row.tier : undefined,
-                            operatingUnit: currentUser?.operatingUnit || 'NPMO',
+                            operatingUnit: row.operatingUnit || currentUser?.operatingUnit || 'NPMO',
                             encodedBy: currentUser?.fullName || 'System',
                             facilitator: String(row.facilitator || ''),
                             created_at: new Date().toISOString(),
@@ -840,7 +843,7 @@ export const handleProgramManagementUpload = (
                 const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
                 // Basic parsing
                 const common = {
-                    operatingUnit: row.operatingUnit,
+                    operatingUnit: row.operatingUnit || currentUser?.operatingUnit || '',
                     fundYear: row.fundYear,
                     fundType: row.fundType,
                     tier: row.tier,

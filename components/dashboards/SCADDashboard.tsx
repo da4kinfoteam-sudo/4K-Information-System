@@ -7,31 +7,31 @@ interface SCADDashboardProps {
     ipos: IPO[];
 }
 
-// Region to Island Group Mapping based on constants.tsx philippineRegions
+// Region to Island Group Mapping including aliases for robustness
 const islandGroups: { [key: string]: string[] } = {
     'Luzon': [
-        'National Capital Region (NCR)',
-        'Cordillera Administrative Region (CAR)',
-        'Region I (Ilocos Region)',
-        'Region II (Cagayan Valley)',
-        'Region III (Central Luzon)',
-        'Region IV-A (CALABARZON)',
-        'MIMAROPA Region',
-        'Region V (Bicol Region)'
+        'National Capital Region (NCR)', 'NCR',
+        'Cordillera Administrative Region (CAR)', 'CAR',
+        'Region I (Ilocos Region)', 'Region I',
+        'Region II (Cagayan Valley)', 'Region II',
+        'Region III (Central Luzon)', 'Region III',
+        'Region IV-A (CALABARZON)', 'Region IV-A',
+        'MIMAROPA Region', 'MIMAROPA', 'Region IV-B (MIMAROPA)',
+        'Region V (Bicol Region)', 'Region V'
     ],
     'Visayas': [
-        'Region VI (Western Visayas)',
-        'Region VII (Central Visayas)',
-        'Region VIII (Eastern Visayas)',
-        'Negros Island Region (NIR)'
+        'Region VI (Western Visayas)', 'Region VI',
+        'Region VII (Central Visayas)', 'Region VII',
+        'Region VIII (Eastern Visayas)', 'Region VIII',
+        'Negros Island Region (NIR)', 'NIR'
     ],
     'Mindanao': [
-        'Region IX (Zamboanga Peninsula)',
-        'Region X (Northern Mindanao)',
-        'Region XI (Davao Region)',
-        'Region XII (SOCCSKSARGEN)',
-        'Region XIII (Caraga)',
-        'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
+        'Region IX (Zamboanga Peninsula)', 'Region IX',
+        'Region X (Northern Mindanao)', 'Region X',
+        'Region XI (Davao Region)', 'Region XI',
+        'Region XII (SOCCSKSARGEN)', 'Region XII',
+        'Region XIII (Caraga)', 'Region XIII', 'Caraga',
+        'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)', 'BARMM'
     ]
 };
 
@@ -46,9 +46,17 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
 
         // Helper to find Island Group
         const getIsland = (region: string) => {
-            if (islandGroups['Luzon'].includes(region)) return 'Luzon';
-            if (islandGroups['Visayas'].includes(region)) return 'Visayas';
-            if (islandGroups['Mindanao'].includes(region)) return 'Mindanao';
+            if (!region) return 'Others';
+            const r = region.trim();
+            if (islandGroups['Luzon'].includes(r)) return 'Luzon';
+            if (islandGroups['Visayas'].includes(r)) return 'Visayas';
+            if (islandGroups['Mindanao'].includes(r)) return 'Mindanao';
+            
+            // Substring fallback for robustness
+            if (r.includes('NCR') || r.includes('CAR') || r.includes('Region I') || r.includes('Region II') || r.includes('Region III') || r.includes('Region IV') || r.includes('MIMAROPA') || r.includes('Region V')) return 'Luzon';
+            if (r.includes('Region VI') || r.includes('Region VII') || r.includes('Region VIII') || r.includes('NIR') || r.includes('Negros')) return 'Visayas';
+            if (r.includes('Region IX') || r.includes('Region X') || r.includes('Region XI') || r.includes('Region XII') || r.includes('Region XIII') || r.includes('Caraga') || r.includes('BARMM') || r.includes('Bangsamoro')) return 'Mindanao';
+
             return 'Others';
         };
 
@@ -74,8 +82,10 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
                     }
 
                     // 3. Region Aggregation
-                    if (!regionStats[region]) regionStats[region] = {};
-                    regionStats[region][name] = (regionStats[region][name] || 0) + value;
+                    if (region) {
+                        if (!regionStats[region]) regionStats[region] = {};
+                        regionStats[region][name] = (regionStats[region][name] || 0) + value;
+                    }
                 }
             });
         });
@@ -101,26 +111,26 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
     }, [ipos]);
 
     const ScadCard: React.FC<{ name: string; total: number; rank: number }> = ({ name, total, rank }) => (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border-l-4 border-orange-500 dark:border-orange-600 transform transition hover:-translate-y-1">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border-l-4 border-emerald-500 dark:border-emerald-600 transform transition hover:-translate-y-1">
             <div className="flex justify-between items-start">
                 <div>
                     <span className="text-xs font-bold uppercase text-gray-400 tracking-wider">Top {rank} SCAD Commodity</span>
                     <h4 className="text-xl font-bold text-gray-800 dark:text-white mt-1">{name}</h4>
                 </div>
-                <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-full">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                     </svg>
                 </div>
             </div>
             <div className="mt-4">
-                <span className="text-3xl font-bold text-orange-600 dark:text-orange-400">{total.toLocaleString()}</span>
+                <span className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">{total.toLocaleString()}</span>
                 <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">Target (ha/heads)</span>
             </div>
         </div>
     );
 
-    const IslandSection: React.FC<{ title: string; data: { name: string; total: number }[]; color: string }> = ({ title, data, color }) => (
+    const IslandSection: React.FC<{ title: string; data: { name: string; total: number }[]; color: string; badgeColor: string; rankColor: string }> = ({ title, data, color, badgeColor, rankColor }) => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-full border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-3 mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
                 <div className={`w-3 h-8 rounded-full ${color}`}></div>
@@ -131,7 +141,7 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
                     {data.map((item, idx) => (
                         <li key={item.name} className="flex justify-between items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                             <div className="flex items-center gap-3">
-                                <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${idx === 0 ? 'bg-yellow-500' : 'bg-gray-400 dark:bg-gray-600'}`}>
+                                <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white ${idx === 0 ? badgeColor : rankColor}`}>
                                     {idx + 1}
                                 </span>
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
@@ -169,9 +179,27 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
             <section aria-labelledby="island-scad-commodities">
                 <h3 id="island-scad-commodities" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Top SCAD per Island Group</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <IslandSection title="Luzon" data={scadStats.topLuzon} color="bg-blue-500" />
-                    <IslandSection title="Visayas" data={scadStats.topVisayas} color="bg-yellow-500" />
-                    <IslandSection title="Mindanao" data={scadStats.topMindanao} color="bg-red-500" />
+                    <IslandSection 
+                        title="Luzon" 
+                        data={scadStats.topLuzon} 
+                        color="bg-emerald-500" 
+                        badgeColor="bg-emerald-600"
+                        rankColor="bg-emerald-400"
+                    />
+                    <IslandSection 
+                        title="Visayas" 
+                        data={scadStats.topVisayas} 
+                        color="bg-teal-500" 
+                        badgeColor="bg-teal-600"
+                        rankColor="bg-teal-400"
+                    />
+                    <IslandSection 
+                        title="Mindanao" 
+                        data={scadStats.topMindanao} 
+                        color="bg-green-500" 
+                        badgeColor="bg-green-600"
+                        rankColor="bg-green-400"
+                    />
                 </div>
             </section>
 
@@ -195,7 +223,7 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
                                         {r.commodities.map((comm, idx) => (
                                             <li key={comm.name} className="flex items-center justify-between">
                                                 <div className="flex items-center gap-2 overflow-hidden">
-                                                    <span className={`flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-white ${idx < 3 ? 'bg-orange-500' : 'bg-gray-400'}`}>
+                                                    <span className={`flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold text-white ${idx < 3 ? 'bg-emerald-500' : 'bg-gray-400'}`}>
                                                         {idx + 1}
                                                     </span>
                                                     <span className="text-sm text-gray-700 dark:text-gray-300 truncate" title={comm.name}>{comm.name}</span>

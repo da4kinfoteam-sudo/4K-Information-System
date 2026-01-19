@@ -214,7 +214,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'Physical' && <PhysicalDashboard data={filteredData} setModalData={setModalData} />}
                 {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
                 {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
-                {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} />}
+                {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
                 {activeTab === 'Farm Productivity and Income' && <FarmProductivityDashboard />}

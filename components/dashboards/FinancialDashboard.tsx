@@ -23,6 +23,76 @@ interface MonthlyDataPoint {
     disbursement: number;
 }
 
+const getComponentColor = (name: string) => {
+    switch (name) {
+        case 'Social Preparation': return '#60a5fa'; // Blue-400
+        case 'Production and Livelihood': return '#4ade80'; // Green-400
+        case 'Marketing and Enterprise': return '#facc15'; // Yellow-400
+        case 'Program Management': return '#a78bfa'; // Violet-400
+        default: return '#9ca3af'; // Gray-400
+    }
+};
+
+const SimplePieChart: React.FC<{ data: { label: string; value: number; color: string }[]; size?: number }> = ({ data, size = 180 }) => {
+    const total = data.reduce((acc, cur) => acc + cur.value, 0);
+    let cumulativePercent = 0;
+
+    if (total === 0) return <div className="text-gray-400 text-sm italic h-full flex items-center justify-center">No data available</div>;
+
+    const getCoordinatesForPercent = (percent: number) => {
+        const x = Math.cos(2 * Math.PI * percent);
+        const y = Math.sin(2 * Math.PI * percent);
+        return [x, y];
+    };
+
+    const slices = data.map(slice => {
+        const percent = slice.value / total;
+        const startPercent = cumulativePercent;
+        const endPercent = cumulativePercent + percent;
+        cumulativePercent += percent;
+
+        const [startX, startY] = getCoordinatesForPercent(startPercent);
+        const [endX, endY] = getCoordinatesForPercent(endPercent);
+        const largeArcFlag = percent > 0.5 ? 1 : 0;
+
+        const r = size / 2; 
+        const cx = size / 2;
+        const cy = size / 2;
+
+        const pathData = [
+            `M ${cx} ${cy}`,
+            `L ${cx + (r) * startX} ${cy + (r) * startY}`,
+            `A ${r} ${r} 0 ${largeArcFlag} 1 ${cx + (r) * endX} ${cy + (r) * endY}`,
+            `Z`
+        ].join(' ');
+
+        return { path: pathData, ...slice, percent };
+    });
+
+    return (
+        <div className="flex flex-col items-center w-full">
+            <div className="relative" style={{ width: size, height: size }}>
+                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
+                    {slices.map((slice, i) => (
+                        <path key={i} d={slice.path} fill={slice.color} stroke="white" strokeWidth="2" />
+                    ))}
+                </svg>
+            </div>
+            <div className="mt-6 w-full space-y-2">
+                {slices.map((slice, i) => (
+                    <div key={i} className="flex justify-between items-center text-xs">
+                        <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: slice.color }}></span>
+                            <span className="text-gray-600 dark:text-gray-300 font-medium truncate max-w-[120px]" title={slice.label}>{slice.label}</span>
+                        </div>
+                        <span className="font-bold text-gray-800 dark:text-gray-200">{(slice.percent * 100).toFixed(1)}%</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     const financialData = useMemo(() => {
@@ -205,6 +275,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 
+    const getPieData = (type: 'target' | 'obligation' | 'disbursement') => {
+        return Object.entries(components)
+            .map(([name, stats]) => ({
+                label: name,
+                value: stats[type],
+                color: getComponentColor(name)
+            }))
+            .filter(d => d.value > 0)
+            .sort((a, b) => b.value - a.value);
+    };
+
     // Comparison Component Card
     const ComponentComparisonCard: React.FC<{ title: string, target: number, obligation: number, disbursement: number }> = ({ title, target, obligation, disbursement }) => {
         const obliPercent = target > 0 ? (obligation / target) * 100 : 0;
@@ -360,6 +441,25 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                                 {totalObligation > 0 ? Math.round((totalDisbursement / totalObligation) * 100) : 0}% of Obli.
                             </span>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Section 1.5: Component Distribution Pie Charts */}
+            <section aria-labelledby="component-distribution">
+                <h3 id="component-distribution" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Distribution by Component</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Allocation (Target)</h4>
+                        <SimplePieChart data={getPieData('target')} />
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Actual Obligation</h4>
+                        <SimplePieChart data={getPieData('obligation')} />
+                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Actual Disbursement</h4>
+                        <SimplePieChart data={getPieData('disbursement')} />
                     </div>
                 </div>
             </section>
