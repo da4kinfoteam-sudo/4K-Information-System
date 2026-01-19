@@ -214,7 +214,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
 
                              <div>
                                 <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
-                                <select name="registeringBody" id="registeringBody" value={editedIpo.registeringBody} onChange={handleInputChange} required className={commonInputClasses}>
+                                <select name="registeringBody" id="registeringBody" value={editedIpo.registeringBody} onChange={handleInputChange} className={commonInputClasses}>
                                     {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     <option value="Others">Others</option>
                                 </select>
@@ -227,7 +227,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                              )}
                               <div className={editedIpo.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
                                 <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
-                                <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate} onChange={handleInputChange} required className={commonInputClasses} />
+                                <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
 
                              <div>

@@ -567,7 +567,7 @@ export const downloadIposTemplate = () => {
         ["isWithScad", "Enter TRUE or FALSE. Note: This will be auto-recalculated based on commodities upon upload to ensure consistency."],
         ["contactPerson", "Name of the contact person."],
         ["contactNumber", "Contact phone number."],
-        ["registrationDate", "Date in YYYY-MM-DD format. (Required)"],
+        ["registrationDate", "Date in YYYY-MM-DD format."],
         ["commodities", `A JSON string for commodities. Format: '[{"type":"Type","particular":"Name","value":Number,"isScad":boolean}]'. Example: '[{"type":"Livestock","particular":"Goats","value":100,"isScad":false}]'. Use '[]' for none.`],
         ["levelOfDevelopment", "A number from 1 to 5."]
     ];
