@@ -113,6 +113,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         obligationMonth: '',
         disbursementMonth: ''
     });
+    const [editingDetailId, setEditingDetailId] = useState<number | null>(null);
 
     // Commodity Form State
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
@@ -121,6 +122,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         area: 0,
         averageYield: 0
     });
+    const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
 
     // Enforce User OU restriction on mount
     useEffect(() => {
@@ -344,13 +346,30 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             alert("Please fill in required detail fields (Particulars, UACS, Price, Qty).");
             return;
         }
-        const newDetail: SubprojectDetail = {
-            id: Date.now(),
-            ...currentDetail,
-            pricePerUnit: Number(currentDetail.pricePerUnit),
-            numberOfUnits: Number(currentDetail.numberOfUnits)
-        };
-        setFormData(prev => ({ ...prev, details: [...prev.details, newDetail] }));
+
+        if (editingDetailId !== null) {
+            // Update existing detail
+            setFormData(prev => ({
+                ...prev,
+                details: prev.details.map(d => d.id === editingDetailId ? { 
+                    ...d, 
+                    ...currentDetail,
+                    pricePerUnit: Number(currentDetail.pricePerUnit),
+                    numberOfUnits: Number(currentDetail.numberOfUnits)
+                } : d)
+            }));
+            setEditingDetailId(null);
+        } else {
+            // Add new detail
+            const newDetail: SubprojectDetail = {
+                id: Date.now(),
+                ...currentDetail,
+                pricePerUnit: Number(currentDetail.pricePerUnit),
+                numberOfUnits: Number(currentDetail.numberOfUnits)
+            };
+            setFormData(prev => ({ ...prev, details: [...prev.details, newDetail] }));
+        }
+
         // Reset detail form
         setCurrentDetail(prev => ({
             ...prev,
@@ -380,13 +399,32 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 obligationMonth: detailToEdit.obligationMonth,
                 disbursementMonth: detailToEdit.disbursementMonth
             });
-            // Remove the item being edited so it can be re-added
-            setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
+            setEditingDetailId(id);
         }
+    };
+
+    const handleCancelDetailEdit = () => {
+        setEditingDetailId(null);
+        setCurrentDetail({
+            type: '',
+            particulars: '',
+            deliveryDate: '',
+            unitOfMeasure: 'pcs',
+            pricePerUnit: 0,
+            numberOfUnits: 0,
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: ''
+        });
     };
 
     const handleRemoveDetail = (id: number) => {
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
+        if (editingDetailId === id) {
+            handleCancelDetailEdit();
+        }
     };
 
     // Commodity Handlers
@@ -405,15 +443,26 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             alert(`Please fill in all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
+
         const newCommodity: SubprojectCommodity = {
             ...currentCommodity,
             area: Number(currentCommodity.area),
             averageYield: isAnimal ? undefined : Number(currentCommodity.averageYield)
         };
-        setFormData(prev => ({
-            ...prev,
-            subprojectCommodities: [...(prev.subprojectCommodities || []), newCommodity]
-        }));
+
+        if (editingCommodityIndex !== null) {
+            setFormData(prev => ({
+                ...prev,
+                subprojectCommodities: (prev.subprojectCommodities || []).map((c, i) => i === editingCommodityIndex ? newCommodity : c)
+            }));
+            setEditingCommodityIndex(null);
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                subprojectCommodities: [...(prev.subprojectCommodities || []), newCommodity]
+            }));
+        }
+        
         setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
     };
 
@@ -426,12 +475,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 area: commodityToEdit.area,
                 averageYield: commodityToEdit.averageYield || 0
             });
-            // Remove from list to allow re-adding
-            setFormData(prev => ({
-                ...prev,
-                subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
-            }));
+            setEditingCommodityIndex(index);
         }
+    };
+
+    const handleCancelCommodityEdit = () => {
+        setEditingCommodityIndex(null);
+        setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
     };
 
     const handleRemoveCommodity = (index: number) => {
@@ -439,6 +489,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             ...prev,
             subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
         }));
+        if (editingCommodityIndex === index) {
+            handleCancelCommodityEdit();
+        }
     };
 
     const handleSubmit = (e: FormEvent) => {
@@ -534,6 +587,28 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleCancelEdit = () => {
         setEditingSubproject(null);
         setFormData(defaultFormData);
+        // Reset local form states
+        setEditingDetailId(null);
+        setEditingCommodityIndex(null);
+        setCurrentDetail({
+            type: '',
+            particulars: '',
+            deliveryDate: '',
+            unitOfMeasure: 'pcs',
+            pricePerUnit: 0,
+            numberOfUnits: 0,
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: ''
+        });
+        setCurrentCommodity({
+            typeName: '',
+            name: '',
+            area: 0,
+            averageYield: 0
+        });
         setView('list');
     };
 
@@ -1013,7 +1088,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <div className="space-y-2 mb-4">
                                     {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
                                         formData.subprojectCommodities.map((c, index) => (
-                                            <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                            <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                 <div>
                                                     <span className="font-semibold">{c.name}</span>
                                                     <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
@@ -1060,7 +1135,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                 <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                             </div>
                                         )}
-                                        <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                        {editingCommodityIndex !== null ? (
+                                            <div className="flex gap-1">
+                                                <button type="button" onClick={handleAddCommodity} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                                <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                            </div>
+                                        ) : (
+                                            <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                        )}
                                     </div>
                                 </div>
                             </fieldset>
@@ -1072,17 +1154,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
                                 <div className="space-y-2 mb-4">
                                     {formData.details.map((d) => (
-                                        <div key={d.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                        <div key={d.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailId === d.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                             <div>
                                                 <span className="font-semibold">{d.particulars}</span>
                                                 <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}</div>
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
-                                                <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                                </button>
-                                                <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                <div className="flex items-center gap-2">
+                                                    <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                    </button>
+                                                    <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -1096,7 +1180,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                         <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
+                                        <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                     </div>
 
                                     <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
@@ -1106,7 +1190,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                    <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                    
+                                    {editingDetailId !== null ? (
+                                        <div className="flex gap-1 h-9 items-end">
+                                            <button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                            <button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                        </div>
+                                    ) : (
+                                        <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                    )}
                                 </div>
                              </fieldset>
                         </div>

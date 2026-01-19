@@ -78,6 +78,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         area: 0,
         averageYield: 0
     });
+    
+    // Edit state for budget items
+    const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
 
     const [dateError, setDateError] = useState('');
 
@@ -88,6 +91,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (editMode === 'full') setActiveTab('details');
         if (editMode === 'budget') setActiveTab('budget');
         // Accomplishment mode doesn't need tab switching logic here as it has its own fixed view
+        
+        // Reset local editing states when subproject or editMode changes
+        setEditingDetailIndex(null);
+        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     }, [subproject, editMode]);
 
     // Check completion status whenever details change (similar to Subprojects.tsx)
@@ -185,16 +192,31 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
 
-        setDetailItems(prev => [...prev, {
+        const newItem = {
             ...currentDetail,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
-        }]);
+        };
+
+        if (editingDetailIndex !== null) {
+            // Update existing detail
+            setDetailItems(prev => prev.map((item, index) => index === editingDetailIndex ? newItem : item));
+            setEditingDetailIndex(null);
+        } else {
+            // Add new detail
+            setDetailItems(prev => [...prev, newItem]);
+        }
+
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
 
     const handleRemoveDetail = (indexToRemove: number) => {
         setDetailItems(prev => prev.filter((_, index) => index !== indexToRemove));
+        if (editingDetailIndex === indexToRemove) {
+            handleCancelDetailEdit();
+        } else if (editingDetailIndex !== null && editingDetailIndex > indexToRemove) {
+            setEditingDetailIndex(editingDetailIndex - 1);
+        }
     };
     
     const handleEditParticular = (indexToEdit: number) => {
@@ -204,7 +226,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             pricePerUnit: String(itemToEdit.pricePerUnit),
             numberOfUnits: String(itemToEdit.numberOfUnits),
         });
-        handleRemoveDetail(indexToEdit);
+        setEditingDetailIndex(indexToEdit);
+    };
+
+    const handleCancelDetailEdit = () => {
+        setEditingDetailIndex(null);
+        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
 
     const handleDetailAccomplishmentChange = (index: number, field: keyof SubprojectDetailInput, value: any) => {
@@ -482,7 +509,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
                                         <div className="space-y-2 mb-4">
                                             {detailItems.map((d, index) => (
-                                                <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                                <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                     <div>
                                                         <span className="font-semibold">{d.particulars}</span>
                                                         <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
@@ -518,7 +545,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                             <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                            <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                            
+                                            {editingDetailIndex !== null ? (
+                                                <div className="flex gap-1 h-9 items-end">
+                                                    <button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                                    <button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                                </div>
+                                            ) : (
+                                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                            )}
                                         </div>
                                      </fieldset>
                                 </div>
