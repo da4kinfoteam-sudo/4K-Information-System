@@ -3,7 +3,7 @@
 import React from 'react';
 import { 
     Subproject, Activity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
-    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType
+    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions
 } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { supabase } from '../../supabaseClient';
@@ -12,6 +12,38 @@ import { parseStaffingRequirementRow } from '../program_management/StaffingRequi
 import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
 
 declare const XLSX: any;
+
+// Helper to map short codes/numbers to full Region names
+const resolveRegion = (input: string | number | undefined): string => {
+    if (!input) return '';
+    const s = String(input).toUpperCase().trim();
+    
+    // Direct match check (case insensitive)
+    const exactMatch = philippineRegions.find(r => r.toUpperCase() === s);
+    if (exactMatch) return exactMatch;
+
+    // Mapping for Short Codes / Numbers
+    if (s === 'NCR' || s === '130000000') return 'National Capital Region (NCR)';
+    if (s === 'CAR') return 'Cordillera Administrative Region (CAR)';
+    if (s === '1' || s === 'I') return 'Region I (Ilocos Region)';
+    if (s === '2' || s === 'II') return 'Region II (Cagayan Valley)';
+    if (s === '3' || s === 'III') return 'Region III (Central Luzon)';
+    if (['4A', '4-A', 'IV-A', 'IVA'].includes(s)) return 'Region IV-A (CALABARZON)';
+    if (['4B', '4-B', 'IV-B', 'IVB', 'MIMAROPA'].includes(s)) return 'MIMAROPA Region';
+    if (s === '5' || s === 'V') return 'Region V (Bicol Region)';
+    if (s === '6' || s === 'VI') return 'Region VI (Western Visayas)';
+    if (s === '7' || s === 'VII') return 'Region VII (Central Visayas)';
+    if (s === '8' || s === 'VIII') return 'Region VIII (Eastern Visayas)';
+    if (s === '9' || s === 'IX') return 'Region IX (Zamboanga Peninsula)';
+    if (s === '10' || s === 'X') return 'Region X (Northern Mindanao)';
+    if (s === '11' || s === 'XI') return 'Region XI (Davao Region)';
+    if (s === '12' || s === 'XII') return 'Region XII (SOCCSKSARGEN)';
+    if (['13', 'XIII', 'CARAGA'].includes(s)) return 'Region XIII (Caraga)';
+    if (['BARMM', 'ARMM'].includes(s)) return 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)';
+    if (s === 'NIR') return 'Negros Island Region (NIR)'; 
+
+    return String(input).trim();
+};
 
 // --- SUBPROJECTS ---
 
@@ -527,7 +559,7 @@ export const downloadIposReport = (ipos: IPO[]) => {
 
 export const downloadIposTemplate = () => {
     const headers = [
-        'name', 'province', 'municipality', 'barangay', 'indigenousCulturalCommunity', 
+        'name', 'region', 'province', 'municipality', 'barangay', 'indigenousCulturalCommunity', 
         'ancestralDomainNo', 'registeringBody', 'isWomenLed', 'isWithinGida', 'isWithinElcac', 'isWithScad',
         'contactPerson', 'contactNumber', 'registrationDate', 'commodities', 
         'levelOfDevelopment'
@@ -535,6 +567,7 @@ export const downloadIposTemplate = () => {
     
     const exampleData = [{
         name: 'Sample Farmers Association',
+        region: 'Region IV-A (CALABARZON)',
         province: 'Rizal',
         municipality: 'Tanay',
         barangay: 'Brgy. Daraitan',
@@ -555,6 +588,7 @@ export const downloadIposTemplate = () => {
     const instructions = [
         ["Column", "Description"],
         ["name", "Full name of the IPO. (Required)"],
+        ["region", "Region. You can enter the full name or short codes: '1'-'13', 'NCR', 'CAR', 'BARMM', 'NIR', '4A', '4B'. (Required)"],
         ["province", "Province name. (Required)"],
         ["municipality", "City or Municipality name. (Required)"],
         ["barangay", "Barangay name(s). Optional. Separate multiple barangays with a comma (e.g., 'Brgy A, Brgy B')."],
@@ -605,8 +639,8 @@ export const handleIposUpload = (
             let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
             
             const newIpos: Omit<IPO, 'id'>[] = jsonData.map((row: any, index: number) => {
-                if (!row.name || !row.province || !row.municipality) {
-                    throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality).`);
+                if (!row.name || !row.region || !row.province || !row.municipality) {
+                    throw new Error(`Row ${index + 2} is missing required fields (name, region, province, municipality).`);
                 }
 
                 let commodities: any[];
@@ -621,6 +655,7 @@ export const handleIposUpload = (
                 const brgy = row.barangay ? String(row.barangay).trim() : '';
                 const municipality = String(row.municipality).trim();
                 const province = String(row.province).trim();
+                const region = resolveRegion(row.region);
 
                 if (brgy) {
                     const brgyList = brgy.split(',').map((b: string) => b.trim()).filter((b: string) => b !== '');
@@ -630,7 +665,6 @@ export const handleIposUpload = (
                     locationString = `${municipality}, ${province}`;
                 }
 
-                const { region } = parseLocation(locationString);
                 const isWithScad = commodities.some((c: any) => c.isScad);
 
                 return {

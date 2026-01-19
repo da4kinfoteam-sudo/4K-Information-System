@@ -8,6 +8,7 @@ import GADDashboard from './dashboards/GADDashboard';
 import IPOLevelDashboard from './dashboards/IPOLevelDashboard';
 import NutritionDashboard from './dashboards/NutritionDashboard';
 import FarmProductivityDashboard from './dashboards/FarmProductivityDashboard';
+import SCADDashboard from './dashboards/SCADDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -21,7 +22,7 @@ export interface DashboardsPageProps {
     otherProgramExpenses: OtherProgramExpense[];
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income';
+type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser } = useAuth();
@@ -199,6 +200,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                     <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="Physical" label="Physical" />
                         <TabButton tabName="Financial" label="Financial" />
+                        <TabButton tabName="SCAD" label="SCAD" />
                         <TabButton tabName="GAD" label="GAD" />
                         <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
                         <TabButton tabName="Nutrition" label="Nutrition" />
@@ -211,6 +213,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             <div className="mt-4">
                 {activeTab === 'Physical' && <PhysicalDashboard data={filteredData} setModalData={setModalData} />}
                 {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
+                {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
