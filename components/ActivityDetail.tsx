@@ -1,6 +1,7 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits, ReferenceActivity, ActivityComponentType, otherActivityComponents } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,6 +12,7 @@ interface ActivityDetailProps {
     previousPageName: string;
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    referenceActivities?: ReferenceActivity[];
 }
 
 const formatDate = (dateString?: string) => {
@@ -33,11 +35,12 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes }) => {
+const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [] }) => {
     const { currentUser } = useAuth();
     const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
     const [editedActivity, setEditedActivity] = useState(activity);
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
+    const [selectedActivityType, setSelectedActivityType] = useState('');
     
     // Budget Edit State
     const [currentExpense, setCurrentExpense] = useState({
@@ -51,17 +54,63 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
 
     useEffect(() => {
         setEditedActivity(activity);
+        
+        // Initialize Selected Activity Type for dropdown logic
+        if (activity.type === 'Training') {
+            const ref = referenceActivities?.find(ra => ra.component === activity.component && ra.type === 'Training');
+            if (ref) {
+                setSelectedActivityType(ref.activity_name);
+            } else {
+                setSelectedActivityType(`${activity.component} Training`); // Fallback
+            }
+        } else {
+            setSelectedActivityType(activity.name);
+        }
+
         if (editMode === 'full') setActiveTab('details');
         if (editMode === 'budget') setActiveTab('expenses');
-    }, [activity, editMode]);
+    }, [activity, editMode, referenceActivities]);
 
     const totalBudget = useMemo(() => {
        return editedActivity.expenses.reduce((acc, item) => acc + item.amount, 0);
     }, [editedActivity.expenses]);
 
+    const activityOptions = useMemo(() => {
+        return referenceActivities
+            .filter(ra => ra.component === editedActivity.component)
+            .map(ra => ra.activity_name);
+    }, [editedActivity.component, referenceActivities]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setEditedActivity(prev => ({ ...prev, [name]: value }));
+        if (name === 'component') {
+             setEditedActivity(prev => ({ ...prev, component: value as ActivityComponentType, name: '' })); 
+             setSelectedActivityType('');
+        } else {
+             setEditedActivity(prev => ({ ...prev, [name]: value }));
+        }
+    };
+
+    const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedName = e.target.value;
+        setSelectedActivityType(selectedName);
+        
+        const ref = referenceActivities.find(ra => ra.activity_name === selectedName && ra.component === editedActivity.component);
+        const type = ref?.type || 'Activity'; 
+        
+        if (type === 'Training') {
+            // Check if user is re-selecting the original category for this activity
+            const originalRef = referenceActivities.find(ra => ra.component === activity.component && ra.type === 'Training');
+            if (activity.type === 'Training' && originalRef && originalRef.activity_name === selectedName) {
+                 // Keep original name if it was already set
+                 setEditedActivity(prev => ({ ...prev, name: activity.name, type: 'Training' }));
+            } else {
+                 // Reset name for new training category to allow specific title input
+                 setEditedActivity(prev => ({ ...prev, name: '', type: 'Training' }));
+            }
+        } else {
+            setEditedActivity(prev => ({ ...prev, name: selectedName, type: 'Activity' }));
+        }
     };
 
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,10 +240,31 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Information</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div className="md:col-span-2">
-                                                <label className="block text-sm font-medium">Activity Name</label>
-                                                <input type="text" name="name" value={editedActivity.name} onChange={handleInputChange} required className={commonInputClasses} />
+                                            <div>
+                                                <label className="block text-sm font-medium">Component</label>
+                                                <select name="component" value={editedActivity.component} onChange={handleInputChange} className={commonInputClasses}>
+                                                    {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
                                             </div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Activity Name</label>
+                                                <select value={selectedActivityType} onChange={handleActivityTypeChange} className={commonInputClasses}>
+                                                    <option value="">Select Activity</option>
+                                                    {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                </select>
+                                            </div>
+                                            {editedActivity.type === 'Training' && (
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-sm font-medium">Specific Training Title</label>
+                                                    <input type="text" name="name" value={editedActivity.name} onChange={handleInputChange} required className={commonInputClasses} placeholder="Enter specific training title" />
+                                                </div>
+                                            )}
+                                            {editedActivity.type === 'Training' && (
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-sm font-medium">Facilitator</label>
+                                                    <input type="text" name="facilitator" value={editedActivity.facilitator} onChange={handleInputChange} className={commonInputClasses} />
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="block text-sm font-medium">Date</label>
                                                 <input type="date" name="date" value={editedActivity.date} onChange={handleInputChange} required className={commonInputClasses} />
@@ -203,12 +273,6 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <label className="block text-sm font-medium">Location</label>
                                                 <LocationPicker value={editedActivity.location} onChange={(val) => setEditedActivity(prev => ({...prev, location: val}))} />
                                             </div>
-                                            {editedActivity.type === 'Training' && (
-                                                <div className="md:col-span-2">
-                                                    <label className="block text-sm font-medium">Facilitator</label>
-                                                    <input type="text" name="facilitator" value={editedActivity.facilitator} onChange={handleInputChange} className={commonInputClasses} />
-                                                </div>
-                                            )}
                                             <div className="md:col-span-2">
                                                 <label className="block text-sm font-medium">Description</label>
                                                 <textarea name="description" value={editedActivity.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />

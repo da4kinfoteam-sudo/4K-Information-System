@@ -383,6 +383,7 @@ const AppContent: React.FC = () => {
                                 setSelectedActivity(updated);
                             }}
                             uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
                         />;
             case '/settings':
                 return <Settings 
@@ -428,3 +429,4 @@ export const App: React.FC = () => {
         </AuthProvider>
     );
 };
+
