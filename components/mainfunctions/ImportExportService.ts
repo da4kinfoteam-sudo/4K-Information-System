@@ -1,5 +1,6 @@
 
 // Author: 4K
+import React from 'react';
 import { 
     Subproject, Activity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
     SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType
@@ -604,8 +605,8 @@ export const handleIposUpload = (
             let currentMaxId = ipos.reduce((max, ipo) => Math.max(max, ipo.id), 0);
             
             const newIpos: Omit<IPO, 'id'>[] = jsonData.map((row: any, index: number) => {
-                if (!row.name || !row.province || !row.municipality || !row.registrationDate) {
-                    throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality, registrationDate).`);
+                if (!row.name || !row.province || !row.municipality) {
+                    throw new Error(`Row ${index + 2} is missing required fields (name, province, municipality).`);
                 }
 
                 let commodities: any[];
@@ -645,7 +646,7 @@ export const handleIposUpload = (
                     isWithScad: isWithScad,
                     contactPerson: String(row.contactPerson || ''),
                     contactNumber: String(row.contactNumber || ''),
-                    registrationDate: String(row.registrationDate),
+                    registrationDate: row.registrationDate ? String(row.registrationDate) : '',
                     commodities: commodities,
                     levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
                     created_at: new Date().toISOString(),

@@ -52,9 +52,10 @@ const DetailItem: React.FC<{ label: string; value?: string | React.ReactNode }> 
 
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories }) => {
     const { currentUser } = useAuth();
-    const [editMode, setEditMode] = useState<'none' | 'full' | 'budget'>('none');
+    // Added 'accomplishment' mode
+    const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
     const [editedSubproject, setEditedSubproject] = useState(subproject);
-    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'accomplishments'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
      const [currentDetail, setCurrentDetail] = useState({
         type: '',
@@ -86,6 +87,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setDetailItems(subproject.details.map(({ id, ...rest }) => rest));
         if (editMode === 'full') setActiveTab('details');
         if (editMode === 'budget') setActiveTab('budget');
+        // Accomplishment mode doesn't need tab switching logic here as it has its own fixed view
     }, [subproject, editMode]);
 
     // Check completion status whenever details change (similar to Subprojects.tsx)
@@ -271,9 +273,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         
+        let eventType = "Updated via Detail View";
+        if (editMode === 'budget') eventType = "Updated Budget via Detail View";
+        if (editMode === 'accomplishment') eventType = "Updated Accomplishment";
+
         const historyEntry = {
             date: new Date().toISOString(),
-            event: editMode === 'budget' ? "Updated Budget via Detail View" : "Updated via Detail View",
+            event: eventType,
             user: currentUser?.fullName || "System"
         };
 
@@ -310,7 +316,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             <div className="space-y-6">
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-                        {editMode === 'budget' ? 'Editing Budget Items: ' : 'Editing: '}{subproject.name}
+                        {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : 'Editing: '}{subproject.name}
                     </h1>
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
@@ -323,7 +329,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     <TabButton tabName="details" label="Subproject Details" />
                                     <TabButton tabName="commodity" label="Subproject Commodity" />
                                     <TabButton tabName="budget" label="Budget Items" />
-                                    <TabButton tabName="accomplishments" label="Accomplishments" />
+                                    {/* Accomplishment Tab Removed from standard Edit Mode */}
                                 </nav>
                             </div>
                         )}
@@ -517,7 +523,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                      </fieldset>
                                 </div>
                             )}
-                            {activeTab === 'accomplishments' && editMode === 'full' && (
+                            
+                            {editMode === 'accomplishment' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
@@ -635,9 +642,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     <p className="text-md text-gray-500 dark:text-gray-400">{subproject.location}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     <button onClick={() => setEditMode('full')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">
+                     <button onClick={() => setEditMode('full')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                        Edit
+                        Edit Subproject
+                    </button>
+                    <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Edit Accomplishment
                     </button>
                     <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>

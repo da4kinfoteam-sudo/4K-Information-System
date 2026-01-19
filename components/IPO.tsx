@@ -384,8 +384,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         e.preventDefault();
         const finalRegisteringBody = formData.registeringBody === 'Others' ? otherRegisteringBody : formData.registeringBody;
         
-        if (!formData.name || !formData.location || !finalRegisteringBody || !formData.registrationDate) {
-            alert('Please fill out all required fields: Name, Location, Registering Body, and Registration Date.');
+        // Removed validation for registeringBody and registrationDate
+        if (!formData.name || !formData.location) {
+            alert('Please fill out all required fields: Name and Location.');
             return;
         }
         
@@ -784,7 +785,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
                          <div>
                             <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
-                            <select name="registeringBody" id="registeringBody" value={formData.registeringBody} onChange={handleInputChange} required className={commonInputClasses}>
+                            <select name="registeringBody" id="registeringBody" value={formData.registeringBody} onChange={handleInputChange} className={commonInputClasses}>
                                 {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 <option value="Others">Others</option>
                             </select>
@@ -792,12 +793,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                          {formData.registeringBody === 'Others' && (
                             <div>
                                 <label htmlFor="otherRegisteringBody" className="block text-sm font-medium">Please Specify</label>
-                                <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
+                                <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} className={commonInputClasses} />
                             </div>
                          )}
                           <div className={formData.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
                             <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
-                            <input type="date" name="registrationDate" id="registrationDate" value={formData.registrationDate} onChange={handleInputChange} required className={commonInputClasses} />
+                            <input type="date" name="registrationDate" id="registrationDate" value={formData.registrationDate} onChange={handleInputChange} className={commonInputClasses} />
                         </div>
 
                          <div>

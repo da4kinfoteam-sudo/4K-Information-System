@@ -17,6 +17,12 @@ interface FinancialDashboardProps {
     };
 }
 
+interface MonthlyDataPoint {
+    target: number;
+    obligation: number;
+    disbursement: number;
+}
+
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     const financialData = useMemo(() => {
@@ -33,7 +39,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         let totalObligation = 0;
         let totalDisbursement = 0;
 
-        const monthlyData: { [key: number]: { target: number; obligation: number; disbursement: number } } = {};
+        const monthlyData: { [key: number]: MonthlyDataPoint } = {};
         for (let i = 0; i < 12; i++) {
             monthlyData[i] = { target: 0, obligation: 0, disbursement: 0 };
         }
@@ -200,7 +206,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 
     // Comparison Component Card
-    const ComponentComparisonCard = ({ title, target, obligation, disbursement }: { title: string, target: number, obligation: number, disbursement: number }) => {
+    const ComponentComparisonCard: React.FC<{ title: string, target: number, obligation: number, disbursement: number }> = ({ title, target, obligation, disbursement }) => {
         const obliPercent = target > 0 ? (obligation / target) * 100 : 0;
         const disbPercent = target > 0 ? (disbursement / target) * 100 : 0;
 
@@ -246,7 +252,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     // Monthly Chart Component (Green Theme)
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dataPoints = Object.values(monthlyData);
+        const dataPoints = Object.values(monthlyData) as MonthlyDataPoint[];
         const maxVal = Math.max(
             ...dataPoints.map(d => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale

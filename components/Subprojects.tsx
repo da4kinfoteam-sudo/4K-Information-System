@@ -72,7 +72,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
-    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'accomplishments'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [isUploading, setIsUploading] = useState(false);
 
     // Filters
@@ -389,13 +389,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
     };
 
-    const handleDetailAccomplishmentChange = (id: number, field: keyof SubprojectDetail, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            details: prev.details.map(d => d.id === id ? { ...d, [field]: value } : d)
-        }));
-    };
-
     // Commodity Handlers
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -445,13 +438,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setFormData(prev => ({
             ...prev,
             subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
-        }));
-    };
-
-    const handleCommodityAccomplishmentChange = (index: number, value: number) => {
-        setFormData(prev => ({
-            ...prev,
-            subprojectCommodities: prev.subprojectCommodities?.map((c, i) => i === index ? { ...c, actualYield: value } : c)
         }));
     };
 
@@ -934,7 +920,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         <TabButton tabName="details" label="Subproject Details" />
                         <TabButton tabName="commodity" label="Subproject Commodity" />
                         <TabButton tabName="budget" label="Budget Items" />
-                        {view === 'edit' && <TabButton tabName="accomplishments" label="Accomplishments" />}
+                        {/* Accomplishments Tab Removed */}
                     </nav>
                 </div>
                 <div className="min-h-[400px]">
@@ -1123,106 +1109,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
                                 </div>
                              </fieldset>
-                        </div>
-                    )}
-                    {activeTab === 'accomplishments' && view === 'edit' && (
-                        <div className="space-y-6">
-                            {/* Section 1: Budget Items */}
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
-                                            <tr>
-                                                <th className="px-3 py-2 text-left font-medium">Particulars</th>
-                                                <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
-                                                <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
-                                                <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
-                                                <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                            {formData.details.map((detail) => (
-                                                <tr key={detail.id}>
-                                                    <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{detail.particulars}</td>
-                                                    <td className="px-3 py-2">
-                                                        <input type="date" value={detail.actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <input type="date" value={detail.actualObligationDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <input type="date" value={detail.actualDisbursementDate || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <input type="number" value={detail.actualAmount || ''} onChange={(e) => handleDetailAccomplishmentChange(detail.id, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </fieldset>
-
-                            {/* Section 2: Customer Satisfaction */}
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Customer Satisfaction</legend>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
-                            </fieldset>
-
-                            {/* Section 3: Impact of Subproject */}
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Impact of Subproject</legend>
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                        <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
-                                            <tr>
-                                                <th className="px-3 py-2 text-left font-medium">Commodity</th>
-                                                <th className="px-3 py-2 text-left font-medium">Target</th>
-                                                <th className="px-3 py-2 text-left font-medium">Actual Yield/Heads</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                            {formData.subprojectCommodities?.map((commodity, index) => (
-                                                <tr key={index}>
-                                                    <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
-                                                    <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                                                        {commodity.averageYield ? `${commodity.averageYield} (Yield)` : ''} 
-                                                        {commodity.typeName === 'Animal Commodity' ? ' (Heads)' : ''}
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, parseFloat(e.target.value))} className="w-32 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
-                                                            <span className="text-xs text-gray-500">{commodity.typeName === 'Animal Commodity' ? 'heads' : 'yield'}</span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                            {(!formData.subprojectCommodities || formData.subprojectCommodities.length === 0) && (
-                                                <tr><td colSpan={3} className="px-3 py-2 text-sm text-gray-500 italic text-center">No commodities linked.</td></tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </fieldset>
-
-                            {/* Section 4: Catch Up Plan (Conditional) */}
-                            {new Date() > new Date(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
-                                <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
-                                    <p className="text-xs text-red-500 mb-2">Project is delayed. Please provide a catch-up plan.</p>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks / Justification</label>
-                                            <textarea name="catchUpPlanRemarks" value={formData.catchUpPlanRemarks || ''} onChange={handleInputChange} rows={3} className={commonInputClasses} placeholder="Describe actions taken or justification for delay..." />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Completion Date</label>
-                                            <input type="date" name="newTargetCompletionDate" value={formData.newTargetCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} />
-                                        </div>
-                                    </div>
-                                </fieldset>
-                            )}
                         </div>
                     )}
                 </div>
