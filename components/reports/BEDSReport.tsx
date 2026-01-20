@@ -1,4 +1,4 @@
-
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
@@ -506,10 +506,215 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
         });
     }
 
+    const handlePrint = () => {
+        window.print();
+    };
+
+    const handleDownloadBEDSXlsx = () => {
+        const wb = XLSX.utils.book_new();
+
+        // --- BED 1 Sheet ---
+        const bed1Header1 = [
+            "Program/Activity/Project", 
+            "Performance Indicator", 
+            "Current Year Obligation", null, null,
+            "Comprehensive Release", null, null, null, null,
+            "For Later Release", null, null, null, null
+        ];
+        const bed1Header2 = [
+            null, null,
+            "Actual (Jan-Sept)", "Estimate (Oct-Dec)", "Total Target",
+            "Q1", "Q2", "Q3", "Q4", "Subtotal",
+            "Q1", "Q2", "Q3", "Q4", "Subtotal"
+        ];
+
+        const bed1Rows: any[][] = [bed1Header1, bed1Header2];
+
+        const processBed1Items = (items: any[], indent: string) => {
+            items.forEach(item => {
+                bed1Rows.push([
+                    indent + item.indicator,
+                    "", // Indicator column usually empty for P/A/P or reused
+                    item.janSeptActual || 0,
+                    item.octDecEstimate || 0,
+                    item.currTotal || 0,
+                    item.compQ1 || 0, item.compQ2 || 0, item.compQ3 || 0, item.compQ4 || 0, item.compSubtotal || 0,
+                    item.laterQ1 || 0, item.laterQ2 || 0, item.laterQ3 || 0, item.laterQ4 || 0, item.laterSubtotal || 0
+                ]);
+            });
+        };
+
+        const addBed1SummaryRow = (label: string, items: any[]) => {
+             const totals = items.reduce((acc, item) => ({
+                currTotal: acc.currTotal + (item.currTotal || 0),
+                compQ1: acc.compQ1 + (item.compQ1 || 0),
+                compQ2: acc.compQ2 + (item.compQ2 || 0),
+                compQ3: acc.compQ3 + (item.compQ3 || 0),
+                compQ4: acc.compQ4 + (item.compQ4 || 0),
+                compSubtotal: acc.compSubtotal + (item.compSubtotal || 0),
+                laterQ1: acc.laterQ1 + (item.laterQ1 || 0),
+                laterQ2: acc.laterQ2 + (item.laterQ2 || 0),
+                laterQ3: acc.laterQ3 + (item.laterQ3 || 0),
+                laterQ4: acc.laterQ4 + (item.laterQ4 || 0),
+                laterSubtotal: acc.laterSubtotal + (item.laterSubtotal || 0),
+                janSeptActual: acc.janSeptActual + (item.janSeptActual || 0),
+                octDecEstimate: acc.octDecEstimate + (item.octDecEstimate || 0)
+            }), { currTotal: 0, compQ1: 0, compQ2: 0, compQ3: 0, compQ4: 0, compSubtotal: 0, laterQ1:0, laterQ2:0, laterQ3:0, laterQ4:0, laterSubtotal:0, janSeptActual:0, octDecEstimate:0 });
+
+            bed1Rows.push([
+                label, "Total",
+                totals.janSeptActual, totals.octDecEstimate, totals.currTotal,
+                totals.compQ1, totals.compQ2, totals.compQ3, totals.compQ4, totals.compSubtotal,
+                totals.laterQ1, totals.laterQ2, totals.laterQ3, totals.laterQ4, totals.laterSubtotal
+            ]);
+        }
+
+        Object.entries(bed1Data).forEach(([key, val]: [string, any]) => {
+            if (Array.isArray(val)) {
+                if (val.length > 0) {
+                    addBed1SummaryRow(key, val);
+                    processBed1Items(val, "  ");
+                } else {
+                    bed1Rows.push([key, "No items"]);
+                }
+            } else if (val.isNestedExpandable) {
+                const allItems = Object.values(val.packages).flatMap((p: any) => p.items);
+                if (allItems.length > 0) {
+                    addBed1SummaryRow(key, allItems);
+                    Object.entries(val.packages).forEach(([pkgName, pkgData]: [string, any]) => {
+                        if (pkgData.items.length > 0) {
+                            addBed1SummaryRow(`  ${pkgName}`, pkgData.items);
+                            processBed1Items(pkgData.items, "    ");
+                        }
+                    });
+                } else {
+                    bed1Rows.push([key, "No items"]);
+                }
+            }
+        });
+
+        // Grand Total BED 1
+        const grandTotals1 = getGrandTotals(bed1Data);
+        addBed1SummaryRow("GRAND TOTAL", grandTotals1);
+
+        const ws1 = XLSX.utils.aoa_to_sheet(bed1Rows);
+        // Merges for BED 1 Header
+        if(!ws1['!merges']) ws1['!merges'] = [];
+        ws1['!merges'].push({ s: {r:0, c:0}, e: {r:1, c:0} }); // PAP
+        ws1['!merges'].push({ s: {r:0, c:1}, e: {r:1, c:1} }); // Indicator
+        ws1['!merges'].push({ s: {r:0, c:2}, e: {r:0, c:4} }); // CY Obligation
+        ws1['!merges'].push({ s: {r:0, c:5}, e: {r:0, c:9} }); // Comp Release
+        ws1['!merges'].push({ s: {r:0, c:10}, e: {r:0, c:14} }); // Later Release
+
+        XLSX.utils.book_append_sheet(wb, ws1, "BED 1");
+
+
+        // --- Helper for BED 2 & 3 ---
+        const generateMonthlySheet = (dataMap: any, sheetName: string) => {
+            const header1 = [
+                "Program/Activity/Project",
+                "Quarter 1", null, null, null,
+                "Quarter 2", null, null, null, null,
+                "Quarter 3", null, null, null, null,
+                "Quarter 4", null, null, null, null,
+                "Grand Total"
+            ];
+            const header2 = [
+                null,
+                "Jan", "Feb", "Mar", "Total",
+                "Apr", "May", "Jun", "Total",
+                "Jul", "Aug", "Sep", "Total",
+                "Oct", "Nov", "Dec", "Total",
+                null
+            ];
+            
+            const rows: any[][] = [header1, header2];
+
+            const processItems = (items: any[], indent: string) => {
+                items.forEach(item => {
+                    rows.push([
+                        indent + item.indicator,
+                        item.m1, item.m2, item.m3, item.q1,
+                        item.m4, item.m5, item.m6, item.q2,
+                        item.m7, item.m8, item.m9, item.q3,
+                        item.m10, item.m11, item.m12, item.q4,
+                        item.total
+                    ]);
+                });
+            };
+
+            const addSummaryRow = (label: string, items: any[]) => {
+                const t = items.reduce((acc, item) => {
+                    for(let i=1; i<=12; i++) acc[`m${i}`] += (item[`m${i}`] || 0);
+                    acc.q1 += (item.q1 || 0); acc.q2 += (item.q2 || 0); acc.q3 += (item.q3 || 0); acc.q4 += (item.q4 || 0);
+                    acc.total += (item.total || 0);
+                    return acc;
+                }, { m1:0, m2:0, m3:0, q1:0, m4:0, m5:0, m6:0, q2:0, m7:0, m8:0, m9:0, q3:0, m10:0, m11:0, m12:0, q4:0, total:0 });
+
+                rows.push([
+                    label,
+                    t.m1, t.m2, t.m3, t.q1,
+                    t.m4, t.m5, t.m6, t.q2,
+                    t.m7, t.m8, t.m9, t.q3,
+                    t.m10, t.m11, t.m12, t.q4,
+                    t.total
+                ]);
+            };
+
+            Object.entries(dataMap).forEach(([key, val]: [string, any]) => {
+                if (Array.isArray(val)) {
+                    if (val.length > 0) {
+                        addSummaryRow(key, val);
+                        processItems(val, "  ");
+                    } else {
+                        rows.push([key, "No items"]);
+                    }
+                } else if (val.isNestedExpandable) {
+                    const allItems = Object.values(val.packages).flatMap((p: any) => p.items);
+                    if (allItems.length > 0) {
+                        addSummaryRow(key, allItems);
+                        Object.entries(val.packages).forEach(([pkgName, pkgData]: [string, any]) => {
+                            if (pkgData.items.length > 0) {
+                                addSummaryRow(`  ${pkgName}`, pkgData.items);
+                                processItems(pkgData.items, "    ");
+                            }
+                        });
+                    } else {
+                        rows.push([key, "No items"]);
+                    }
+                }
+            });
+
+            // Grand Total
+            const grandTotalItems = getGrandTotals(dataMap);
+            addSummaryRow("GRAND TOTAL", grandTotalItems);
+
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            if(!ws['!merges']) ws['!merges'] = [];
+            ws['!merges'].push({ s: {r:0, c:0}, e: {r:1, c:0} }); // PAP
+            ws['!merges'].push({ s: {r:0, c:1}, e: {r:0, c:4} }); // Q1
+            ws['!merges'].push({ s: {r:0, c:5}, e: {r:0, c:8} }); // Q2
+            ws['!merges'].push({ s: {r:0, c:9}, e: {r:0, c:12} }); // Q3
+            ws['!merges'].push({ s: {r:0, c:13}, e: {r:0, c:16} }); // Q4
+            ws['!merges'].push({ s: {r:0, c:17}, e: {r:1, c:17} }); // Total
+
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        };
+
+        generateMonthlySheet(bed2Data, "BED 2");
+        generateMonthlySheet(bed3Data, "BED 3");
+
+        XLSX.writeFile(wb, `BEDS_Report_${selectedYear}_${selectedOu}.xlsx`);
+    };
+
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Execution Documents (BEDS)</h3>
+                <div className="flex gap-2">
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
+                    <button onClick={handleDownloadBEDSXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                </div>
             </div>
             
             <div id="beds-report" className="space-y-8">
