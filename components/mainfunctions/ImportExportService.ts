@@ -1,4 +1,3 @@
-
 // Author: 4K
 import React from 'react';
 import { 
@@ -313,7 +312,7 @@ export const downloadActivitiesTemplate = () => {
         'uid', 'type', 'component', 'name', 'date', 'province', 'municipality', 'facilitator', 'description',
         'participatingIpos', 'participantsMale', 'participantsFemale',
         'fundingYear', 'fundType', 'tier', 'operatingUnit',
-        'expense_objectType', 'expense_particular', 'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
+        'expense_uacsCode', 'expense_obligationMonth', 'expense_disbursementMonth', 'expense_amount'
     ];
     const exampleData = [
         {
@@ -333,8 +332,6 @@ export const downloadActivitiesTemplate = () => {
             fundType: 'Current',
             tier: 'Tier 1',
             operatingUnit: 'RPMO 4A',
-            expense_objectType: 'MOOE',
-            expense_particular: 'Training Expenses',
             expense_uacsCode: '50202010-01',
             expense_obligationMonth: '2024-03-01',
             expense_disbursementMonth: '2024-03-20',
@@ -347,7 +344,9 @@ export const downloadActivitiesTemplate = () => {
         ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
         ["province", "Province name."],
         ["municipality", "City or Municipality name."],
-        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."]
+        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."],
+        ["expense_uacsCode", "UACS Code used to identify Expense Particular and Object Type."],
+        ["expense_amount", "Amount for the expense entry."]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -449,31 +448,23 @@ export const handleActivitiesUpload = (
                     });
                 }
 
-                if (row.expense_amount !== undefined && row.expense_objectType) {
-                    let objectType = row.expense_objectType;
-                    let expenseParticular = String(row.expense_particular || '');
+                if (row.expense_amount !== undefined) {
                     let uacsCode = String(row.expense_uacsCode || '').trim();
+                    let objectType = 'MOOE'; // Default
+                    let expenseParticular = '';
 
-                    const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
-                    let matchFound = false;
+                    // Look up details from uacsCodes reference
+                    if (uacsCodes && uacsCode) {
+                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
+                        let matchFound = false;
 
-                    if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
-                        const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
-                        const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                        if (match) {
-                            uacsCode = match;
-                            matchFound = true;
-                        }
-                    }
-
-                    if (!matchFound && uacsCodes) {
                         outerLoop:
                         for (const ot of Object.keys(uacsCodes)) {
                             for (const part of Object.keys(uacsCodes[ot])) {
                                 const validCodes = Object.keys(uacsCodes[ot][part]);
                                 const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
                                 if (match) {
-                                    uacsCode = match;
+                                    uacsCode = match; // Canonical code
                                     objectType = ot;
                                     expenseParticular = part;
                                     matchFound = true;
@@ -485,7 +476,7 @@ export const handleActivitiesUpload = (
 
                     groupedData.get(uid).expenses.push({
                         id: Date.now() + index * 10,
-                        objectType: objectType,
+                        objectType: objectType as any,
                         expenseParticular: expenseParticular,
                         uacsCode: uacsCode,
                         obligationMonth: String(row.expense_obligationMonth || ''),
@@ -506,15 +497,8 @@ export const handleActivitiesUpload = (
             if (newActivities.length > 0) {
                 logAction('Imported Activities', `Imported ${newActivities.length} activities from Excel`);
 
-                if (supabase) {
-                    const { error } = await supabase.from('activities').insert(newActivities);
-                    if (error) throw error;
-                    // Trigger refresh in parent if possible, or assume sync hook catches up
-                    // But here we might want to manually update state if sync hook is separate
-                    // For now, we update local state as fallback/optimistic
-                    // Real implementation should rely on `refreshData` passed as prop if strictly db-first
-                } 
-                // Always update local state for immediate feedback or offline
+                // We rely on the useSupabaseTable hook's setActivities to sync data to Supabase.
+                // Explicitly inserting into Supabase here creates duplicate entries.
                 const localActivities = newActivities.map((act, i) => ({ id: currentId + i + 1, ...act }));
                 setActivities(prev => [...prev, ...localActivities]);
                 
@@ -691,11 +675,10 @@ export const handleIposUpload = (
                 };
             });
 
-            if (supabase) {
-                logAction('Imported IPOs', `Imported ${newIpos.length} IPOs from Excel`);
-                const { error } = await supabase.from('ipos').insert(newIpos);
-                if (error) throw error;
-            } 
+            // Prevent double entry:
+            // When using useSupabaseTable hook, updating the state will trigger an upsert/insert to DB.
+            // Therefore, we should NOT explicitly insert here if the hook is active.
+            logAction('Imported IPOs', `Imported ${newIpos.length} IPOs from Excel`);
             
             const localIpos = newIpos.map((ipo, idx) => ({ id: currentMaxId + idx + 1, ...ipo }));
             setIpos(prev => [...prev, ...localIpos]);
