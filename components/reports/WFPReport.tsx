@@ -1,4 +1,4 @@
-
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
@@ -52,6 +52,29 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 } 
             }
         };
+
+        // Helper to aggregate items with same name/indicator
+        const addItemToGroup = (list: any[], newItem: any) => {
+            const existing = list.find(i => i.indicator === newItem.indicator);
+            if (existing) {
+                existing.totalPhysicalTarget += newItem.totalPhysicalTarget;
+                existing.mooeCost += newItem.mooeCost;
+                existing.coCost += newItem.coCost;
+                existing.totalCost += newItem.totalCost;
+                
+                existing.q1Physical += newItem.q1Physical;
+                existing.q2Physical += newItem.q2Physical;
+                existing.q3Physical += newItem.q3Physical;
+                existing.q4Physical += newItem.q4Physical;
+                
+                existing.q1Financial += newItem.q1Financial;
+                existing.q2Financial += newItem.q2Financial;
+                existing.q3Financial += newItem.q3Financial;
+                existing.q4Financial += newItem.q4Financial;
+            } else {
+                list.push(newItem);
+            }
+        };
         
         data.subprojects.forEach(sp => {
             const mooeCost = sp.details.filter(d => d.objectType === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
@@ -78,7 +101,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             if (!finalData['Production and Livelihood'].packages[packageKey]) {
                 finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
             }
-            finalData['Production and Livelihood'].packages[packageKey].items.push(item);
+            addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
         });
 
         data.trainings.forEach(t => {
@@ -107,11 +130,11 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                  if (!finalData['Production and Livelihood'].packages[packageKey]) {
                     finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
                  }
-                 finalData['Production and Livelihood'].packages[packageKey].items.push(item);
+                 addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
             } else if (t.component === 'Program Management') {
-                 finalData['Program Management'].packages['Trainings'].items.push(item);
+                 addItemToGroup(finalData['Program Management'].packages['Trainings'].items, item);
             } else if (finalData[t.component]) {
-                finalData[t.component].push(item);
+                addItemToGroup(finalData[t.component], item);
             }
         });
 
@@ -137,9 +160,9 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             };
             
             if (oa.component === 'Program Management') {
-                 finalData['Program Management'].packages['Activities'].items.push(item);
+                 addItemToGroup(finalData['Program Management'].packages['Activities'].items, item);
             } else if (finalData[oa.component]) {
-                finalData[oa.component].push(item);
+                addItemToGroup(finalData[oa.component], item);
             }
         });
 
@@ -168,7 +191,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                     q3Financial: financialQuarter === 3 ? amount : 0,
                     q4Financial: financialQuarter === 4 ? amount : 0,
                 };
-                finalData['Program Management'].packages[packageKey].items.push(item);
+                addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
             });
         }
 
