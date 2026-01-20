@@ -503,7 +503,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </fieldset>
                                 </div>
                             )}
-                            {activeTab === 'budget' && (
+                            {activeTab === 'budget' && (editMode === 'full' || editMode === 'budget') && (
                                 <div className="space-y-6">
                                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>

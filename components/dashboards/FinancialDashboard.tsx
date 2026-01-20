@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
@@ -333,9 +332,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     // Monthly Chart Component (Green Theme)
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dataPoints = Object.values(monthlyData) as MonthlyDataPoint[];
+        const dataPoints: MonthlyDataPoint[] = Object.values(monthlyData) as MonthlyDataPoint[];
         const maxVal = Math.max(
-            ...dataPoints.map(d => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
@@ -362,7 +361,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d, i) => {
+                    {dataPoints.map((d: MonthlyDataPoint, i: number) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         const yTarget = getY(d.target);
                         const yOb = getY(d.obligation);
