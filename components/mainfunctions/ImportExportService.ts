@@ -70,10 +70,10 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
 
 export const downloadSubprojectsTemplate = () => {
     const headers = [
-        'uid', 'name', 'indigenousPeopleOrganization', 'province', 'municipality', 'status', 'packageType', 
+        'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
         'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
-        'detail_objectType', 'detail_expenseParticular', 'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
+        'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
     ];
 
     const exampleData = [
@@ -81,8 +81,6 @@ export const downloadSubprojectsTemplate = () => {
             uid: 'SP-TEMP-001',
             name: 'Sample Coffee Production',
             indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
-            province: 'Rizal',
-            municipality: 'Tanay',
             status: 'Ongoing',
             packageType: 'Package 1',
             startDate: '2024-01-15',
@@ -99,8 +97,6 @@ export const downloadSubprojectsTemplate = () => {
             detail_unitOfMeasure: 'unit',
             detail_pricePerUnit: 150000,
             detail_numberOfUnits: 1,
-            detail_objectType: 'CO',
-            detail_expenseParticular: 'Machinery and Equipment',
             detail_uacsCode: '10605030-00',
             detail_obligationMonth: '2024-02-01',
             detail_disbursementMonth: '2024-03-15'
@@ -111,9 +107,7 @@ export const downloadSubprojectsTemplate = () => {
         ["Column", "Description"],
         ["uid", "Unique Identifier. REQUIRED. Rows with the same UID will be grouped into one subproject."],
         ["name", "Name of the subproject."],
-        ["indigenousPeopleOrganization", "Name of the IPO."],
-        ["province", "Province name. (Required)"],
-        ["municipality", "City or Municipality name. (Required)"],
+        ["indigenousPeopleOrganization", "Name of the IPO. Location will be automatically derived from the system's IPO list."],
         ["status", "Proposed, Ongoing, Completed, or Cancelled."],
         ["packageType", "Package 1, Package 2, etc."],
         ["startDate", "YYYY-MM-DD"],
@@ -130,9 +124,7 @@ export const downloadSubprojectsTemplate = () => {
         ["detail_unitOfMeasure", "pcs, kgs, unit, lot, heads"],
         ["detail_pricePerUnit", "Number"],
         ["detail_numberOfUnits", "Number"],
-        ["detail_objectType", "MOOE or CO"],
-        ["detail_expenseParticular", "Expense Class"],
-        ["detail_uacsCode", "Specific UACS Code"],
+        ["detail_uacsCode", "Specific UACS Code. Object Type and Expense Particular will be derived from this code."],
         ["detail_obligationMonth", "YYYY-MM-DD (Date of Obligation)"],
         ["detail_disbursementMonth", "YYYY-MM-DD (Date of Disbursement)"]
     ];
@@ -151,6 +143,7 @@ export const handleSubprojectsUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
     subprojects: Subproject[],
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>,
+    ipos: IPO[],
     logAction: (action: string, details: string, ipoName?: string) => void,
     setIsUploading: (val: boolean) => void,
     uacsCodes: any,
@@ -178,9 +171,11 @@ export const handleSubprojectsUpload = (
                 
                 if (!groupedData.has(row.uid)) {
                     maxId++;
-                    const municipality = String(row.municipality || '').trim();
-                    const province = String(row.province || '').trim();
-                    const locationString = `${municipality}, ${province}`;
+                    
+                    // Lookup IPO for Location
+                    const ipoName = String(row.indigenousPeopleOrganization || '').trim();
+                    const matchedIpo = ipos.find(i => i.name === ipoName);
+                    const locationString = matchedIpo ? matchedIpo.location : '';
 
                     // Prioritize row.operatingUnit from Excel
                     const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || '');
@@ -190,7 +185,8 @@ export const handleSubprojectsUpload = (
                         uid: String(row.uid),
                         name: String(row.name),
                         location: locationString,
-                        indigenousPeopleOrganization: String(row.indigenousPeopleOrganization),
+                        indigenousPeopleOrganization: ipoName,
+                        ipo_id: matchedIpo?.id,
                         status: row.status,
                         packageType: row.packageType,
                         startDate: String(row.startDate),
@@ -202,8 +198,8 @@ export const handleSubprojectsUpload = (
                         operatingUnit: operatingUnit,
                         encodedBy: currentUser?.fullName || 'System Upload',
                         remarks: row.remarks,
-                        lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
-                        lng: 120.9842 + (Math.random() * 0.1 - 0.05),
+                        lat: matchedIpo?.lat || 14.5995 + (Math.random() * 0.1 - 0.05), 
+                        lng: matchedIpo?.lng || 120.9842 + (Math.random() * 0.1 - 0.05),
                         details: [],
                         subprojectCommodities: [],
                         created_at: currentTimestamp,
@@ -214,30 +210,22 @@ export const handleSubprojectsUpload = (
                 const subproject = groupedData.get(row.uid);
                 
                 if (row.detail_particulars) {
-                    let objectType = row.detail_objectType;
-                    let expenseParticular = row.detail_expenseParticular;
                     let uacsCode = String(row.detail_uacsCode || '').trim();
+                    let objectType = 'MOOE'; // Default
+                    let expenseParticular = '';
 
-                    const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
-                    let matchFound = false;
+                    // Derive Object Type and Expense Particular from UACS Code
+                    if (uacsCodes && uacsCode) {
+                        const normalizedUpload = uacsCode.replace(/[^a-zA-Z0-9]/g, '');
+                        let matchFound = false;
 
-                    if (uacsCodes && objectType && expenseParticular && uacsCodes[objectType] && uacsCodes[objectType][expenseParticular]) {
-                        const validCodes = Object.keys(uacsCodes[objectType][expenseParticular]);
-                        const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
-                        if (match) {
-                            uacsCode = match;
-                            matchFound = true;
-                        }
-                    }
-
-                    if (!matchFound && uacsCodes) {
                         outerLoop:
                         for (const ot of Object.keys(uacsCodes)) {
                             for (const part of Object.keys(uacsCodes[ot])) {
                                 const validCodes = Object.keys(uacsCodes[ot][part]);
                                 const match = validCodes.find(c => c === uacsCode || c.replace(/[^a-zA-Z0-9]/g, '') === normalizedUpload);
                                 if (match) {
-                                    uacsCode = match;
+                                    uacsCode = match; // Canonical code
                                     objectType = ot;
                                     expenseParticular = part;
                                     matchFound = true;
