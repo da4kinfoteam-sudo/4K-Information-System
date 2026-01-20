@@ -122,7 +122,7 @@ export const downloadSubprojectsTemplate = () => {
         ["fundingYear", "Year (e.g., 2024)"],
         ["fundType", "Current, Continuing, or Insertion"],
         ["tier", "Tier 1 or Tier 2"],
-        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."],
+        ["operatingUnit", "e.g., RPMO 4A. If specified, this takes precedence over your current account's OU."],
         ["remarks", "Optional remarks"],
         ["detail_type", "Item Type (e.g., Equipment, Livestock, etc.)"],
         ["detail_particulars", "Specific item name."],
@@ -182,6 +182,9 @@ export const handleSubprojectsUpload = (
                     const province = String(row.province || '').trim();
                     const locationString = `${municipality}, ${province}`;
 
+                    // Prioritize row.operatingUnit from Excel
+                    const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || '');
+
                     groupedData.set(row.uid, {
                         id: maxId,
                         uid: String(row.uid),
@@ -196,7 +199,7 @@ export const handleSubprojectsUpload = (
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
                         tier: row.tier,
-                        operatingUnit: row.operatingUnit || currentUser?.operatingUnit || '',
+                        operatingUnit: operatingUnit,
                         encodedBy: currentUser?.fullName || 'System Upload',
                         remarks: row.remarks,
                         lat: 14.5995 + (Math.random() * 0.1 - 0.05), 
@@ -344,7 +347,7 @@ export const downloadActivitiesTemplate = () => {
         ["participatingIpos", "Names of IPOs. Separate multiple IPOs with a semicolon (;). Example: 'IPO One; IPO Two'"],
         ["province", "Province name."],
         ["municipality", "City or Municipality name."],
-        ["operatingUnit", "e.g., RPMO 4A. If left blank, it will default to your current operating unit."],
+        ["operatingUnit", "e.g., RPMO 4A. If specified, this takes precedence over your current account's OU."],
         ["expense_uacsCode", "UACS Code used to identify Expense Particular and Object Type."],
         ["expense_amount", "Amount for the expense entry."]
     ];
@@ -423,6 +426,9 @@ export const handleActivitiesUpload = (
                     // Handle empty location fields gracefully
                     const locationString = (municipality && province) ? `${municipality}, ${province}` : (municipality || province || '');
 
+                    // Prioritize row.operatingUnit
+                    const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || 'NPMO');
+
                     groupedData.set(uid, {
                         common: {
                             uid: uid,
@@ -438,7 +444,7 @@ export const handleActivitiesUpload = (
                             fundingYear: Number(row.fundingYear) || undefined,
                             fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
                             tier: tiers.includes(row.tier) ? row.tier : undefined,
-                            operatingUnit: row.operatingUnit || currentUser?.operatingUnit || 'NPMO',
+                            operatingUnit: operatingUnit,
                             encodedBy: currentUser?.fullName || 'System',
                             facilitator: String(row.facilitator || ''),
                             created_at: new Date().toISOString(),
@@ -824,9 +830,12 @@ export const handleProgramManagementUpload = (
             const currentTimestamp = new Date().toISOString();
             const newItems = jsonData.map((row: any, index: number) => {
                 const uid = `${prefix}-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
-                // Basic parsing
+                
+                // Prioritize row.operatingUnit
+                const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || '');
+
                 const common = {
-                    operatingUnit: row.operatingUnit || currentUser?.operatingUnit || '',
+                    operatingUnit: operatingUnit,
                     fundYear: row.fundYear,
                     fundType: row.fundType,
                     tier: row.tier,
