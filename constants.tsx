@@ -297,11 +297,50 @@ export interface StaffingRequirement extends BaseProgramManagementItem {
     salaryGrade: number;
     annualSalary: number; // Includes incentives
     personnelType: 'Technical' | 'Administrative' | 'Support';
+    // Monthly Disbursement Schedule
+    disbursementJan?: number;
+    disbursementFeb?: number;
+    disbursementMar?: number;
+    disbursementApr?: number;
+    disbursementMay?: number;
+    disbursementJun?: number;
+    disbursementJul?: number;
+    disbursementAug?: number;
+    disbursementSep?: number;
+    disbursementOct?: number;
+    disbursementNov?: number;
+    disbursementDec?: number;
 }
 
 export interface OtherProgramExpense extends BaseProgramManagementItem {
     particulars: string;
     amount: number;
+    // Monthly Disbursement Schedule (Target)
+    disbursementJan?: number;
+    disbursementFeb?: number;
+    disbursementMar?: number;
+    disbursementApr?: number;
+    disbursementMay?: number;
+    disbursementJun?: number;
+    disbursementJul?: number;
+    disbursementAug?: number;
+    disbursementSep?: number;
+    disbursementOct?: number;
+    disbursementNov?: number;
+    disbursementDec?: number;
+    // Monthly Disbursement Schedule (Actual)
+    actualDisbursementJan?: number;
+    actualDisbursementFeb?: number;
+    actualDisbursementMar?: number;
+    actualDisbursementApr?: number;
+    actualDisbursementMay?: number;
+    actualDisbursementJun?: number;
+    actualDisbursementJul?: number;
+    actualDisbursementAug?: number;
+    actualDisbursementSep?: number;
+    actualDisbursementOct?: number;
+    actualDisbursementNov?: number;
+    actualDisbursementDec?: number;
 }
 
 
@@ -463,4 +502,3 @@ export interface ReferenceActivity {
     activity_name: string;
     type: 'Activity' | 'Training';
 }
-// --- End of constants.tsx ---

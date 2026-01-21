@@ -156,6 +156,18 @@ ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "status" text;
 ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "salaryGrade" integer;
 ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "annualSalary" numeric;
 ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "personnelType" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJan" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementFeb" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementMar" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementApr" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementMay" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJun" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJul" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementAug" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementSep" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementOct" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementNov" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementDec" numeric default 0;
 ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
 
