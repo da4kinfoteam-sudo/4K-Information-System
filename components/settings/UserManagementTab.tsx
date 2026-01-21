@@ -1,4 +1,3 @@
-
 // Author: 4K
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,8 +38,20 @@ const UserManagementTab: React.FC = () => {
         setIsModalOpen(true);
     };
 
-    const handleDeleteUser = (id: number) => {
+    const handleDeleteUser = async (id: number) => {
         if (window.confirm("Are you sure you want to delete this user?")) {
+            if (supabase) {
+                try {
+                    const { error } = await supabase.from('users').delete().eq('id', id);
+                    if (error) {
+                        console.error("Error deleting user:", error);
+                        alert("Failed to delete user from database.");
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Delete exception:", e);
+                }
+            }
             setUsersList(prev => prev.filter(u => u.id !== id));
         }
     };
@@ -49,8 +60,28 @@ const UserManagementTab: React.FC = () => {
         e.preventDefault();
         
         if (editingUser) {
+            // Update logic
+            if (supabase) {
+                try {
+                    const { error } = await supabase
+                        .from('users')
+                        .update(formData)
+                        .eq('id', editingUser.id);
+
+                    if (error) {
+                        console.error("Error updating user:", error);
+                        alert("Failed to update user in database.");
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Update exception:", e);
+                    alert("An error occurred while updating user.");
+                    return;
+                }
+            }
             setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...formData } : u));
         } else {
+            // Create logic
             if (supabase) {
                 try {
                     const { error } = await supabase.from('users').insert([formData]);

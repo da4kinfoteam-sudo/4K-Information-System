@@ -246,7 +246,7 @@ ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "username" text;
 ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "operating_unit" text;
 ALTER TABLE user_logs ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 
--- 14. References: Activities (New)
+-- 14. References: Activities
 create table if not exists reference_activities (
   "id" bigint primary key generated always as identity
 );
@@ -319,6 +319,16 @@ WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Plan
 INSERT INTO reference_activities (component, activity_name, type)
 SELECT 'Program Management', 'Staff Training', 'Training'
 WHERE NOT EXISTS (SELECT 1 FROM reference_activities WHERE activity_name = 'Staff Training');
+
+-- 15. IPO History (New Table)
+create table if not exists ipo_history (
+  "id" bigint primary key generated always as identity
+);
+ALTER TABLE ipo_history ADD COLUMN IF NOT EXISTS "ipo_id" bigint;
+ALTER TABLE ipo_history ADD COLUMN IF NOT EXISTS "date" text;
+ALTER TABLE ipo_history ADD COLUMN IF NOT EXISTS "event" text;
+ALTER TABLE ipo_history ADD COLUMN IF NOT EXISTS "user" text;
+ALTER TABLE ipo_history ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 
 
 -- ================================================================
@@ -393,3 +403,8 @@ CREATE POLICY "Public Access Planning Schedules" ON planning_schedules FOR ALL U
 ALTER TABLE user_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public Access User Logs" ON user_logs;
 CREATE POLICY "Public Access User Logs" ON user_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- IPO History
+ALTER TABLE ipo_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public Access IPO History" ON ipo_history;
+CREATE POLICY "Public Access IPO History" ON ipo_history FOR ALL USING (true) WITH CHECK (true);

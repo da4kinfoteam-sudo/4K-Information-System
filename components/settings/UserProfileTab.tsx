@@ -1,8 +1,8 @@
-
 // Author: 4K
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { User } from '../../constants';
+import { supabase } from '../../supabaseClient';
 
 interface UserProfileTabProps {
     isDarkMode: boolean;
@@ -27,8 +27,33 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
         setProfileData(prev => prev ? ({ ...prev, [name]: value }) : null);
     };
 
-    const handleSaveProfile = () => {
+    const handleSaveProfile = async () => {
         if (!profileData) return;
+
+        if (supabase) {
+            try {
+                const { error } = await supabase
+                    .from('users')
+                    .update({
+                        username: profileData.username,
+                        fullName: profileData.fullName,
+                        email: profileData.email,
+                        password: profileData.password
+                    })
+                    .eq('id', profileData.id);
+
+                if (error) {
+                    console.error("Error updating profile in database:", error);
+                    alert("Failed to update profile in database.");
+                    return;
+                }
+            } catch (error) {
+                console.error("Error updating profile:", error);
+                alert("An unexpected error occurred.");
+                return;
+            }
+        }
+
         setUsersList(prev => prev.map(u => u.id === profileData.id ? profileData : u));
         login(profileData);
         alert("Profile updated successfully!");
