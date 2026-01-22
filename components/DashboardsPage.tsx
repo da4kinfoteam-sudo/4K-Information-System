@@ -69,7 +69,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         // Filter by Year
         if (selectedYear !== 'All') {
             data.subprojects = data.subprojects.filter(p => p.fundingYear?.toString() === selectedYear);
-            data.ipos = data.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear);
+            // Note: We DO NOT filter IPOs by registration date here anymore. 
+            // Dashboards like GAD and Physical need the full IPO registry to check for engagement status in the selected year.
             data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
             data.otherActivities = data.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear);
             data.officeReqs = data.officeReqs.filter(i => i.fundYear.toString() === selectedYear);

@@ -36,25 +36,52 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
     }, [trainings]);
 
     const womenLedStats = useMemo(() => {
-        const womenLedIpos = ipos.filter(ipo => ipo.isWomenLed);
-        const womenLedNames = new Set(womenLedIpos.map(ipo => ipo.name));
+        // 1. Identify all Women-Led IPO names from the master list (ipos prop)
+        // Note: The ipos prop passed here contains the registry needed for metadata lookup.
+        const womenLedIpoNames = new Set(ipos.filter(ipo => ipo.isWomenLed).map(ipo => ipo.name));
 
-        const relevantSubprojects = subprojects.filter(sp => womenLedNames.has(sp.indigenousPeopleOrganization));
-        
-        const totalAllocation = relevantSubprojects.reduce((acc, sp) => {
-            const spBudget = sp.details.reduce((dAcc, detail) => dAcc + (detail.pricePerUnit * detail.numberOfUnits), 0);
-            return acc + spBudget;
-        }, 0);
+        // 2. Identify Subprojects linked to WL IPOs
+        // Note: 'subprojects' prop is already filtered by the selected Year/FundYear in the parent component
+        const linkedSubprojects = subprojects.filter(sp => womenLedIpoNames.has(sp.indigenousPeopleOrganization));
 
-        const relevantTrainings = trainings.filter(t => 
-            t.participatingIpos.some(ipoName => womenLedNames.has(ipoName))
+        // 3. Identify Trainings linked to WL IPOs
+        // Note: 'trainings' prop is already filtered by the selected Year/FundYear in the parent component
+        const linkedTrainings = trainings.filter(t => 
+            t.participatingIpos.some(ipoName => womenLedIpoNames.has(ipoName))
         );
 
+        // 4. Calculate Total Allocation
+        // Sum of subproject budgets (price * units)
+        const subprojectAllocation = linkedSubprojects.reduce((sum, sp) => {
+            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+        }, 0);
+
+        // Sum of training expenses
+        const trainingAllocation = linkedTrainings.reduce((sum, t) => {
+            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+        }, 0);
+
+        // 5. Count "Total Women-led IPOs" (Engaged)
+        // Definition: IPOs that are tagged as Women-led with linked subprojects and trainings in the selected year
+        const engagedWomenLedIPOs = new Set<string>();
+        
+        // Add from Subprojects
+        linkedSubprojects.forEach(sp => engagedWomenLedIPOs.add(sp.indigenousPeopleOrganization));
+        
+        // Add from Trainings
+        linkedTrainings.forEach(t => {
+            t.participatingIpos.forEach(ipo => {
+                if (womenLedIpoNames.has(ipo)) {
+                    engagedWomenLedIPOs.add(ipo);
+                }
+            });
+        });
+
         return {
-            totalIpos: womenLedIpos.length,
-            totalAllocation,
-            totalSubprojects: relevantSubprojects.length,
-            totalTrainings: relevantTrainings.length
+            totalIpos: engagedWomenLedIPOs.size,
+            totalAllocation: subprojectAllocation + trainingAllocation,
+            totalSubprojects: linkedSubprojects.length,
+            totalTrainings: linkedTrainings.length
         };
     }, [ipos, subprojects, trainings]);
 
@@ -91,11 +118,12 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
         );
     };
 
-    const WomenLedCard = ({ title, value, icon, colorClass }: { title: string, value: string, icon: React.ReactNode, colorClass: string }) => (
+    const WomenLedCard = ({ title, value, icon, colorClass, subtext }: { title: string, value: string, icon: React.ReactNode, colorClass: string, subtext?: string }) => (
         <div className={`bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md border-l-4 ${colorClass} flex items-center justify-between transition hover:-translate-y-1`}>
             <div>
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
                 <p className="text-2xl font-bold text-gray-800 dark:text-white mt-1">{value}</p>
+                {subtext && <p className="text-xs text-gray-400 mt-1">{subtext}</p>}
             </div>
             <div className="p-3 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-600 dark:text-gray-300">
                 {icon}
@@ -120,11 +148,12 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
 
             {/* Women-Led IPOs Section */}
             <section aria-labelledby="women-led-ipos">
-                <h3 id="women-led-ipos" className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Women-Led IPOs Overview</h3>
+                <h3 id="women-led-ipos" className="text-xl font-semibold text-gray-800 dark:text-white mb-4">Women-Led IPO Overview (Engaged)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <WomenLedCard 
                         title="Total Women-Led IPOs" 
                         value={womenLedStats.totalIpos.toLocaleString()} 
+                        subtext="Engaged via SP/Training"
                         colorClass="border-purple-500"
                         icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.184-1.268-.5-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.184-1.268.5-1.857m0 0a5.002 5.002 0 019 0m-4.5 5.002v-10a4.5 4.5 0 00-9 0v10m9 0a4.5 4.5 0 00-9 0" /></svg>}
                     />

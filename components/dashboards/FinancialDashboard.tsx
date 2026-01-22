@@ -1,6 +1,7 @@
+
 // Author: 4K 
 import React, { useMemo } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { parseLocation } from '../LocationPicker';
 
@@ -272,6 +273,63 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         return { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData };
     }, [data]);
 
+    // Matrix Logic for breakdown table
+    const matrixData = useMemo(() => {
+        // Initialize Matrix
+        const matrix: Record<string, Record<string, { alloc: number, obli: number, disb: number }>> = {};
+        
+        operatingUnits.forEach(ou => {
+            matrix[ou] = {
+                'Social Preparation': { alloc: 0, obli: 0, disb: 0 },
+                'Production and Livelihood': { alloc: 0, obli: 0, disb: 0 },
+                'Marketing and Enterprise': { alloc: 0, obli: 0, disb: 0 },
+                'Program Management': { alloc: 0, obli: 0, disb: 0 },
+            };
+        });
+
+        // Helper to safely add to matrix
+        const addToMatrix = (ou: string, component: string, alloc: number, obli: number, disb: number) => {
+            if (!matrix[ou]) return; // Should allow 'Unassigned' or dynamic OUs if strictly needed, but sticking to predefined list for cleaner table
+            const targetComp = component || 'Program Management';
+            if (matrix[ou][targetComp]) {
+                matrix[ou][targetComp].alloc += alloc;
+                matrix[ou][targetComp].obli += obli;
+                matrix[ou][targetComp].disb += disb;
+            }
+        };
+
+        // 1. Subprojects (Production and Livelihood)
+        data.subprojects.forEach(sp => {
+            const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
+            const obli = sp.details.reduce((s, d) => d.actualObligationDate ? s + (d.actualAmount || 0) : s, 0);
+            const disb = sp.details.reduce((s, d) => d.actualDisbursementDate ? s + (d.actualAmount || 0) : s, 0);
+            addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
+        });
+
+        // 2. Activities (Various Components)
+        const processAct = (act: Training | OtherActivity) => {
+            const alloc = act.expenses.reduce((s, e) => s + e.amount, 0);
+            const obli = act.expenses.reduce((s, e) => e.actualObligationDate ? s + (e.actualAmount || e.amount) : s, 0);
+            const disb = act.expenses.reduce((s, e) => e.actualDisbursementDate ? s + (e.actualAmount || e.amount) : s, 0);
+            addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
+        };
+        data.trainings.forEach(processAct);
+        data.otherActivities.forEach(processAct);
+
+        // 3. Program Management Items
+        const processPM = (item: any, isStaff = false) => {
+            const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
+            const obli = item.actualObligationAmount || 0;
+            const disb = item.actualDisbursementAmount || 0;
+            addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
+        };
+        data.officeReqs.forEach(item => processPM(item));
+        data.staffingReqs.forEach(item => processPM(item, true));
+        data.otherProgramExpenses.forEach(item => processPM(item));
+
+        return matrix;
+    }, [data]);
+
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 
     const getPieData = (type: 'target' | 'obligation' | 'disbursement') => {
@@ -400,6 +458,59 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         );
     };
 
+    // New Helper Component for Matrix Table
+    const MatrixTable = ({ title, metricKey }: { title: string, metricKey: 'alloc' | 'obli' | 'disb' }) => {
+        const headers = ['Social Preparation', 'Production and Livelihood', 'Marketing and Enterprise', 'Program Management'];
+        
+        // Calculate Totals
+        const columnTotals = headers.reduce((acc, h) => {
+            acc[h] = operatingUnits.reduce((sum, ou) => sum + (matrixData[ou]?.[h]?.[metricKey] || 0), 0);
+            return acc;
+        }, {} as Record<string, number>);
+        
+        const grandTotal = Object.values(columnTotals).reduce((a, b) => a + b, 0);
+
+        return (
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md overflow-x-auto">
+                <h4 className="font-bold text-lg text-gray-800 dark:text-white mb-4 border-l-4 border-green-500 pl-3">{title}</h4>
+                <table className="min-w-full text-xs text-left text-gray-600 dark:text-gray-300">
+                    <thead className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold uppercase">
+                        <tr>
+                            <th className="px-4 py-3">Operating Unit</th>
+                            {headers.map(h => <th key={h} className="px-4 py-3 text-right">{h}</th>)}
+                            <th className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600">Grand Total</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {operatingUnits.map(ou => {
+                            const rowTotal = headers.reduce((sum, h) => sum + (matrixData[ou]?.[h]?.[metricKey] || 0), 0);
+                            return (
+                                <tr key={ou} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                    <td className="px-4 py-2 font-medium">{ou}</td>
+                                    {headers.map(h => (
+                                        <td key={h} className="px-4 py-2 text-right">
+                                            {formatCurrency(matrixData[ou]?.[h]?.[metricKey] || 0)}
+                                        </td>
+                                    ))}
+                                    <td className="px-4 py-2 text-right font-bold bg-gray-50 dark:bg-gray-800/50">{formatCurrency(rowTotal)}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                    <tfoot className="bg-gray-100 dark:bg-gray-700 font-bold text-gray-800 dark:text-white">
+                        <tr>
+                            <td className="px-4 py-3">TOTAL</td>
+                            {headers.map(h => (
+                                <td key={h} className="px-4 py-3 text-right">{formatCurrency(columnTotals[h])}</td>
+                            ))}
+                            <td className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600 text-blue-700 dark:text-blue-300">{formatCurrency(grandTotal)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-8 animate-fadeIn">
             {/* Section 1: Budget Utilization (Green Theme) */}
@@ -516,6 +627,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 <h3 id="monthly-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Monthly Financial Performance</h3>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-96">
                     <MonthlyChart />
+                </div>
+            </section>
+
+            {/* Section 5: Matrix Breakdowns */}
+            <section aria-labelledby="financial-matrices">
+                <h3 id="financial-matrices" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Detailed Financial Matrix by Operating Unit</h3>
+                <div className="space-y-8">
+                    <MatrixTable title="Total Allocation (Target)" metricKey="alloc" />
+                    <MatrixTable title="Actual Obligation" metricKey="obli" />
+                    <MatrixTable title="Actual Disbursement" metricKey="disb" />
                 </div>
             </section>
         </div>
