@@ -1,8 +1,9 @@
+
 // Author: 4K
 import React from 'react';
 import { 
     Subproject, Activity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
-    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions
+    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits
 } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { supabase } from '../../supabaseClient';
@@ -40,6 +41,37 @@ const resolveRegion = (input: string | number | undefined): string => {
     if (['13', 'XIII', 'CARAGA'].includes(s)) return 'Region XIII (Caraga)';
     if (['BARMM', 'ARMM'].includes(s)) return 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)';
     if (s === 'NIR') return 'Negros Island Region (NIR)'; 
+
+    return String(input).trim();
+};
+
+// Helper to map short codes/numbers to Operating Units
+const resolveOperatingUnit = (input: string | number | undefined): string => {
+    if (!input) return '';
+    const s = String(input).toUpperCase().trim();
+    
+    // Direct match check (case insensitive against existing operatingUnits)
+    const exactMatch = operatingUnits.find(ou => ou.toUpperCase() === s);
+    if (exactMatch) return exactMatch;
+
+    // Mapping for Short Codes / Numbers
+    if (s === 'NPMO') return 'NPMO';
+    if (s === 'CAR') return 'RPMO CAR';
+    if (s === '1' || s === 'I') return 'RPMO 1';
+    if (s === '2' || s === 'II') return 'RPMO 2';
+    if (s === '3' || s === 'III') return 'RPMO 3';
+    if (['4A', '4-A', 'IV-A', 'IVA'].includes(s)) return 'RPMO 4A';
+    if (['4B', '4-B', 'IV-B', 'IVB', 'MIMAROPA'].includes(s)) return 'RPMO 4B';
+    if (s === '5' || s === 'V') return 'RPMO 5';
+    if (s === '6' || s === 'VI') return 'RPMO 6';
+    if (s === '7' || s === 'VII') return 'RPMO 7';
+    if (s === '8' || s === 'VIII') return 'RPMO 8';
+    if (s === '9' || s === 'IX') return 'RPMO 9';
+    if (s === '10' || s === 'X') return 'RPMO 10';
+    if (s === '11' || s === 'XI') return 'RPMO 11';
+    if (s === '12' || s === 'XII') return 'RPMO 12';
+    if (['13', 'XIII', 'CARAGA'].includes(s)) return 'RPMO 13';
+    if (['NIR', 'NEGROS'].includes(s)) return 'RPMO NIR';
 
     return String(input).trim();
 };
@@ -177,8 +209,9 @@ export const handleSubprojectsUpload = (
                     const matchedIpo = ipos.find(i => i.name === ipoName);
                     const locationString = matchedIpo ? matchedIpo.location : '';
 
-                    // Prioritize row.operatingUnit from Excel
-                    const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || '');
+                    // Prioritize row.operatingUnit from Excel with resolution
+                    const rawOU = row.operatingUnit ? String(row.operatingUnit) : undefined;
+                    const operatingUnit = rawOU ? resolveOperatingUnit(rawOU) : (currentUser?.operatingUnit || '');
 
                     groupedData.set(row.uid, {
                         id: maxId, // Only for offline use
@@ -435,7 +468,8 @@ export const handleActivitiesUpload = (
                     const locationString = (municipality && province) ? `${municipality}, ${province}` : (municipality || province || '');
 
                     // Prioritize row.operatingUnit
-                    const operatingUnit = row.operatingUnit ? String(row.operatingUnit).trim() : (currentUser?.operatingUnit || 'NPMO');
+                    const rawOU = row.operatingUnit ? String(row.operatingUnit) : undefined;
+                    const operatingUnit = rawOU ? resolveOperatingUnit(rawOU) : (currentUser?.operatingUnit || 'NPMO');
 
                     groupedData.set(uid, {
                         common: {
@@ -726,7 +760,3 @@ export const handleIposUpload = (
     };
     reader.readAsArrayBuffer(file);
 };
-
-
-// --- PROGRAM MANAGEMENT ---
-// ... (rest of the file remains unchanged)
