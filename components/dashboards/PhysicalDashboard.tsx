@@ -24,7 +24,7 @@ const formatDate = (dateString?: string) => {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
-const PhysicalStatCard: React.FC<{ label: string; value: number; gradient: string; onClick?: () => void; }> = ({ label, value, gradient, onClick }) => (
+const PhysicalStatCard: React.FC<{ label: string; value: string | number; gradient: string; onClick?: () => void; }> = ({ label, value, gradient, onClick }) => (
     <div 
         className={`bg-gradient-to-br ${gradient} text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105 cursor-pointer`}
         onClick={onClick}
@@ -122,8 +122,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         return accomplishments as any;
     }, [data.subprojects, data.trainings]);
 
-    // REVISED LOGIC for Overall Performance
+    // REVISED LOGIC for Overall Performance (Accomplishment vs Target)
     const performanceStats = useMemo(() => {
+        // --- Accomplishments (Completed) ---
+        
         // 1. Total Subprojects Completed
         const completedSubprojects = data.subprojects.filter(p => p.status === 'Completed');
         
@@ -150,13 +152,42 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             }
         });
 
+        // --- Targets (Total in Registry/Plan) ---
+        
+        // 1. Target Subprojects (All in list)
+        const targetSubprojectsCount = data.subprojects.length;
+
+        // 2. Target Trainings (All in list)
+        const targetTrainingsCount = data.trainings.length;
+
+        // 3. Target IPOs with Subprojects (Unique IPOs in ANY subproject)
+        const targetIposWithSubprojects = new Set(data.subprojects.map(p => p.indigenousPeopleOrganization));
+
+        // 4. Target IPOs Trained (Unique IPOs in ANY training)
+        const targetIposTrained = new Set(data.trainings.flatMap(t => t.participatingIpos));
+
+        // 5. Target Total IPOs (Total registered IPOs in the filtered view)
+        const targetTotalIposCount = data.ipos.length;
+
+        // 6. Target ADs (Unique ADs in registered IPOs)
+        const targetAds = new Set(data.ipos.map(i => i.ancestralDomainNo).filter(Boolean));
+
         return {
+            // Accomplishment Data Sets (for modals)
             totalEngagedIpos: allEngagedIpos,
             totalIposTrained: iposWithCompletedTrainings,
             totalIposWithSubprojects: iposWithCompletedSubprojects,
             totalSubprojectsCompleted: completedSubprojects,
             totalTrainingsCompleted: completedTrainings,
-            totalAdsAssisted: assistedDomains
+            totalAdsAssisted: assistedDomains,
+
+            // Display Strings (Accomplished / Target)
+            strEngagedIpos: `${allEngagedIpos.size} / ${targetTotalIposCount}`,
+            strIposTrained: `${iposWithCompletedTrainings.size} / ${targetIposTrained.size}`,
+            strIposWithSubprojects: `${iposWithCompletedSubprojects.size} / ${targetIposWithSubprojects.size}`,
+            strSubprojects: `${completedSubprojects.length} / ${targetSubprojectsCount}`,
+            strTrainings: `${completedTrainings.length} / ${targetTrainingsCount}`,
+            strAds: `${assistedDomains.size} / ${targetAds.size}`
         };
     }, [data.subprojects, data.trainings, data.ipos]);
 
@@ -322,14 +353,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     return (
         <div className="space-y-8 p-1">
              <section aria-labelledby="overall-performance">
-                <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance</h3>
+                <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance (Accomplished / Target)</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <PhysicalStatCard label="Total IPOs" value={performanceStats.totalEngagedIpos.size} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalEngagedIpos} />
-                    <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.totalIposTrained.size} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
-                    <PhysicalStatCard label="Total IPOs w/ SPs" value={performanceStats.totalIposWithSubprojects.size} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
-                    <PhysicalStatCard label="Total SPs Completed" value={performanceStats.totalSubprojectsCompleted.length} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
-                    <PhysicalStatCard label="Total Trainings" value={performanceStats.totalTrainingsCompleted.length} gradient="from-blue-500 to-blue-700" onClick={handleShowCompletedTrainings} />
-                    <PhysicalStatCard label="ADs Assisted" value={performanceStats.totalAdsAssisted.size} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
+                    <PhysicalStatCard label="Total IPOs" value={performanceStats.strEngagedIpos} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalEngagedIpos} />
+                    <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.strIposTrained} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
+                    <PhysicalStatCard label="Total IPOs w/ SPs" value={performanceStats.strIposWithSubprojects} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
+                    <PhysicalStatCard label="Total SPs Completed" value={performanceStats.strSubprojects} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
+                    <PhysicalStatCard label="Total Trainings" value={performanceStats.strTrainings} gradient="from-blue-500 to-blue-700" onClick={handleShowCompletedTrainings} />
+                    <PhysicalStatCard label="ADs Assisted" value={performanceStats.strAds} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
                 </div>
             </section>
 
