@@ -434,32 +434,34 @@ export const handleActivitiesUpload = (
                 const uid = String(row.uid || '').trim();
                 if (!uid) return; // Skip empty rows
 
+                // Extract participating IPOs for this row (moved out of new entry block to support merging)
+                let rowParticipatingIpos: string[] = [];
+                const rawIpos = (row.participatingIpos || '').toString().trim();
+
+                if (rawIpos) {
+                    // 1. Exact match check (handles "Name, Inc" single entry)
+                    if (existingIpoNames.has(rawIpos)) {
+                        rowParticipatingIpos = [rawIpos];
+                    } 
+                    // 2. Semicolon delimiter check (Preferred for multiple)
+                    else if (rawIpos.includes(';')) {
+                        rowParticipatingIpos = rawIpos.split(';').map((s: string) => s.trim()).filter(Boolean);
+                    } 
+                    // 3. Fallback to comma (Legacy, risky for names with Inc.)
+                    else {
+                        rowParticipatingIpos = rawIpos.split(',').map((s: string) => s.trim()).filter(Boolean);
+                    }
+                }
+
+                // Verify IPOs
+                for (const ipoName of rowParticipatingIpos) {
+                    if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found in system.`);
+                }
+
                 if (!groupedData.has(uid)) {
                     // Removed required check for province and municipality
                     if (!row.type || !row.component || !row.name || !row.date) {
                         throw new Error(`Row ${rowNum} (UID: ${uid}): Missing required common fields (type, component, name, date).`);
-                    }
-
-                    let participatingIpos: string[] = [];
-                    const rawIpos = (row.participatingIpos || '').toString().trim();
-
-                    if (rawIpos) {
-                        // 1. Exact match check (handles "Name, Inc" single entry)
-                        if (existingIpoNames.has(rawIpos)) {
-                            participatingIpos = [rawIpos];
-                        } 
-                        // 2. Semicolon delimiter check (Preferred for multiple)
-                        else if (rawIpos.includes(';')) {
-                            participatingIpos = rawIpos.split(';').map((s: string) => s.trim()).filter(Boolean);
-                        } 
-                        // 3. Fallback to comma (Legacy, risky for names with Inc.)
-                        else {
-                            participatingIpos = rawIpos.split(',').map((s: string) => s.trim()).filter(Boolean);
-                        }
-                    }
-
-                    for (const ipoName of participatingIpos) {
-                        if (!existingIpoNames.has(ipoName)) throw new Error(`Row ${rowNum}: IPO "${ipoName}" not found in system.`);
                     }
 
                     const municipality = String(row.municipality || '').trim();
@@ -480,7 +482,7 @@ export const handleActivitiesUpload = (
                             date: String(row.date),
                             description: String(row.description || ''),
                             location: locationString,
-                            participatingIpos: participatingIpos,
+                            participatingIpos: rowParticipatingIpos, // Use row's IPOs for initial entry
                             participantsMale: Number(row.participantsMale) || 0,
                             participantsFemale: Number(row.participantsFemale) || 0,
                             fundingYear: Number(row.fundingYear) || undefined,
@@ -494,6 +496,12 @@ export const handleActivitiesUpload = (
                         },
                         expenses: []
                     });
+                } else {
+                    // Entry exists, merge participating IPOs
+                    const entry = groupedData.get(uid);
+                    const currentIpos = new Set(entry.common.participatingIpos);
+                    rowParticipatingIpos.forEach(ipo => currentIpos.add(ipo));
+                    entry.common.participatingIpos = Array.from(currentIpos);
                 }
 
                 if (row.expense_amount !== undefined) {
