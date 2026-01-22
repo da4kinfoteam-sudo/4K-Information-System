@@ -223,9 +223,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleDownloadTemplate = () => {
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
-        const actualMonthHeaders = ['actualDisbursementJan', 'actualDisbursementFeb', 'actualDisbursementMar', 'actualDisbursementApr', 'actualDisbursementMay', 'actualDisbursementJun', 'actualDisbursementJul', 'actualDisbursementAug', 'actualDisbursementSep', 'actualDisbursementOct', 'actualDisbursementNov', 'actualDisbursementDec'];
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'uacsCode', 'particulars', ...monthHeaders, ...actualMonthHeaders];
-        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000, actualDisbursementJan: 10000 }];
+        // Removed actualMonthHeaders as they should not be present in the upload template
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'uacsCode', 'particulars', ...monthHeaders];
+        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Other_Exp_Template.xlsx");
     };
 
