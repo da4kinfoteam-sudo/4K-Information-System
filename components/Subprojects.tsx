@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { Subproject, IPO, philippineRegions, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -77,10 +77,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
-    const [regionFilter, setRegionFilter] = useState('All');
     const [ouFilter, setOuFilter] = useState('All');
     const [packageFilter, setPackageFilter] = useState('All');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [yearImplementedFilter, setYearImplementedFilter] = useState('All');
 
     // Sorting
     type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
@@ -176,6 +176,18 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
     }, [formData.details, editingSubproject]);
 
+    const availableImplementedYears = useMemo(() => {
+        const years = new Set<string>();
+        subprojects.forEach(s => {
+            if (s.estimatedCompletionDate) {
+                const year = new Date(s.estimatedCompletionDate).getFullYear();
+                if (!isNaN(year)) {
+                    years.add(year.toString());
+                }
+            }
+        });
+        return Array.from(years).sort().reverse();
+    }, [subprojects]);
 
     const processedSubprojects = useMemo(() => {
         let filtered = [...subprojects];
@@ -186,14 +198,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             filtered = filtered.filter(s => s.operatingUnit === ouFilter);
         }
 
-        if (regionFilter !== 'All') {
-             if (regionFilter === 'Online') {
-                 // Subprojects usually aren't online, but consistent with other components
-                 filtered = [];
-             } else {
-                const iposInRegion = new Set(ipos.filter(ipo => ipo.region === regionFilter).map(ipo => ipo.name));
-                filtered = filtered.filter(s => iposInRegion.has(s.indigenousPeopleOrganization));
-             }
+        if (yearImplementedFilter !== 'All') {
+            filtered = filtered.filter(s => {
+                if (!s.estimatedCompletionDate) return false;
+                const year = new Date(s.estimatedCompletionDate).getFullYear();
+                return year.toString() === yearImplementedFilter;
+            });
         }
 
         if (packageFilter !== 'All') {
@@ -263,12 +273,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             });
         }
         return filtered;
-    }, [subprojects, searchTerm, regionFilter, ouFilter, packageFilter, statusFilter, sortConfig, ipos, currentUser, canViewAll]);
+    }, [subprojects, searchTerm, yearImplementedFilter, ouFilter, packageFilter, statusFilter, sortConfig, ipos, currentUser, canViewAll]);
 
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedSubprojects 
-    } = usePagination(processedSubprojects, [searchTerm, regionFilter, ouFilter, packageFilter, statusFilter, sortConfig]);
+    } = usePagination(processedSubprojects, [searchTerm, yearImplementedFilter, ouFilter, packageFilter, statusFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -718,11 +728,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             </div>
                         )}
                          <div className="flex items-center gap-2">
-                            <label htmlFor="regionFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
-                            <select id="regionFilter" value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All Regions</option>
-                                {philippineRegions.map(r => (
-                                    <option key={r} value={r}>{r}</option>
+                            <label htmlFor="yearImplementedFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Year Impl.:</label>
+                            <select id="yearImplementedFilter" value={yearImplementedFilter} onChange={(e) => setYearImplementedFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Years</option>
+                                {availableImplementedYears.map(y => (
+                                    <option key={y} value={y}>{y}</option>
                                 ))}
                             </select>
                         </div>
