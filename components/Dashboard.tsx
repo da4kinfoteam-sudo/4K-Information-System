@@ -1,13 +1,96 @@
 
+// Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
 import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import GanttChart from './GanttChart';
 import { useAuth } from '../contexts/AuthContext';
+import { parseLocation } from './LocationPicker';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
+
+// Coordinate Lookup Table
+const PROVINCE_COORDINATES: {[key: string]: [number, number]} = {
+    // Regions
+    'National Capital Region (NCR)': [14.5995, 120.9842],
+    'Cordillera Administrative Region (CAR)': [17.3513, 121.1719],
+    'Region I (Ilocos Region)': [16.6159, 120.3209],
+    'Region II (Cagayan Valley)': [17.6131, 121.7270],
+    'Region III (Central Luzon)': [15.4828, 120.7120],
+    'Region IV-A (CALABARZON)': [14.1008, 121.0794],
+    'MIMAROPA Region': [13.1119, 121.0794], 
+    'Region V (Bicol Region)': [13.4210, 123.4137],
+    'Region VI (Western Visayas)': [11.0050, 122.5373],
+    'Region VII (Central Visayas)': [10.3157, 123.8854],
+    'Region VIII (Eastern Visayas)': [11.2433, 125.0086],
+    'Region IX (Zamboanga Peninsula)': [7.8352, 122.3995],
+    'Region X (Northern Mindanao)': [8.2280, 124.2452],
+    'Region XI (Davao Region)': [7.1907, 125.4553],
+    'Region XII (SOCCSKSARGEN)': [6.5073, 124.8390],
+    'Region XIII (Caraga)': [8.8097, 125.5406],
+    'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)': [7.2104, 124.2452],
+    
+    // Key Provinces
+    'Abra': [17.5750, 120.7397], 'Agusan del Norte': [9.0270, 125.4833], 'Agusan del Sur': [8.5270, 125.7833],
+    'Aklan': [11.6933, 122.3556], 'Albay': [13.1706, 123.6339], 'Antique': [11.0167, 122.0333], 'Apayao': [18.0833, 121.2167],
+    'Aurora': [16.0000, 121.5833], 'Basilan': [6.5667, 122.0833], 'Bataan': [14.6667, 120.4167], 'Batanes': [20.4485, 121.9708],
+    'Batangas': [13.9167, 121.0000], 'Benguet': [16.5667, 120.6667], 'Bohol': [9.8833, 124.2167], 'Bukidnon': [7.9167, 125.0000],
+    'Bulacan': [14.9667, 121.0333], 'Cagayan': [18.0000, 121.8333], 'Camarines Norte': [14.1667, 122.7500], 'Camarines Sur': [13.5000, 123.3333],
+    'Camiguin': [9.1833, 124.7167], 'Capiz': [11.4167, 122.7500], 'Catanduanes': [13.7500, 124.2500], 'Cavite': [14.2833, 120.9167],
+    'Cebu': [10.3167, 123.8833], 'Cotabato': [7.2104, 124.2452], 'Davao de Oro': [7.6333, 126.0000], 'Davao del Norte': [7.5000, 125.6667],
+    'Davao del Sur': [6.6667, 125.4167], 'Davao Occidental': [6.0833, 125.5000], 'Davao Oriental': [7.0000, 126.3333], 'Dinagat Islands': [10.1333, 125.6000],
+    'Eastern Samar': [11.5000, 125.5000], 'Guimaras': [10.5667, 122.5833], 'Ifugao': [16.8333, 121.1667], 'Ilocos Norte': [18.1667, 120.7500],
+    'Ilocos Sur': [17.2500, 120.5000], 'Iloilo': [11.0000, 122.6667], 'Isabela': [17.0000, 122.0000], 'Kalinga': [17.4167, 121.1667],
+    'La Union': [16.5000, 120.4167], 'Laguna': [14.2833, 121.4167], 'Lanao del Norte': [8.0000, 124.0000], 'Lanao del Sur': [7.8333, 124.2500],
+    'Leyte': [10.8333, 124.8333], 'Maguindanao': [7.0000, 124.5000], 'Marinduque': [13.4167, 121.9167], 'Masbate': [12.1667, 123.5000],
+    'Misamis Occidental': [8.4167, 123.7500], 'Misamis Oriental': [8.6667, 124.7500], 'Mountain Province': [17.0833, 121.0000], 'Negros Occidental': [10.3333, 123.0000],
+    'Negros Oriental': [9.5833, 123.1667], 'Northern Samar': [12.3333, 124.6667], 'Nueva Ecija': [15.5833, 121.0000], 'Nueva Vizcaya': [16.3333, 121.1667],
+    'Occidental Mindoro': [13.0000, 120.9167], 'Oriental Mindoro': [13.0000, 121.4167], 'Palawan': [9.8333, 118.7500], 'Pampanga': [15.0667, 120.7000],
+    'Pangasinan': [15.9167, 120.3333], 'Quezon': [14.0000, 121.9167], 'Quirino': [16.2500, 121.6667], 'Rizal': [14.5833, 121.2500],
+    'Romblon': [12.5000, 122.2833], 'Samar': [11.8333, 125.0000], 'Sarangani': [6.0000, 125.1667], 'Siquijor': [9.2000, 123.5167],
+    'Sorsogon': [12.8333, 124.0000], 'South Cotabato': [6.1667, 124.9167], 'Southern Leyte': [10.2500, 125.0000], 'Sultan Kudarat': [6.5500, 124.5000],
+    'Sulu': [6.0000, 121.0000], 'Surigao del Norte': [9.6667, 125.5833], 'Surigao del Sur': [8.7500, 126.0000], 'Tarlac': [15.5000, 120.5000],
+    'Tawi-Tawi': [5.1667, 119.9167], 'Zambales': [15.3333, 120.1667], 'Zamboanga del Norte': [8.0000, 122.6667], 'Zamboanga del Sur': [7.8333, 123.3333],
+    'Zamboanga Sibugay': [7.7500, 122.7500], 'Metro Manila': [14.5995, 120.9842]
+};
+
+// Helper to resolve coordinates
+const resolveCoordinates = (locationStr: string, operatingUnit?: string): [number, number] | null => {
+    if (!locationStr && !operatingUnit) return null;
+
+    // 1. Try to parse Location String
+    if (locationStr && locationStr !== "Online") {
+        const { province, region } = parseLocation(locationStr);
+        
+        // Try Province exact match
+        if (province && PROVINCE_COORDINATES[province]) {
+            return PROVINCE_COORDINATES[province];
+        }
+        
+        // Try Region if explicitly in location
+        if (region && PROVINCE_COORDINATES[region]) {
+            return PROVINCE_COORDINATES[region];
+        }
+
+        // Try raw string match (e.g. "Rizal" entered directly)
+        const parts = locationStr.split(',').map(p => p.trim());
+        for (const part of parts) {
+            if (PROVINCE_COORDINATES[part]) return PROVINCE_COORDINATES[part];
+        }
+    }
+
+    // 2. Fallback to Operating Unit
+    if (operatingUnit) {
+        const regionName = ouToRegionMap[operatingUnit];
+        if (regionName && PROVINCE_COORDINATES[regionName]) {
+            return PROVINCE_COORDINATES[regionName];
+        }
+    }
+
+    return null;
+};
 
 interface MapDisplayProps {
     ipos: IPO[];
@@ -61,25 +144,68 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
                 iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
             });
 
+            // 1. IPOs
             ipos.forEach(ipo => {
-                if (ipo.lat && ipo.lng) {
-                     const marker = L.marker([ipo.lat, ipo.lng], { icon: redIcon })
+                let coords = resolveCoordinates(ipo.location);
+                // Fallback to region center if specific location fails
+                if (!coords && ipo.region && PROVINCE_COORDINATES[ipo.region]) {
+                    coords = PROVINCE_COORDINATES[ipo.region];
+                }
+
+                if (coords) {
+                    // Add small jitter to avoid exact overlap
+                    const jitterLat = coords[0] + (Math.random() * 0.02 - 0.01);
+                    const jitterLng = coords[1] + (Math.random() * 0.02 - 0.01);
+
+                     const marker = L.marker([jitterLat, jitterLng], { icon: redIcon })
                         .addTo(mapRef.current)
                         .bindPopup(`<b>${ipo.name}</b><br>Type: IPO<br>Location: ${ipo.location}`);
                     markersRef.current.push(marker);
                 }
             });
 
+            // 2. Subprojects
+            // Create a lookup for IPOs for faster access
+            const ipoMap = new Map(ipos.map(i => [i.name, i]));
+
             subprojects.forEach(project => {
-                const marker = L.marker([project.lat, project.lng], { icon: blueIcon })
-                    .addTo(mapRef.current)
-                    .bindPopup(`<b>${project.name}</b><br>Type: Subproject<br>Status: ${project.status}`);
-                markersRef.current.push(marker);
+                // Priority: Use Linked IPO Location
+                let coords: [number, number] | null = null;
+                const linkedIpo = ipoMap.get(project.indigenousPeopleOrganization);
+                
+                if (linkedIpo) {
+                    coords = resolveCoordinates(linkedIpo.location);
+                    // Fallback to linked IPO Region
+                    if (!coords && linkedIpo.region && PROVINCE_COORDINATES[linkedIpo.region]) {
+                        coords = PROVINCE_COORDINATES[linkedIpo.region];
+                    }
+                }
+
+                // Fallback to Project OU if no linked IPO location resolved
+                if (!coords) {
+                    coords = resolveCoordinates(project.location, project.operatingUnit);
+                }
+
+                if (coords) {
+                    const jitterLat = coords[0] + (Math.random() * 0.02 - 0.01);
+                    const jitterLng = coords[1] + (Math.random() * 0.02 - 0.01);
+
+                    const marker = L.marker([jitterLat, jitterLng], { icon: blueIcon })
+                        .addTo(mapRef.current)
+                        .bindPopup(`<b>${project.name}</b><br>Type: Subproject<br>Status: ${project.status}<br>Linked IPO: ${project.indigenousPeopleOrganization}`);
+                    markersRef.current.push(marker);
+                }
             });
             
+            // 3. Trainings
             trainings.forEach(training => {
-                if (training.lat && training.lng) {
-                     const marker = L.marker([training.lat, training.lng], { icon: greenIcon })
+                const coords = resolveCoordinates(training.location, training.operatingUnit);
+
+                if (coords) {
+                    const jitterLat = coords[0] + (Math.random() * 0.02 - 0.01);
+                    const jitterLng = coords[1] + (Math.random() * 0.02 - 0.01);
+
+                     const marker = L.marker([jitterLat, jitterLng], { icon: greenIcon })
                         .addTo(mapRef.current)
                         .bindPopup(`<b>${training.name}</b><br>Type: Training<br>Location: ${training.location}`);
                     markersRef.current.push(marker);
