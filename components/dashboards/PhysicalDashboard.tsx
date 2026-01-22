@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon } from '../../constants';
 import { parseLocation } from '../LocationPicker';
@@ -28,9 +29,9 @@ const PhysicalStatCard: React.FC<{ label: string; value: number; gradient: strin
         className={`bg-gradient-to-br ${gradient} text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105 cursor-pointer`}
         onClick={onClick}
     >
-        <div className="flex flex-col items-center justify-center h-full">
+        <div className="flex flex-col items-center justify-center h-full text-center">
             <p className="text-4xl font-bold drop-shadow-md">{value.toLocaleString()}</p>
-            <p className="text-sm font-medium uppercase tracking-wider opacity-90 mt-2 text-center">{label}</p>
+            <p className="text-sm font-medium uppercase tracking-wider opacity-90 mt-2">{label}</p>
         </div>
     </div>
 );
@@ -85,11 +86,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         const assistedIposByQuarter = new Map<number, Set<string>>();
         
         data.trainings.forEach(t => {
-            const quarter = getQuarter(new Date(t.date));
-            if (!assistedIposByQuarter.has(quarter)) assistedIposByQuarter.set(quarter, new Set());
-            t.participatingIpos.forEach(ipoName => assistedIposByQuarter.get(quarter)!.add(ipoName));
+            // Check if training is actually completed (has actual date)
+            if (t.actualDate) {
+                const quarter = getQuarter(new Date(t.actualDate));
+                if (!assistedIposByQuarter.has(quarter)) assistedIposByQuarter.set(quarter, new Set());
+                t.participatingIpos.forEach(ipoName => assistedIposByQuarter.get(quarter)!.add(ipoName));
 
-            if (quarter >= 1 && quarter <= 4) accomplishments[`Q${quarter}`].trainings++;
+                if (quarter >= 1 && quarter <= 4) accomplishments[`Q${quarter}`].trainings++;
+            }
         });
 
         data.subprojects.forEach(p => {
@@ -107,33 +111,43 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         return accomplishments as any;
     }, [data.subprojects, data.trainings]);
 
-     const ipoEngagementData = useMemo(() => {
-        const trainedIpos = new Set(data.trainings.flatMap(t => t.participatingIpos));
-        const iposWithCompletedSubprojects = new Set(data.subprojects.filter(p => p.status === 'Completed').map(p => p.indigenousPeopleOrganization));
+    // REVISED LOGIC for Overall Performance
+    const performanceStats = useMemo(() => {
+        // 1. Total Subprojects Completed
+        const completedSubprojects = data.subprojects.filter(p => p.status === 'Completed');
         
-        const assistedIpoNames = new Set([
-            ...trainedIpos,
-            ...iposWithCompletedSubprojects
+        // 2. Total Training (Must be completed status -> implied by presence of actualDate)
+        const completedTrainings = data.trainings.filter(t => !!t.actualDate);
+
+        // 3. Total IPOs with Subprojects (Linked with COMPLETED subprojects)
+        const iposWithCompletedSubprojects = new Set(completedSubprojects.map(p => p.indigenousPeopleOrganization));
+
+        // 4. Total IPOs trained (Linked with COMPLETED trainings)
+        const iposWithCompletedTrainings = new Set(completedTrainings.flatMap(t => t.participatingIpos));
+
+        // 5. Total IPOs (Linked with completed trainings OR completed subprojects)
+        const allEngagedIpos = new Set([
+            ...iposWithCompletedSubprojects,
+            ...iposWithCompletedTrainings
         ]);
 
+        // Ancestral Domains Assisted (Based on the Engaged IPOs)
         const assistedDomains = new Set<string>();
         data.ipos.forEach(ipo => {
-            if (assistedIpoNames.has(ipo.name) && ipo.ancestralDomainNo) {
+            if (allEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
                 assistedDomains.add(ipo.ancestralDomainNo);
             }
         });
 
         return {
-            'Total IPOs': data.ipos.length,
-            'IPOs Trained': trainedIpos.size,
-            'IPOs w/ Subprojects': iposWithCompletedSubprojects.size,
-            'ADs Assisted': assistedDomains.size
+            totalEngagedIpos: allEngagedIpos,
+            totalIposTrained: iposWithCompletedTrainings,
+            totalIposWithSubprojects: iposWithCompletedSubprojects,
+            totalSubprojectsCompleted: completedSubprojects,
+            totalTrainingsCompleted: completedTrainings,
+            totalAdsAssisted: assistedDomains
         };
-    }, [data.ipos, data.trainings, data.subprojects]);
-
-    const completedSubprojectsCount = useMemo(() => {
-        return data.subprojects.filter(p => p.status === 'Completed').length;
-    }, [data.subprojects]);
+    }, [data.subprojects, data.trainings, data.ipos]);
 
     const provincialComparisonData = useMemo(() => {
         const provinceMap: { [province: string]: { ipos: IPO[], trainings: Set<number>, subprojects: Subproject[] } } = {};
@@ -172,7 +186,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             // Accomplishments
             const accomplishedSubprojects = provinceSubprojects.filter(p => p.status === 'Completed').length;
             
-            const trainedIpoNames = new Set(data.trainings.filter(t => provinceMap[province].trainings.has(t.id)).flatMap(t => t.participatingIpos));
+            // For Provincial Comparison, we assume 'accomplished' means engaged in completed activities specific to that province's IPOs
+            const completedTrainingsIds = new Set(data.trainings.filter(t => !!t.actualDate).map(t => t.id));
+            const provinceCompletedTrainingIds = new Set([...provinceMap[province].trainings].filter(id => completedTrainingsIds.has(id)));
+            const targetTrainingsCount = provinceMap[province].trainings.size; 
+            const accomplishedTrainingsCount = provinceCompletedTrainingIds.size;
+
+            const trainedIpoNames = new Set(data.trainings.filter(t => provinceCompletedTrainingIds.has(t.id)).flatMap(t => t.participatingIpos));
             const completedSubprojectIpoNames = new Set(provinceSubprojects.filter(p => p.status === 'Completed').map(p => p.indigenousPeopleOrganization));
             const assistedIpoNames = new Set([...trainedIpoNames, ...completedSubprojectIpoNames]);
 
@@ -189,7 +209,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 accomplishments: {
                     ipos: accomplishedIpos,
                     subprojects: accomplishedSubprojects,
-                    trainings: targetTrainings, // Assuming all trainings are accomplished
+                    trainings: accomplishedTrainingsCount,
                     ads: accomplishedAds
                 }
             };
@@ -206,7 +226,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         }
 
         data.subprojects.forEach(sp => {
-            if (sp.operatingUnit) {
+            if (sp.operatingUnit && sp.status === 'Completed') {
                 const s = ensureOu(sp.operatingUnit);
                 s.subprojects++;
                 s.ipos.add(sp.indigenousPeopleOrganization);
@@ -214,17 +234,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         });
 
         data.trainings.forEach(t => {
-            if (t.operatingUnit) {
+            if (t.operatingUnit && t.actualDate) {
                 const s = ensureOu(t.operatingUnit);
                 s.trainings++;
                 t.participatingIpos.forEach(ipo => s.ipos.add(ipo));
-            }
-        });
-
-        data.otherActivities.forEach(oa => {
-             if (oa.operatingUnit) {
-                const s = ensureOu(oa.operatingUnit);
-                oa.participatingIpos.forEach(ipo => s.ipos.add(ipo));
             }
         });
 
@@ -243,33 +256,49 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     }, [data]);
 
 
-    const handleShowTotalIpos = () => {
-        const items = data.ipos.map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
-        setModalData({ title: 'Total IPOs', items });
+    const handleShowTotalEngagedIpos = () => {
+        const items = data.ipos
+            .filter(ipo => performanceStats.totalEngagedIpos.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+        setModalData({ title: 'Total IPOs (With Completed Projects/Trainings)', items });
     };
 
     const handleShowIposTrained = () => {
-        const trainedIpoNames = new Set(data.trainings.flatMap(t => t.participatingIpos));
-        const items = data.ipos.filter(ipo => trainedIpoNames.has(ipo.name)).map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
-        setModalData({ title: 'IPOs Trained', items });
+        const items = data.ipos
+            .filter(ipo => performanceStats.totalIposTrained.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+        setModalData({ title: 'IPOs Trained (Completed Trainings)', items });
     };
 
     const handleShowIposWithSubprojects = () => {
-        const ipoNames = new Set(data.subprojects.filter(p => p.status === 'Completed').map(p => p.indigenousPeopleOrganization));
-        const items = data.ipos.filter(ipo => ipoNames.has(ipo.name)).map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+        const items = data.ipos
+            .filter(ipo => performanceStats.totalIposWithSubprojects.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
         setModalData({ title: 'IPOs with Completed Subprojects', items });
     };
 
     const handleShowCompletedSubprojects = () => {
-        const items = data.subprojects.filter(p => p.status === 'Completed').map(p => ({ id: p.id, name: p.name, details: `Completed on: ${formatDate(p.actualCompletionDate)}` }));
+        const items = performanceStats.totalSubprojectsCompleted.map(p => ({ 
+            id: p.id, 
+            name: p.name, 
+            details: `Completed: ${formatDate(p.actualCompletionDate)} | IPO: ${p.indigenousPeopleOrganization}` 
+        }));
         setModalData({ title: 'Completed Subprojects', items });
+    };
+    
+    const handleShowCompletedTrainings = () => {
+        const items = performanceStats.totalTrainingsCompleted.map(t => ({ 
+            id: t.id, 
+            name: t.name, 
+            details: `Conducted: ${formatDate(t.actualDate)} | Component: ${t.component}` 
+        }));
+        setModalData({ title: 'Completed Trainings', items });
     };
 
     const handleShowAdsAssisted = () => {
-        const assistedIpoNames = new Set([...data.trainings.flatMap(t => t.participatingIpos), ...data.subprojects.filter(p => p.status === 'Completed').map(p => p.indigenousPeopleOrganization)]);
         const assistedAds = new Map<string, string[]>();
         data.ipos.forEach(ipo => {
-            if (assistedIpoNames.has(ipo.name) && ipo.ancestralDomainNo) {
+            if (performanceStats.totalEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
                 if (!assistedAds.has(ipo.ancestralDomainNo)) assistedAds.set(ipo.ancestralDomainNo, []);
                 assistedAds.get(ipo.ancestralDomainNo)!.push(ipo.name);
             }
@@ -283,12 +312,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         <div className="space-y-8 p-1">
              <section aria-labelledby="overall-performance">
                 <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance</h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <PhysicalStatCard label="Total IPOs" value={data.ipos.length} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalIpos} />
-                    <PhysicalStatCard label="IPOs Trained" value={ipoEngagementData['IPOs Trained']} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
-                    <PhysicalStatCard label="IPOs w/ Subprojects" value={ipoEngagementData['IPOs w/ Subprojects']} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
-                    <PhysicalStatCard label="Subprojects Completed" value={completedSubprojectsCount} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
-                    <PhysicalStatCard label="ADs Assisted" value={ipoEngagementData['ADs Assisted']} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <PhysicalStatCard label="Total IPOs" value={performanceStats.totalEngagedIpos.size} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalEngagedIpos} />
+                    <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.totalIposTrained.size} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
+                    <PhysicalStatCard label="Total IPOs w/ SPs" value={performanceStats.totalIposWithSubprojects.size} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
+                    <PhysicalStatCard label="Total SPs Completed" value={performanceStats.totalSubprojectsCompleted.length} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
+                    <PhysicalStatCard label="Total Trainings" value={performanceStats.totalTrainingsCompleted.length} gradient="from-blue-500 to-blue-700" onClick={handleShowCompletedTrainings} />
+                    <PhysicalStatCard label="ADs Assisted" value={performanceStats.totalAdsAssisted.size} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
                 </div>
             </section>
 
@@ -303,9 +333,18 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
              <section aria-labelledby="ipo-engagement-breakdown">
                 <h3 id="ipo-engagement-breakdown" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">IPO Engagement Breakdown</h3>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                     <IpoEngagementChart data={ipoEngagementData} />
+                     <IpoEngagementChart data={{
+                         'Total IPOs': performanceStats.totalEngagedIpos.size,
+                         'IPOs Trained': performanceStats.totalIposTrained.size,
+                         'IPOs w/ Subprojects': performanceStats.totalIposWithSubprojects.size,
+                         'ADs Assisted': performanceStats.totalAdsAssisted.size
+                     }} />
                      <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-center justify-center">
-                        <p className="text-gray-500 dark:text-gray-400">Additional metrics can be shown here.</p>
+                        <p className="text-gray-500 dark:text-gray-400">
+                            Total IPOs refers to IPOs with linked, completed trainings or subprojects. <br/>
+                            Training count considers only trainings with actual conducted dates. <br/>
+                            Subproject count considers only subprojects with 'Completed' status.
+                        </p>
                      </div>
                 </div>
             </section>
@@ -318,7 +357,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             </section>
 
              <section aria-labelledby="ou-rankings">
-                 <h3 id="ou-rankings" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Operating Unit Rankings</h3>
+                 <h3 id="ou-rankings" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Operating Unit Rankings (Accomplishment)</h3>
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <RankingList 
                         title="By IPOs Assisted" 
