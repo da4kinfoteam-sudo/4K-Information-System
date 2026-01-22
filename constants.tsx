@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -315,6 +316,7 @@ export interface StaffingRequirement extends BaseProgramManagementItem {
 export interface OtherProgramExpense extends BaseProgramManagementItem {
     particulars: string;
     amount: number;
+    obligatedAmount?: number;
     // Monthly Disbursement Schedule (Target)
     disbursementJan?: number;
     disbursementFeb?: number;
