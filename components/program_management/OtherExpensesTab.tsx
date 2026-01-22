@@ -20,21 +20,22 @@ const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-70
 export const parseOtherExpenseRow = (row: any, commonData: any): OtherProgramExpense => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // Calculate totals from monthly columns if present
+    // Calculate totals from monthly columns if present for defaults, but prioritize row.amount
     let calculatedAmount = 0;
     months.forEach(m => { calculatedAmount += (Number(row[`disbursement${m}`]) || 0); });
     
     let calculatedActual = 0;
     months.forEach(m => { calculatedActual += (Number(row[`actualDisbursement${m}`]) || 0); });
 
-    const finalAmount = calculatedAmount > 0 ? calculatedAmount : (Number(row.amount) || 0);
+    // Use row.amount if present (Target Obligation), otherwise fallback to calculated
+    const finalAmount = Number(row.amount) || calculatedAmount || 0;
     const finalActualDisbursement = calculatedActual > 0 ? calculatedActual : (Number(row.actualDisbursementAmount) || 0);
 
     const result: any = {
         ...commonData,
         particulars: row.particulars || '',
         amount: finalAmount,
-        obligatedAmount: Number(row.obligatedAmount) || 0,
+        obligatedAmount: Number(row.obligatedAmount) || finalAmount, // Default to amount if missing
         actualDisbursementAmount: finalActualDisbursement
     };
 
@@ -112,12 +113,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     // Auto-calc totals from schedules
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // Target Sum
-    useEffect(() => {
-        // @ts-ignore
-        const total = months.reduce((sum, m) => sum + (Number(formData[`disbursement${m}`]) || 0), 0);
-        if (total !== formData.amount) setFormData(prev => ({ ...prev, amount: total }));
-    }, months.map(m => (formData as any)[`disbursement${m}`]));
+    // NOTE: Removed Target Sum useEffect to decouple "Total Amount" (Obligation Target) from Disbursement Schedule.
+    // The user should input Total Target Amount manually.
+    
+    const targetDisbursementTotal = months.reduce((sum, m) => sum + (Number((formData as any)[`disbursement${m}`]) || 0), 0);
+    const isTargetMismatch = Math.abs(targetDisbursementTotal - (Number(formData.obligatedAmount) || 0)) > 0.01;
 
     // Actual Sum
     useEffect(() => {
@@ -147,7 +147,14 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+            // Sync Obligated Amount with Target Allocation (amount)
+            if (name === 'amount') {
+                newData.obligatedAmount = Number(value);
+            }
+            return newData;
+        });
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -225,8 +232,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const handleDownloadTemplate = () => {
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
         // Removed actualMonthHeaders as they should not be present in the upload template
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'obligatedAmount', 'uacsCode', 'particulars', ...monthHeaders];
-        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', obligatedAmount: 10000, uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'amount', 'obligatedAmount', 'uacsCode', 'particulars', ...monthHeaders];
+        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', amount: 20000, obligatedAmount: 10000, uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Other_Exp_Template.xlsx");
     };
 
@@ -286,6 +293,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Allocation</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligated Amount</label><input type="number" name="obligatedAmount" value={formData.obligatedAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
@@ -306,7 +314,17 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                             value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
                                         ))}
                                     </div>
-                                    <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2"><span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Amount:</span><span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.amount)}</span></div>
+                                    <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col items-end gap-1">
+                                        <div className="flex justify-end items-center gap-2">
+                                            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Disbursement Target:</span>
+                                            <span className={`text-lg font-bold ${isTargetMismatch ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(targetDisbursementTotal)}</span>
+                                        </div>
+                                        {isTargetMismatch && (
+                                            <span className="text-xs text-red-600 font-medium">
+                                                Total Disbursement ({formatCurrency(targetDisbursementTotal)}) must equal Obligated Amount ({formatCurrency(Number(formData.obligatedAmount) || 0)})
+                                            </span>
+                                        )}
+                                    </div>
                                 </fieldset>
                             </div>
                         </>
