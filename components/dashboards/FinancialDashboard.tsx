@@ -332,9 +332,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     // Monthly Chart Component (Green Theme)
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dataPoints: MonthlyDataPoint[] = Object.values(monthlyData) as MonthlyDataPoint[];
+        const mData = monthlyData as unknown as Record<string, MonthlyDataPoint>;
+        const dataPoints: MonthlyDataPoint[] = Object.values(mData);
         const maxVal = Math.max(
-            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
@@ -350,7 +351,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             <div className="w-full h-full overflow-hidden">
                 <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto font-sans text-xs">
                     {/* Grid Lines */}
-                    {[0, 0.25, 0.5, 0.75, 1].map(t => {
+                    {[0, 0.25, 0.5, 0.75, 1].map((t: number) => {
                         const y = height - padding - (t * chartHeight);
                         return (
                             <g key={t}>

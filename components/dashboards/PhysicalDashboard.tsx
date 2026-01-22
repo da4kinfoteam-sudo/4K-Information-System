@@ -49,26 +49,37 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             Q3: { subprojects: 0, trainings: 0, ipos: 0 }, Q4: { subprojects: 0, trainings: 0, ipos: 0 },
         };
 
+        const targetIposByQuarter: { [key: string]: Set<string> } = {
+            Q1: new Set(), Q2: new Set(), Q3: new Set(), Q4: new Set()
+        };
+
         data.subprojects.forEach(p => {
             if (p.startDate) {
                 const quarter = getQuarter(new Date(p.startDate));
-                if (quarter >= 1 && quarter <= 4) targets[`Q${quarter}`].subprojects++;
+                if (quarter >= 1 && quarter <= 4) {
+                    targets[`Q${quarter}`].subprojects++;
+                    if (p.indigenousPeopleOrganization) {
+                        targetIposByQuarter[`Q${quarter}`].add(p.indigenousPeopleOrganization);
+                    }
+                }
             }
         });
         data.trainings.forEach(t => {
             if (t.date) {
                 const quarter = getQuarter(new Date(t.date));
-                if (quarter >= 1 && quarter <= 4) targets[`Q${quarter}`].trainings++;
+                if (quarter >= 1 && quarter <= 4) {
+                    targets[`Q${quarter}`].trainings++;
+                    t.participatingIpos.forEach(ipo => targetIposByQuarter[`Q${quarter}`].add(ipo));
+                }
             }
         });
-        data.ipos.forEach(ipo => {
-            if(ipo.registrationDate) {
-                const quarter = getQuarter(new Date(ipo.registrationDate));
-                if (quarter >= 1 && quarter <= 4) targets[`Q${quarter}`].ipos++;
-            }
+        
+        (['Q1', 'Q2', 'Q3', 'Q4'] as const).forEach(q => {
+            targets[q].ipos = targetIposByQuarter[q].size;
         });
+
         return targets as any;
-    }, [data.subprojects, data.trainings, data.ipos]);
+    }, [data.subprojects, data.trainings]);
     
     const quarterlyAccomplishments = useMemo(() => {
         const accomplishments: { [key: string]: { subprojects: number; trainings: number; ipos: number } } = {
