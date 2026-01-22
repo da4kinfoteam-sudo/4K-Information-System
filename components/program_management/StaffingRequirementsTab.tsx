@@ -142,7 +142,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         if (!formData.operatingUnit) return alert("Operating Unit is required.");
         if (!formData.uacsCode) return alert("UACS Code is required.");
 
-        const submissionData = {
+        const submissionData: any = {
             ...formData,
             salaryGrade: Number(formData.salaryGrade), annualSalary: Number(formData.annualSalary), fundYear: Number(formData.fundYear),
             actualAmount: Number(formData.actualAmount), actualObligationAmount: Number(formData.actualObligationAmount), actualDisbursementAmount: Number(formData.actualDisbursementAmount),
@@ -154,22 +154,30 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             submissionData[`disbursement${m}`] = Number(formData[`disbursement${m}`]);
         });
 
+        // Always remove ID from payload to avoid Supabase identity column issues during update
+        delete submissionData.id;
+
         if (!editingItem) {
-            // @ts-ignore
-            delete submissionData.id;
             submissionData.uid = formData.uid || `SR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-            // @ts-ignore
             submissionData.created_at = new Date().toISOString();
         }
 
         if (supabase) {
             if (editingItem) {
                 const { data, error } = await supabase.from('staffing_requirements').update(submissionData).eq('id', editingItem.id).select().single();
-                if (error) { console.error(error); alert("Failed to update."); return; }
+                if (error) { 
+                    console.error("Update error:", error); 
+                    alert(`Failed to update: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
             } else {
                 const { data, error } = await supabase.from('staffing_requirements').insert([submissionData]).select().single();
-                if (error) { console.error(error); alert("Failed to create."); return; }
+                if (error) { 
+                    console.error("Create error:", error); 
+                    alert(`Failed to create: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => [data, ...prev]);
             }
         } else {
@@ -315,6 +323,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         );
     }
 
+    // List View
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
             {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete</button></div></div></div>)}

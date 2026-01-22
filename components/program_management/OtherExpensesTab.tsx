@@ -162,7 +162,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         if (!formData.operatingUnit) return alert("Operating Unit is required.");
         if (!formData.uacsCode) return alert("UACS Code is required.");
 
-        const submissionData = {
+        const submissionData: any = {
             ...formData,
             amount: Number(formData.amount), obligatedAmount: Number(formData.obligatedAmount), fundYear: Number(formData.fundYear),
             actualAmount: Number(formData.actualAmount), actualObligationAmount: Number(formData.actualObligationAmount), actualDisbursementAmount: Number(formData.actualDisbursementAmount),
@@ -177,22 +177,30 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             submissionData[`actualDisbursement${m}`] = Number(formData[`actualDisbursement${m}`]);
         });
 
+        // Always remove ID from payload to avoid Supabase identity column issues during update
+        delete submissionData.id;
+
         if (!editingItem) {
-            // @ts-ignore
-            delete submissionData.id;
             submissionData.uid = formData.uid || `OE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-            // @ts-ignore
             submissionData.created_at = new Date().toISOString();
         }
 
         if (supabase) {
             if (editingItem) {
                 const { data, error } = await supabase.from('other_program_expenses').update(submissionData).eq('id', editingItem.id).select().single();
-                if (error) { console.error(error); alert("Failed to update."); return; }
+                if (error) { 
+                    console.error("Update error:", error); 
+                    alert(`Failed to update: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
             } else {
                 const { data, error } = await supabase.from('other_program_expenses').insert([submissionData]).select().single();
-                if (error) { console.error(error); alert("Failed to create."); return; }
+                if (error) { 
+                    console.error("Create error:", error); 
+                    alert(`Failed to create: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => [data, ...prev]);
             }
         } else {

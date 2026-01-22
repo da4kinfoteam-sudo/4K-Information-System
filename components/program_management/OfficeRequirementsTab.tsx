@@ -165,7 +165,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         if (!formData.operatingUnit) return alert("Operating Unit is required.");
         if (!formData.uacsCode) return alert("UACS Code is required.");
 
-        const submissionData = {
+        const submissionData: any = {
             ...formData,
             numberOfUnits: Number(formData.numberOfUnits),
             pricePerUnit: Number(formData.pricePerUnit),
@@ -177,25 +177,33 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             updated_at: new Date().toISOString()
         };
 
-        // Remove ID 0 if creating new to allow auto-increment/random
+        // Explicitly remove ID from payload to avoid identity column update errors
+        delete submissionData.id;
+
+        // Add creation fields if new
         if (!editingItem) {
-            // @ts-ignore
-            delete submissionData.id;
             const year = new Date().getFullYear();
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             submissionData.uid = formData.uid || `OR-${year}-${sequence}`;
-            // @ts-ignore
             submissionData.created_at = new Date().toISOString();
         }
 
         if (supabase) {
             if (editingItem) {
                 const { data, error } = await supabase.from('office_requirements').update(submissionData).eq('id', editingItem.id).select().single();
-                if (error) { console.error(error); alert("Failed to update."); return; }
+                if (error) { 
+                    console.error("Update error:", error); 
+                    alert(`Failed to update: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
             } else {
                 const { data, error } = await supabase.from('office_requirements').insert([submissionData]).select().single();
-                if (error) { console.error(error); alert("Failed to create."); return; }
+                if (error) { 
+                    console.error("Create error:", error); 
+                    alert(`Failed to create: ${error.message}`); 
+                    return; 
+                }
                 if (data) setItems(prev => [data, ...prev]);
             }
         } else {
