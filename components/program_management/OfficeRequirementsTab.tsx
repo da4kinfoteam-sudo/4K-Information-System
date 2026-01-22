@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; // Utility import if needed
+import { resolveOperatingUnit } from '../mainfunctions/ImportExportService';
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -282,9 +283,12 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     
+                    // Helper logic for operating unit
+                    const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
+
                     return parseOfficeRequirementRow(row, {
                         uid,
-                        operatingUnit: row.operatingUnit || 'NPMO',
+                        operatingUnit: resolvedOU,
                         fundYear: fundYear,
                         fundType: row.fundType || 'Current',
                         tier: row.tier || 'Tier 1',

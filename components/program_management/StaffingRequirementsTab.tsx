@@ -6,6 +6,7 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
+import { resolveOperatingUnit } from '../mainfunctions/ImportExportService';
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -224,9 +225,13 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `SR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
+                    
+                    // Helper logic for operating unit
+                    const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
+
                     return parseStaffingRequirementRow(row, {
                         uid, 
-                        operatingUnit: row.operatingUnit || 'NPMO', 
+                        operatingUnit: resolvedOU, 
                         fundYear: fundYear, 
                         fundType: row.fundType || 'Current', 
                         tier: row.tier || 'Tier 1', 

@@ -14,7 +14,7 @@ import { parseOtherExpenseRow } from '../program_management/OtherExpensesTab';
 declare const XLSX: any;
 
 // Helper to map short codes/numbers to full Region names
-const resolveRegion = (input: string | number | undefined): string => {
+export const resolveRegion = (input: string | number | undefined): string => {
     if (!input) return '';
     const s = String(input).toUpperCase().trim();
     
@@ -46,7 +46,7 @@ const resolveRegion = (input: string | number | undefined): string => {
 };
 
 // Helper to map short codes/numbers to Operating Units
-const resolveOperatingUnit = (input: string | number | undefined): string => {
+export const resolveOperatingUnit = (input: string | number | undefined): string => {
     if (!input) return '';
     const s = String(input).toUpperCase().trim();
     
