@@ -13,6 +13,7 @@ interface IPODetailProps {
     previousPageName: string;
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
+    onSelectActivity: (activity: Training) => void;
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
 }
@@ -40,6 +41,14 @@ const getStatusBadge = (status: Subproject['status']) => {
     }
 }
 
+const getTrainingStatusBadge = (training: Training) => {
+    const isCompleted = !!training.actualDate;
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    return isCompleted 
+        ? `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`
+        : `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+}
+
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; half?: boolean }> = ({ label, value, half }) => (
     <div className={half ? 'sm:col-span-1' : 'sm:col-span-2'}>
         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
@@ -49,7 +58,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
@@ -395,7 +404,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                         onClick={() => setIsEditing(true)}
                         className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95"
                     >
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                         Edit IPO
                     </button>
                     <button
@@ -452,10 +461,18 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                     <li key={t.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
                                         <div className="flex justify-between items-start">
                                             <div>
-                                                <p className="font-bold text-gray-800 dark:text-gray-100">{t.name}</p>
+                                                <button 
+                                                    onClick={() => onSelectActivity(t)}
+                                                    className="font-bold text-gray-800 dark:text-gray-100 hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline text-left"
+                                                >
+                                                    {t.name}
+                                                </button>
                                                 <p className="text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
                                             </div>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <span className={getTrainingStatusBadge(t)}>{t.actualDate ? 'Completed' : 'Planned'}</span>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
+                                            </div>
                                         </div>
                                         <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{t.description}</p>
                                     </li>

@@ -104,7 +104,10 @@ const AppContent: React.FC = () => {
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
-    const [previousPage, setPreviousPage] = useState('/');
+    
+    // Navigation History Stack
+    const [historyStack, setHistoryStack] = useState<string[]>([]);
+    const previousPage = historyStack.length > 0 ? historyStack[historyStack.length - 1] : '/';
 
     // Track previous user to redirect to home on login
     const prevUserRef = useRef<User | null>(null);
@@ -112,6 +115,7 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         if (currentUser && !prevUserRef.current) {
             setCurrentPage('/');
+            setHistoryStack([]);
         }
         prevUserRef.current = currentUser;
     }, [currentUser]);
@@ -178,30 +182,39 @@ const AppContent: React.FC = () => {
     // Navigation Handlers
     const handleSelectSubproject = (project: Subproject) => {
         setSelectedSubproject(project);
-        setPreviousPage(currentPage);
+        setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage('/subproject-detail');
     };
 
     const handleSelectIpo = (ipo: IPO) => {
         setSelectedIpo(ipo);
-        setPreviousPage(currentPage);
+        setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage('/ipo-detail');
     };
 
     const handleSelectActivity = (activity: Activity) => {
         setSelectedActivity(activity);
-        setPreviousPage(currentPage);
+        setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage('/activity-detail');
     };
 
     const handleBack = () => {
-        setCurrentPage(previousPage);
-        setSelectedSubproject(null);
-        if (previousPage !== '/ipo-detail') {
-            setSelectedIpo(null);
+        if (historyStack.length === 0) return;
+        
+        const prev = historyStack[historyStack.length - 1];
+        setHistoryStack(prevStack => prevStack.slice(0, -1));
+        setCurrentPage(prev);
+
+        // Cleanup selection states if we are leaving their detail views
+        // We check the page we are *leaving* (currentPage)
+        if (currentPage === '/subproject-detail') {
+            setSelectedSubproject(null);
         }
-        if (previousPage !== '/activity-detail') {
+        if (currentPage === '/activity-detail') {
             setSelectedActivity(null);
+        }
+        if (currentPage === '/ipo-detail') {
+            setSelectedIpo(null);
         }
     };
 
@@ -368,6 +381,7 @@ const AppContent: React.FC = () => {
                                 setSelectedIpo(updated);
                             }}
                             onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
                         />;
@@ -405,14 +419,20 @@ const AppContent: React.FC = () => {
                 isOpen={isSidebarOpen} 
                 closeSidebar={() => setIsSidebarOpen(false)} 
                 currentPage={currentPage} 
-                setCurrentPage={setCurrentPage} 
+                setCurrentPage={(page) => {
+                    setHistoryStack(prev => [...prev, currentPage]);
+                    setCurrentPage(page);
+                }} 
             />
             <div className="flex-1 flex flex-col overflow-hidden">
                 <Header 
                     toggleSidebar={toggleSidebar} 
                     toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
-                    setCurrentPage={setCurrentPage}
+                    setCurrentPage={(page) => {
+                        setHistoryStack(prev => [...prev, currentPage]);
+                        setCurrentPage(page);
+                    }}
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
                     {renderPage()}
@@ -429,4 +449,3 @@ export const App: React.FC = () => {
         </AuthProvider>
     );
 };
-
