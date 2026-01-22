@@ -1,4 +1,5 @@
 
+// Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { getObjectTypeByCode, XLSX } from './ReportUtils';
@@ -60,6 +61,23 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             total: 0
         });
 
+        // Helper to aggregate items with same name/indicator
+        const addItemToGroup = (list: any[], newItem: any) => {
+            const existing = list.find(i => i.indicator === newItem.indicator);
+            if (existing) {
+                // Sum Target fields
+                for (const key in newItem.target) {
+                    existing.target[key] += newItem.target[key];
+                }
+                // Sum Actual fields
+                for (const key in newItem.actual) {
+                    existing.actual[key] += newItem.actual[key];
+                }
+            } else {
+                list.push(newItem);
+            }
+        };
+
         const incrementCounter = (counter: any, dateStr?: string, count: number = 1) => {
             const monthIdx = getMonthIndex(dateStr);
             if (monthIdx !== -1) {
@@ -98,7 +116,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             if (!finalData['Production and Livelihood'].packages[packageKey]) {
                 finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
             }
-            finalData['Production and Livelihood'].packages[packageKey].items.push(item);
+            addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
         });
 
         // Process Trainings
@@ -109,11 +127,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                  if (!finalData['Production and Livelihood'].packages[packageKey]) {
                     finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
                  }
-                 finalData['Production and Livelihood'].packages[packageKey].items.push(item);
+                 addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
             } else if (t.component === 'Program Management') {
-                 finalData['Program Management'].packages['Trainings'].items.push(item);
+                 addItemToGroup(finalData['Program Management'].packages['Trainings'].items, item);
             } else if (finalData[t.component]) {
-                finalData[t.component].push(item);
+                addItemToGroup(finalData[t.component], item);
             }
         });
 
@@ -121,9 +139,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         data.otherActivities.forEach(oa => {
             const item = createBar1Item(oa.name, 1, oa.date, oa.actualDate);
             if (oa.component === 'Program Management') {
-                 finalData['Program Management'].packages['Activities'].items.push(item);
+                 addItemToGroup(finalData['Program Management'].packages['Activities'].items, item);
             } else if (finalData[oa.component]) {
-                finalData[oa.component].push(item);
+                addItemToGroup(finalData[oa.component], item);
             }
         });
 
@@ -137,7 +155,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 // Target: Obligation Date (as a proxy for target completion if not specified)
                 // Actual: Actual Date
                 const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate);
-                finalData['Program Management'].packages[pkgKey].items.push(item);
+                addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
             });
         }
         processPm(data.staffingReqs, 'Staff Requirements', true);

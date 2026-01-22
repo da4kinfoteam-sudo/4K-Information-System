@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { StaffingRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
@@ -113,14 +114,18 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     }, [formData.disbursementJan, formData.disbursementFeb, formData.disbursementMar, formData.disbursementApr, formData.disbursementMay, formData.disbursementJun, formData.disbursementJul, formData.disbursementAug, formData.disbursementSep, formData.disbursementOct, formData.disbursementNov, formData.disbursementDec]);
 
     const availableYears = useMemo(() => {
-        const years = new Set<string>(); items.forEach(i => years.add(i.fundYear.toString())); return Array.from(years).sort().reverse();
+        const years = new Set<string>(); 
+        items.forEach(i => {
+            if (i.fundYear) years.add(i.fundYear.toString());
+        }); 
+        return Array.from(years).sort().reverse();
     }, [items]);
 
     const filteredItems = useMemo(() => {
         let filtered = items;
         if (!canViewAll && currentUser) filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
         else if (canViewAll && ouFilter !== 'All') filtered = filtered.filter(item => item.operatingUnit === ouFilter);
-        if (yearFilter !== 'All') filtered = filtered.filter(item => item.fundYear.toString() === yearFilter);
+        if (yearFilter !== 'All') filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
         return filtered.sort((a,b) => b.id - a.id);
     }, [items, ouFilter, yearFilter, canViewAll, currentUser]);
 
@@ -217,9 +222,20 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
                 const newItems = jsonData.map((row: any, index: number) => {
-                    const uid = `SR-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
+                    const fundYear = Number(row.fundYear) || new Date().getFullYear();
+                    const uid = `SR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     return parseStaffingRequirementRow(row, {
-                        uid, operatingUnit: row.operatingUnit, fundYear: row.fundYear, fundType: row.fundType, tier: row.tier, obligationDate: row.obligationDate, disbursementDate: '', uacsCode: row.uacsCode, encodedBy: currentUser?.fullName || 'Upload', created_at: currentTimestamp, updated_at: currentTimestamp
+                        uid, 
+                        operatingUnit: row.operatingUnit || 'NPMO', 
+                        fundYear: fundYear, 
+                        fundType: row.fundType || 'Current', 
+                        tier: row.tier || 'Tier 1', 
+                        obligationDate: row.obligationDate || '', 
+                        disbursementDate: '', 
+                        uacsCode: row.uacsCode || '', 
+                        encodedBy: currentUser?.fullName || 'Upload', 
+                        created_at: currentTimestamp, 
+                        updated_at: currentTimestamp
                     });
                 });
                 if (supabase) {

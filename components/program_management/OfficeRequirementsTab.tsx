@@ -130,7 +130,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     // --- Derived Data ---
     const availableYears = useMemo(() => {
         const years = new Set<string>();
-        items.forEach(i => years.add(i.fundYear.toString()));
+        items.forEach(i => {
+            if (i.fundYear) years.add(i.fundYear.toString());
+        });
         return Array.from(years).sort().reverse();
     }, [items]);
 
@@ -142,7 +144,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             filtered = filtered.filter(item => item.operatingUnit === ouFilter);
         }
         if (yearFilter !== 'All') {
-            filtered = filtered.filter(item => item.fundYear.toString() === yearFilter);
+            filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
         }
         return filtered.sort((a,b) => b.id - a.id);
     }, [items, ouFilter, yearFilter, canViewAll, currentUser]);
@@ -276,16 +278,19 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 
                 const currentTimestamp = new Date().toISOString();
                 const newItems = jsonData.map((row: any, index: number) => {
-                    const uid = `OR-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
+                    // Robust handling for potential undefined values in excel
+                    const fundYear = Number(row.fundYear) || new Date().getFullYear();
+                    const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
+                    
                     return parseOfficeRequirementRow(row, {
                         uid,
-                        operatingUnit: row.operatingUnit,
-                        fundYear: row.fundYear,
-                        fundType: row.fundType,
-                        tier: row.tier,
-                        obligationDate: row.obligationDate,
-                        disbursementDate: row.disbursementDate,
-                        uacsCode: row.uacsCode,
+                        operatingUnit: row.operatingUnit || 'NPMO',
+                        fundYear: fundYear,
+                        fundType: row.fundType || 'Current',
+                        tier: row.tier || 'Tier 1',
+                        obligationDate: row.obligationDate || '',
+                        disbursementDate: row.disbursementDate || '',
+                        uacsCode: row.uacsCode || '',
                         encodedBy: currentUser?.fullName || 'Upload',
                         created_at: currentTimestamp,
                         updated_at: currentTimestamp

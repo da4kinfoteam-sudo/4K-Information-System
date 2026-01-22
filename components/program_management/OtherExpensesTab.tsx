@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
@@ -125,14 +126,18 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
 
     const availableYears = useMemo(() => {
-        const years = new Set<string>(); items.forEach(i => years.add(i.fundYear.toString())); return Array.from(years).sort().reverse();
+        const years = new Set<string>(); 
+        items.forEach(i => {
+            if(i.fundYear) years.add(i.fundYear.toString());
+        }); 
+        return Array.from(years).sort().reverse();
     }, [items]);
 
     const filteredItems = useMemo(() => {
         let filtered = items;
         if (!canViewAll && currentUser) filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
         else if (canViewAll && ouFilter !== 'All') filtered = filtered.filter(item => item.operatingUnit === ouFilter);
-        if (yearFilter !== 'All') filtered = filtered.filter(item => item.fundYear.toString() === yearFilter);
+        if (yearFilter !== 'All') filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
         return filtered.sort((a,b) => b.id - a.id);
     }, [items, ouFilter, yearFilter, canViewAll, currentUser]);
 
@@ -232,9 +237,19 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
                 const newItems = jsonData.map((row: any, index: number) => {
-                    const uid = `OE-${row.fundYear || new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
+                    const fundYear = Number(row.fundYear) || new Date().getFullYear();
+                    const uid = `OE-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     return parseOtherExpenseRow(row, {
-                        uid, operatingUnit: row.operatingUnit, fundYear: row.fundYear, fundType: row.fundType, tier: row.tier, obligationDate: row.obligationDate, uacsCode: row.uacsCode, encodedBy: currentUser?.fullName || 'Upload', created_at: currentTimestamp, updated_at: currentTimestamp
+                        uid, 
+                        operatingUnit: row.operatingUnit || 'NPMO', 
+                        fundYear: fundYear, 
+                        fundType: row.fundType || 'Current', 
+                        tier: row.tier || 'Tier 1', 
+                        obligationDate: row.obligationDate || '', 
+                        uacsCode: row.uacsCode || '', 
+                        encodedBy: currentUser?.fullName || 'Upload', 
+                        created_at: currentTimestamp, 
+                        updated_at: currentTimestamp
                     });
                 });
                 if (supabase) {
@@ -315,6 +330,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         );
     }
 
+    // List View
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
             {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete</button></div></div></div>)}
