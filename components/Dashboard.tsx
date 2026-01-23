@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
 import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
 import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
-import GanttChart from './GanttChart';
+import Calendar, { CalendarEvent } from './Calendar'; // Updated Import
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 
@@ -166,7 +166,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
             // 2. Subprojects
             // Create a lookup for IPOs for faster access
-            const ipoMap = new Map(ipos.map(i => [i.name, i]));
+            const ipoMap = new Map<string, IPO>(ipos.map(i => [i.name, i]));
 
             subprojects.forEach(project => {
                 // Priority: Use Linked IPO Location
@@ -277,12 +277,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [selectedTier, setSelectedTier] = useState<string>('All');
     const [selectedFundType, setSelectedFundType] = useState<string>('All');
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
+    const [dayModalData, setDayModalData] = useState<{ date: Date, items: CalendarEvent[] } | null>(null);
     const [mapFilters, setMapFilters] = useState({
         ipos: true,
         subprojects: true,
         trainings: true,
     });
-    const [ganttFilter, setGanttFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
     
     // Activities Section State
     const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
@@ -299,6 +299,28 @@ const Dashboard: React.FC<DashboardProps> = ({
     const handleMapFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, checked } = e.target;
         setMapFilters(prev => ({ ...prev, [name]: checked }));
+    };
+
+    const handleDateClick = (date: Date, events: CalendarEvent[]) => {
+        if (events.length > 0) {
+            setDayModalData({ date, items: events });
+        }
+    };
+
+    const handleCalendarEventClick = (event: CalendarEvent) => {
+        if (event.originalData && (event.dataType === 'Subproject' || event.dataType === 'Training' || event.dataType === 'Activity')) {
+            const item = event.originalData;
+            // Map to ActivityItem format
+            const activityItem: ActivityItem = {
+                ...item,
+                activityType: event.dataType as any,
+                activityDate: item.date || item.startDate
+            };
+            setModalData(activityItem);
+        }
+        // Close day modal if needed, or keep it open behind? 
+        // For simplicity, let's keep day modal open so user can go back, or close it.
+        // But since modalData uses a full screen modal, it might overlay.
     };
 
     const availableYears = useMemo(() => {
@@ -401,32 +423,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         setActivitiesPage(1);
     }, [activitiesFilter, selectedYear, selectedOu, selectedTier, selectedFundType]);
 
-    const ganttItems = useMemo(() => {
-        let items: any[] = [];
-        if (ganttFilter === 'All' || ganttFilter === 'Subprojects') {
-            items = [...items, ...filteredData.subprojects.map(s => ({
-                id: s.id,
-                name: s.name,
-                startDate: s.startDate,
-                endDate: s.estimatedCompletionDate,
-                actualEndDate: s.actualCompletionDate,
-                type: 'Subproject',
-                status: s.status
-            }))];
-        }
-        if (ganttFilter === 'All' || ganttFilter === 'Trainings') {
-            items = [...items, ...filteredData.activities.filter(a => a.type === 'Training').map(t => ({
-                id: t.id,
-                name: t.name,
-                startDate: t.date,
-                endDate: t.date, // Single day duration for visualization purposes
-                type: 'Training',
-                status: 'Completed'
-            }))];
-        }
-        return items;
-    }, [filteredData, ganttFilter]);
-
     const financialStats = useMemo(() => {
         const subprojectTotal = filteredData.subprojects.reduce((sum, project) => {
             return sum + calculateTotalBudget(project.details);
@@ -477,13 +473,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     return (
         <div>
+            {/* Main Item Detail Modal */}
             {modalData && (
                 <div 
-                    className="fixed inset-0 bg-black bg-opacity-60 z-40 flex items-center justify-center p-4"
+                    className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4"
                     onClick={() => setModalData(null)}
                 >
                     <div 
-                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 md:p-8"
+                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 md:p-8 relative"
                         onClick={(e) => e.stopPropagation()}
                     >
                          <div className="flex justify-between items-start mb-4">
@@ -491,7 +488,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full ${modalData.activityType === 'Subproject' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>{modalData.activityType}</span>
                                 <h3 className="text-2xl font-bold mt-2 text-gray-800 dark:text-white">{modalData.name}</h3>
                             </div>
-                            <button onClick={() => setModalData(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">&times;</button>
+                            <button onClick={() => setModalData(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
                         </div>
                         
                         {modalData.activityType === 'Subproject' ? (
@@ -559,6 +556,40 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                 </div>
             )}
+
+            {/* Day Detail Modal (List of Events) */}
+            {dayModalData && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-60 z-40 flex items-center justify-center p-4"
+                    onClick={() => setDayModalData(null)}
+                >
+                    <div 
+                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto p-6 relative"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">
+                                {dayModalData.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                            </h3>
+                            <button onClick={() => setDayModalData(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {dayModalData.items.map((event, index) => (
+                                <div 
+                                    key={`${event.id}-${index}`} 
+                                    onClick={() => handleCalendarEventClick(event)}
+                                    className={`p-3 rounded-lg border-l-4 ${event.color.replace('bg-', 'border-')} bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${event.originalData ? 'cursor-pointer' : ''}`}
+                                >
+                                    <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{event.title}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">{event.type}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">4K Information System Overview</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -687,31 +718,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <MapDisplay ipos={filteredIposForMap} subprojects={filteredSubprojectsForMap} trainings={filteredTrainingsForMap} />
             </div>
 
-            <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+            <div className="mt-10">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Calendar</h3>
-                    <div className="flex space-x-2">
-                        <button 
-                            onClick={() => setGanttFilter('All')} 
-                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'All' ? 'bg-gray-200 dark:bg-gray-600 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                        >
-                            All
-                        </button>
-                        <button 
-                            onClick={() => setGanttFilter('Subprojects')} 
-                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'Subprojects' ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                        >
-                            Subprojects
-                        </button>
-                        <button 
-                            onClick={() => setGanttFilter('Trainings')} 
-                            className={`px-3 py-1 text-sm rounded-md ${ganttFilter === 'Trainings' ? 'bg-green-100 text-green-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-                        >
-                            Trainings
-                        </button>
-                    </div>
                 </div>
-                <GanttChart items={ganttItems} systemSettings={systemSettings} />
+                <Calendar 
+                    subprojects={filteredData.subprojects}
+                    activities={filteredData.activities}
+                    systemSettings={systemSettings}
+                    onDateClick={handleDateClick}
+                />
             </div>
 
             <div className="mt-10">
