@@ -3,7 +3,7 @@
 import React from 'react';
 import { 
     Subproject, Activity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense,
-    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits
+    SubprojectDetail, ActivityExpense, fundTypes, tiers, objectTypes, ObjectType, philippineRegions, operatingUnits, Tier, FundType
 } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { supabase } from '../../supabaseClient';
@@ -74,6 +74,20 @@ export const resolveOperatingUnit = (input: string | number | undefined): string
     if (['NIR', 'NEGROS'].includes(s)) return 'RPMO NIR';
 
     return String(input).trim();
+};
+
+// Helper to resolve Tier input (1 -> Tier 1, 2 -> Tier 2)
+export const resolveTier = (input: string | number | undefined): Tier | undefined => {
+    if (input === undefined || input === null) return undefined;
+    const s = String(input).trim().toLowerCase();
+    
+    if (s === '1' || s === 'tier 1' || s === 'tier1') return 'Tier 1';
+    if (s === '2' || s === 'tier 2' || s === 'tier2') return 'Tier 2';
+    
+    // Check if it matches existing types exactly (case sensitive fallback)
+    if (tiers.includes(input as Tier)) return input as Tier;
+    
+    return undefined;
 };
 
 // --- SUBPROJECTS ---
@@ -227,7 +241,7 @@ export const handleSubprojectsUpload = (
                         actualCompletionDate: row.actualCompletionDate ? String(row.actualCompletionDate) : undefined,
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
-                        tier: row.tier,
+                        tier: resolveTier(row.tier),
                         operatingUnit: operatingUnit,
                         encodedBy: currentUser?.fullName || 'System Upload',
                         remarks: row.remarks,
@@ -487,7 +501,7 @@ export const handleActivitiesUpload = (
                             participantsFemale: Number(row.participantsFemale) || 0,
                             fundingYear: Number(row.fundingYear) || undefined,
                             fundType: fundTypes.includes(row.fundType) ? row.fundType : undefined,
-                            tier: tiers.includes(row.tier) ? row.tier : undefined,
+                            tier: resolveTier(row.tier),
                             operatingUnit: operatingUnit,
                             encodedBy: currentUser?.fullName || 'System',
                             facilitator: String(row.facilitator || ''),

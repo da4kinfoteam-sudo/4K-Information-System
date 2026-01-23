@@ -6,7 +6,7 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
-import { resolveOperatingUnit } from '../mainfunctions/ImportExportService';
+import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -242,7 +242,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         operatingUnit: resolvedOU, 
                         fundYear: fundYear, 
                         fundType: row.fundType || 'Current', 
-                        tier: row.tier || 'Tier 1', 
+                        tier: resolveTier(row.tier) || 'Tier 1', 
                         obligationDate: row.obligationDate || '', 
                         disbursementDate: '', 
                         uacsCode: row.uacsCode || '', 
