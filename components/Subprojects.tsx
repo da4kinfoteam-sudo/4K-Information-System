@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
@@ -221,7 +220,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 s.indigenousPeopleOrganization.toLowerCase().includes(lower) ||
                 s.location.toLowerCase().includes(lower) ||
                 s.operatingUnit.toLowerCase().includes(lower) ||
-                s.uid.toLowerCase().includes(lower)
+                s.uid.toLowerCase().includes(lower) ||
+                // Search in budget details (item type and particulars)
+                (s.details && s.details.some(d => 
+                    (d.type && d.type.toLowerCase().includes(lower)) || 
+                    (d.particulars && d.particulars.toLowerCase().includes(lower))
+                ))
             );
         }
 
@@ -705,7 +709,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
                         <input
                             type="text"
-                            placeholder="Search by name, IPO, location, or OU..."
+                            placeholder="Search by name, IPO, location, items or OU..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className={`w-full md:w-auto ${commonInputClasses} mt-0`}
