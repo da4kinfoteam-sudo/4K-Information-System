@@ -51,3 +51,12 @@ ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "actualDisbursementD
 
 ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
 ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
+
+-- Update Note for IPOs table:
+-- The 'commodities' column in the 'ipos' table is of type JSONB. 
+-- The internal structure of the JSON objects within this array has been updated.
+-- New optional fields added to commodity objects:
+--   "marketingPercentage": number
+--   "foodSecurityPercentage": number
+--   "averageIncome": number
+-- No DDL changes are required for the 'ipos' table itself as it stores JSON.

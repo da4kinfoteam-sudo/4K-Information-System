@@ -83,7 +83,11 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         value: '',
         yield: '',
         isScad: false,
+        marketingPercentage: '',
+        foodSecurityPercentage: '',
+        averageIncome: ''
     });
+    const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
 
     // Helper to refresh data from Supabase
     const refreshData = async () => {
@@ -314,8 +318,30 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             const { checked } = e.target as HTMLInputElement;
             setCurrentCommodity(prev => ({ ...prev, [name]: checked }));
         } else if (name === 'type') {
-            setCurrentCommodity({ type: value, particular: '', value: '', yield: '', isScad: false });
+            setCurrentCommodity({ 
+                type: value, 
+                particular: '', 
+                value: '', 
+                yield: '', 
+                isScad: false, 
+                marketingPercentage: '', 
+                foodSecurityPercentage: '', 
+                averageIncome: ''
+            });
         } else {
+            if (name === 'marketingPercentage' || name === 'foodSecurityPercentage') {
+                const numValue = parseFloat(value);
+                if (value !== '' && (isNaN(numValue) || numValue < 0)) return; // Prevent negative inputs
+
+                const newValue = value === '' ? 0 : numValue;
+                const otherKey = name === 'marketingPercentage' ? 'foodSecurityPercentage' : 'marketingPercentage';
+                // Use type casting to access property via string index since it is part of the state object
+                const otherValue = parseFloat(String((currentCommodity as any)[otherKey]) || '0');
+
+                if (newValue + otherValue > 100) {
+                    return; // Prevent total from exceeding 100%
+                }
+            }
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
     };
@@ -332,17 +358,52 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             value: parseFloat(currentCommodity.value),
             yield: isAnimal ? undefined : parseFloat(currentCommodity.yield),
             isScad: currentCommodity.isScad,
+            marketingPercentage: currentCommodity.marketingPercentage ? parseFloat(currentCommodity.marketingPercentage) : undefined,
+            foodSecurityPercentage: currentCommodity.foodSecurityPercentage ? parseFloat(currentCommodity.foodSecurityPercentage) : undefined,
+            averageIncome: currentCommodity.averageIncome ? parseFloat(currentCommodity.averageIncome) : undefined,
         };
 
-        const updatedCommodities = [...formData.commodities, newCommodity];
-        const hasScad = updatedCommodities.some(c => c.isScad);
+        if (editingCommodityIndex !== null) {
+            // Edit Mode
+            const updatedCommodities = [...formData.commodities];
+            updatedCommodities[editingCommodityIndex] = newCommodity;
+            const hasScad = updatedCommodities.some(c => c.isScad);
+            setFormData(prev => ({ ...prev, commodities: updatedCommodities, isWithScad: hasScad }));
+            setEditingCommodityIndex(null);
+        } else {
+            // Add Mode
+            const updatedCommodities = [...formData.commodities, newCommodity];
+            const hasScad = updatedCommodities.some(c => c.isScad);
+            setFormData(prev => ({ ...prev, commodities: updatedCommodities, isWithScad: hasScad }));
+        }
 
-        setFormData(prev => ({ 
-            ...prev, 
-            commodities: updatedCommodities,
-            isWithScad: hasScad,
-        }));
-        setCurrentCommodity({ type: '', particular: '', value: '', yield: '', isScad: false });
+        setCurrentCommodity({ 
+            type: '', particular: '', value: '', yield: '', isScad: false, 
+            marketingPercentage: '', foodSecurityPercentage: '', averageIncome: '' 
+        });
+    };
+
+    const handleEditCommodity = (index: number) => {
+        const commodity = formData.commodities[index];
+        setCurrentCommodity({
+            type: commodity.type,
+            particular: commodity.particular,
+            value: String(commodity.value),
+            yield: commodity.yield ? String(commodity.yield) : '',
+            isScad: commodity.isScad || false,
+            marketingPercentage: commodity.marketingPercentage ? String(commodity.marketingPercentage) : '',
+            foodSecurityPercentage: commodity.foodSecurityPercentage ? String(commodity.foodSecurityPercentage) : '',
+            averageIncome: commodity.averageIncome ? String(commodity.averageIncome) : ''
+        });
+        setEditingCommodityIndex(index);
+    };
+
+    const handleCancelCommodityEdit = () => {
+        setEditingCommodityIndex(null);
+        setCurrentCommodity({ 
+            type: '', particular: '', value: '', yield: '', isScad: false, 
+            marketingPercentage: '', foodSecurityPercentage: '', averageIncome: '' 
+        });
     };
 
     const handleRemoveCommodity = (indexToRemove: number) => {
@@ -353,6 +414,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             commodities: updatedCommodities,
             isWithScad: hasScad,
         }));
+        if (editingCommodityIndex === indexToRemove) {
+            handleCancelCommodityEdit();
+        }
     };
 
 
@@ -445,7 +509,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         setEditingIpo(null);
         setFormData(defaultFormData);
         setOtherRegisteringBody('');
-        setCurrentCommodity({ type: '', particular: '', value: '', yield: '', isScad: false });
+        handleCancelCommodityEdit();
         setView('list');
     };
 
@@ -817,19 +881,29 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
                     <div className="space-y-2 mb-4">
                         {formData.commodities.map((commodity, index) => (
-                            <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-semibold">{commodity.particular}</span>
-                                    <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
-                                    <span>
-                                        {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
-                                        {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
-                                    </span>
-                                    {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
+                            <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-semibold">{commodity.particular}</span>
+                                        <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
+                                        <span>
+                                            {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                            {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
+                                        </span>
+                                        {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800">SCAD</span>}
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1 pl-1">
+                                        {(commodity.marketingPercentage || 0) > 0 && <span>Marketing: {commodity.marketingPercentage}%</span>}
+                                        {(commodity.foodSecurityPercentage || 0) > 0 && <span className="ml-2">Food Security: {commodity.foodSecurityPercentage}%</span>}
+                                        {(commodity.averageIncome || 0) > 0 && <span className="ml-2">Avg. Income: ₱{commodity.averageIncome?.toLocaleString()}</span>}
+                                    </div>
                                 </div>
-                                <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                    </button>
+                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -859,7 +933,35 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                                 </div>
                             )}
-                            <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                        </div>
+                    </div>
+                    {/* New Usage Percentage Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
+                        <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Marketing %</label>
+                            <input type="number" name="marketingPercentage" value={currentCommodity.marketingPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Food Security %</label>
+                            <input type="number" name="foodSecurityPercentage" value={currentCommodity.foodSecurityPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                        </div>
+                        <div>
+                            {Number(currentCommodity.marketingPercentage) > 0 && (
+                                <div className="animate-fadeIn">
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Average Income (PHP)</label>
+                                    <input type="number" name="averageIncome" value={currentCommodity.averageIncome} onChange={handleCommodityChange} min="0" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0.00" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex justify-end items-end h-full">
+                            {editingCommodityIndex !== null ? (
+                                <div className="flex gap-1 w-full">
+                                    <button type="button" onClick={handleAddCommodity} className="h-9 px-3 flex-grow inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                    <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                            )}
                         </div>
                     </div>
                     <div className="mt-2">

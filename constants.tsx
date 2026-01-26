@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -21,6 +20,10 @@ export interface Commodity {
     value: number; 
     yield?: number;
     isScad?: boolean;
+    // New Fields
+    marketingPercentage?: number;
+    foodSecurityPercentage?: number;
+    averageIncome?: number;
 }
 
 export interface IPO extends BaseEntity {
