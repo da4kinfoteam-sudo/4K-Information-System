@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon } from '../../constants';
@@ -166,11 +165,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         // 4. Target IPOs Trained (Unique IPOs in ANY training)
         const targetIposTrained = new Set(data.trainings.flatMap(t => t.participatingIpos));
 
-        // 5. Target Total IPOs (Total registered IPOs in the filtered view)
-        const targetTotalIposCount = data.ipos.length;
+        // 5. Target Total IPOs (Logic Updated: Only IPOs with linked subprojects or trainings)
+        const targetTotalIposSet = new Set([
+            ...targetIposWithSubprojects,
+            ...targetIposTrained
+        ]);
+        const targetTotalIposCount = targetTotalIposSet.size;
 
-        // 6. Target ADs (Unique ADs in registered IPOs)
-        const targetAds = new Set(data.ipos.map(i => i.ancestralDomainNo).filter(Boolean));
+        // 6. Target ADs (Logic Updated: Unique ADs of the Target IPOs only)
+        const targetAds = new Set<string>();
+        data.ipos.forEach(ipo => {
+            if (targetTotalIposSet.has(ipo.name) && ipo.ancestralDomainNo) {
+                targetAds.add(ipo.ancestralDomainNo);
+            }
+        });
 
         return {
             // Accomplishment Data Sets (for modals)
@@ -353,12 +361,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     return (
         <div className="space-y-8 p-1">
              <section aria-labelledby="overall-performance">
-                <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance (Accomplished / Target)</h3>
+                <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     <PhysicalStatCard label="Total IPOs" value={performanceStats.strEngagedIpos} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalEngagedIpos} />
                     <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.strIposTrained} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
-                    <PhysicalStatCard label="Total IPOs w/ SPs" value={performanceStats.strIposWithSubprojects} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
-                    <PhysicalStatCard label="Total SPs Completed" value={performanceStats.strSubprojects} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
+                    <PhysicalStatCard label="Total IPOs w/ Subprojects" value={performanceStats.strIposWithSubprojects} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
+                    <PhysicalStatCard label="Total Subprojects Completed" value={performanceStats.strSubprojects} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
                     <PhysicalStatCard label="Total Trainings" value={performanceStats.strTrainings} gradient="from-blue-500 to-blue-700" onClick={handleShowCompletedTrainings} />
                     <PhysicalStatCard label="ADs Assisted" value={performanceStats.strAds} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
                 </div>

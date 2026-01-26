@@ -122,6 +122,7 @@ export interface SubprojectDetail {
     actualObligationDate?: string;
     actualDisbursementDate?: string;
     actualAmount?: number;
+    actualNumberOfUnits?: number;
 }
 
 export interface SubprojectCommodity {
@@ -130,6 +131,10 @@ export interface SubprojectCommodity {
     area: number; // This represents Hectares for crops, or Number of Heads for livestock
     averageYield?: number; // e.g. kg/ha. Optional for Livestock.
     actualYield?: number; // Actual yield based on impact assessment
+    // Usage and Income
+    marketingPercentage?: number;
+    foodSecurityPercentage?: number;
+    income?: number;
 }
 
 export const targetCommodityCategories: { [key: string]: string[] } = {

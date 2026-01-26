@@ -20,7 +20,6 @@ type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
-    // If it contains a time separator 'T', assume it's an ISO timestamp from history
     if (dateString.includes('T')) {
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
@@ -43,7 +42,7 @@ const getStatusBadge = (status: Subproject['status']) => {
     }
 }
 
-const DetailItem: React.FC<{ label: string; value?: string | React.ReactNode }> = ({ label, value }) => (
+const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
         <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{value || 'N/A'}</dd>
@@ -291,10 +290,24 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }));
     };
 
-    const handleCommodityAccomplishmentChange = (index: number, value: number) => {
+    const handleCommodityAccomplishmentChange = (index: number, field: keyof SubprojectCommodity, value: any) => {
+        // Validation for percentages
+        if (field === 'marketingPercentage' || field === 'foodSecurityPercentage') {
+            const numValue = parseFloat(value);
+            if (value !== '' && (isNaN(numValue) || numValue < 0)) return; 
+
+            const newValue = value === '' ? 0 : numValue;
+            const currentItem = editedSubproject.subprojectCommodities?.[index];
+            if (currentItem) {
+                const otherKey = field === 'marketingPercentage' ? 'foodSecurityPercentage' : 'marketingPercentage';
+                const otherValue = parseFloat(String(currentItem[otherKey]) || '0');
+                if (newValue + otherValue > 100) return;
+            }
+        }
+
         setEditedSubproject(prev => ({
             ...prev,
-            subprojectCommodities: prev.subprojectCommodities?.map((c, i) => i === index ? { ...c, actualYield: value } : c)
+            subprojectCommodities: prev.subprojectCommodities?.map((c, i) => i === index ? { ...c, [field]: value } : c)
         }));
     };
 
@@ -569,6 +582,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
                                                     <tr>
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual No. of Units</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
@@ -578,7 +592,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                                     {detailItems.map((detail, idx) => (
                                                         <tr key={idx}>
-                                                            <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{detail.particulars}</td>
+                                                            <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">
+                                                                {detail.particulars}
+                                                                <div className="text-xs text-gray-500">Target: {detail.numberOfUnits} {detail.unitOfMeasure}</div>
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <input 
+                                                                    type="number" 
+                                                                    value={(detail as any).actualNumberOfUnits || ''} 
+                                                                    onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                    placeholder={`0 ${detail.unitOfMeasure}`}
+                                                                />
+                                                            </td>
                                                             <td className="px-3 py-2">
                                                                 <input type="date" value={(detail as any).actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
                                                             </td>
@@ -604,36 +630,65 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
                                     </fieldset>
 
-                                    {/* Section 3: Impact of Subproject */}
+                                    {/* Section 3: Outcome of Subproject */}
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Impact of Subproject</legend>
+                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Outcome of Subproject</legend>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
                                                     <tr>
                                                         <th className="px-3 py-2 text-left font-medium">Commodity</th>
                                                         <th className="px-3 py-2 text-left font-medium">Target</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Yield/Heads</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Usage</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Income (PHP)</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                    {editedSubproject.subprojectCommodities?.map((commodity, index) => (
-                                                        <tr key={index}>
-                                                            <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
-                                                            <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                                                                {commodity.averageYield ? `${commodity.averageYield} (Yield)` : ''} 
-                                                                {commodity.typeName === 'Animal Commodity' ? ' (Heads)' : ''}
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, parseFloat(e.target.value))} className="w-32 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
-                                                                    <span className="text-xs text-gray-500">{commodity.typeName === 'Animal Commodity' ? 'heads' : 'yield'}</span>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {editedSubproject.subprojectCommodities?.map((commodity, index) => {
+                                                        const isCrop = commodity.typeName === 'Crop Commodity';
+                                                        return (
+                                                            <tr key={index}>
+                                                                <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
+                                                                <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
+                                                                    {commodity.averageYield ? `${commodity.averageYield} (Yield/Ha)` : ''} 
+                                                                    {commodity.typeName === 'Animal Commodity' ? ' (Heads)' : ''}
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'actualYield', parseFloat(e.target.value))} className="w-24 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
+                                                                        <span className="text-xs text-gray-500">{isCrop ? 'Yield/Ha' : 'Heads'}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <div className="flex items-center gap-1">
+                                                                            <input type="number" value={commodity.marketingPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'marketingPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
+                                                                            <span className="text-xs text-gray-500">Mktg</span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-1">
+                                                                            <input type="number" value={commodity.foodSecurityPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'foodSecurityPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
+                                                                            <span className="text-xs text-gray-500">FS</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    {(commodity.marketingPercentage || 0) > 0 ? (
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <input type="number" value={commodity.income || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'income', parseFloat(e.target.value))} className="w-28 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
+                                                                            <span className="text-[10px] text-gray-400 italic">
+                                                                                {isCrop ? 'per harvest season' : 'annual income'}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-xs text-gray-400">-</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                     {(!editedSubproject.subprojectCommodities || editedSubproject.subprojectCommodities.length === 0) && (
-                                                        <tr><td colSpan={3} className="px-3 py-2 text-sm text-gray-500 italic text-center">No commodities linked.</td></tr>
+                                                        <tr><td colSpan={5} className="px-3 py-2 text-sm text-gray-500 italic text-center">No commodities linked.</td></tr>
                                                     )}
                                                 </tbody>
                                             </table>

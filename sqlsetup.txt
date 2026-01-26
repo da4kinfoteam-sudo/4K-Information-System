@@ -60,3 +60,13 @@ ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "updated_at" timesta
 --   "foodSecurityPercentage": number
 --   "averageIncome": number
 -- No DDL changes are required for the 'ipos' table itself as it stores JSON.
+
+-- Update Note for Subprojects table:
+-- The 'details' column in the 'subprojects' table is of type JSONB.
+-- Added "actualNumberOfUnits" (number) to detail objects.
+-- The 'subprojectCommodities' column in the 'subprojects' table is of type JSONB.
+-- Added new optional fields to commodity objects:
+--   "marketingPercentage": number
+--   "foodSecurityPercentage": number
+--   "income": number
+-- No DDL changes are required for the 'subprojects' table itself as it stores JSON.
