@@ -2,6 +2,8 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
+import { useAuth } from '../contexts/AuthContext';
+import { getUserPermissions } from './mainfunctions/TableHooks';
 
 
 interface IPODetailProps {
@@ -58,6 +60,8 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
 const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
+    const { currentUser } = useAuth();
+    const { canEdit } = getUserPermissions(currentUser);
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
@@ -514,13 +518,15 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                     <p className="text-md text-gray-500 dark:text-gray-400">{ipo.location}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     <button
-                        onClick={() => setIsEditing(true)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95"
-                    >
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                        Edit IPO
-                    </button>
+                     {canEdit && (
+                         <button
+                            onClick={() => setIsEditing(true)}
+                            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95"
+                        >
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                            Edit IPO
+                        </button>
+                     )}
                     <button
                         onClick={onBack}
                         className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"

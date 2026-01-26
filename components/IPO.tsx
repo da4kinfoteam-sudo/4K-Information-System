@@ -6,6 +6,7 @@ import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
+import { useAuth } from '../contexts/AuthContext';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -55,6 +56,8 @@ const defaultFormData = {
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
+    const { currentUser } = useAuth();
+    const { canEdit } = getUserPermissions(currentUser);
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
@@ -575,12 +578,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         <>
             <div className="flex justify-between items-center mb-6">
                  <h2 className="text-3xl font-bold text-gray-800 dark:text-white">IPO Management</h2>
-                 <button
-                    onClick={handleAddNewClick}
-                    className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
-                >
-                    + Add New IPO
-                </button>
+                 {canEdit && (
+                     <button
+                        onClick={handleAddNewClick}
+                        className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent"
+                    >
+                        + Add New IPO
+                    </button>
+                 )}
             </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                  <div className="mb-4 flex flex-col gap-4">
@@ -610,22 +615,26 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         </div>
                         
                         <div className="flex items-center gap-2">
-                            {isSelectionMode && selectedIds.length > 0 && (
+                            {canEdit && isSelectionMode && selectedIds.length > 0 && (
                                 <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
                                     Delete Selected ({selectedIds.length})
                                 </button>
                             )}
                             <button onClick={() => downloadIposReport(processedIpos)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
-                            <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
-                            <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading)} accept=".xlsx, .xls" disabled={isUploading} />
-                            <button
-                                onClick={handleToggleSelectionMode}
-                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                                title="Toggle Multi-Delete Mode"
-                            >
-                                <TrashIcon />
-                            </button>
+                            {canEdit && (
+                                <>
+                                    <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                                    <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
+                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading)} accept=".xlsx, .xls" disabled={isUploading} />
+                                    <button
+                                        onClick={handleToggleSelectionMode}
+                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                        title="Toggle Multi-Delete Mode"
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                     
@@ -661,19 +670,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Flags</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodities</th>
                                 <SortableHeader sortKey="levelOfDevelopment" label="Level" />
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
-                                    {isSelectionMode ? (
-                                        <div className="flex items-center justify-end gap-2">
-                                            <span className="text-xs">Select All</span>
-                                            <input 
-                                                type="checkbox" 
-                                                onChange={handleSelectAll} 
-                                                checked={paginatedIpos.length > 0 && paginatedIpos.every(i => selectedIds.includes(i.id))}
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                            />
-                                        </div>
-                                    ) : "Actions"}
-                                </th>
+                                {canEdit && (
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
+                                        {isSelectionMode ? (
+                                            <div className="flex items-center justify-end gap-2">
+                                                <span className="text-xs">Select All</span>
+                                                <input 
+                                                    type="checkbox" 
+                                                    onChange={handleSelectAll} 
+                                                    checked={paginatedIpos.length > 0 && paginatedIpos.every(i => selectedIds.includes(i.id))}
+                                                    className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                />
+                                            </div>
+                                        ) : "Actions"}
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -713,24 +724,26 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                             {ipo.commodities.map(c => c.particular).join(', ')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{ipo.levelOfDevelopment}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
-                                            <div className="flex items-center justify-end">
-                                                {isSelectionMode ? (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.includes(ipo.id)} 
-                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(ipo.id); }} 
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 mr-4">Edit</button>
-                                                        <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </td>
+                                        {canEdit && (
+                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
+                                                <div className="flex items-center justify-end">
+                                                    {isSelectionMode ? (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.includes(ipo.id)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(ipo.id); }} 
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={(e) => handleEditClick(ipo, e)} className="text-accent hover:brightness-90 mr-4">Edit</button>
+                                                            <button onClick={(e) => handleDeleteClick(ipo, e)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        )}
                                     </tr>
                                     {expandedRowId === ipo.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
