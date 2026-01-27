@@ -1,5 +1,5 @@
 // Author: 4K 
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,7 +23,14 @@ interface IPODetailProps {
 
 const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'N/A';
-    // Ensure date is parsed as UTC to avoid timezone issues
+    
+    // Check if it's a full ISO string (likely from history logs or timestamps)
+    if (dateString.includes('T')) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // Handle YYYY-MM-DD standard date strings (force UTC to avoid off-by-one errors)
     const date = new Date(dateString + 'T00:00:00Z');
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
 };
@@ -84,6 +91,34 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         averageIncome: ''
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
+
+    // Calculate Statistics for Overview
+    const overviewStats = useMemo(() => {
+        // 1. Completed Counts
+        const completedSubprojects = subprojects.filter(s => s.status === 'Completed');
+        const completedTrainings = trainings.filter(t => !!t.actualDate); // Assuming actualDate implies completion
+
+        // 2. Investment Calculation
+        const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
+            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+        }, 0);
+
+        const trainingInvestment = completedTrainings.reduce((sum, t) => {
+            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+        }, 0);
+
+        const totalInvestment = subprojectInvestment + trainingInvestment;
+
+        // 3. Income Calculation
+        const totalIncome = ipo.commodities?.reduce((sum, c) => sum + (c.averageIncome || 0), 0) || 0;
+
+        return {
+            completedSPCount: completedSubprojects.length,
+            completedTRCount: completedTrainings.length,
+            totalInvestment,
+            totalIncome
+        };
+    }, [subprojects, trainings, ipo.commodities]);
     
     useEffect(() => {
         // Reset form state if the viewed IPO changes or when exiting edit mode
@@ -427,9 +462,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                             {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1 pl-1">
-                                            {(commodity.marketingPercentage || 0) > 0 && <span>Marketing: {commodity.marketingPercentage}%</span>}
-                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span className="ml-2">Food Security: {commodity.foodSecurityPercentage}%</span>}
-                                            {(commodity.averageIncome || 0) > 0 && <span className="ml-2">Avg. Income: ₱{commodity.averageIncome?.toLocaleString()}</span>}
+                                            {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
+                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {commodity.foodSecurityPercentage}%</span>}
+                                            {(commodity.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{commodity.averageIncome?.toLocaleString()}</span>}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -599,6 +634,65 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-8">
+
+                    {/* NEW: Overview Card (formerly Commodities + Stats) */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Overview</h3>
+                        
+                        {/* New Stats Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                            <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Investment</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(overviewStats.totalInvestment)}</p>
+                            </div>
+                             <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Annual Income</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                    {overviewStats.totalIncome > 0 ? formatCurrency(overviewStats.totalIncome) : "No Income"}
+                                </p>
+                            </div>
+                             <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Subprojects (Completed)</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.completedSPCount}</p>
+                            </div>
+                             <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Trainings (Completed)</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.completedTRCount}</p>
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
+                            <p className="text-sm font-semibold text-accent dark:text-green-400 bg-gray-100 dark:bg-gray-900/50 px-3 py-1 rounded-full inline-block">Level {ipo.levelOfDevelopment}</p>
+                        </div>
+                         <div>
+                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
+                            {ipo.commodities && ipo.commodities.length > 0 ? (
+                                <ul className="space-y-2 text-sm">
+                                    {ipo.commodities.map((c, i) => (
+                                        <li key={i} className="flex justify-between p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
+                                                    {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
+                                                </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-1">
+                                                    {(c.marketingPercentage || 0) > 0 && <span>Mktg: {c.marketingPercentage}%</span>}
+                                                    {(c.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {c.foodSecurityPercentage}%</span>}
+                                                    {(c.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{c.averageIncome?.toLocaleString()}</span>}
+                                                </div>
+                                            </div>
+                                            <span className="font-medium text-right">
+                                                {c.value.toLocaleString()} {c.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                                {c.yield ? ` | Y: ${c.yield}` : ''}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
+                        </div>
+                    </div>
+
                     {/* Subprojects Card */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects</h3>
@@ -631,9 +725,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                         )}
                     </div>
 
-                    {/* Trainings Card */}
+                    {/* Trainings Card - Renamed Title */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Trainings Attended</h3>
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Trainings</h3>
                         {trainings.length > 0 ? (
                              <ul className="space-y-4">
                                 {trainings.map(t => (
@@ -710,41 +804,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                 </div>
                             } />
                         </dl>
-                    </div>
-
-                     {/* Commodities Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Commodities & Development</h3>
-                        <div className="mb-4">
-                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
-                            <p className="text-sm font-semibold text-accent dark:text-green-400 bg-gray-100 dark:bg-gray-900/50 px-3 py-1 rounded-full inline-block">Level {ipo.levelOfDevelopment}</p>
-                        </div>
-                         <div>
-                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
-                            {ipo.commodities && ipo.commodities.length > 0 ? (
-                                <ul className="space-y-2 text-sm">
-                                    {ipo.commodities.map((c, i) => (
-                                        <li key={i} className="flex justify-between p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
-                                                    {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
-                                                </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-1">
-                                                    {(c.marketingPercentage || 0) > 0 && <span>Mktg: {c.marketingPercentage}%</span>}
-                                                    {(c.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {c.foodSecurityPercentage}%</span>}
-                                                    {(c.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{c.averageIncome?.toLocaleString()}</span>}
-                                                </div>
-                                            </div>
-                                            <span className="font-medium text-right">
-                                                {c.value.toLocaleString()} {c.type === 'Animal Commodity' ? 'heads' : 'ha'}
-                                                {c.yield ? ` | Y: ${c.yield}` : ''}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
-                        </div>
                     </div>
 
                     {/* Membership Information Card */}
