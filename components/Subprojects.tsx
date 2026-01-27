@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
+import { useIpoHistory } from '../hooks/useIpoHistory';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -27,6 +28,10 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
+
+const calculateTotalBudget = (details: SubprojectDetail[]) => {
+    return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+};
 
 const defaultFormData: Subproject = {
     id: 0,
@@ -52,6 +57,7 @@ const defaultFormData: Subproject = {
 const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
+    const { addIpoHistory } = useIpoHistory();
     const [formData, setFormData] = useState<Subproject>(defaultFormData);
     const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -235,7 +241,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 let bValue: any = '';
 
                 // Helper calculations for sorting
-                const getBudget = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
+                const getBudget = (s: Subproject) => calculateTotalBudget(s.details);
                 const getObligated = (s: Subproject) => s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
                 const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
                 const getRate = (s: Subproject) => {
@@ -294,10 +300,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleToggleRow = (id: number) => {
         setExpandedRowId(prev => (prev === id ? null : id));
-    };
-
-    const calculateTotalBudget = (details: SubprojectDetail[]) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     };
 
     const confirmMultiDelete = () => {
@@ -532,9 +534,21 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             user: currentUser?.fullName || "System"
         };
 
+        let newSubproject: Subproject;
+
         if (editingSubproject) {
-            // Log Update
+            // Log Update in main logs
             logAction('Updated Subproject', formData.name, formData.indigenousPeopleOrganization);
+
+            // Log to IPO History
+            if (formData.ipo_id) {
+                // If linked IPO changed, log to new IPO
+                if (formData.ipo_id !== editingSubproject.ipo_id) {
+                    addIpoHistory(formData.ipo_id, `Subproject linked: ${formData.name}`);
+                } else {
+                    addIpoHistory(formData.ipo_id, `Subproject updated: ${formData.name}`);
+                }
+            }
 
             const updated = { 
                 ...formData, 
@@ -543,14 +557,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 updated_at: currentTimestamp
             };
             setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+            newSubproject = updated;
         } else {
-            // Log Create
+            // Log Create in main logs
             logAction('Created Subproject', formData.name, formData.indigenousPeopleOrganization);
 
             const newId = Math.max(...subprojects.map(s => s.id), 0) + 1;
             // Generate simple UID if not present
             const uid = formData.uid || `SP-${new Date().getFullYear()}-${String(newId).padStart(3, '0')}`;
-            const newSubproject = { 
+            const created = { 
                 ...formData, 
                 id: newId, 
                 uid,
@@ -558,7 +573,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 created_at: currentTimestamp,
                 updated_at: currentTimestamp
             };
-            setSubprojects(prev => [...prev, newSubproject]);
+            setSubprojects(prev => [...prev, created]);
+            newSubproject = created;
+
+            // Log to IPO History if new subproject is linked
+            if (formData.ipo_id) {
+                addIpoHistory(formData.ipo_id, `Subproject linked: ${formData.name}`);
+            }
         }
 
         // Sync commodities to IPO

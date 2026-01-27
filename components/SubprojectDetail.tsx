@@ -843,6 +843,65 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             </table>
                         </div>
                     </div>
+
+                    {/* NEW: Accomplishment Report Section (Read-Only) */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
+                        </div>
+                        <div className="space-y-6">
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Item Delivery Status</h4>
+                                {subproject.details.some(d => d.actualDeliveryDate) ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                                                <tr>
+                                                    <th className="px-4 py-2 text-left">Item</th>
+                                                    <th className="px-4 py-2 text-left">Actual Delivery</th>
+                                                    <th className="px-4 py-2 text-right">Actual Units</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {subproject.details.filter(d => d.actualDeliveryDate).map(d => (
+                                                    <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
+                                                        <td className="px-4 py-2 font-medium">{d.particulars}</td>
+                                                        <td className="px-4 py-2 text-green-600 dark:text-green-400">{formatDate(d.actualDeliveryDate)}</td>
+                                                        <td className="px-4 py-2 text-right">{d.actualNumberOfUnits || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic">No items delivered yet.</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Project Outcome</h4>
+                                {subproject.subprojectCommodities && subproject.subprojectCommodities.some(c => c.actualYield || c.income) ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {subproject.subprojectCommodities.map((c, i) => (
+                                            (c.actualYield || c.income) && (
+                                                <div key={i} className="p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                    <p className="font-bold text-gray-800 dark:text-gray-200">{c.name}</p>
+                                                    <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                                                        {c.actualYield && <p>Yield: <span className="font-semibold text-gray-900 dark:text-white">{c.actualYield}</span> {c.typeName === 'Animal Commodity' ? 'Heads' : 'Yield/Ha'}</p>}
+                                                        {c.income && <p>Income: <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(c.income)}</span></p>}
+                                                        {c.marketingPercentage && <p>Marketing: {c.marketingPercentage}%</p>}
+                                                    </div>
+                                                </div>
+                                            )
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic">No outcome data recorded yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
                  {/* Right Column */}
                 <div className="space-y-8">

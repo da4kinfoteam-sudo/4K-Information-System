@@ -4,32 +4,43 @@ import { supabase } from '../supabaseClient';
 import { HistoryEntry } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 
-export const useIpoHistory = (ipoId?: number) => {
-    const [history, setHistory] = useState<HistoryEntry[]>([]);
+export interface IpoHistoryEntry {
+    id: number;
+    ipo_id: number;
+    event: string;
+    user: string;
+    date: string;
+    created_at: string;
+}
+
+export const useIpoHistory = (currentIpoId?: number) => {
+    const [history, setHistory] = useState<IpoHistoryEntry[]>([]);
     const { currentUser } = useAuth();
 
     const fetchHistory = useCallback(async () => {
-        if (!supabase || !ipoId) return;
+        if (!supabase || !currentIpoId) return;
 
         const { data, error } = await supabase
             .from('ipo_history')
             .select('*')
-            .eq('ipo_id', ipoId)
+            .eq('ipo_id', currentIpoId)
             .order('created_at', { ascending: false });
 
         if (error) {
             console.error("Error fetching IPO history:", error);
         } else if (data) {
-            setHistory(data as HistoryEntry[]);
+            setHistory(data as IpoHistoryEntry[]);
         }
-    }, [ipoId]);
+    }, [currentIpoId]);
 
     useEffect(() => {
         fetchHistory();
     }, [fetchHistory]);
 
-    const addIpoHistory = async (ipoId: number, event: string, user: string) => {
+    const addIpoHistory = async (ipoId: number, event: string) => {
         if (!supabase) return;
+
+        const user = currentUser?.fullName || 'System';
 
         const { error } = await supabase
             .from('ipo_history')
@@ -37,15 +48,16 @@ export const useIpoHistory = (ipoId?: number) => {
                 ipo_id: ipoId,
                 event: event,
                 user: user,
-                date: new Date().toISOString(),
-                created_at: new Date().toISOString()
+                date: new Date().toISOString()
             }]);
 
         if (error) {
             console.error("Error adding IPO history:", error);
         } else {
             // If currently viewing this IPO, refresh list
-            fetchHistory();
+            if (currentIpoId === ipoId) {
+                fetchHistory();
+            }
         }
     };
 

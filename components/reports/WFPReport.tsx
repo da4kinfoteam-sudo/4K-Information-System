@@ -45,7 +45,6 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
-                    'Trainings': { items: [] },
                     'Staff Requirements': { items: [] },
                     'Office Requirements': { items: [] },
                     'Activities': { items: [] }
@@ -132,7 +131,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                  }
                  addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
             } else if (t.component === 'Program Management') {
-                 addItemToGroup(finalData['Program Management'].packages['Trainings'].items, item);
+                 // Removed Trainings from Program Management as per request
             } else if (finalData[t.component]) {
                 addItemToGroup(finalData[t.component], item);
             }
