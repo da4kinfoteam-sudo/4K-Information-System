@@ -653,7 +653,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
                 <StatCard title="Total Budget" value={formatCurrency(financialStats.total)} icon={<FinancialsIcon />} color="text-purple-500" />
                 <StatCard title="Total Budget for Sub Projects" value={formatCurrency(financialStats.subprojects)} icon={<FinancialsIcon />} color="text-blue-500" />
                 <StatCard title="Total Budget for Trainings" value={formatCurrency(financialStats.trainings)} icon={<FinancialsIcon />} color="text-green-500" />

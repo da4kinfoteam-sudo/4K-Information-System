@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
@@ -394,12 +393,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         // Ensure dataPoints is strictly typed
         // Use Array.from with map function
         const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => {
-            const data = monthlyData[i];
+            // Explicit cast for safety against inference failure
+            const data = (monthlyData as { [key: number]: MonthlyDataPoint })[i];
             return data ? data : { target: 0, obligation: 0, disbursement: 0 };
         });
 
         const maxVal = Math.max(
-            ...dataPoints.map(d => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
@@ -426,7 +426,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d, i) => {
+                    {dataPoints.map((d: MonthlyDataPoint, i) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         // Ensure values are numbers
                         const tVal = Number(d.target || 0);
