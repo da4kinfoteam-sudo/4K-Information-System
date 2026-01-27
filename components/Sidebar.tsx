@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                                     <img 
                                         src="/assets/4klogo.png" 
                                         alt="DA 4K Logo" 
-                                        className="h-16 w-16 object-contain"
+                                        className="h-[5.2rem] w-[5.2rem] object-contain"
                                     />
                                 </div>
                                 <h1 className="text-lg font-bold text-gray-800 dark:text-white leading-tight">4K Information System</h1>
@@ -63,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                             <img 
                                 src="/assets/4klogo.png" 
                                 alt="DA 4K Logo" 
-                                className="h-10 w-10 object-contain mb-1"
+                                className="h-[3.25rem] w-[3.25rem] object-contain mb-1"
                             />
                             <h1 className="text-lg font-bold text-gray-800 dark:text-white">4K IS</h1>
                         </a>
