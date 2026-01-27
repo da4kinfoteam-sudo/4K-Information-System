@@ -73,6 +73,8 @@ ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "updated_at" timesta
 
 ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "ipo_id" bigint;
 
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS "endDate" text;
+
 -- 7. IPO History
 create table if not exists ipo_history (
   "id" bigint primary key generated always as identity,

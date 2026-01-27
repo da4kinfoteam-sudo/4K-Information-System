@@ -1,4 +1,3 @@
-
 // Author: 4K
 import React from 'react';
 import { 
@@ -749,6 +748,13 @@ export const handleIposUpload = (
                     registrationDate: row.registrationDate ? String(row.registrationDate) : null,
                     commodities: commodities,
                     levelOfDevelopment: parseInt(row.levelOfDevelopment, 10) as IPO['levelOfDevelopment'] || 1,
+                    totalMembers: Number(row.totalMembers) || 0,
+                    totalIpMembers: Number(row.totalIpMembers) || 0,
+                    totalMaleMembers: Number(row.totalMaleMembers) || 0,
+                    totalFemaleMembers: Number(row.totalFemaleMembers) || 0,
+                    totalYouthMembers: Number(row.totalYouthMembers) || 0,
+                    totalSeniorMembers: Number(row.totalSeniorMembers) || 0,
+                    total4PsMembers: Number(row.total4PsMembers) || 0,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 };

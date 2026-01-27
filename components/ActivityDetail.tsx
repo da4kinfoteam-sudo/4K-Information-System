@@ -4,6 +4,7 @@ import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tie
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useIpoHistory } from '../hooks/useIpoHistory';
 
 interface ActivityDetailProps {
     activity: Activity;
@@ -38,12 +39,15 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [] }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
+    const { addIpoHistory } = useIpoHistory();
     const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
     const [editedActivity, setEditedActivity] = useState(activity);
     const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
+    const [isMultiDay, setIsMultiDay] = useState(false);
     
     // Budget Edit State
+    const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
         expenseParticular: '',
@@ -68,6 +72,13 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
             setSelectedActivityType(activity.name);
         }
 
+        // Check for multi-day
+        if (activity.endDate && activity.endDate !== activity.date) {
+            setIsMultiDay(true);
+        } else {
+            setIsMultiDay(false);
+        }
+
         if (editMode === 'full') setActiveTab('details');
         if (editMode === 'budget') setActiveTab('expenses');
     }, [activity, editMode, referenceActivities]);
@@ -84,11 +95,30 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        if (name === 'component') {
-             setEditedActivity(prev => ({ ...prev, component: value as ActivityComponentType, name: '' })); 
-             setSelectedActivityType('');
-        } else {
-             setEditedActivity(prev => ({ ...prev, [name]: value }));
+        setEditedActivity(prev => {
+            const updated = { ...prev, [name]: value };
+            
+            // If component changed, reset activity type
+            if (name === 'component') {
+                updated.name = '';
+                setSelectedActivityType('');
+            }
+            
+            // Sync end date if not multi-day
+            if (name === 'date' && !isMultiDay) {
+                updated.endDate = value;
+            }
+
+            return updated;
+        });
+        if (name === 'component') setSelectedActivityType('');
+    };
+
+    const handleMultiDayToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const checked = e.target.checked;
+        setIsMultiDay(checked);
+        if (!checked) {
+            setEditedActivity(prev => ({ ...prev, endDate: prev.date }));
         }
     };
 
@@ -141,16 +171,63 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
             alert('Please fill out all expense fields, including UACS classification.');
             return;
         }
-        const newExpense: ActivityExpense = {
-            id: Date.now(),
-            objectType: currentExpense.objectType,
-            expenseParticular: currentExpense.expenseParticular,
-            uacsCode: currentExpense.uacsCode,
-            obligationMonth: currentExpense.obligationMonth,
-            disbursementMonth: currentExpense.disbursementMonth,
-            amount: parseFloat(currentExpense.amount)
-        };
-        setEditedActivity(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+
+        if (editingExpenseId !== null) {
+            // Update existing
+            setEditedActivity(prev => ({
+                ...prev,
+                expenses: prev.expenses.map(e => e.id === editingExpenseId ? {
+                    ...e,
+                    objectType: currentExpense.objectType,
+                    expenseParticular: currentExpense.expenseParticular,
+                    uacsCode: currentExpense.uacsCode,
+                    obligationMonth: currentExpense.obligationMonth,
+                    disbursementMonth: currentExpense.disbursementMonth,
+                    amount: parseFloat(currentExpense.amount)
+                } : e)
+            }));
+            setEditingExpenseId(null);
+        } else {
+            // Add new
+            const newExpense: ActivityExpense = {
+                id: Date.now(),
+                objectType: currentExpense.objectType,
+                expenseParticular: currentExpense.expenseParticular,
+                uacsCode: currentExpense.uacsCode,
+                obligationMonth: currentExpense.obligationMonth,
+                disbursementMonth: currentExpense.disbursementMonth,
+                amount: parseFloat(currentExpense.amount)
+            };
+            setEditedActivity(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+        }
+
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+    };
+
+    const handleEditExpense = (id: number) => {
+        const expenseToEdit = editedActivity.expenses.find(e => e.id === id);
+        if (expenseToEdit) {
+            setCurrentExpense({
+                objectType: expenseToEdit.objectType,
+                expenseParticular: expenseToEdit.expenseParticular,
+                uacsCode: expenseToEdit.uacsCode,
+                obligationMonth: expenseToEdit.obligationMonth,
+                disbursementMonth: expenseToEdit.disbursementMonth,
+                amount: String(expenseToEdit.amount)
+            });
+            setEditingExpenseId(id);
+        }
+    };
+
+    const handleCancelExpenseEdit = () => {
+        setEditingExpenseId(null);
         setCurrentExpense({
             objectType: 'MOOE',
             expenseParticular: '',
@@ -163,6 +240,9 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
 
     const handleRemoveExpense = (id: number) => {
         setEditedActivity(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
+        if (editingExpenseId === id) {
+            handleCancelExpenseEdit();
+        }
     };
 
     // Accomplishment Handlers
@@ -173,21 +253,32 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         }));
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
-        let eventType = "Updated via Detail View";
-        if (editMode === 'budget') eventType = "Updated Budget via Detail View";
-        if (editMode === 'accomplishment') eventType = "Updated Accomplishment";
+        let eventType = "Activity Updated";
+        if (editMode === 'budget') eventType = "Budget Updated";
+        if (editMode === 'accomplishment') eventType = "Accomplishment Updated";
 
         const historyEntry = {
             date: new Date().toISOString(),
             event: eventType,
             user: currentUser?.fullName || "System"
         };
+        
+        // Log to IPO History for each participating IPO
+        for (const ipoName of editedActivity.participatingIpos) {
+            const ipo = ipos.find(i => i.name === ipoName);
+            if (ipo) {
+                await addIpoHistory(ipo.id, `${eventType}: ${editedActivity.name}`);
+            }
+        }
+
+        const finalEndDate = isMultiDay ? editedActivity.endDate : editedActivity.date;
 
         const updatedActivity = {
             ...editedActivity,
+            endDate: finalEndDate,
             history: [...(activity.history || []), historyEntry]
         };
         
@@ -267,8 +358,25 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 </div>
                                             )}
                                             <div>
-                                                <label className="block text-sm font-medium">Date</label>
+                                                <label className="block text-sm font-medium">Start Date</label>
                                                 <input type="date" name="date" value={editedActivity.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                            </div>
+                                            <div className="flex flex-col justify-end">
+                                                <label className="flex items-center gap-2 text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isMultiDay} 
+                                                        onChange={handleMultiDayToggle}
+                                                        className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    />
+                                                    <span>Multi-day Activity?</span>
+                                                </label>
+                                                {isMultiDay && (
+                                                    <div>
+                                                        <label className="block text-sm font-medium">End Date</label>
+                                                        <input type="date" name="endDate" value={editedActivity.endDate || editedActivity.date} onChange={handleInputChange} className={commonInputClasses} />
+                                                    </div>
+                                                )}
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium">Location</label>
@@ -335,14 +443,19 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</legend>
                                         <div className="space-y-2 mb-4">
                                             {editedActivity.expenses.map((exp) => (
-                                                <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                                <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                     <div>
                                                         <span className="font-semibold">{exp.expenseParticular}</span>
                                                         <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {exp.obligationMonth}</div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
                                                         <span className="font-bold">{formatCurrency(exp.amount)}</span>
-                                                        <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                        <div className="flex items-center gap-2">
+                                                            <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                            </button>
+                                                            <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -362,7 +475,14 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                     <label className="block text-xs font-medium">Amount</label>
                                                     <input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} min="0" step="0.01" className={commonInputClasses + " py-1.5"} />
                                                 </div>
-                                                <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                                {editingExpenseId !== null ? (
+                                                    <div className="flex gap-1 h-9 items-end">
+                                                        <button type="button" onClick={handleAddExpense} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                                        <button type="button" onClick={handleCancelExpenseEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                                    </div>
+                                                ) : (
+                                                    <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                                )}
                                             </div>
                                         </div>
                                     </fieldset>
@@ -456,7 +576,10 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
              <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{activity.name}</h1>
-                    <p className="text-md text-gray-500 dark:text-gray-400">{activity.location}</p>
+                    <p className="text-md text-gray-500 dark:text-gray-400">
+                        {activity.location} | {formatDate(activity.date)}
+                        {activity.endDate && activity.endDate !== activity.date ? ` - ${formatDate(activity.endDate)}` : ''}
+                    </p>
                 </div>
                 <div className="flex items-center gap-4">
                      {canEdit && (
@@ -486,7 +609,12 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
                             <DetailItem label="UID" value={activity.uid} />
                             <DetailItem label="Type" value={activity.type} />
-                            <DetailItem label="Date" value={formatDate(activity.date)} />
+                            <DetailItem label="Date" value={
+                                <>
+                                    {formatDate(activity.date)}
+                                    {activity.endDate && activity.endDate !== activity.date ? ` to ${formatDate(activity.endDate)}` : ''}
+                                </>
+                            } />
                             <DetailItem label="Component" value={activity.component} />
                             <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="Funding Year" value={activity.fundingYear} />

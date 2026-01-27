@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
@@ -8,6 +7,7 @@ import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
+import { useIpoHistory } from '../hooks/useIpoHistory';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -35,6 +35,7 @@ const defaultFormData: Activity = {
     type: 'Activity', // Default type
     name: '',
     date: '',
+    endDate: '',
     description: '',
     location: '',
     facilitator: '',
@@ -58,8 +59,14 @@ const defaultFormData: Activity = {
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
+    const { addIpoHistory } = useIpoHistory();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
-    const [editingItem, setEditingItem] = useState<Activity | null>(null);
+    const [isMultiDay, setIsMultiDay] = useState(false);
+    
+    // Note: editingItem is now only used for internal logic during creation flow if needed,
+    // but the main list Edit button is removed.
+    const [editingItem, setEditingItem] = useState<Activity | null>(null); 
+    
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
     const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
@@ -78,6 +85,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [ouFilter, setOuFilter] = useState('All');
+    const [fundYearFilter, setFundYearFilter] = useState('All');
     const [componentFilter, setComponentFilter] = useState<ActivityComponentType | 'All'>('All');
     const [typeFilter, setTypeFilter] = useState<'All' | 'Training' | 'Activity'>(forcedType || 'All');
 
@@ -86,8 +94,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
-    const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
+    const [view, setView] = useState<'list' | 'add' >('list');
 
+    // Expenses State
+    const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
         expenseParticular: '',
@@ -118,59 +128,31 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         }
     }, [currentUser]);
 
-    // Initialize form data when editing or creating
+    // Initialize form data
     useEffect(() => {
-        if (editingItem) {
-            setFormData({
-                ...defaultFormData,
-                ...editingItem,
-                participantsMale: Number(editingItem.participantsMale) || 0,
-                participantsFemale: Number(editingItem.participantsFemale) || 0,
-                fundingYear: editingItem.fundingYear ?? new Date().getFullYear(),
-                fundType: editingItem.fundType ?? fundTypes[0],
-                tier: editingItem.tier ?? tiers[0],
-                facilitator: editingItem.type === 'Training' ? editingItem.facilitator : '',
-                catchUpPlanRemarks: editingItem.catchUpPlanRemarks || '',
-                newTargetDate: editingItem.newTargetDate || '',
-                actualDate: editingItem.actualDate || '',
-                actualParticipantsMale: editingItem.actualParticipantsMale || 0,
-                actualParticipantsFemale: editingItem.actualParticipantsFemale || 0,
-            });
-            
-            // Set Selected Activity Type based on current item state and reference table
-            if (editingItem.type === 'Training') {
-                // If it's a training, we try to find the matching category name from the reference list
-                const ref = referenceActivities.find(ra => ra.component === editingItem.component && ra.type === 'Training');
-                if (ref) {
-                    setSelectedActivityType(ref.activity_name);
-                } else {
-                    // Fallback if not found in reference list, though less ideal
-                    setSelectedActivityType(`${editingItem.component} Training`);
-                }
-            } else {
-                // For activities, the name usually matches the dropdown selection directly
-                setSelectedActivityType(editingItem.name);
-            }
+        setFormData({
+            ...defaultFormData,
+            type: forcedType || 'Activity', // Use forced type initially if available
+            operatingUnit: currentUser?.operatingUnit || '',
+            encodedBy: currentUser?.fullName || ''
+        });
+        setSelectedActivityType('');
+        setIsMultiDay(false);
+    }, [currentUser, forcedType, referenceActivities, view]);
 
-             setActiveTab('details');
-        } else {
-            setFormData({
-                ...defaultFormData,
-                type: forcedType || 'Activity', // Use forced type initially if available
-                operatingUnit: currentUser?.operatingUnit || '',
-                encodedBy: currentUser?.fullName || ''
-            });
-            setSelectedActivityType('');
-        }
-    }, [editingItem, currentUser, forcedType, referenceActivities]);
-
-    // When component changes in form, reset types unless editing
+    // When component changes in form, reset types
     useEffect(() => {
-        if (view !== 'edit') {
+        if (view === 'add') {
             setFormData(prev => ({...prev, name: ''}));
             setSelectedActivityType('');
         }
     }, [formData.component, view]);
+
+    const availableFundYears = useMemo(() => {
+        const years = new Set<string>();
+        activities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
+        return Array.from(years).sort().reverse();
+    }, [activities]);
 
     const filteredIposForSelection = useMemo(() => {
         const filtered = ipoRegionFilter === 'All' ? ipos : ipos.filter(ipo => ipo.region === ipoRegionFilter);
@@ -200,6 +182,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             filtered = filtered.filter(a => a.operatingUnit === currentUser.operatingUnit);
         } else if (canViewAll && ouFilter !== 'All') {
             filtered = filtered.filter(a => a.operatingUnit === ouFilter);
+        }
+        
+        if (fundYearFilter !== 'All') {
+            filtered = filtered.filter(a => a.fundingYear?.toString() === fundYearFilter);
         }
 
         if (componentFilter !== 'All') {
@@ -249,12 +235,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             });
         }
         return filtered;
-    }, [activities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, ipos, currentUser, canViewAll]);
+    }, [activities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, fundYearFilter, ipos, currentUser, canViewAll]);
 
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedActivities 
-    } = usePagination(processedActivities, [searchTerm, componentFilter, typeFilter, ouFilter, sortConfig]);
+    } = usePagination(processedActivities, [searchTerm, componentFilter, typeFilter, ouFilter, fundYearFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -295,10 +281,26 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         const { name, value } = target;
         const isNumberInput = 'type' in target && target.type === 'number';
 
-        setFormData(prev => ({ 
-            ...prev, 
-            [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
-        }));
+        setFormData(prev => {
+            const updated = { 
+                ...prev, 
+                [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
+            };
+            
+            // Sync dates if not multi-day
+            if (name === 'date' && !isMultiDay) {
+                updated.endDate = value;
+            }
+            return updated;
+        });
+    };
+
+    const handleMultiDayToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const checked = e.target.checked;
+        setIsMultiDay(checked);
+        if (!checked) {
+            setFormData(prev => ({ ...prev, endDate: prev.date }));
+        }
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -307,18 +309,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         
         // Find the reference activity to determine Type (Activity vs Training)
         const ref = referenceActivities.find(ra => ra.activity_name === selectedName && ra.component === formData.component);
-        const type = ref?.type || 'Activity'; // Default to Activity if not found (shouldn't happen with correct data)
+        const type = ref?.type || 'Activity'; 
         
         if (type === 'Training') {
-            // If user selects a Training type (e.g. "Social Trainings"), we want them to input a specific title
-            // But if we are editing and the type hasn't changed, keep the existing name
-            if (view === 'edit' && editingItem && editingItem.type === 'Training' && selectedName === selectedActivityType) {
-                 // Keep existing name
-            } else {
-                 setFormData(prev => ({ ...prev, name: '', type: 'Training' })); 
-            }
+             setFormData(prev => ({ ...prev, name: '', type: 'Training' })); 
         } else {
-            // If it's a standard Activity (e.g. "Meetings"), the name IS the activity type
             setFormData(prev => ({ ...prev, name: selectedName, type: 'Activity' }));
         }
     };
@@ -344,16 +339,63 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             alert('Please fill out all expense fields, including UACS classification.');
             return;
         }
-        const newExpense: ActivityExpense = {
-            id: Date.now(),
-            objectType: currentExpense.objectType,
-            expenseParticular: currentExpense.expenseParticular,
-            uacsCode: currentExpense.uacsCode,
-            obligationMonth: currentExpense.obligationMonth,
-            disbursementMonth: currentExpense.disbursementMonth,
-            amount: parseFloat(currentExpense.amount)
-        };
-        setFormData(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+
+        if (editingExpenseId !== null) {
+            // Update existing
+            setFormData(prev => ({
+                ...prev,
+                expenses: prev.expenses.map(e => e.id === editingExpenseId ? {
+                    ...e,
+                    objectType: currentExpense.objectType,
+                    expenseParticular: currentExpense.expenseParticular,
+                    uacsCode: currentExpense.uacsCode,
+                    obligationMonth: currentExpense.obligationMonth,
+                    disbursementMonth: currentExpense.disbursementMonth,
+                    amount: parseFloat(currentExpense.amount)
+                } : e)
+            }));
+            setEditingExpenseId(null);
+        } else {
+            // Add new
+            const newExpense: ActivityExpense = {
+                id: Date.now(),
+                objectType: currentExpense.objectType,
+                expenseParticular: currentExpense.expenseParticular,
+                uacsCode: currentExpense.uacsCode,
+                obligationMonth: currentExpense.obligationMonth,
+                disbursementMonth: currentExpense.disbursementMonth,
+                amount: parseFloat(currentExpense.amount)
+            };
+            setFormData(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+        }
+
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+    };
+
+    const handleEditExpense = (id: number) => {
+        const expenseToEdit = formData.expenses.find(e => e.id === id);
+        if (expenseToEdit) {
+            setCurrentExpense({
+                objectType: expenseToEdit.objectType,
+                expenseParticular: expenseToEdit.expenseParticular,
+                uacsCode: expenseToEdit.uacsCode,
+                obligationMonth: expenseToEdit.obligationMonth,
+                disbursementMonth: expenseToEdit.disbursementMonth,
+                amount: String(expenseToEdit.amount)
+            });
+            setEditingExpenseId(id);
+        }
+    };
+
+    const handleCancelExpenseEdit = () => {
+        setEditingExpenseId(null);
         setCurrentExpense({
             objectType: 'MOOE',
             expenseParticular: '',
@@ -366,18 +408,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const handleRemoveExpense = (id: number) => {
         setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
-    };
-
-    const handleExpenseAccomplishmentChange = (id: number, field: keyof ActivityExpense, value: any) => {
-        setFormData(prev => ({
-            ...prev,
-            expenses: prev.expenses.map(e => e.id === id ? { ...e, [field]: value } : e)
-        }));
+        if (editingExpenseId === id) {
+            handleCancelExpenseEdit();
+        }
     };
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
-        // Location check removed as per request
+        
         if (!formData.name || !formData.date) {
             alert('Please fill out all required fields (Name and Date).');
             return;
@@ -393,8 +431,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             uid = `${prefix}-${currentYear}-${sequence}`;
         }
 
+        // Ensure endDate is set
+        const finalEndDate = isMultiDay ? formData.endDate : formData.date;
+
         const submissionData = {
             ...formData,
+            endDate: finalEndDate,
             uid: uid || formData.uid,
             updated_at: new Date().toISOString()
         };
@@ -403,21 +445,22 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
         if (supabase) {
             try {
-                if (editingItem) {
-                    // Log Update
-                    logAction(`Updated ${formData.type}`, formData.name, participatingIposList);
+                // Log Create
+                logAction(`Created ${formData.type}`, formData.name, participatingIposList);
 
-                    const { error } = await supabase.from('activities').update(submissionData).eq('id', editingItem.id);
-                    if (error) throw error;
-                } else {
-                    // Log Create
-                    logAction(`Created ${formData.type}`, formData.name, participatingIposList);
-
-                    // Remove ID for insert to let DB auto-generate
-                    const { id, ...insertData } = submissionData;
-                    const { error } = await supabase.from('activities').insert([insertData]);
-                    if (error) throw error;
+                // Add to IPO History for EACH participating IPO
+                for (const ipoName of formData.participatingIpos) {
+                    const ipo = ipos.find(i => i.name === ipoName);
+                    if (ipo) {
+                        await addIpoHistory(ipo.id, `${formData.type} Created: ${formData.name}`);
+                    }
                 }
+
+                // Remove ID for insert to let DB auto-generate
+                const { id, ...insertData } = submissionData;
+                const { error } = await supabase.from('activities').insert([insertData]);
+                if (error) throw error;
+                
                 refreshData();
             } catch (error: any) {
                 console.error("Error saving activity:", error);
@@ -426,30 +469,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             }
         } else {
             // Offline fallback
-            if (editingItem) {
-                const updatedActivity: Activity = {
-                    ...formData,
-                    id: editingItem.id
-                };
-                setActivities(prev => prev.map(a => a.id === editingItem.id ? updatedActivity : a));
-            } else {
-                const newActivity: Activity = {
-                    ...formData,
-                    uid,
-                    id: newId,
-                    created_at: new Date().toISOString(),
-                };
-                setActivities(prev => [newActivity, ...prev]);
-            }
+            const newActivity: Activity = {
+                ...submissionData,
+                endDate: finalEndDate,
+                uid,
+                id: newId,
+                created_at: new Date().toISOString(),
+            };
+            setActivities(prev => [newActivity, ...prev]);
         }
         
         handleCancelEdit();
     };
 
-    const handleEditClick = (activity: Activity) => {
-        setEditingItem(activity);
-        setView('edit');
-    };
+    // Removed handleEditClick as editing is now only via detail page
     
     const handleAddNewClick = () => {
         setEditingItem(null);
@@ -461,6 +494,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         setFormData(defaultFormData);
         setSelectedActivityType('');
         setActiveTab('details');
+        setEditingExpenseId(null);
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
         setView('list');
     };
 
@@ -473,6 +515,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         if (itemToDelete) {
             // Log Delete
             logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '));
+
+             // Log to IPO History
+             for (const ipoName of itemToDelete.participatingIpos) {
+                const ipo = ipos.find(i => i.name === ipoName);
+                if (ipo) {
+                    await addIpoHistory(ipo.id, `${itemToDelete.type} Deleted: ${itemToDelete.name}`);
+                }
+            }
 
             if (supabase) {
                 const { error } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
@@ -570,6 +620,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 </select>
                             </div>
                         )}
+                        <div className="flex items-center gap-2">
+                           <label htmlFor="fundYearFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year:</label>
+                            <select id="fundYearFilter" value={fundYearFilter} onChange={(e) => setFundYearFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
+                                <option value="All">All Years</option>
+                                {availableFundYears.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                        </div>
                         <div className="flex items-center gap-2">
                            <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
                             <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
@@ -672,7 +729,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                             className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                                         />
                                                     )}
-                                                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(activity); }} className="text-accent hover:brightness-90 dark:text-green-400 dark:hover:text-green-300 mr-4">Edit</button>
+                                                    {/* Edit button removed */}
                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(activity); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
                                                 </div>
                                             )}
@@ -755,7 +812,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const renderFormView = () => (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Activity' : 'Add New Activity'}</h3>
+                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">Add New Activity</h3>
                  <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
@@ -763,14 +820,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="details" label="Details" />
                         <TabButton tabName="budget" label="Expenses" />
-                        {view === 'edit' && <TabButton tabName="accomplishments" label="Accomplishments" />}
                     </nav>
                 </div>
                 
                 {activeTab === 'details' && (
                     <div className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Activity Information</legend>
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Information</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium">Component</label>
@@ -787,28 +843,45 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 </div>
                                 {formData.type === 'Training' && (
                                     <div className="md:col-span-2">
-                                        <label className="block text-sm font-medium">Training Name</label>
-                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} placeholder="Specific Training Title" />
+                                        <label className="block text-sm font-medium">Specific Training Title</label>
+                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} placeholder="Enter specific training title" />
                                     </div>
                                 )}
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium">Description</label>
-                                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows={2} className={commonInputClasses} />
-                                </div>
+                                {formData.type === 'Training' && (
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium">Facilitator</label>
+                                        <input type="text" name="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                )}
                                 <div>
-                                    <label className="block text-sm font-medium">Date</label>
-                                    <input type="date" name="date" value={formData.date} onChange={handleInputChange} className={commonInputClasses} />
+                                    <label className="block text-sm font-medium">Start Date</label>
+                                    <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                </div>
+                                <div className="flex flex-col justify-end">
+                                    <label className="flex items-center gap-2 text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={isMultiDay} 
+                                            onChange={handleMultiDayToggle}
+                                            className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                        />
+                                        <span>Multi-day Activity?</span>
+                                    </label>
+                                    {isMultiDay && (
+                                        <div>
+                                            <label className="block text-sm font-medium">End Date</label>
+                                            <input type="date" name="endDate" value={formData.endDate || formData.date} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium">Location</label>
                                     <LocationPicker value={formData.location} onChange={(val) => setFormData(prev => ({...prev, location: val}))} />
                                 </div>
-                                {formData.type === 'Training' && (
-                                    <div>
-                                        <label className="block text-sm font-medium">Facilitator</label>
-                                        <input type="text" name="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                )}
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium">Description</label>
+                                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
+                                </div>
                             </div>
                         </fieldset>
 
@@ -816,15 +889,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants & IPOs</legend>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                 <div>
-                                    <label className="block text-sm font-medium">Male Participants</label>
+                                    <label className="block text-sm font-medium">Male Participants (Target)</label>
                                     <input type="number" name="participantsMale" value={formData.participantsMale} onChange={handleInputChange} min="0" className={commonInputClasses} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium">Female Participants</label>
+                                    <label className="block text-sm font-medium">Female Participants (Target)</label>
                                     <input type="number" name="participantsFemale" value={formData.participantsFemale} onChange={handleInputChange} min="0" className={commonInputClasses} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium">Total</label>
+                                    <label className="block text-sm font-medium">Total Target</label>
                                     <input type="number" value={(formData.participantsMale || 0) + (formData.participantsFemale || 0)} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
                                 </div>
                             </div>
@@ -876,14 +949,19 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
                             <div className="space-y-2 mb-4">
                                 {formData.expenses.map((exp) => (
-                                    <div key={exp.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-2 rounded-md text-sm">
+                                    <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                         <div>
                                             <span className="font-semibold">{exp.expenseParticular}</span>
                                             <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {exp.obligationMonth}</div>
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <span className="font-bold">{formatCurrency(exp.amount)}</span>
-                                            <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                            <div className="flex items-center gap-2">
+                                                <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                </button>
+                                                <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -903,82 +981,17 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                         <label className="block text-xs font-medium">Amount</label>
                                         <input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} min="0" step="0.01" className={commonInputClasses + " py-1.5"} />
                                     </div>
-                                    <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                    {editingExpenseId !== null ? (
+                                        <div className="flex gap-1 h-9 items-end">
+                                            <button type="button" onClick={handleAddExpense} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                            <button type="button" onClick={handleCancelExpenseEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                        </div>
+                                    ) : (
+                                        <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                    )}
                                 </div>
                             </div>
                         </fieldset>
-                    </div>
-                )}
-
-                {activeTab === 'accomplishments' && view === 'edit' && (
-                    <div className="space-y-6">
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Actual Accomplishment</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium">Actual Date Conducted</label>
-                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium">Actual Male Participants</label>
-                                    <input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale || 0} onChange={handleInputChange} className={commonInputClasses} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium">Actual Female Participants</label>
-                                    <input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale || 0} onChange={handleInputChange} className={commonInputClasses} />
-                                </div>
-                            </div>
-                        </fieldset>
-
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Utilization</legend>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left font-medium">Particulars</th>
-                                            <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
-                                            <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
-                                            <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {formData.expenses.map((expense) => (
-                                            <tr key={expense.id}>
-                                                <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{expense.expenseParticular}</td>
-                                                <td className="px-3 py-2">
-                                                    <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    <input type="date" value={expense.actualDisbursementDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    <input type="number" value={expense.actualAmount || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </fieldset>
-
-                        {/* Catch Up Plan */}
-                        {new Date() > new Date(formData.date) && !formData.actualDate && (
-                            <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
-                                <p className="text-xs text-red-500 mb-2">Activity is delayed. Please provide a catch-up plan.</p>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks / Justification</label>
-                                        <textarea name="catchUpPlanRemarks" value={formData.catchUpPlanRemarks || ''} onChange={handleInputChange} rows={3} className={commonInputClasses} placeholder="Describe actions taken or justification for delay..." />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Date</label>
-                                        <input type="date" name="newTargetDate" value={formData.newTargetDate || ''} onChange={handleInputChange} className={commonInputClasses} />
-                                    </div>
-                                </div>
-                            </fieldset>
-                        )}
                     </div>
                 )}
 
