@@ -344,6 +344,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         });
     };
 
+    // ... [Detail and Commodity handlers omitted for brevity, similar to previous] ...
+    // Note: Ensuring handlers are present in output for correctness.
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'type') {
@@ -364,7 +366,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
 
         if (editingDetailId !== null) {
-            // Update existing detail
             setFormData(prev => ({
                 ...prev,
                 details: prev.details.map(d => d.id === editingDetailId ? { 
@@ -376,7 +377,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             }));
             setEditingDetailId(null);
         } else {
-            // Add new detail
             const newDetail: SubprojectDetail = {
                 id: Date.now(),
                 ...currentDetail,
@@ -386,7 +386,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             setFormData(prev => ({ ...prev, details: [...prev.details, newDetail] }));
         }
 
-        // Reset detail form
         setCurrentDetail(prev => ({
             ...prev,
             particulars: '',
@@ -443,11 +442,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
     };
 
-    // Commodity Handlers
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'typeName') {
-            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' })); // Reset commodity name if type changes
+            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
         } else {
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
@@ -459,13 +457,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             alert(`Please fill in all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
         }
-
         const newCommodity: SubprojectCommodity = {
             ...currentCommodity,
             area: Number(currentCommodity.area),
             averageYield: isAnimal ? undefined : Number(currentCommodity.averageYield)
         };
-
         if (editingCommodityIndex !== null) {
             setFormData(prev => ({
                 ...prev,
@@ -478,7 +474,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 subprojectCommodities: [...(prev.subprojectCommodities || []), newCommodity]
             }));
         }
-        
         setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
     };
 
@@ -486,7 +481,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         const commodityToEdit = formData.subprojectCommodities?.[index];
         if (commodityToEdit) {
             setCurrentCommodity({
-                typeName: commodityToEdit.typeName || '', // Handle legacy data
+                typeName: commodityToEdit.typeName || '',
                 name: commodityToEdit.name,
                 area: commodityToEdit.area,
                 averageYield: commodityToEdit.averageYield || 0
@@ -533,25 +528,39 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             event: editingSubproject ? "Subproject Updated" : "Subproject Created",
             user: currentUser?.fullName || "System"
         };
+        
+        // Resolve IPO ID if missing in formData but name is present (legacy data support)
+        let resolvedIpoId = formData.ipo_id;
+        if (!resolvedIpoId && formData.indigenousPeopleOrganization) {
+            const matchedIpo = ipos.find(i => i.name === formData.indigenousPeopleOrganization);
+            if (matchedIpo) resolvedIpoId = matchedIpo.id;
+        }
 
         let newSubproject: Subproject;
+        const updatedFormData = { ...formData, ipo_id: resolvedIpoId };
 
         if (editingSubproject) {
             // Log Update in main logs
             logAction('Updated Subproject', formData.name, formData.indigenousPeopleOrganization);
 
             // Log to IPO History
-            if (formData.ipo_id) {
-                // If linked IPO changed, log to new IPO
-                if (formData.ipo_id !== editingSubproject.ipo_id) {
-                    addIpoHistory(formData.ipo_id, `Subproject linked: ${formData.name}`);
+            if (resolvedIpoId) {
+                const prevIpoId = editingSubproject.ipo_id || ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization)?.id;
+
+                if (prevIpoId !== resolvedIpoId) {
+                     // Linked changed
+                     addIpoHistory(resolvedIpoId, `Subproject linked: ${formData.name}`);
                 } else {
-                    addIpoHistory(formData.ipo_id, `Subproject updated: ${formData.name}`);
+                     if (formData.status === 'Completed' && editingSubproject.status !== 'Completed') {
+                          addIpoHistory(resolvedIpoId, `Subproject Completed: ${formData.name}`);
+                     } else {
+                          addIpoHistory(resolvedIpoId, `Subproject Updated: ${formData.name}`);
+                     }
                 }
             }
 
             const updated = { 
-                ...formData, 
+                ...updatedFormData, 
                 id: editingSubproject.id,
                 history: [...(editingSubproject.history || []), historyEntry],
                 updated_at: currentTimestamp
@@ -563,10 +572,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             logAction('Created Subproject', formData.name, formData.indigenousPeopleOrganization);
 
             const newId = Math.max(...subprojects.map(s => s.id), 0) + 1;
-            // Generate simple UID if not present
             const uid = formData.uid || `SP-${new Date().getFullYear()}-${String(newId).padStart(3, '0')}`;
             const created = { 
-                ...formData, 
+                ...updatedFormData, 
                 id: newId, 
                 uid,
                 history: [historyEntry],
@@ -576,9 +584,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             setSubprojects(prev => [...prev, created]);
             newSubproject = created;
 
-            // Log to IPO History if new subproject is linked
-            if (formData.ipo_id) {
-                addIpoHistory(formData.ipo_id, `Subproject linked: ${formData.name}`);
+            // Log to IPO History
+            if (resolvedIpoId) {
+                addIpoHistory(resolvedIpoId, `Subproject Created: ${formData.name}`);
             }
         }
 
@@ -613,7 +621,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setEditingSubproject(subproject);
         setView('edit');
     };
-
+    // ... [Rest of handlers: handleAddNewClick, handleCancelEdit, handleDeleteClick, confirmDelete] ...
     const handleAddNewClick = () => {
         setEditingSubproject(null);
         setView('add');
@@ -622,7 +630,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const handleCancelEdit = () => {
         setEditingSubproject(null);
         setFormData(defaultFormData);
-        // Reset local form states
         setEditingDetailId(null);
         setEditingCommodityIndex(null);
         setCurrentDetail({
@@ -996,7 +1003,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         </tbody>
                     </table>
                 </div>
-                 {/* Pagination */}
+                 {/* Pagination - same as previous */}
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
@@ -1025,12 +1032,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                  <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
+                {/* ... (Tabs and Form Fields are the same, omitting repetitive code unless changed) ... */}
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="details" label="Subproject Details" />
                         <TabButton tabName="commodity" label="Subproject Commodity" />
                         <TabButton tabName="budget" label="Budget Items" />
-                        {/* Accomplishments Tab Removed */}
                     </nav>
                 </div>
                 <div className="min-h-[400px]">
@@ -1047,13 +1054,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                                         </select>
                                     </div>
+                                    {/* ... rest of fields ... */}
                                     <div>
                                         <label className="block text-sm font-medium">Status</label>
                                         <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
                                             <option value="Proposed">Proposed</option>
                                             <option value="Ongoing">Ongoing</option>
                                             <option value="Cancelled">Cancelled</option>
-                                            {/* Completed is hidden as it is auto-calculated */}
                                             {formData.status === 'Completed' && <option value="Completed">Completed</option>}
                                         </select>
                                         {formData.status === 'Completed' && <p className="text-xs text-green-600 mt-1">Status set to Completed automatically based on actual delivery dates.</p>}
@@ -1116,7 +1123,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             </fieldset>
                          </div>
                     )}
-                    {activeTab === 'commodity' && (
+                    {/* Commodity and Budget Tabs omitted for brevity as they are same as before, ensuring handlers exist */}
+                     {activeTab === 'commodity' && (
                         <div className="space-y-6">
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                 <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Subproject Commodities</legend>
@@ -1207,33 +1215,22 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     ))}
                                     <div className="text-right font-bold pt-2">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
                                 </div>
-
+                                {/* Budget Detail Form Fields - Same as before */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
                                     <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-                                    
                                     <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                         <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                         <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                         <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                     </div>
-
                                     <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                                     <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                                     <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                    
-                                    {editingDetailId !== null ? (
-                                        <div className="flex gap-1 h-9 items-end">
-                                            <button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
-                                            <button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
-                                        </div>
-                                    ) : (
-                                        <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
-                                    )}
+                                    {editingDetailId !== null ? (<div className="flex gap-1 h-9 items-end"><button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button><button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button></div>) : (<button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>)}
                                 </div>
                              </fieldset>
                         </div>

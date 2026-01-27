@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
@@ -391,10 +392,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
         // Ensure dataPoints is strictly typed
-        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => monthlyData[i] || { target: 0, obligation: 0, disbursement: 0 });
+        // Use Array.from with map function
+        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => {
+            const data = monthlyData[i];
+            return data ? data : { target: 0, obligation: 0, disbursement: 0 };
+        });
 
         const maxVal = Math.max(
-            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map(d => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
@@ -421,27 +426,32 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d: MonthlyDataPoint, i: number) => {
+                    {dataPoints.map((d, i) => {
                         const xBase = padding + (i * (chartWidth / 12));
-                        const yTarget = getY(d.target);
-                        const yOb = getY(d.obligation);
-                        const yDisb = getY(d.disbursement);
+                        // Ensure values are numbers
+                        const tVal = Number(d.target || 0);
+                        const oVal = Number(d.obligation || 0);
+                        const dVal = Number(d.disbursement || 0);
+
+                        const yTarget = getY(tVal);
+                        const yOb = getY(oVal);
+                        const yDisb = getY(dVal);
                         
                         return (
                             <g key={i}>
                                 {/* Target Bar */}
                                 <rect x={xBase + 5} y={yTarget} width={barWidth} height={Math.max(0, height - padding - yTarget)} fill="#86efac" className="opacity-80 hover:opacity-100 transition-opacity" rx="1">
-                                    <title>Target: {formatCurrency(d.target)}</title>
+                                    <title>Target: {formatCurrency(tVal)}</title>
                                 </rect>
                                 
                                 {/* Obligation Bar */}
                                 <rect x={xBase + 5 + barWidth} y={yOb} width={barWidth} height={Math.max(0, height - padding - yOb)} fill="#22c55e" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Obligation: {formatCurrency(d.obligation)}</title>
+                                    <title>Obligation: {formatCurrency(oVal)}</title>
                                 </rect>
 
                                 {/* Disbursement Bar */}
                                 <rect x={xBase + 5 + barWidth * 2} y={yDisb} width={barWidth} height={Math.max(0, height - padding - yDisb)} fill="#15803d" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Disbursement: {formatCurrency(d.disbursement)}</title>
+                                    <title>Disbursement: {formatCurrency(dVal)}</title>
                                 </rect>
 
                                 {/* Month Label */}

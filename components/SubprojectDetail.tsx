@@ -4,6 +4,7 @@ import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, 
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useIpoHistory } from '../hooks/useIpoHistory';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -52,6 +53,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
+    const { addIpoHistory } = useIpoHistory();
     // Added 'accomplishment' mode
     const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
     const [editedSubproject, setEditedSubproject] = useState(subproject);
@@ -160,6 +162,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
+    // ... [Handlers for details and commodities preserved same as before] ...
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'type') {
@@ -318,14 +321,31 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         if (editMode === 'budget') eventType = "Updated Budget via Detail View";
         if (editMode === 'accomplishment') eventType = "Updated Accomplishment";
 
+        // Logic to detect completion change within this update
+        if (editedSubproject.status === 'Completed' && subproject.status !== 'Completed') {
+            eventType = "Subproject Completed";
+        }
+
         const historyEntry = {
             date: new Date().toISOString(),
             event: eventType,
             user: currentUser?.fullName || "System"
         };
+        
+        // Resolve IPO ID for history logging
+        let resolvedIpoId = editedSubproject.ipo_id;
+        if (!resolvedIpoId && editedSubproject.indigenousPeopleOrganization) {
+            const matchedIpo = ipos.find(i => i.name === editedSubproject.indigenousPeopleOrganization);
+            if (matchedIpo) resolvedIpoId = matchedIpo.id;
+        }
+
+        if (resolvedIpoId) {
+             addIpoHistory(resolvedIpoId, `${eventType}: ${editedSubproject.name}`);
+        }
 
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
+            ipo_id: resolvedIpoId, // Ensure resolved ID is saved
             details: detailItems.map((d, i) => ({ ...d, id: i + 1 })),
             history: [...(subproject.history || []), historyEntry]
         };

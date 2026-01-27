@@ -71,6 +71,8 @@ ALTER TABLE other_program_expenses ADD COLUMN IF NOT EXISTS "updated_at" timesta
 --   "income": number
 -- No DDL changes are required for the 'subprojects' table itself as it stores JSON.
 
+ALTER TABLE subprojects ADD COLUMN IF NOT EXISTS "ipo_id" bigint;
+
 -- 7. IPO History
 create table if not exists ipo_history (
   "id" bigint primary key generated always as identity,
