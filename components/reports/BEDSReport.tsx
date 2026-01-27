@@ -273,14 +273,36 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
 
                 const vals = initializeMonths();
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
-                const date = type === 'Physical' ? pm.obligationDate : pm.disbursementDate; 
-                let amount = 0;
-                if (type === 'Physical') {
-                    amount = isStaff ? 1 : (pm.numberOfUnits || 1);
+
+                if (type === 'Disbursement' && (isStaff || isOtherExpense)) {
+                    // Use Monthly Breakdown for Staffing and Other Expenses in BED 3
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    months.forEach((m, index) => {
+                        const amount = Number(pm[`disbursement${m}`]) || 0;
+                        if (amount > 0) {
+                            const idx = index + 1;
+                            vals[`m${idx}`] += amount;
+                            
+                            if (idx <= 3) vals.q1 += amount;
+                            else if (idx <= 6) vals.q2 += amount;
+                            else if (idx <= 9) vals.q3 += amount;
+                            else vals.q4 += amount;
+                            
+                            vals.total += amount;
+                        }
+                    });
                 } else {
-                    amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                    // Standard logic for Physical Targets or Office Equipment (Non-staggered disbursement assumption or missing breakdown)
+                    const date = type === 'Physical' ? pm.obligationDate : pm.disbursementDate; 
+                    let amount = 0;
+                    if (type === 'Physical') {
+                        amount = isStaff ? 1 : (pm.numberOfUnits || 1);
+                    } else {
+                        amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                    }
+                    addToMonths(vals, date, amount);
                 }
-                addToMonths(vals, date, amount);
+                
                 finalData['Program Management'].packages[pkgKey].items.push({ indicator, ...vals });
             });
         };

@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
@@ -390,8 +389,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     // Monthly Chart Component (Green Theme)
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const mData = monthlyData as unknown as Record<string, MonthlyDataPoint>;
-        const dataPoints: MonthlyDataPoint[] = Object.values(mData);
+        
+        // Fix: Explicitly construct array from monthlyData to ensure types and order
+        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => monthlyData[i]);
+
         const maxVal = Math.max(
             ...dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
