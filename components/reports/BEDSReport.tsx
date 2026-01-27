@@ -72,14 +72,30 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             'Social Preparation': [],
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
             'Marketing and Enterprise': [], 
-            'Program Management': { isNestedExpandable: true, packages: { 'Trainings': { items: [] }, 'Staff Requirements': { items: [] }, 'Office Requirements': { items: [] }, 'Activities': { items: [] } } }
+            'Program Management': { isNestedExpandable: true, packages: { 'Staff Requirements': { items: [] }, 'Office Requirements': { items: [] }, 'Activities': { items: [] } } }
         };
 
-        // Helper to retrieve previous year data
-        const getPrevYearValues = (indicatorName: string, type: 'Subproject' | 'Training' | 'Activity' | 'Staff' | 'Office', rowItem: any) => {
-            if (!isYearSelected) return { janSeptActual: 0, octDecEstimate: 0, prevTotal: 0 };
-            // (Simplification: assuming prev year data isn't strictly filtered by selected tier/fund type for historical context, or maybe it should be. Keeping logical consistency with current year filtering.)
-            return { janSeptActual: 0, octDecEstimate: 0, prevTotal: 0 }; 
+        // Aggregation Helper for BED 1
+        const addItem = (targetList: any[], newItem: any) => {
+            const existing = targetList.find(i => i.indicator === newItem.indicator);
+            if (existing) {
+                existing.janSeptActual += newItem.janSeptActual;
+                existing.octDecEstimate += newItem.octDecEstimate;
+                existing.prevTotal += newItem.prevTotal;
+                existing.currTotal += newItem.currTotal;
+                existing.compQ1 += newItem.compQ1;
+                existing.compQ2 += newItem.compQ2;
+                existing.compQ3 += newItem.compQ3;
+                existing.compQ4 += newItem.compQ4;
+                existing.compSubtotal += newItem.compSubtotal;
+                existing.laterQ1 += newItem.laterQ1;
+                existing.laterQ2 += newItem.laterQ2;
+                existing.laterQ3 += newItem.laterQ3;
+                existing.laterQ4 += newItem.laterQ4;
+                existing.laterSubtotal += newItem.laterSubtotal;
+            } else {
+                targetList.push(newItem);
+            }
         };
 
         const getCompReleaseValues = (details: any[], dateField: string, amountField: string) => {
@@ -134,25 +150,25 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             const item = createItem(sp.name, sp, sp.details, 'obligationMonth', ''); // details calculation inside helper handles unit*price
             const pkg = sp.packageType;
             if (!finalData['Production and Livelihood'].packages[pkg]) finalData['Production and Livelihood'].packages[pkg] = { items: [] };
-            finalData['Production and Livelihood'].packages[pkg].items.push(item);
+            addItem(finalData['Production and Livelihood'].packages[pkg].items, item);
         });
 
         data.trainings.filter(filterItem).forEach(t => {
             const item = createItem(t.name, t, t.expenses, 'obligationMonth', 'amount');
             if (t.component === 'Production and Livelihood') {
                  if (!finalData['Production and Livelihood'].packages['Trainings']) finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
-                 finalData['Production and Livelihood'].packages['Trainings'].items.push(item);
+                 addItem(finalData['Production and Livelihood'].packages['Trainings'].items, item);
             } else if (t.component === 'Program Management') {
-                 finalData['Program Management'].packages['Trainings'].items.push(item);
+                 // Removed Trainings from Program Management as per request
             } else if (finalData[t.component]) {
-                finalData[t.component].push(item);
+                addItem(finalData[t.component], item);
             }
         });
 
         data.otherActivities.filter(filterItem).forEach(oa => {
             const item = createItem(oa.name, oa, oa.expenses, 'obligationMonth', 'amount');
-            if (oa.component === 'Program Management') finalData['Program Management'].packages['Activities'].items.push(item);
-            else if (finalData[oa.component]) finalData[oa.component].push(item);
+            if (oa.component === 'Program Management') addItem(finalData['Program Management'].packages['Activities'].items, item);
+            else if (finalData[oa.component]) addItem(finalData[oa.component], item);
         });
 
         const processPm = (items: any[], pkgKey: string) => {
@@ -162,7 +178,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 const amount = pm.annualSalary || pm.amount || (pm.pricePerUnit * pm.numberOfUnits);
                 const detailLike = { ...pm, amount }; 
                 const item = createItem(indicator, pm, [detailLike], 'obligationDate', 'amount');
-                finalData['Program Management'].packages[pkgKey].items.push(item);
+                addItem(finalData['Program Management'].packages[pkgKey].items, item);
             });
         }
         processPm(data.staffingReqs, 'Staff Requirements');
@@ -179,7 +195,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             'Social Preparation': [],
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
             'Marketing and Enterprise': [], 
-            'Program Management': { isNestedExpandable: true, packages: { 'Trainings': { items: [] }, 'Staff Requirements': { items: [] }, 'Office Requirements': { items: [] }, 'Activities': { items: [] } } }
+            'Program Management': { isNestedExpandable: true, packages: { 'Staff Requirements': { items: [] }, 'Office Requirements': { items: [] }, 'Activities': { items: [] } } }
         };
 
         const initializeMonths = () => ({
@@ -189,6 +205,23 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             m10: 0, m11: 0, m12: 0, q4: 0,
             total: 0
         });
+
+        // Aggregation Helper for BED 2/3
+        const addMonthlyItem = (targetList: any[], newItem: any) => {
+            const existing = targetList.find(i => i.indicator === newItem.indicator);
+            if (existing) {
+                for (let i = 1; i <= 12; i++) {
+                    existing[`m${i}`] += newItem[`m${i}`];
+                }
+                existing.q1 += newItem.q1;
+                existing.q2 += newItem.q2;
+                existing.q3 += newItem.q3;
+                existing.q4 += newItem.q4;
+                existing.total += newItem.total;
+            } else {
+                targetList.push(newItem);
+            }
+        };
 
         const addToMonths = (target: any, dateStr: string | undefined, amount: number) => {
             const idx = getMonthIndex(dateStr);
@@ -226,7 +259,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             const item = { indicator: sp.name, ...vals };
             const pkg = sp.packageType;
             if (!finalData['Production and Livelihood'].packages[pkg]) finalData['Production and Livelihood'].packages[pkg] = { items: [] };
-            finalData['Production and Livelihood'].packages[pkg].items.push(item);
+            addMonthlyItem(finalData['Production and Livelihood'].packages[pkg].items, item);
         });
 
         // Trainings
@@ -242,11 +275,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             const item = { indicator: t.name, ...vals };
             if (t.component === 'Production and Livelihood') {
                  if (!finalData['Production and Livelihood'].packages['Trainings']) finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
-                 finalData['Production and Livelihood'].packages['Trainings'].items.push(item);
+                 addMonthlyItem(finalData['Production and Livelihood'].packages['Trainings'].items, item);
             } else if (t.component === 'Program Management') {
-                 finalData['Program Management'].packages['Trainings'].items.push(item);
+                 // Removed Trainings from Program Management as per request
             } else if (finalData[t.component]) {
-                finalData[t.component].push(item);
+                addMonthlyItem(finalData[t.component], item);
             }
         });
 
@@ -261,8 +294,8 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 });
             }
             const item = { indicator: oa.name, ...vals };
-            if (oa.component === 'Program Management') finalData['Program Management'].packages['Activities'].items.push(item);
-            else if (finalData[oa.component]) finalData[oa.component].push(item);
+            if (oa.component === 'Program Management') addMonthlyItem(finalData['Program Management'].packages['Activities'].items, item);
+            else if (finalData[oa.component]) addMonthlyItem(finalData[oa.component], item);
         });
 
         // PM Items
@@ -303,7 +336,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                     addToMonths(vals, date, amount);
                 }
                 
-                finalData['Program Management'].packages[pkgKey].items.push({ indicator, ...vals });
+                addMonthlyItem(finalData['Program Management'].packages[pkgKey].items, { indicator, ...vals });
             });
         };
         processPm(data.staffingReqs, 'Staff Requirements', true);

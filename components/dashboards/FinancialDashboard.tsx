@@ -390,8 +390,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
-        // Fix: Explicitly construct array from monthlyData to ensure types and order
-        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => monthlyData[i]);
+        // Ensure dataPoints is strictly typed
+        const dataPoints = Array.from({ length: 12 }, (_, i) => monthlyData[i] as MonthlyDataPoint);
 
         const maxVal = Math.max(
             ...dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement)),
