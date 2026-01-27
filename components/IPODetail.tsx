@@ -4,6 +4,8 @@ import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '.
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useIpoHistory } from '../hooks/useIpoHistory';
+import { supabase } from '../supabaseClient';
 
 
 interface IPODetailProps {
@@ -67,6 +69,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     
+    // History Hook
+    const { history, addIpoHistory } = useIpoHistory(ipo.id);
+    
     // Commodity State
     const [currentCommodity, setCurrentCommodity] = useState({
         type: '',
@@ -109,13 +114,67 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         setIsConfirmModalOpen(true);
     };
 
-    const handleConfirmSave = () => {
+    const handleConfirmSave = async () => {
         const finalRegisteringBody = editedIpo.registeringBody === 'Others' ? otherRegisteringBody : editedIpo.registeringBody;
-        onUpdateIpo({ 
+        
+        const submissionData = { 
             ...editedIpo, 
             registeringBody: finalRegisteringBody,
-            registrationDate: editedIpo.registrationDate || null // Convert empty string to null for DB
-        });
+            registrationDate: editedIpo.registrationDate || null,
+            updated_at: new Date().toISOString()
+        };
+
+        // Determine changes for history logging
+        const changes: string[] = [];
+        if (JSON.stringify(ipo.commodities) !== JSON.stringify(submissionData.commodities)) {
+            changes.push("Updated Commodities");
+        }
+        if (ipo.levelOfDevelopment !== submissionData.levelOfDevelopment) {
+            changes.push(`Updated LOD from ${ipo.levelOfDevelopment} to ${submissionData.levelOfDevelopment}`);
+        }
+        if (
+            ipo.totalMembers !== submissionData.totalMembers ||
+            ipo.totalIpMembers !== submissionData.totalIpMembers ||
+            ipo.totalMaleMembers !== submissionData.totalMaleMembers ||
+            ipo.totalFemaleMembers !== submissionData.totalFemaleMembers
+        ) {
+            changes.push("Updated Membership Details");
+        }
+        if (ipo.name !== submissionData.name) {
+             changes.push(`Renamed IPO from ${ipo.name} to ${submissionData.name}`);
+        }
+        // General updates catch-all if specific logic missed but object changed
+        if (changes.length === 0 && JSON.stringify(ipo) !== JSON.stringify(submissionData)) {
+            changes.push("Updated IPO Profile");
+        }
+
+        if (supabase) {
+            try {
+                const { error } = await supabase
+                    .from('ipos')
+                    .update(submissionData)
+                    .eq('id', ipo.id);
+                
+                if (error) throw error;
+
+                // Log History
+                for (const change of changes) {
+                    await addIpoHistory(ipo.id, change);
+                }
+
+                // Call Parent Update to refresh UI
+                onUpdateIpo(submissionData);
+
+            } catch (error: any) {
+                console.error("Error updating IPO:", error);
+                alert("Failed to update IPO: " + error.message);
+                return; // Stop if error
+            }
+        } else {
+             // Offline handling
+             onUpdateIpo(submissionData);
+        }
+
         setIsConfirmModalOpen(false);
         setIsEditing(false);
     };
@@ -603,13 +662,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                         )}
                     </div>
                     
-                    {/* History Card */}
+                    {/* History Card (From ipo_history table) */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
-                        {ipo.history && ipo.history.length > 0 ? (
+                        {history && history.length > 0 ? (
                             <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
                                 <ul className="space-y-8">
-                                    {ipo.history.map((entry, index) => (
+                                    {history.map((entry, index) => (
                                         <li key={index} className="ml-8 relative">
                                             <span className="absolute flex items-center justify-center w-4 h-4 bg-accent rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800">
                                                 <svg className="w-1.5 h-1.5 text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
