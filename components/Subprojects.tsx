@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes, philippineRegions } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -65,6 +65,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
+    const [selectedRegion, setSelectedRegion] = useState('');
     
     // Use Shared Permissions Hook
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -143,14 +144,24 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         if (editingSubproject) {
             setFormData(editingSubproject);
             setActiveTab('details');
+            // Set initial region based on the existing IPO
+            const linkedIpo = ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization);
+            if (linkedIpo) setSelectedRegion(linkedIpo.region);
         } else {
             setFormData({
                 ...defaultFormData,
                 operatingUnit: currentUser?.operatingUnit || '',
                 encodedBy: currentUser?.fullName || ''
             });
+            setSelectedRegion('');
         }
-    }, [editingSubproject, currentUser]);
+    }, [editingSubproject, currentUser, ipos]);
+
+    // Filter IPOs based on selected region
+    const filteredIpos = useMemo(() => {
+        if (!selectedRegion) return [];
+        return ipos.filter(ipo => ipo.region === selectedRegion).sort((a, b) => a.name.localeCompare(b.name));
+    }, [ipos, selectedRegion]);
 
     // Check completion status whenever details change
     useEffect(() => {
@@ -1030,7 +1041,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                  <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
-                {/* ... (Tabs and Form Fields are the same, omitting repetitive code unless changed) ... */}
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton tabName="details" label="Subproject Details" />
@@ -1046,13 +1056,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} /></div>
                                     <div>
-                                        <label className="block text-sm font-medium">IPO</label>
-                                        <select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses}>
-                                            <option value="">Select IPO</option>
-                                            {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
+                                        <label className="block text-sm font-medium">Region</label>
+                                        <select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={commonInputClasses}>
+                                            <option value="">Select Region</option>
+                                            {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                         </select>
                                     </div>
-                                    {/* ... rest of fields ... */}
+                                    <div>
+                                        <label className="block text-sm font-medium">IPO</label>
+                                        <select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedRegion}>
+                                            <option value="">Select IPO</option>
+                                            {filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
+                                        </select>
+                                    </div>
                                     <div>
                                         <label className="block text-sm font-medium">Status</label>
                                         <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
@@ -1121,7 +1137,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                             </fieldset>
                          </div>
                     )}
-                    {/* Commodity and Budget Tabs omitted for brevity as they are same as before, ensuring handlers exist */}
                      {activeTab === 'commodity' && (
                         <div className="space-y-6">
                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
@@ -1172,7 +1187,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <div className="flex gap-2 items-end">
                                         {currentCommodity.typeName !== 'Animal Commodity' && (
                                             <div className="flex-grow">
-                                                <label className="block text-xs font-medium">Average Yield</label>
+                                                <label className="block text-xs font-medium">Average Yield/Ha</label>
                                                 <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                             </div>
                                         )}

@@ -390,15 +390,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
-        // Explicitly create array of typed objects to prevent type inference errors in map
-        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }).map((_, i) => {
-             const mData = monthlyData as { [key: number]: MonthlyDataPoint };
-             const data = mData[i];
-             return data || { target: 0, obligation: 0, disbursement: 0 };
-        }) as MonthlyDataPoint[];
+        // Use a loop to construct typed array
+        const dataPoints: MonthlyDataPoint[] = [];
+        const mData = monthlyData as Record<number, MonthlyDataPoint>;
+        for(let i=0; i<12; i++) {
+            dataPoints.push(mData[i] || { target: 0, obligation: 0, disbursement: 0 });
+        }
 
         const maxVal = Math.max(
-            ...dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
@@ -425,7 +425,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d: MonthlyDataPoint, i) => {
+                    {dataPoints.map((d: MonthlyDataPoint, i: number) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         // Ensure values are numbers
                         const tVal = Number(d.target || 0);
