@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
@@ -86,6 +87,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const [dateError, setDateError] = useState('');
 
+    // Helper for Funding Year selection range
+    const yearOptions = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const years = [];
+        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+            years.push(i);
+        }
+        return years;
+    }, []);
 
     useEffect(() => {
         setEditedSubproject(subproject);
@@ -443,17 +453,26 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
                                                 />
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={editedSubproject.startDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
                                                 <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={editedSubproject.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                                <div><label className="block text-sm font-medium">Actual Completion</label><input type="date" name="actualCompletionDate" value={editedSubproject.actualCompletionDate || ''} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} /></div>
                                             </div>
                                         </div>
                                     </fieldset>
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <div><label className="block text-sm font-medium">Year</label><input type="number" name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Year</label>
+                                                <select 
+                                                    name="fundingYear" 
+                                                    value={editedSubproject.fundingYear} 
+                                                    onChange={handleInputChange} 
+                                                    className={commonInputClasses}
+                                                >
+                                                    {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                                </select>
+                                            </div>
                                             <div>
                                                 <label className="block text-sm font-medium">Type</label>
                                                 <select name="fundType" value={editedSubproject.fundType} onChange={handleInputChange} className={commonInputClasses}>

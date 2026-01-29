@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes } from '../constants';
@@ -43,7 +44,7 @@ const defaultFormData: Subproject = {
     details: [],
     subprojectCommodities: [],
     packageType: 'Package 1',
-    startDate: '',
+    startDate: `${new Date().getFullYear()}-01-01`, // Default to Jan 1 of current year
     estimatedCompletionDate: '',
     lat: 0,
     lng: 0,
@@ -59,6 +60,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
     const [formData, setFormData] = useState<Subproject>(defaultFormData);
+    // editingSubproject state kept for internal form logic, though external "Edit" click is removed from list view.
+    // It's still used if we were to support "Add" via this component.
     const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
@@ -194,6 +197,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         return Array.from(years).sort().reverse();
     }, [subprojects]);
 
+    // Helper for Funding Year selection range
+    const yearOptions = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        const years = [];
+        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
+            years.push(i);
+        }
+        return years;
+    }, []);
+
     const processedSubprojects = useMemo(() => {
         let filtered = [...subprojects];
 
@@ -319,16 +332,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
 
-            if (name === 'fundType') {
-                const currentSystemYear = new Date().getFullYear();
-                if (value === 'Continuing') {
-                    newData.fundingYear = currentSystemYear - 1;
-                } else {
-                    // 'Current' or 'Insertion'
-                    newData.fundingYear = currentSystemYear;
-                }
-            }
-
             if (name === 'indigenousPeopleOrganization') {
                 const selectedIpo = ipos.find(ipo => ipo.name === value);
                 if (selectedIpo) {
@@ -344,8 +347,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         });
     };
 
-    // ... [Detail and Commodity handlers omitted for brevity, similar to previous] ...
-    // Note: Ensuring handlers are present in output for correctness.
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'type') {
@@ -617,11 +618,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         handleCancelEdit();
     };
 
-    const handleEditClick = (subproject: Subproject) => {
-        setEditingSubproject(subproject);
-        setView('edit');
-    };
-    // ... [Rest of handlers: handleAddNewClick, handleCancelEdit, handleDeleteClick, confirmDelete] ...
+    // Removed handleEditClick logic for list view button, keeping function internally if needed for safety
+    
     const handleAddNewClick = () => {
         setEditingSubproject(null);
         setView('add');
@@ -899,7 +897,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
                                                         />
                                                     )}
-                                                    <button onClick={(e) => { e.stopPropagation(); handleEditClick(s); }} className="text-accent hover:brightness-90 mr-4">Edit</button>
+                                                    {/* Edit Button Removed */}
                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="text-red-600 hover:text-red-900">Delete</button>
                                                 </div>
                                             )}
@@ -1087,10 +1085,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             placeholder="Auto-filled based on IPO selection"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                         <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                        <div><label className="block text-sm font-medium">Actual Completion</label><input type="date" name="actualCompletionDate" value={formData.actualCompletionDate || ''} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} /></div>
                                     </div>
                                 </div>
                             </fieldset>
@@ -1099,13 +1096,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium">Year</label>
-                                        <input 
-                                            type="number" 
+                                        <select 
                                             name="fundingYear" 
                                             value={formData.fundingYear} 
-                                            readOnly 
-                                            className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
-                                        />
+                                            onChange={handleInputChange} 
+                                            className={commonInputClasses}
+                                        >
+                                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium">Type</label>

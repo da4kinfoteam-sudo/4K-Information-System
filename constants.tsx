@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -71,7 +72,7 @@ export interface User extends BaseEntity {
 export const tiers = ['Tier 1', 'Tier 2'] as const;
 export type Tier = typeof tiers[number];
 
-export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
+export const fundTypes = ['Current', 'Continuing', 'Insertion', 'Realignment', 'Savings'] as const;
 export type FundType = typeof fundTypes[number];
 
 export const objectTypes = ['MOOE', 'CO'] as const;
