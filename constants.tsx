@@ -267,6 +267,7 @@ export interface StaffingRequirement extends BaseProgramManagementItem {
     salaryGrade: number;
     annualSalary: number;
     personnelType: 'Technical' | 'Administrative' | 'Support';
+    // Target Disbursement
     disbursementJan?: number;
     disbursementFeb?: number;
     disbursementMar?: number;
@@ -279,6 +280,19 @@ export interface StaffingRequirement extends BaseProgramManagementItem {
     disbursementOct?: number;
     disbursementNov?: number;
     disbursementDec?: number;
+    // Actual Disbursement
+    actualDisbursementJan?: number;
+    actualDisbursementFeb?: number;
+    actualDisbursementMar?: number;
+    actualDisbursementApr?: number;
+    actualDisbursementMay?: number;
+    actualDisbursementJun?: number;
+    actualDisbursementJul?: number;
+    actualDisbursementAug?: number;
+    actualDisbursementSep?: number;
+    actualDisbursementOct?: number;
+    actualDisbursementNov?: number;
+    actualDisbursementDec?: number;
 }
 
 export interface OtherProgramExpense extends BaseProgramManagementItem {

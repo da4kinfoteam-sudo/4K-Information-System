@@ -1,17 +1,17 @@
 
 // Author: 4K 
 import React, { useState, useEffect } from 'react';
-import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
+import { StaffingRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 
-interface OfficeRequirementDetailProps {
-    item: OfficeRequirement;
+interface StaffingRequirementDetailProps {
+    item: StaffingRequirement;
     onBack: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
-    onUpdate: (item: OfficeRequirement) => void;
+    onUpdate: (item: StaffingRequirement) => void;
 }
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
@@ -23,12 +23,14 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
+const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
-    const [formData, setFormData] = useState<OfficeRequirement>(item);
+    const [formData, setFormData] = useState<StaffingRequirement>(item);
     
     // For selects
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
@@ -59,6 +61,23 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         setFormData(item);
     }, [item, editMode]);
 
+    // Recalculate Totals when monthly fields change
+    useEffect(() => {
+        if (editMode === 'details') {
+            // @ts-ignore
+            const total = months.reduce((sum, m) => sum + (Number(formData[`disbursement${m}`]) || 0), 0);
+            if (total !== formData.annualSalary) setFormData(prev => ({ ...prev, annualSalary: total }));
+        } else if (editMode === 'accomplishment') {
+            // @ts-ignore
+            const total = months.reduce((sum, m) => sum + (Number(formData[`actualDisbursement${m}`]) || 0), 0);
+            if (total !== formData.actualDisbursementAmount) setFormData(prev => ({ ...prev, actualDisbursementAmount: total }));
+        }
+    }, [
+        ...months.map(m => (formData as any)[`disbursement${m}`]),
+        ...months.map(m => (formData as any)[`actualDisbursement${m}`]),
+        editMode
+    ]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
@@ -67,10 +86,10 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        const updatedItem = {
+        const updatedItem: any = {
             ...formData,
-            numberOfUnits: Number(formData.numberOfUnits),
-            pricePerUnit: Number(formData.pricePerUnit),
+            salaryGrade: Number(formData.salaryGrade),
+            annualSalary: Number(formData.annualSalary),
             fundYear: Number(formData.fundYear),
             actualAmount: Number(formData.actualAmount),
             actualObligationAmount: Number(formData.actualObligationAmount),
@@ -78,25 +97,29 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             updated_at: new Date().toISOString()
         };
 
+        // Ensure month fields are numbers
+        months.forEach(m => {
+            updatedItem[`disbursement${m}`] = Number((formData as any)[`disbursement${m}`]);
+            updatedItem[`actualDisbursement${m}`] = Number((formData as any)[`actualDisbursement${m}`]);
+        });
+
         if (supabase) {
-            const { error } = await supabase.from('office_requirements').update(updatedItem).eq('id', item.id);
+            const { error } = await supabase.from('staffing_requirements').update(updatedItem).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);
                 return;
             }
         }
         
-        onUpdate(updatedItem);
+        onUpdate(updatedItem as StaffingRequirement);
         setEditMode('none');
     };
-
-    // --- Edit Views ---
 
     if (editMode === 'details') {
         return (
             <div className="space-y-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Details: {item.equipment}</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Details: {item.personnelPosition}</h1>
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
@@ -105,11 +128,10 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Info & Targets</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment Name</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} className={commonInputClasses} rows={2}/></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price/Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
                             </div>
                         </fieldset>
 
@@ -125,8 +147,19 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Disbursement Date</label><input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                             </div>
+                        </fieldset>
+
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Target Monthly Disbursement (Salary)</legend>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {months.map(month => (
+                                    <div key={month}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
+                                    // @ts-ignore
+                                    value={(formData as any)[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                ))}
+                            </div>
+                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2"><span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Annual Salary:</span><span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.annualSalary)}</span></div>
                         </fieldset>
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -143,7 +176,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         return (
             <div className="space-y-6">
                 <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Accomplishment: {item.equipment}</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Accomplishment: {item.personnelPosition}</h1>
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
@@ -152,13 +185,25 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-salary actuals" /></div>
                                 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label><input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                {/* Actual Disbursement Amount is calculated from schedule below, read-only here for reference or manual override if needed */}
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Actual Disbursement</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} readOnly className={`${commonInputClasses} bg-gray-100 cursor-not-allowed`} /></div>
+                            </div>
+                        </fieldset>
+
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Actual Monthly Disbursement</legend>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {months.map(month => (
+                                    <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
+                                    // @ts-ignore
+                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                ))}
                             </div>
                         </fieldset>
 
@@ -179,7 +224,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             {/* Header */}
             <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{item.equipment}</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{item.personnelPosition}</h1>
                     <p className="text-md text-gray-500 dark:text-gray-400">{item.operatingUnit} | {item.uid}</p>
                 </div>
                 <div className="flex items-center gap-4">
@@ -209,21 +254,29 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                        <DetailItem label="Equipment Name" value={item.equipment} />
-                        <DetailItem label="Specifications" value={item.specs} />
-                        <div className="col-span-2">
-                            <DetailItem label="Purpose" value={item.purpose} />
-                        </div>
-                        <DetailItem label="Units" value={item.numberOfUnits} />
-                        <DetailItem label="Price/Unit" value={formatCurrency(item.pricePerUnit)} />
-                        <DetailItem label="Total Amount" value={formatCurrency(item.numberOfUnits * item.pricePerUnit)} />
+                        <DetailItem label="Position" value={item.personnelPosition} />
+                        <DetailItem label="Status" value={item.status} />
+                        <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
+                        <DetailItem label="Type" value={item.personnelType} />
                         <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
                         <div className="col-span-2">
                             <DetailItem label="UACS Code" value={`${item.uacsCode} (${selectedParticular || 'Lookup Failed'})`} />
                         </div>
                         <DetailItem label="Target Obligation" value={item.obligationDate} />
-                        <DetailItem label="Target Disbursement" value={item.disbursementDate} />
+                        <DetailItem label="Annual Salary (Target)" value={formatCurrency(item.annualSalary)} />
                         <DetailItem label="Encoded By" value={item.encodedBy} />
+                    </div>
+                    
+                    <div className="mt-6">
+                        <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Target Monthly Disbursement</h4>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-xs">
+                            {months.map(m => (
+                                <div key={m} className="flex flex-col p-2 bg-gray-50 dark:bg-gray-700/30 rounded">
+                                    <span className="font-semibold text-gray-500">{m}</span>
+                                    <span>{formatCurrency((item as any)[`disbursement${m}`] || 0)}</span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -233,7 +286,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
                             <DetailItem label="Actual Date" value={item.actualDate} />
-                            <DetailItem label="Actual Amount" value={formatCurrency(item.actualAmount || 0)} />
+                            <DetailItem label="Actual Amount (Misc)" value={formatCurrency(item.actualAmount || 0)} />
                         </div>
                         
                         <div>
@@ -247,8 +300,20 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div className="space-y-3">
                                     <p className="text-xs font-bold uppercase text-gray-400">Disbursement</p>
                                     <DetailItem label="Date" value={item.actualDisbursementDate} />
-                                    <DetailItem label="Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
+                                    <DetailItem label="Total Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
                                 </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-2">
+                            <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Actual Monthly Disbursement</h4>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 text-xs">
+                                {months.map(m => (
+                                    <div key={m} className="flex flex-col p-2 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-900/30">
+                                        <span className="font-semibold text-gray-500">{m}</span>
+                                        <span className="font-medium text-green-700 dark:text-green-400">{formatCurrency((item as any)[`actualDisbursement${m}`] || 0)}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -259,4 +324,4 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     );
 };
 
-export default OfficeRequirementDetail;
+export default StaffingRequirementDetail;

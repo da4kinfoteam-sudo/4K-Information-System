@@ -19,6 +19,7 @@ interface ProgramManagementProps {
     setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onSelectOfficeReq: (item: OfficeRequirement) => void;
+    onSelectStaffingReq: (item: StaffingRequirement) => void;
 }
 
 type ActiveTab = 'Office' | 'Staffing' | 'Other';
@@ -28,7 +29,8 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     staffingReqs, setStaffingReqs, 
     otherProgramExpenses, setOtherProgramExpenses,
     uacsCodes,
-    onSelectOfficeReq
+    onSelectOfficeReq,
+    onSelectStaffingReq
 }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<ActiveTab>('Office');
@@ -76,6 +78,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
                     items={staffingReqs} 
                     setItems={setStaffingReqs}
                     uacsCodes={uacsCodes}
+                    onSelect={onSelectStaffingReq}
                 />
             )}
             {activeTab === 'Other' && (

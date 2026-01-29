@@ -17,6 +17,7 @@ import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
 import OfficeRequirementDetail from './components/program_management/OfficeRequirementDetail';
+import StaffingRequirementDetail from './components/program_management/StaffingRequirementDetail';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -107,6 +108,7 @@ const AppContent: React.FC = () => {
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
     const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
+    const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -207,6 +209,12 @@ const AppContent: React.FC = () => {
         setCurrentPage('/program-management/office-detail');
     };
 
+    const handleSelectStaffingReq = (req: StaffingRequirement) => {
+        setSelectedStaffingReq(req);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/program-management/staffing-detail');
+    };
+
     const handleBack = () => {
         if (historyStack.length === 0) return;
         
@@ -220,6 +228,7 @@ const AppContent: React.FC = () => {
         if (currentPage === '/activity-detail') setSelectedActivity(null);
         if (currentPage === '/ipo-detail') setSelectedIpo(null);
         if (currentPage === '/program-management/office-detail') setSelectedOfficeReq(null);
+        if (currentPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
     };
 
     if (!currentUser) {
@@ -302,6 +311,7 @@ const AppContent: React.FC = () => {
                             setOtherProgramExpenses={setOtherProgramExpenses}
                             uacsCodes={derivedUacsCodes}
                             onSelectOfficeReq={handleSelectOfficeReq}
+                            onSelectStaffingReq={handleSelectStaffingReq}
                         />;
             case '/program-management/office-detail':
                 if (!selectedOfficeReq) return <div>Select an item</div>;
@@ -312,6 +322,17 @@ const AppContent: React.FC = () => {
                             onUpdate={(updatedItem) => {
                                 setOfficeReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
                                 setSelectedOfficeReq(updatedItem);
+                            }}
+                        />;
+            case '/program-management/staffing-detail':
+                if (!selectedStaffingReq) return <div>Select an item</div>;
+                return <StaffingRequirementDetail 
+                            item={selectedStaffingReq}
+                            onBack={handleBack}
+                            uacsCodes={derivedUacsCodes}
+                            onUpdate={(updatedItem) => {
+                                setStaffingReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                                setSelectedStaffingReq(updatedItem);
                             }}
                         />;
             case '/ipo':

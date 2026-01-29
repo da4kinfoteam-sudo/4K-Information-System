@@ -390,16 +390,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
-        // Ensure dataPoints is strictly typed
-        // Use Array.from with map function
-        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }, (_, i) => {
-            // Explicit cast for safety against inference failure
-            const data = (monthlyData as { [key: number]: MonthlyDataPoint })[i];
-            return data ? data : { target: 0, obligation: 0, disbursement: 0 };
-        });
+        // Explicitly create array of typed objects to prevent type inference errors in map
+        const dataPoints: MonthlyDataPoint[] = Array.from({ length: 12 }).map((_, i) => {
+             const mData = monthlyData as { [key: number]: MonthlyDataPoint };
+             const data = mData[i];
+             return data || { target: 0, obligation: 0, disbursement: 0 };
+        }) as MonthlyDataPoint[];
 
         const maxVal = Math.max(
-            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
+            ...dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement)),
             1000 // Minimum scale
         );
         const height = 300;
