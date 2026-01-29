@@ -33,15 +33,15 @@ interface OfficeRequirementsTabProps {
     items: OfficeRequirement[];
     setItems: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    onSelect: (item: OfficeRequirement) => void;
 }
 
-export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes }) => {
+export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');
-    const [editingItem, setEditingItem] = useState<OfficeRequirement | null>(null);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<OfficeRequirement | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -57,7 +57,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         handleSelectAll, handleSelectRow, resetSelection 
     } = useSelection<OfficeRequirement>();
 
-    // Form State
+    // Form State for Add New
     const initialFormState = {
         id: 0,
         uid: '',
@@ -82,7 +82,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         actualDisbursementAmount: 0
     };
     const [formData, setFormData] = useState(initialFormState);
-    const [formTab, setFormTab] = useState<'Details' | 'Accomplishment'>('Details');
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
 
@@ -96,37 +95,15 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     // Initialize Form
     useEffect(() => {
         if (view === 'form') {
-            if (editingItem) {
-                setFormData({ ...initialFormState, ...editingItem });
-                // Reverse Engineer UACS
-                let foundType: ObjectType = 'MOOE';
-                let foundParticular = '';
-                outerLoop:
-                for (const type of objectTypes) {
-                    if(uacsCodes[type]) {
-                        for (const part in uacsCodes[type]) {
-                            if (uacsCodes[type][part].hasOwnProperty(editingItem.uacsCode)) {
-                                foundType = type;
-                                foundParticular = part;
-                                break outerLoop;
-                            }
-                        }
-                    }
-                }
-                setSelectedObjectType(foundType);
-                setSelectedParticular(foundParticular);
-            } else {
-                setFormData({
-                    ...initialFormState,
-                    operatingUnit: currentUser?.operatingUnit || (canViewAll ? 'NPMO' : currentUser?.operatingUnit || ''),
-                    encodedBy: currentUser?.fullName || '',
-                });
-                setSelectedObjectType('MOOE');
-                setSelectedParticular('');
-            }
-            setFormTab('Details');
+            setFormData({
+                ...initialFormState,
+                operatingUnit: currentUser?.operatingUnit || (canViewAll ? 'NPMO' : currentUser?.operatingUnit || ''),
+                encodedBy: currentUser?.fullName || '',
+            });
+            setSelectedObjectType('MOOE');
+            setSelectedParticular('');
         }
-    }, [view, editingItem, uacsCodes, currentUser, canViewAll]);
+    }, [view, uacsCodes, currentUser, canViewAll]);
 
     // --- Derived Data ---
     const availableYears = useMemo(() => {
@@ -170,51 +147,36 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             numberOfUnits: Number(formData.numberOfUnits),
             pricePerUnit: Number(formData.pricePerUnit),
             fundYear: Number(formData.fundYear),
-            actualAmount: Number(formData.actualAmount),
-            actualObligationAmount: Number(formData.actualObligationAmount),
-            actualDisbursementAmount: Number(formData.actualDisbursementAmount),
+            // Accomplishment fields default to 0 for new items
+            actualAmount: 0,
+            actualObligationAmount: 0,
+            actualDisbursementAmount: 0,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System',
             updated_at: new Date().toISOString()
         };
 
-        // Explicitly remove ID from payload to avoid identity column update errors
         delete submissionData.id;
 
-        // Add creation fields if new
-        if (!editingItem) {
-            const year = new Date().getFullYear();
-            const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-            submissionData.uid = formData.uid || `OR-${year}-${sequence}`;
-            submissionData.created_at = new Date().toISOString();
-        }
+        const year = new Date().getFullYear();
+        const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+        submissionData.uid = formData.uid || `OR-${year}-${sequence}`;
+        submissionData.created_at = new Date().toISOString();
 
         if (supabase) {
-            if (editingItem) {
-                const { data, error } = await supabase.from('office_requirements').update(submissionData).eq('id', editingItem.id).select().single();
-                if (error) { 
-                    console.error("Update error:", error); 
-                    alert(`Failed to update: ${error.message}`); 
-                    return; 
-                }
-                if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
-            } else {
-                const { data, error } = await supabase.from('office_requirements').insert([submissionData]).select().single();
-                if (error) { 
-                    console.error("Create error:", error); 
-                    alert(`Failed to create: ${error.message}`); 
-                    return; 
-                }
-                if (data) setItems(prev => [data, ...prev]);
+            const { data, error } = await supabase.from('office_requirements').insert([submissionData]).select().single();
+            if (error) { 
+                console.error("Create error:", error); 
+                alert(`Failed to create: ${error.message}`); 
+                return; 
             }
+            if (data) setItems(prev => [data, ...prev]);
         } else {
             // Offline
-            const newItem = { ...submissionData, id: editingItem ? editingItem.id : Date.now() };
-            if (editingItem) setItems(prev => prev.map(i => i.id === newItem.id ? newItem : i));
-            else setItems(prev => [newItem, ...prev]);
+            const newItem = { ...submissionData, id: Date.now() };
+            setItems(prev => [newItem, ...prev]);
         }
         
         setView('list');
-        setEditingItem(null);
     };
 
     const handleDelete = async () => {
@@ -287,11 +249,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 
                 const currentTimestamp = new Date().toISOString();
                 const newItems = jsonData.map((row: any, index: number) => {
-                    // Robust handling for potential undefined values in excel
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
-                    
-                    // Helper logic for operating unit
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
 
                     return parseOfficeRequirementRow(row, {
@@ -312,7 +271,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 if (supabase) {
                     const { error } = await supabase.from('office_requirements').insert(newItems);
                     if (error) throw error;
-                    // Fetch to get IDs
                     const { data } = await supabase.from('office_requirements').select('*').order('id', { ascending: true });
                     if (data) setItems(data as OfficeRequirement[]);
                 } else {
@@ -334,60 +292,39 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         return (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">{editingItem ? 'Edit' : 'Add'} Office Requirement</h3>
-                    <button onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Add Office Requirement</h3>
+                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
                 </div>
                 <form onSubmit={handleFormSubmit} className="space-y-6">
-                    <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-                        <nav className="-mb-px flex space-x-4">
-                            <button type="button" onClick={() => setFormTab('Details')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Details' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Details</button>
-                            <button type="button" onClick={() => setFormTab('Accomplishment')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Accomplishment' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Accomplishment</button>
-                        </nav>
-                    </div>
-                    {formTab === 'Details' && (
-                        <>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
-                                    <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}>
-                                        <option value="">Select OU</option>
-                                        {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                                    </select>
-                                </div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label><input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
-                            </div>
-                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div className="md:col-span-2 text-right font-bold text-lg mt-2 text-gray-800 dark:text-white">Total: {formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))}</div>
-                            </div>
-                        </>
-                    )}
-                    {formTab === 'Accomplishment' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Total)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                            <div className="md:col-span-2 border-t border-gray-200 dark:border-gray-700 my-2"></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label><input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
+                            <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}>
+                                <option value="">Select OU</option>
+                                {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                            </select>
                         </div>
-                    )}
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label><input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                    </div>
+                    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                        <div className="md:col-span-2 text-right font-bold text-lg mt-2 text-gray-800 dark:text-white">Total: {formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))}</div>
+                    </div>
                     <div className="flex justify-end gap-4">
-                        <button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button>
                     </div>
                 </form>
@@ -398,7 +335,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     // List View
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-            {/* Delete Modals */}
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete</button></div></div></div>
             )}
@@ -417,7 +353,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     )}
                     {canEdit && (
                         <button 
-                            onClick={() => { setEditingItem(null); setView('form'); }} 
+                            onClick={() => { setView('form'); }} 
                             className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95"
                         >
                             + Add New
@@ -458,7 +394,11 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.equipment}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                    <button onClick={() => onSelect(item)} className="text-left hover:text-accent hover:underline focus:outline-none">
+                                        {item.equipment}
+                                    </button>
+                                </td>
                                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300"><div className="truncate w-48" title={item.specs}>{item.specs}</div><div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
@@ -467,7 +407,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                     {canEdit && (
                                         isSelectionMode ? 
                                         <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/> :
-                                        <><button onClick={() => { setEditingItem(item); setView('form'); }} className="text-accent hover:text-green-900 mr-3">Edit</button><button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button></>
+                                        <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
                                     )}
                                 </td>
                             </tr>

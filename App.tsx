@@ -16,6 +16,7 @@ import ActivityDetail from './components/ActivityDetail';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
+import OfficeRequirementDetail from './components/program_management/OfficeRequirementDetail';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -35,6 +36,7 @@ const getPageName = (path: string) => {
     if (path === '/ipo-detail') return 'IPO Details';
     if (path === '/ipo') return 'IPO List';
     if (path === '/activity-detail') return 'Activity Details';
+    if (path === '/program-management') return 'Program Management';
     
     // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
     return path.substring(1)
@@ -104,6 +106,7 @@ const AppContent: React.FC = () => {
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+    const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
     
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -198,6 +201,12 @@ const AppContent: React.FC = () => {
         setCurrentPage('/activity-detail');
     };
 
+    const handleSelectOfficeReq = (req: OfficeRequirement) => {
+        setSelectedOfficeReq(req);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/program-management/office-detail');
+    };
+
     const handleBack = () => {
         if (historyStack.length === 0) return;
         
@@ -207,15 +216,10 @@ const AppContent: React.FC = () => {
 
         // Cleanup selection states if we are leaving their detail views
         // We check the page we are *leaving* (currentPage)
-        if (currentPage === '/subproject-detail') {
-            setSelectedSubproject(null);
-        }
-        if (currentPage === '/activity-detail') {
-            setSelectedActivity(null);
-        }
-        if (currentPage === '/ipo-detail') {
-            setSelectedIpo(null);
-        }
+        if (currentPage === '/subproject-detail') setSelectedSubproject(null);
+        if (currentPage === '/activity-detail') setSelectedActivity(null);
+        if (currentPage === '/ipo-detail') setSelectedIpo(null);
+        if (currentPage === '/program-management/office-detail') setSelectedOfficeReq(null);
     };
 
     if (!currentUser) {
@@ -297,6 +301,18 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={otherProgramExpenses}
                             setOtherProgramExpenses={setOtherProgramExpenses}
                             uacsCodes={derivedUacsCodes}
+                            onSelectOfficeReq={handleSelectOfficeReq}
+                        />;
+            case '/program-management/office-detail':
+                if (!selectedOfficeReq) return <div>Select an item</div>;
+                return <OfficeRequirementDetail 
+                            item={selectedOfficeReq}
+                            onBack={handleBack}
+                            uacsCodes={derivedUacsCodes}
+                            onUpdate={(updatedItem) => {
+                                setOfficeReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                                setSelectedOfficeReq(updatedItem);
+                            }}
                         />;
             case '/ipo':
                 return <IPOs 
