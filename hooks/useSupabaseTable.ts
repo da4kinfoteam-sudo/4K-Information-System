@@ -1,6 +1,42 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
+
+// Helper to fetch all rows handling pagination limits
+export async function fetchAll(tableName: string, orderBy: string = 'id', ascending: boolean = true) {
+    if (!supabase) return [];
+    
+    let allData: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let more = true;
+
+    while (more) {
+        const { data, error } = await supabase
+            .from(tableName)
+            .select('*')
+            .order(orderBy, { ascending })
+            .range(from, from + step - 1);
+
+        if (error) {
+            console.error(`Error fetching ${tableName}:`, error);
+            break;
+        }
+
+        if (data && data.length > 0) {
+            allData = [...allData, ...data];
+            if (data.length < step) {
+                more = false;
+            } else {
+                from += step;
+            }
+        } else {
+            more = false;
+        }
+    }
+    return allData;
+}
 
 export function useSupabaseTable<T extends { id: number | string }>(
     tableName: string,
@@ -14,14 +50,8 @@ export function useSupabaseTable<T extends { id: number | string }>(
         if (!supabase) return;
 
         const fetchData = async () => {
-            const { data: dbData, error } = await supabase
-                .from(tableName)
-                .select('*')
-                .order('id', { ascending: true });
-
-            if (error) {
-                console.error(`Error fetching ${tableName}:`, error);
-            } else if (dbData && dbData.length > 0) {
+            const dbData = await fetchAll(tableName);
+            if (dbData && dbData.length > 0) {
                 // Determine if we need to parse JSON columns based on your schema.
                 // Supabase JS client usually auto-converts JSON columns to objects.
                 setData(dbData as T[]);
@@ -72,4 +102,3 @@ export function useSupabaseTable<T extends { id: number | string }>(
 
     return [data, setSupabaseData];
 }
-// --- End of hooks/useSupabaseTable.ts ---

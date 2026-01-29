@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes } from '../constants';
@@ -7,6 +8,7 @@ import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
 import { useAuth } from '../contexts/AuthContext';
+import { fetchAll } from '../hooks/useSupabaseTable';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -102,8 +104,8 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     // Helper to refresh data from Supabase
     const refreshData = async () => {
         if (!supabase) return;
-        const { data, error } = await supabase.from('ipos').select('*').order('id', { ascending: true });
-        if (!error && data) {
+        const data = await fetchAll('ipos', 'id', true);
+        if (data) {
             setIpos(data as IPO[]);
         }
     };

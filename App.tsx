@@ -17,7 +17,7 @@ import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
 import useLocalStorageState from './hooks/useLocalStorageState';
-import { useSupabaseTable } from './hooks/useSupabaseTable'; 
+import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
@@ -69,21 +69,21 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         if (!supabase) return;
         const fetchAllData = async () => {
-            const { data: or } = await supabase.from('office_requirements').select('*').order('id', { ascending: false });
-            if (or) setOfficeReqs(or as OfficeRequirement[]);
+            const or = await fetchAll('office_requirements', 'id', false);
+            setOfficeReqs(or as OfficeRequirement[]);
 
-            const { data: sr } = await supabase.from('staffing_requirements').select('*').order('id', { ascending: false });
-            if (sr) setStaffingReqs(sr as StaffingRequirement[]);
+            const sr = await fetchAll('staffing_requirements', 'id', false);
+            setStaffingReqs(sr as StaffingRequirement[]);
 
-            const { data: oe } = await supabase.from('other_program_expenses').select('*').order('id', { ascending: false });
-            if (oe) setOtherProgramExpenses(oe as OtherProgramExpense[]);
+            const oe = await fetchAll('other_program_expenses', 'id', false);
+            setOtherProgramExpenses(oe as OtherProgramExpense[]);
 
             // Fetch System Settings
-            const { data: dl } = await supabase.from('deadlines').select('*').order('date', { ascending: true });
-            if (dl) setDeadlines(dl as Deadline[]);
+            const dl = await fetchAll('deadlines', 'date', true);
+            setDeadlines(dl as Deadline[]);
 
-            const { data: ps } = await supabase.from('planning_schedules').select('*').order('startDate', { ascending: true });
-            if (ps) setPlanningSchedules(ps as PlanningSchedule[]);
+            const ps = await fetchAll('planning_schedules', 'startDate', true);
+            setPlanningSchedules(ps as PlanningSchedule[]);
         };
         fetchAllData();
     }, [currentUser]);
@@ -390,7 +390,7 @@ const AppContent: React.FC = () => {
                 return <ActivityDetail
                             activity={selectedActivity}
                             ipos={ipos}
-                            onBack={handleBack}
+                            onBack={handleBack} 
                             previousPageName={getPageName(previousPage)}
                             onUpdateActivity={(updated) => {
                                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));

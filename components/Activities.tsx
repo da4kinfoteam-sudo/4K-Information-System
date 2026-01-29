@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
@@ -8,6 +9,7 @@ import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { fetchAll } from '../hooks/useSupabaseTable';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -110,8 +112,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     // Helper to refresh data from Supabase
     const refreshData = async () => {
         if (!supabase) return;
-        const { data, error } = await supabase.from('activities').select('*').order('id', { ascending: false });
-        if (!error && data) {
+        const data = await fetchAll('activities', 'id', false);
+        if (data) {
             setActivities(data as Activity[]);
         }
     };

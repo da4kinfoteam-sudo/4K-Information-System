@@ -2,6 +2,7 @@
 // Author: 4K
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
+import { fetchAll } from '../../hooks/useSupabaseTable';
 
 interface UserLog {
     id: number;
@@ -23,14 +24,8 @@ const UserLogsTab: React.FC = () => {
         const fetchLogs = async () => {
             setLoading(true);
             if (supabase) {
-                const { data, error } = await supabase
-                    .from('user_logs')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                
-                if (error) {
-                    console.error("Error fetching logs:", error);
-                } else if (data) {
+                const data = await fetchAll('user_logs', 'created_at', false);
+                if (data) {
                     setLogs(data as UserLog[]);
                 }
             }
