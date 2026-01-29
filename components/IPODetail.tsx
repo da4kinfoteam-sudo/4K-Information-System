@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '../constants';
@@ -68,11 +69,40 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
+// Helper for Region Normalization
+const normalizeRegionName = (inputRegion: string) => {
+    const map: { [key: string]: string } = {
+        'Ilocos Region': 'Region I (Ilocos Region)',
+        'Cagayan Valley': 'Region II (Cagayan Valley)',
+        'Central Luzon': 'Region III (Central Luzon)',
+        'CALABARZON': 'Region IV-A (CALABARZON)',
+        'MIMAROPA': 'MIMAROPA Region',
+        'MIMAROPA Region': 'MIMAROPA Region',
+        'Bicol Region': 'Region V (Bicol Region)',
+        'Western Visayas': 'Region VI (Western Visayas)',
+        'Central Visayas': 'Region VII (Central Visayas)',
+        'Eastern Visayas': 'Region VIII (Eastern Visayas)',
+        'Zamboanga Peninsula': 'Region IX (Zamboanga Peninsula)',
+        'Northern Mindanao': 'Region X (Northern Mindanao)',
+        'Davao Region': 'Region XI (Davao Region)',
+        'SOCCSKSARGEN': 'Region XII (SOCCSKSARGEN)',
+        'Caraga': 'Region XIII (Caraga)',
+        'NCR': 'National Capital Region (NCR)',
+        'National Capital Region': 'National Capital Region (NCR)',
+        'CAR': 'Cordillera Administrative Region (CAR)',
+        'Cordillera Administrative Region': 'Cordillera Administrative Region (CAR)',
+        'BARMM': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
+        'Bangsamoro Autonomous Region in Muslim Mindanao': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
+    };
+    return map[inputRegion] || inputRegion;
+};
+
 const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
+    const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     
@@ -130,6 +160,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
             registeringBody: registrationBodyValue,
             registrationDate: ipo.registrationDate || '' // Ensure string for input
         });
+        setBaseRegion(ipo.region); // Initialize base region with current IPO region
 
         if (isOther) {
             setOtherRegisteringBody(ipo.registeringBody);
@@ -228,16 +259,33 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
     };
 
     const handleLocationChange = (locationString: string) => {
+        const { province } = parseLocation(locationString);
+        let region = editedIpo.region;
+        
+        // NIR Exception Logic
+        if (province) {
+            const p = province.toLowerCase();
+            if (p.includes('negros occidental') || p.includes('negros oriental') || p.includes('siquijor')) {
+                region = 'Negros Island Region (NIR)';
+            } else if (baseRegion) {
+                // If switching away from NIR province, revert to the base region selected in dropdown
+                region = baseRegion;
+            }
+        }
+
         setEditedIpo(prev => ({
             ...prev,
             location: locationString,
+            region: region
         }));
     };
     
     const handleRegionChange = (region: string) => {
+        const normalized = normalizeRegionName(region);
+        setBaseRegion(normalized); // Store user's selected region
         setEditedIpo(prev => ({
             ...prev,
-            region: region,
+            region: normalized,
         }));
     };
 
@@ -506,7 +554,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                 )}
                             </div>
                         </div>
-                        {/* New Usage Percentage Row */}
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
                             <div>
                                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Marketing %</label>
@@ -604,6 +651,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         )
     }
 
+    // ... (rest of view mode)
     return (
         <div className="space-y-8">
             <header className="flex flex-wrap items-center justify-between gap-4">
@@ -810,33 +858,33 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Membership Information</h3>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 text-sm">
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
                                 <dt className="text-gray-500 dark:text-gray-400">Total Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMembers || 0}</dd>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Total IP Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalIpMembers || 0}</dd>
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                                <dt className="text-gray-500 dark:text-gray-400">IP Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalIpMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Male</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMaleMembers || 0}</dd>
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Male Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMaleMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Female</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalFemaleMembers || 0}</dd>
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Female Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalFemaleMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Youth</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalYouthMembers || 0}</dd>
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
+                                <dt className="text-gray-500 dark:text-gray-400">Youth Members</dt>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalYouthMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2">
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
                                 <dt className="text-gray-500 dark:text-gray-400">Senior Citizens</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalSeniorMembers || 0}</dd>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalSeniorMembers}</dd>
                             </div>
-                            <div className="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2 sm:col-span-2">
+                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
                                 <dt className="text-gray-500 dark:text-gray-400">4Ps Beneficiaries</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.total4PsMembers || 0}</dd>
+                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.total4PsMembers}</dd>
                             </div>
                         </dl>
                     </div>
@@ -844,6 +892,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
             </div>
         </div>
     );
-}
+};
 
 export default IPODetail;

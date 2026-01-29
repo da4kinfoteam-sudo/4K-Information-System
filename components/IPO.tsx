@@ -57,13 +57,42 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
+// Helper for Region Normalization
+const normalizeRegionName = (inputRegion: string) => {
+    const map: { [key: string]: string } = {
+        'Ilocos Region': 'Region I (Ilocos Region)',
+        'Cagayan Valley': 'Region II (Cagayan Valley)',
+        'Central Luzon': 'Region III (Central Luzon)',
+        'CALABARZON': 'Region IV-A (CALABARZON)',
+        'MIMAROPA': 'MIMAROPA Region',
+        'MIMAROPA Region': 'MIMAROPA Region',
+        'Bicol Region': 'Region V (Bicol Region)',
+        'Western Visayas': 'Region VI (Western Visayas)',
+        'Central Visayas': 'Region VII (Central Visayas)',
+        'Eastern Visayas': 'Region VIII (Eastern Visayas)',
+        'Zamboanga Peninsula': 'Region IX (Zamboanga Peninsula)',
+        'Northern Mindanao': 'Region X (Northern Mindanao)',
+        'Davao Region': 'Region XI (Davao Region)',
+        'SOCCSKSARGEN': 'Region XII (SOCCSKSARGEN)',
+        'Caraga': 'Region XIII (Caraga)',
+        'NCR': 'National Capital Region (NCR)',
+        'National Capital Region': 'National Capital Region (NCR)',
+        'CAR': 'Cordillera Administrative Region (CAR)',
+        'Cordillera Administrative Region': 'Cordillera Administrative Region (CAR)',
+        'BARMM': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
+        'Bangsamoro Autonomous Region in Muslim Mindanao': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
+    };
+    return map[inputRegion] || inputRegion;
+};
+
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
+    const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
-    const [editingIpo, setEditingIpo] = useState<IPO | null>(null); // Kept for logic consistency if needed, but UI button removed
+    const [editingIpo, setEditingIpo] = useState<IPO | null>(null); 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
@@ -162,6 +191,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 totalSeniorMembers: editingIpo.totalSeniorMembers || 0,
                 total4PsMembers: editingIpo.total4PsMembers || 0,
             });
+            setBaseRegion(editingIpo.region); // Init base region
             if (!registeringBodyOptions.includes(editingIpo.registeringBody)) {
                 setOtherRegisteringBody(editingIpo.registeringBody);
             } else {
@@ -169,6 +199,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             }
         } else {
             setFormData(defaultFormData);
+            setBaseRegion('');
         }
     }, [editingIpo]);
     
@@ -446,16 +477,33 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
 
     const handleLocationChange = (locationString: string) => {
+        const { province } = parseLocation(locationString);
+        let region = formData.region;
+        
+        // NIR Exception
+        if (province) {
+            const p = province.toLowerCase();
+            if (p.includes('negros occidental') || p.includes('negros oriental') || p.includes('siquijor')) {
+                region = 'Negros Island Region (NIR)';
+            } else if (baseRegion) {
+                // If switching away from NIR province, revert to base region selected
+                region = baseRegion;
+            }
+        }
+
         setFormData(prev => ({
             ...prev,
             location: locationString,
+            region: region
         }));
     };
     
     const handleRegionChange = (region: string) => {
+        const normalized = normalizeRegionName(region);
+        setBaseRegion(normalized); // Update base region
         setFormData(prev => ({
             ...prev,
-            region: region
+            region: normalized
         }));
     };
 
@@ -507,12 +555,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     // Renamed to clarify: Only used for NEW IPOs now
     const handleAddNewClick = () => {
         setEditingIpo(null);
+        setBaseRegion(''); // Reset base region
         setView('add');
     };
 
     const handleCancelEdit = () => {
         setEditingIpo(null);
         setFormData(defaultFormData);
+        setBaseRegion('');
         setOtherRegisteringBody('');
         handleCancelCommodityEdit();
         setView('list');
