@@ -397,10 +397,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             dataPoints.push(mData[i] || { target: 0, obligation: 0, disbursement: 0 });
         }
 
-        const maxVal = Math.max(
-            ...dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement)),
-            1000 // Minimum scale
-        );
+        // Calculate maxVal safely with type assertion
+        const values = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
+        const maxVal: number = Math.max(...values, 1000);
+
         const height = 300;
         const width = 800; // ViewBox width
         const padding = 40;
