@@ -441,7 +441,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-t-4 border-emerald-500">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit}>
                         <div className="min-h-[400px]">
                             {/* DETAILS EDIT MODE */}
@@ -667,16 +667,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                                     {detailItems.map((detail, idx) => {
-                                                        const isLocked = detail.isCompleted && !isAdmin;
+                                                        const originalDetail = subproject.details.find(d => d.id === detail.id);
+                                                        const wasCompleted = originalDetail?.isCompleted || false;
+                                                        const hasDeliveryDate = !!detail.actualDeliveryDate;
+                                                        
+                                                        // Checkbox disabled if no delivery date OR if locked and user is not admin
+                                                        const isCheckboxDisabled = !hasDeliveryDate || (wasCompleted && !isAdmin);
+
                                                         return (
-                                                            <tr key={idx} className={isLocked ? 'bg-gray-100 dark:bg-gray-700/50 opacity-75' : ''}>
+                                                            <tr key={idx} className={wasCompleted ? 'bg-gray-100 dark:bg-gray-700/50 opacity-75' : ''}>
                                                                 <td className="px-3 py-2 text-center">
                                                                     <input 
                                                                         type="checkbox"
                                                                         checked={detail.isCompleted || false}
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'isCompleted', e.target.checked)}
-                                                                        disabled={isLocked && !isAdmin} // Only admin can uncheck if locked
-                                                                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                                                        disabled={isCheckboxDisabled} // Only clickable if date exists and not already locked (unless admin)
+                                                                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">
@@ -690,20 +696,45 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
                                                                         placeholder={`0 ${detail.unitOfMeasure}`}
-                                                                        disabled={isLocked}
+                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualNumberOfUnits}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input type="date" value={(detail as any).actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                    <input 
+                                                                        type="date" 
+                                                                        value={(detail as any).actualDeliveryDate || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualDeliveryDate} 
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input type="date" value={(detail as any).actualObligationDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                    <input 
+                                                                        type="date" 
+                                                                        value={(detail as any).actualObligationDate || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualObligationDate} 
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input type="date" value={(detail as any).actualDisbursementDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                    <input 
+                                                                        type="date" 
+                                                                        value={(detail as any).actualDisbursementDate || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualDisbursementDate} 
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input type="number" value={(detail as any).actualAmount || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" disabled={isLocked} />
+                                                                    <input 
+                                                                        type="number" 
+                                                                        value={(detail as any).actualAmount || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualAmount', parseFloat(e.target.value))} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        placeholder="0.00" 
+                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualAmount} 
+                                                                    />
                                                                 </td>
                                                             </tr>
                                                         );
@@ -753,11 +784,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     <div className="flex flex-col gap-1">
                                                                         <div className="flex items-center gap-1">
                                                                             <input type="number" value={commodity.marketingPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'marketingPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
-                                                                            <span className="text-xs text-gray-500">Mktg</span>
+                                                                            <span className="text-xs text-gray-500">Marketing</span>
                                                                         </div>
                                                                         <div className="flex items-center gap-1">
                                                                             <input type="number" value={commodity.foodSecurityPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'foodSecurityPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
-                                                                            <span className="text-xs text-gray-500">FS</span>
+                                                                            <span className="text-xs text-gray-500">Food Security</span>
                                                                         </div>
                                                                     </div>
                                                                 </td>
@@ -823,12 +854,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 </div>
                 <div className="flex items-center gap-4">
                     {/* Granular Buttons - Prepare for individual role toggles */}
-                     {canEditProjectDetails && (
-                         <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                            Edit Subproject
-                        </button>
-                     )}
                     {canEditAccomplishment && (
                         <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -846,7 +871,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-8">
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-emerald-500">
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-start mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Project Details</h3>
                             {canEditProjectDetails && (
@@ -890,7 +915,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      </div>
 
                      {/* New Target Commodities Section */}
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-teal-500">
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Target Commodities</h3>
                             {canEditCommodity && (
@@ -919,7 +944,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         )}
                      </div>
 
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-emerald-500">
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Breakdown</h3>
                             {canEditBudget && (
@@ -979,9 +1004,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </div>
 
                     {/* NEW: Accomplishment Report Section (Read-Only) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-blue-500">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
+                            {canEditAccomplishment && (
+                                <button onClick={() => setEditMode('accomplishment')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    Edit Accomplishment
+                                </button>
+                            )}
                         </div>
                         <div className="space-y-6">
                             <div>

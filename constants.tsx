@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -104,6 +103,7 @@ export interface SubprojectDetail {
     actualObligationDate?: string;
     actualDisbursementDate?: string;
     actualAmount?: number;
+    isCompleted?: boolean;
 }
 
 export interface SubprojectCommodity {
