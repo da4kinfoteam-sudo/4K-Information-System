@@ -398,7 +398,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         }
 
         // Calculate maxVal safely with type assertion
-        const values = dataPoints.map(d => Math.max(d.target, d.obligation, d.disbursement));
+        const values: number[] = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
         const maxVal: number = Math.max(...values, 1000);
 
         const height = 300;
@@ -425,7 +425,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d, i) => {
+                    {dataPoints.map((d: MonthlyDataPoint, i: number) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         // Ensure values are numbers
                         const tVal = Number(d.target || 0);

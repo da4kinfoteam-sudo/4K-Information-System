@@ -7,6 +7,12 @@ interface Props {
     subprojects: Subproject[];
 }
 
+interface InterventionStats {
+    target: number;
+    actual: number;
+    units: Set<string>;
+}
+
 const toTitleCase = (str: string) => {
     return str.replace(
         /\w\S*/g,
@@ -42,9 +48,9 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
 const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) => {
     const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
 
-    const data = useMemo(() => {
+    const data = useMemo<Record<string, Record<string, InterventionStats>>>(() => {
         // Structure: Type -> Particular (Normalized) -> Data
-        const groups: Record<string, Record<string, { target: number, actual: number, units: Set<string> }>> = {};
+        const groups: Record<string, Record<string, InterventionStats>> = {};
 
         subprojects.forEach(sp => {
             if (sp.details) {
@@ -88,7 +94,9 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         Object.keys(data).forEach(type => {
             let t = 0; 
             let a = 0;
-            Object.values(data[type]).forEach((val: { target: number; actual: number }) => {
+            // Explicit cast for Object.values return
+            const items: InterventionStats[] = Object.values(data[type]);
+            items.forEach((val) => {
                 t += val.target;
                 a += val.actual;
             });
@@ -218,7 +226,7 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
                                             
                                             {/* Child Rows */}
                                             {isExpanded && Object.entries(data[type]).sort((a,b) => a[0].localeCompare(b[0])).map(([name, rawStats]) => {
-                                                const stats = rawStats as { target: number; actual: number; units: Set<string> };
+                                                const stats = rawStats as InterventionStats;
                                                 const itemRate = stats.target > 0 ? (stats.actual / stats.target) * 100 : 0;
                                                 const unitStr = formatUnitString(stats.units);
                                                 

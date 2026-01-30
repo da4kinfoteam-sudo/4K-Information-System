@@ -6,6 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { supabase } from '../supabaseClient';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -18,7 +19,11 @@ interface SubprojectDetailProps {
     commodityCategories: { [key: string]: string[] };
 }
 
-type SubprojectDetailInput = Omit<SubprojectDetail, 'id'>;
+// Extended interface for local editing including completion flag
+interface SubprojectDetailInput extends Omit<SubprojectDetail, 'id'> {
+    id?: number; // Optional locally until saved
+    isCompleted?: boolean;
+}
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -36,7 +41,7 @@ const formatCurrency = (amount: number) => {
 const getStatusBadge = (status: Subproject['status']) => {
     const baseClasses = "px-3 py-1 text-sm font-semibold rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
         case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
         case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
         case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
@@ -55,12 +60,17 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const { addIpoHistory } = useIpoHistory();
-    // Added 'accomplishment' mode
-    const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
+    const isAdmin = currentUser?.role === 'Administrator';
+
+    // Edit Modes: 'full' (legacy), 'details' (exclusive), 'commodity' (exclusive), 'budget' (exclusive), 'accomplishment'
+    const [editMode, setEditMode] = useState<'none' | 'full' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
+    
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
-     const [currentDetail, setCurrentDetail] = useState({
+    
+    // Form Inputs
+    const [currentDetail, setCurrentDetail] = useState({
         type: '',
         particulars: '',
         deliveryDate: '',
@@ -74,7 +84,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         disbursementMonth: '',
     });
     
-    // Commodity Form State
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
         typeName: '',
         name: '',
@@ -82,10 +91,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         averageYield: 0
     });
     
-    // Edit state for budget items
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
-
     const [dateError, setDateError] = useState('');
+
+    // Toggle Flags for Edit Buttons (Ready for Role Based access later)
+    const canEditProjectDetails = canEdit;
+    const canEditCommodity = canEdit;
+    const canEditBudget = canEdit;
+    const canEditAccomplishment = canEdit;
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {
@@ -99,20 +112,32 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     useEffect(() => {
         setEditedSubproject(subproject);
-        setDetailItems(subproject.details.map(({ id, ...rest }) => rest));
-        if (editMode === 'full') setActiveTab('details');
-        if (editMode === 'budget') setActiveTab('budget');
-        // Accomplishment mode doesn't need tab switching logic here as it has its own fixed view
+        // Map details and preserve ID for tracking
+        setDetailItems(subproject.details.map(d => ({ ...d })));
         
-        // Reset local editing states when subproject or editMode changes
+        if (editMode === 'details') setActiveTab('details');
+        if (editMode === 'commodity') setActiveTab('commodity');
+        if (editMode === 'budget') setActiveTab('budget');
+        
+        // Reset local editing states
         setEditingDetailIndex(null);
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     }, [subproject, editMode]);
 
-    // Check completion status whenever details change (similar to Subprojects.tsx)
+    // Calculate Project Completion Rate (Weighted by Items or just simple item count? Using simple Item Count completion based on delivery)
+    const projectCompletionStats = useMemo(() => {
+        const totalItems = subproject.details.length;
+        if (totalItems === 0) return { percent: 0, text: '0%' };
+        
+        // Count items that have an actual delivery date
+        const completedItems = subproject.details.filter(d => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '').length;
+        const percent = (completedItems / totalItems) * 100;
+        return { percent, text: `${percent.toFixed(0)}%` };
+    }, [subproject.details]);
+
+    // Check completion status automation
     useEffect(() => {
         if (editMode !== 'none' && detailItems.length > 0) {
-            // detailItems has Omit<SubprojectDetail, 'id'>, but may carry accomplishments
             const allItemsDelivered = detailItems.every((d: any) => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '');
             
             if (allItemsDelivered) {
@@ -172,7 +197,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
-    // ... [Handlers for details and commodities preserved same as before] ...
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'type') {
@@ -205,18 +229,24 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
 
-        const newItem = {
+        const newItem: SubprojectDetailInput = {
             ...currentDetail,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseInt(currentDetail.numberOfUnits, 10),
+            // Ensure ID is generated for new items so tracking works later
+            id: Date.now() + Math.random(), 
+            // Default accomplishment fields
+            actualNumberOfUnits: 0,
+            actualDeliveryDate: '',
+            actualObligationDate: '',
+            actualDisbursementDate: '',
+            actualAmount: 0
         };
 
         if (editingDetailIndex !== null) {
-            // Update existing detail
-            setDetailItems(prev => prev.map((item, index) => index === editingDetailIndex ? newItem : item));
+            setDetailItems(prev => prev.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item));
             setEditingDetailIndex(null);
         } else {
-            // Add new detail
             setDetailItems(prev => [...prev, newItem]);
         }
 
@@ -251,11 +281,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setDetailItems(prev => prev.map((d, i) => i === index ? { ...d, [field]: value } : d));
     };
 
-    // Commodity Handlers
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'typeName') {
-            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' })); // Reset name if type changes
+            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
         } else {
             setCurrentCommodity(prev => ({ ...prev, [name]: value }));
         }
@@ -283,12 +312,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const commodityToEdit = editedSubproject.subprojectCommodities?.[index];
         if (commodityToEdit) {
             setCurrentCommodity({
-                typeName: commodityToEdit.typeName || '', // Handle potentially missing typeName in legacy data
+                typeName: commodityToEdit.typeName || '',
                 name: commodityToEdit.name,
                 area: commodityToEdit.area,
                 averageYield: commodityToEdit.averageYield || 0
             });
-            // Remove from list so it can be re-added
             setEditedSubproject(prev => ({
                 ...prev,
                 subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
@@ -304,11 +332,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
 
     const handleCommodityAccomplishmentChange = (index: number, field: keyof SubprojectCommodity, value: any) => {
-        // Validation for percentages
         if (field === 'marketingPercentage' || field === 'foodSecurityPercentage') {
             const numValue = parseFloat(value);
             if (value !== '' && (isNaN(numValue) || numValue < 0)) return; 
-
             const newValue = value === '' ? 0 : numValue;
             const currentItem = editedSubproject.subprojectCommodities?.[index];
             if (currentItem) {
@@ -317,21 +343,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 if (newValue + otherValue > 100) return;
             }
         }
-
         setEditedSubproject(prev => ({
             ...prev,
             subprojectCommodities: prev.subprojectCommodities?.map((c, i) => i === index ? { ...c, [field]: value } : c)
         }));
     };
 
-    const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
         let eventType = "Updated via Detail View";
-        if (editMode === 'budget') eventType = "Updated Budget via Detail View";
+        if (editMode === 'details') eventType = "Updated Details";
+        if (editMode === 'commodity') eventType = "Updated Commodities";
+        if (editMode === 'budget') eventType = "Updated Budget";
         if (editMode === 'accomplishment') eventType = "Updated Accomplishment";
 
-        // Logic to detect completion change within this update
         if (editedSubproject.status === 'Completed' && subproject.status !== 'Completed') {
             eventType = "Subproject Completed";
         }
@@ -342,7 +368,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             user: currentUser?.fullName || "System"
         };
         
-        // Resolve IPO ID for history logging
         let resolvedIpoId = editedSubproject.ipo_id;
         if (!resolvedIpoId && editedSubproject.indigenousPeopleOrganization) {
             const matchedIpo = ipos.find(i => i.name === editedSubproject.indigenousPeopleOrganization);
@@ -353,63 +378,77 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
              addIpoHistory(resolvedIpoId, `${eventType}: ${editedSubproject.name}`);
         }
 
+        // Logic to track accomplishment history in new table
+        if (editMode === 'accomplishment' && supabase) {
+            // Find changed items that are newly delivered or quantity changed
+            const changes = detailItems.filter((item, index) => {
+                const original = subproject.details[index];
+                if (!original) return true; // New item (shouldn't happen in accomplishment mode usually)
+                
+                // Track if actual delivery happened or quantity changed
+                const deliveredNow = !!item.actualDeliveryDate;
+                const deliveredBefore = !!original.actualDeliveryDate;
+                
+                // If just marked delivered, or quantity updated
+                if ((deliveredNow && !deliveredBefore) || (deliveredNow && item.actualNumberOfUnits !== original.actualNumberOfUnits)) {
+                    return true;
+                }
+                return false;
+            });
+
+            if (changes.length > 0) {
+                const historyRecords = changes.map(item => ({
+                    subproject_id: subproject.id,
+                    detail_id: item.id || 0, // Fallback 0 if id missing (should not happen for saved items)
+                    delivery_date: item.actualDeliveryDate,
+                    quantity: item.actualNumberOfUnits,
+                    remarks: `Delivered: ${item.particulars}`,
+                    created_by: currentUser?.fullName || 'System',
+                    created_at: new Date().toISOString()
+                }));
+                
+                // Insert into tracking table
+                const { error: histError } = await supabase.from('subproject_accomplishments').insert(historyRecords);
+                if (histError) console.error("Error logging accomplishment history:", histError);
+            }
+        }
+
+        // Add 'id' back to details if missing (from new adds)
+        const cleanDetails = detailItems.map((d, i) => ({ 
+            ...d, 
+            id: d.id || (Date.now() + i) // Ensure ID
+        }));
+
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
-            ipo_id: resolvedIpoId, // Ensure resolved ID is saved
-            details: detailItems.map((d, i) => ({ ...d, id: i + 1 })),
+            ipo_id: resolvedIpoId,
+            details: cleanDetails as SubprojectDetail[],
             history: [...(subproject.history || []), historyEntry]
         };
         onUpdateSubproject(updatedSubprojectWithDetails);
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
-
-    const TabButton: React.FC<{ tabName: typeof activeTab; label: string }> = ({ tabName, label }) => {
-        const isActive = activeTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    };
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
 
     if (editMode !== 'none') {
         return (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fadeIn">
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-                        {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : 'Editing: '}{subproject.name}
+                        {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : editMode === 'commodity' ? 'Editing Commodities: ' : 'Editing Details: '}{subproject.name}
                     </h1>
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border-t-4 border-emerald-500">
                     <form onSubmit={handleSubmit}>
-                        {editMode === 'full' && (
-                            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                                <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
-                                    <TabButton tabName="details" label="Subproject Details" />
-                                    <TabButton tabName="commodity" label="Subproject Commodity" />
-                                    <TabButton tabName="budget" label="Budget Items" />
-                                    {/* Accomplishment Tab Removed from standard Edit Mode */}
-                                </nav>
-                            </div>
-                        )}
-                        
                         <div className="min-h-[400px]">
-                            {activeTab === 'details' && editMode === 'full' && (
+                            {/* DETAILS EDIT MODE */}
+                            {editMode === 'details' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Project Details</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Subproject Name</label>
@@ -429,9 +468,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <option value="Ongoing">Ongoing</option>
                                                     <option value="Completed">Completed</option>
                                                     <option value="Cancelled">Cancelled</option>
-                                                    {editedSubproject.status === 'Completed' && <option value="Completed">Completed</option>}
                                                 </select>
-                                                {editedSubproject.status === 'Completed' && <p className="text-xs text-green-600 mt-1">Status set to Completed automatically based on actual delivery dates.</p>}
                                             </div>
                                             <div>
                                                  <label className="block text-sm font-medium">Package</label>
@@ -442,7 +479,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         </div>
                                     </fieldset>
                                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Timeline</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Location & Timeline</legend>
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Location</label>
@@ -460,16 +497,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         </div>
                                     </fieldset>
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Year</label>
-                                                <select 
-                                                    name="fundingYear" 
-                                                    value={editedSubproject.fundingYear} 
-                                                    onChange={handleInputChange} 
-                                                    className={commonInputClasses}
-                                                >
+                                                <select name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses}>
                                                     {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                                                 </select>
                                             </div>
@@ -487,19 +519,20 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                         </div>
                                     </fieldset>
-                                    {/* Remarks */}
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Remarks</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Remarks</legend>
                                         <div>
                                             <textarea name="remarks" id="remarks" value={editedSubproject.remarks} onChange={handleInputChange} rows={4} className={commonInputClasses} />
                                         </div>
                                     </fieldset>
                                  </div>
                             )}
-                            {activeTab === 'commodity' && editMode === 'full' && (
+
+                            {/* COMMODITY EDIT MODE */}
+                            {editMode === 'commodity' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Subproject Commodities</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Subproject Commodities</legend>
                                         <div className="space-y-2 mb-4">
                                             {editedSubproject.subprojectCommodities && editedSubproject.subprojectCommodities.length > 0 ? (
                                                 editedSubproject.subprojectCommodities.map((c, index) => (
@@ -512,7 +545,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                            <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                             </button>
                                                             <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -550,16 +583,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                         <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                                     </div>
                                                 )}
-                                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                                <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
                                             </div>
                                         </div>
                                     </fieldset>
                                 </div>
                             )}
-                            {activeTab === 'budget' && (editMode === 'full' || editMode === 'budget') && (
+
+                            {/* BUDGET EDIT MODE */}
+                            {editMode === 'budget' && (
                                 <div className="space-y-6">
                                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Items</legend>
                                         <div className="space-y-2 mb-4">
                                             {detailItems.map((d, index) => (
                                                 <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
@@ -570,7 +605,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <div className="flex items-center gap-4">
                                                         <span className="font-bold">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
                                                         <div className="flex items-center gap-2">
-                                                            <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                            <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                             </button>
                                                             <button type="button" onClick={() => handleRemoveDetail(index)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -605,21 +640,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                                 </div>
                                             ) : (
-                                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
                                             )}
                                         </div>
                                      </fieldset>
                                 </div>
                             )}
                             
+                            {/* ACCOMPLISHMENT EDIT MODE */}
                             {editMode === 'accomplishment' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items Accomplishment</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Items Accomplishment</legend>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
                                                     <tr>
+                                                        <th className="px-3 py-2 text-left font-medium">Completed</th>
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual No. of Units</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
@@ -629,35 +666,48 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                    {detailItems.map((detail, idx) => (
-                                                        <tr key={idx}>
-                                                            <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">
-                                                                {detail.particulars}
-                                                                <div className="text-xs text-gray-500">Target: {detail.numberOfUnits} {detail.unitOfMeasure}</div>
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input 
-                                                                    type="number" 
-                                                                    value={(detail as any).actualNumberOfUnits || ''} 
-                                                                    onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
-                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
-                                                                    placeholder={`0 ${detail.unitOfMeasure}`}
-                                                                />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input type="date" value={(detail as any).actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input type="date" value={(detail as any).actualObligationDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input type="date" value={(detail as any).actualDisbursementDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input type="number" value={(detail as any).actualAmount || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
-                                                            </td>
-                                                        </tr>
-                                                    ))}
+                                                    {detailItems.map((detail, idx) => {
+                                                        const isLocked = detail.isCompleted && !isAdmin;
+                                                        return (
+                                                            <tr key={idx} className={isLocked ? 'bg-gray-100 dark:bg-gray-700/50 opacity-75' : ''}>
+                                                                <td className="px-3 py-2 text-center">
+                                                                    <input 
+                                                                        type="checkbox"
+                                                                        checked={detail.isCompleted || false}
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'isCompleted', e.target.checked)}
+                                                                        disabled={isLocked && !isAdmin} // Only admin can uncheck if locked
+                                                                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                                                    />
+                                                                </td>
+                                                                <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">
+                                                                    {detail.particulars}
+                                                                    <div className="text-xs text-gray-500">Target: {detail.numberOfUnits} {detail.unitOfMeasure}</div>
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input 
+                                                                        type="number" 
+                                                                        value={(detail as any).actualNumberOfUnits || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        placeholder={`0 ${detail.unitOfMeasure}`}
+                                                                        disabled={isLocked}
+                                                                    />
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input type="date" value={(detail as any).actualDeliveryDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input type="date" value={(detail as any).actualObligationDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input type="date" value={(detail as any).actualDisbursementDate || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" disabled={isLocked} />
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input type="number" value={(detail as any).actualAmount || ''} onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" disabled={isLocked} />
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -665,13 +715,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                                     {/* Section 2: Customer Satisfaction */}
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Customer Satisfaction</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Customer Satisfaction</legend>
                                         <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
                                     </fieldset>
 
                                     {/* Section 3: Outcome of Subproject */}
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Outcome of Subproject</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Outcome of Subproject</legend>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
@@ -756,7 +806,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         </div>
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Changes</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -772,14 +822,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     <p className="text-md text-gray-500 dark:text-gray-400">{subproject.location}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                     {canEdit && (
-                         <button onClick={() => setEditMode('full')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                    {/* Granular Buttons - Prepare for individual role toggles */}
+                     {canEditProjectDetails && (
+                         <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Subproject
                         </button>
                      )}
-                    {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                    {canEditAccomplishment && (
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>
@@ -795,8 +846,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column */}
                 <div className="lg:col-span-2 space-y-8">
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Project Details</h3>
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-emerald-500">
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Project Details</h3>
+                            {canEditProjectDetails && (
+                                <button onClick={() => setEditMode('details')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit Details
+                                </button>
+                            )}
+                        </div>
                          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
                             <DetailItem label="Status" value={<span className={getStatusBadge(subproject.status)}>{subproject.status}</span>} />
                             <DetailItem label="UID" value={subproject.uid} />
@@ -809,6 +868,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <DetailItem label="Fund Type" value={subproject.fundType} />
                             <DetailItem label="Tier" value={subproject.tier} />
                          </div>
+                         
+                         {/* Completion Progress Bar */}
+                         <div className="mt-6">
+                             <div className="flex justify-between items-center mb-1">
+                                 <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Project Completion (Items Delivered)</span>
+                                 <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{projectCompletionStats.text}</span>
+                             </div>
+                             <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                 <div 
+                                    className="bg-emerald-600 h-2.5 rounded-full transition-all duration-500" 
+                                    style={{ width: `${projectCompletionStats.percent}%` }}
+                                 ></div>
+                             </div>
+                         </div>
+
                          <div className="mt-6">
                              <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400">Remarks</h4>
                              <p className="mt-1 text-sm text-gray-800 dark:text-gray-100 italic bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">{subproject.remarks || 'No remarks provided.'}</p>
@@ -816,8 +890,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      </div>
 
                      {/* New Target Commodities Section */}
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Target Commodities</h3>
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-teal-500">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Target Commodities</h3>
+                            {canEditCommodity && (
+                                <button onClick={() => setEditMode('commodity')} className="text-sm text-teal-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit Commodity
+                                </button>
+                            )}
+                        </div>
                         {subproject.subprojectCommodities && subproject.subprojectCommodities.length > 0 ? (
                             <ul className="space-y-1">
                                 {subproject.subprojectCommodities.map((c, idx) => (
@@ -837,11 +919,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         )}
                      </div>
 
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-emerald-500">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Breakdown</h3>
-                            {canEdit && (
-                                <button onClick={() => setEditMode('budget')} className="text-sm text-accent hover:underline flex items-center gap-1">
+                            {canEditBudget && (
+                                <button onClick={() => setEditMode('budget')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                     Edit Budget
                                 </button>
@@ -858,25 +940,38 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <th className="px-4 py-2 text-left">Disbursement</th>
                                         <th className="px-4 py-2 text-right"># of Units</th>
                                         <th className="px-4 py-2 text-right">Subtotal</th>
+                                        <th className="px-4 py-2 text-center">% Comp.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {subproject.details.map(detail => (
-                                        <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
-                                            <td className="px-4 py-2 font-medium">{detail.particulars}</td>
-                                            <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
-                                            <td className="px-4 py-2">{detail.uacsCode}</td>
-                                            <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
-                                            <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
-                                            <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
-                                            <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
-                                        </tr>
-                                    ))}
+                                    {subproject.details.map(detail => {
+                                        const actualUnits = detail.actualNumberOfUnits || 0;
+                                        const targetUnits = detail.numberOfUnits || 1; // Avoid division by zero
+                                        const completionPct = (actualUnits / targetUnits) * 100;
+                                        
+                                        return (
+                                            <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
+                                                <td className="px-4 py-2 font-medium">{detail.particulars}</td>
+                                                <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
+                                                <td className="px-4 py-2">{detail.uacsCode}</td>
+                                                <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
+                                                <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
+                                                <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
+                                                <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
+                                                <td className="px-4 py-2 text-center">
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${completionPct >= 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                                                        {Math.min(completionPct, 100).toFixed(0)}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                                 <tfoot className="font-bold bg-gray-50 dark:bg-gray-700/50">
                                     <tr>
                                         <td colSpan={6} className="px-4 py-2 text-right">Total Budget</td>
                                         <td className="px-4 py-2 text-right">{formatCurrency(calculateTotalBudget(subproject.details))}</td>
+                                        <td></td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -884,7 +979,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </div>
 
                     {/* NEW: Accomplishment Report Section (Read-Only) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-blue-500">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
                         </div>
@@ -905,7 +1000,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 {subproject.details.filter(d => d.actualDeliveryDate).map(d => (
                                                     <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
                                                         <td className="px-4 py-2 font-medium">{d.particulars}</td>
-                                                        <td className="px-4 py-2 text-green-600 dark:text-green-400">{formatDate(d.actualDeliveryDate)}</td>
+                                                        <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">{formatDate(d.actualDeliveryDate)}</td>
                                                         <td className="px-4 py-2 text-right">{d.actualNumberOfUnits || '-'}</td>
                                                     </tr>
                                                 ))}
@@ -927,7 +1022,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <p className="font-bold text-gray-800 dark:text-gray-200">{c.name}</p>
                                                     <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
                                                         {c.actualYield && <p>Yield: <span className="font-semibold text-gray-900 dark:text-white">{c.actualYield}</span> {c.typeName === 'Animal Commodity' ? 'Heads' : 'Yield/Ha'}</p>}
-                                                        {c.income && <p>Income: <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(c.income)}</span></p>}
+                                                        {c.income && <p>Income: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(c.income)}</span></p>}
                                                         {c.marketingPercentage && <p>Marketing: {c.marketingPercentage}%</p>}
                                                     </div>
                                                 </div>
@@ -944,14 +1039,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 </div>
                  {/* Right Column */}
                 <div className="space-y-8">
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-gray-400">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
                         {subproject.history && subproject.history.length > 0 ? (
                             <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
                                 <ul className="space-y-8">
                                     {subproject.history.map((entry, index) => (
                                         <li key={index} className="ml-8 relative">
-                                            <span className="absolute flex items-center justify-center w-4 h-4 bg-accent rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800"></span>
+                                            <span className="absolute flex items-center justify-center w-4 h-4 bg-emerald-500 rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800"></span>
                                             <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
                                             <p className="font-semibold text-gray-900 dark:text-white">{entry.event}</p>
                                             <p className="text-sm font-normal text-gray-500 dark:text-gray-400">by {entry.user}</p>
