@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits, ReferenceActivity, ActivityComponentType, otherActivityComponents } from '../constants';
@@ -40,12 +41,19 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const { addIpoHistory } = useIpoHistory();
-    const [editMode, setEditMode] = useState<'none' | 'full' | 'budget' | 'accomplishment'>('none');
+    
+    // Modes: 'none' | 'details' | 'expenses' | 'accomplishment'
+    const [editMode, setEditMode] = useState<'none' | 'details' | 'expenses' | 'accomplishment'>('none');
+    
     const [editedActivity, setEditedActivity] = useState(activity);
-    const [activeTab, setActiveTab] = useState<'details' | 'expenses'>('details');
     const [selectedActivityType, setSelectedActivityType] = useState('');
     const [isMultiDay, setIsMultiDay] = useState(false);
     
+    // Permission Toggles (Future proofing)
+    const canEditDetails = canEdit;
+    const canEditExpenses = canEdit;
+    const canEditAccomplishment = canEdit;
+
     // Budget Edit State
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
     const [currentExpense, setCurrentExpense] = useState({
@@ -78,9 +86,6 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         } else {
             setIsMultiDay(false);
         }
-
-        if (editMode === 'full') setActiveTab('details');
-        if (editMode === 'budget') setActiveTab('expenses');
     }, [activity, editMode, referenceActivities]);
 
     const totalBudget = useMemo(() => {
@@ -257,7 +262,8 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         e.preventDefault();
         
         let eventType = "Activity Updated";
-        if (editMode === 'budget') eventType = "Budget Updated";
+        if (editMode === 'details') eventType = "Details Updated";
+        if (editMode === 'expenses') eventType = "Expenses Updated";
         if (editMode === 'accomplishment') eventType = "Accomplishment Updated";
 
         const historyEntry = {
@@ -286,51 +292,27 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
-
-    const TabButton: React.FC<{ tabName: typeof activeTab; label: string }> = ({ tabName, label }) => {
-        const isActive = activeTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    };
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
 
     if (editMode !== 'none') {
         return (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fadeIn">
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
-                        {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : 'Editing: '}{activity.name}
+                        {editMode === 'expenses' ? 'Editing Expenses: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : 'Editing Details: '}{activity.name}
                     </h1>
                     <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
                 </div>
                 
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit}>
-                        {editMode === 'full' && (
-                            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                                <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
-                                    <TabButton tabName="details" label="Activity Details" />
-                                    <TabButton tabName="expenses" label="Expenses" />
-                                </nav>
-                            </div>
-                        )}
                         
                         <div className="min-h-[400px]">
-                            {activeTab === 'details' && editMode === 'full' && (
+                            {/* DETAILS FORM */}
+                            {editMode === 'details' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Information</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Basic Information</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Component</label>
@@ -367,7 +349,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         type="checkbox" 
                                                         checked={isMultiDay} 
                                                         onChange={handleMultiDayToggle}
-                                                        className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                     />
                                                     <span>Multi-day Activity?</span>
                                                 </label>
@@ -390,7 +372,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                     </fieldset>
 
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Participants & IPOs</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Male Participants (Target)</label>
@@ -405,19 +387,18 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <input type="number" value={(editedActivity.participantsMale || 0) + (editedActivity.participantsFemale || 0)} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
                                             </div>
                                             <div className="md:col-span-3">
-                                                <label className="block text-sm font-medium mb-2">Participating IPOs</label>
-                                                <select multiple name="participatingIpos" value={editedActivity.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-32`}>
-                                                    {ipos.map(ipo => (
+                                                <label className="block text-sm font-medium mb-2">Participating IPOs (Hold Ctrl/Cmd to select multiple)</label>
+                                                <select multiple name="participatingIpos" value={editedActivity.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-40`}>
+                                                    {ipos.sort((a,b) => a.name.localeCompare(b.name)).map(ipo => (
                                                         <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
                                                     ))}
                                                 </select>
-                                                <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
                                             </div>
                                         </div>
                                     </fieldset>
 
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div><label className="block text-sm font-medium">Year</label><input type="number" name="fundingYear" value={editedActivity.fundingYear} onChange={handleNumericChange} className={commonInputClasses} /></div>
                                             <div>
@@ -437,21 +418,22 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 </div>
                             )}
 
-                            {activeTab === 'expenses' && (editMode === 'full' || editMode === 'budget') && (
+                            {/* EXPENSES FORM */}
+                            {editMode === 'expenses' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Expenses</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Expenses</legend>
                                         <div className="space-y-2 mb-4">
                                             {editedActivity.expenses.map((exp) => (
                                                 <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                     <div>
                                                         <span className="font-semibold">{exp.expenseParticular}</span>
-                                                        <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {exp.obligationMonth}</div>
+                                                        <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {formatDate(exp.obligationMonth)}</div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
                                                         <span className="font-bold">{formatCurrency(exp.amount)}</span>
                                                         <div className="flex items-center gap-2">
-                                                            <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                            <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                             </button>
                                                             <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -481,7 +463,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         <button type="button" onClick={handleCancelExpenseEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                                     </div>
                                                 ) : (
-                                                    <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                                    <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
                                                 )}
                                             </div>
                                         </div>
@@ -489,10 +471,11 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 </div>
                             )}
 
+                            {/* ACCOMPLISHMENT FORM */}
                             {editMode === 'accomplishment' && (
                                 <div className="space-y-6">
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Actual Accomplishment</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Actual Accomplishment</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
                                                 <label className="block text-sm font-medium">Actual Date Conducted</label>
@@ -510,7 +493,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                     </fieldset>
 
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Utilization</legend>
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Utilization</legend>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                                                 <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
@@ -563,7 +546,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                         </div>
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Changes</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -582,18 +565,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                     </p>
                 </div>
                 <div className="flex items-center gap-4">
-                     {canEdit && (
-                         <button onClick={() => setEditMode('full')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                            Edit Activity
-                        </button>
-                     )}
-                    {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            Edit Accomplishment
-                        </button>
-                    )}
+                    {/* Granular Edit Buttons available inside sections now, main header just for Back */}
                     <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                         Back to {previousPageName}
@@ -604,8 +576,18 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column: Info & Expenses */}
                 <div className="lg:col-span-2 space-y-8">
+                    
+                    {/* Activity Details Section */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Activity Details</h3>
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Activity Details</h3>
+                            {canEditDetails && (
+                                <button onClick={() => setEditMode('details')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit Details
+                                </button>
+                            )}
+                        </div>
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
                             <DetailItem label="UID" value={activity.uid} />
                             <DetailItem label="Type" value={activity.type} />
@@ -623,14 +605,51 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Description</dt>
                                 <dd className="mt-1 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">{activity.description || 'No description provided.'}</dd>
                             </div>
+                            
+                            {/* Participating IPOs moved here */}
+                            <div className="col-span-2 mt-2">
+                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Participating IPOs</dt>
+                                {activity.participatingIpos.length > 0 ? (
+                                    <ul className="flex flex-wrap gap-2">
+                                        {activity.participatingIpos.map((ipoName, idx) => (
+                                            <li key={idx} className="flex items-center gap-2 text-sm bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                                <span className="text-gray-700 dark:text-gray-200">{ipoName}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic">No participating IPOs selected.</p>
+                                )}
+                            </div>
                         </dl>
                     </div>
 
+                    {/* Participants Section - Moved below details */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Participants</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="flex flex-col p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                <span className="text-gray-600 dark:text-gray-300 text-sm">Male Target</span>
+                                <span className="font-bold text-lg text-gray-900 dark:text-white">{activity.participantsMale}</span>
+                            </div>
+                            <div className="flex flex-col p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                <span className="text-gray-600 dark:text-gray-300 text-sm">Female Target</span>
+                                <span className="font-bold text-lg text-gray-900 dark:text-white">{activity.participantsFemale}</span>
+                            </div>
+                            <div className="flex flex-col p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                                <span className="text-blue-700 dark:text-blue-300 text-sm font-medium">Total Target</span>
+                                <span className="font-bold text-lg text-blue-900 dark:text-white">{activity.participantsMale + activity.participantsFemale}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Expenses Section */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Expenses & Budget</h3>
-                            {canEdit && (
-                                <button onClick={() => setEditMode('budget')} className="text-sm text-accent hover:underline flex items-center gap-1">
+                            {canEditExpenses && (
+                                <button onClick={() => setEditMode('expenses')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                     Edit Expenses
                                 </button>
@@ -671,59 +690,92 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                             </table>
                         </div>
                     </div>
-                </div>
 
-                {/* Right Column: Participants & History */}
-                <div className="space-y-8">
+                    {/* NEW: Accomplishment Report Section */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Participants</h3>
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                <span className="text-gray-600 dark:text-gray-300">Male Target</span>
-                                <span className="font-bold text-gray-900 dark:text-white">{activity.participantsMale}</span>
-                            </div>
-                            <div className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                <span className="text-gray-600 dark:text-gray-300">Female Target</span>
-                                <span className="font-bold text-gray-900 dark:text-white">{activity.participantsFemale}</span>
-                            </div>
-                            <div className="flex justify-between items-center p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-                                <span className="text-blue-700 dark:text-blue-300 font-medium">Total Target</span>
-                                <span className="font-bold text-blue-900 dark:text-white">{activity.participantsMale + activity.participantsFemale}</span>
-                            </div>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
+                            {canEditAccomplishment && (
+                                <button onClick={() => setEditMode('accomplishment')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    Edit Accomplishment
+                                </button>
+                            )}
+                        </div>
+                        <div className="space-y-6">
                             
-                            <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-                            
-                            <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Accomplishment</h4>
-                            <div className="flex justify-between items-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-100 dark:border-green-800">
-                                <span className="text-green-700 dark:text-green-300 font-medium">Actual Date</span>
-                                <span className="font-bold text-green-900 dark:text-white">{formatDate(activity.actualDate)}</span>
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
+                                    <span className="text-sm text-emerald-800 dark:text-emerald-300 font-medium">Actual Date Conducted</span>
+                                    <div className="text-xl font-bold text-emerald-900 dark:text-emerald-100 mt-1">{formatDate(activity.actualDate)}</div>
+                                </div>
+                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
+                                    <span className="text-sm text-blue-800 dark:text-blue-300 font-medium">Actual Participants</span>
+                                    <div className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                                        {(activity.actualParticipantsMale || 0) + (activity.actualParticipantsFemale || 0)} 
+                                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+                                            (M: {activity.actualParticipantsMale || 0}, F: {activity.actualParticipantsFemale || 0})
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-sm text-center">
-                                <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                    <div className="text-gray-500 dark:text-gray-400 text-xs">Actual Male</div>
-                                    <div className="font-bold">{activity.actualParticipantsMale || 0}</div>
-                                </div>
-                                <div className="p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                    <div className="text-gray-500 dark:text-gray-400 text-xs">Actual Female</div>
-                                    <div className="font-bold">{activity.actualParticipantsFemale || 0}</div>
-                                </div>
+
+                            {/* Financial Accomplishment Table */}
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Financial Performance (Actual)</h4>
+                                {activity.expenses.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                                                <tr>
+                                                    <th className="px-4 py-2 text-left">Item</th>
+                                                    <th className="px-4 py-2 text-left">Actual Obligation</th>
+                                                    <th className="px-4 py-2 text-left">Actual Disbursement</th>
+                                                    <th className="px-4 py-2 text-right">Actual Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {activity.expenses.map(exp => (
+                                                    <tr key={exp.id} className="border-b border-gray-100 dark:border-gray-700">
+                                                        <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
+                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualObligationDate)}</td>
+                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualDisbursementDate)}</td>
+                                                        <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                            {exp.actualAmount ? formatCurrency(exp.actualAmount) : '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic">No expense items to report on.</p>
+                                )}
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Participating IPOs</h3>
-                        {activity.participatingIpos.length > 0 ? (
-                            <ul className="space-y-2">
-                                {activity.participatingIpos.map((ipoName, idx) => (
-                                    <li key={idx} className="flex items-center gap-2 text-sm">
-                                        <span className="w-2 h-2 rounded-full bg-accent"></span>
-                                        <span className="text-gray-700 dark:text-gray-200">{ipoName}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                {/* Right Column: History */}
+                <div className="space-y-8">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-gray-400">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
+                        {activity.history && activity.history.length > 0 ? (
+                            <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
+                                <ul className="space-y-8">
+                                    {activity.history.map((entry, index) => (
+                                        <li key={index} className="ml-8 relative">
+                                            <span className="absolute flex items-center justify-center w-4 h-4 bg-emerald-500 rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800"></span>
+                                            <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
+                                            <p className="font-semibold text-gray-900 dark:text-white">{entry.event}</p>
+                                            <p className="text-sm font-normal text-gray-500 dark:text-gray-400">by {entry.user}</p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         ) : (
-                            <p className="text-sm text-gray-500 italic">No participating IPOs selected.</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No historical data available.</p>
                         )}
                     </div>
                 </div>
