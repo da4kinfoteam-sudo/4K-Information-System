@@ -110,7 +110,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Subprojects");
-    XLSX.writeFile(wb, "Subprojects_Report.xlsx");
+    XLSX.utils.book_append_sheet(wb, "Subprojects_Report.xlsx");
 };
 
 export const downloadSubprojectsTemplate = () => {
@@ -211,10 +211,23 @@ export const handleSubprojectsUpload = (
             let maxId = subprojects.reduce((max, s) => Math.max(max, s.id), 0);
             const currentTimestamp = new Date().toISOString();
 
+            // Track existing UIDs to prevent duplicates
+            const existingUids = new Set(subprojects.map(s => s.uid));
+            let skippedCount = 0;
+
             jsonData.forEach((row: any, index: number) => {
-                if (!row.uid) return; 
+                const uid = String(row.uid || '').trim();
+                if (!uid) return; 
                 
-                if (!groupedData.has(row.uid)) {
+                // Skip rows that belong to already existing subprojects
+                if (existingUids.has(uid)) {
+                    // Only increment count if we haven't seen this UID in this loop yet
+                    // (since multiple rows can have same UID)
+                    if (!groupedData.has(uid)) skippedCount++;
+                    return; 
+                }
+
+                if (!groupedData.has(uid)) {
                     maxId++;
                     
                     // Lookup IPO for Location
@@ -226,9 +239,9 @@ export const handleSubprojectsUpload = (
                     const rawOU = row.operatingUnit ? String(row.operatingUnit) : undefined;
                     const operatingUnit = rawOU ? resolveOperatingUnit(rawOU) : (currentUser?.operatingUnit || '');
 
-                    groupedData.set(row.uid, {
-                        id: maxId, // Only for offline use
-                        uid: String(row.uid),
+                    groupedData.set(uid, {
+                        id: maxId, // Only for offline use, stripped before Supabase insert
+                        uid: uid,
                         name: String(row.name),
                         location: locationString,
                         indigenousPeopleOrganization: ipoName,
@@ -253,9 +266,9 @@ export const handleSubprojectsUpload = (
                     });
                 }
 
-                const subproject = groupedData.get(row.uid);
+                const subproject = groupedData.get(uid);
                 
-                if (row.detail_particulars) {
+                if (row.detail_particulars && subproject) {
                     let uacsCode = String(row.detail_uacsCode || '').trim();
                     let objectType = 'MOOE'; // Default
                     let expenseParticular = '';
@@ -305,6 +318,7 @@ export const handleSubprojectsUpload = (
                 
                 if (supabase) {
                     // Explicit insert to prevent doubling and ID issues
+                    // Remove ID so Postgres auto-generates it based on sequence
                     const payload = newSubprojects.map(({ id, ...rest }) => rest);
                     const { data, error } = await supabase.from('subprojects').insert(payload).select();
                     
@@ -315,12 +329,20 @@ export const handleSubprojectsUpload = (
                         // Update local state with returned data (containing correct IDs)
                         // This will trigger useSupabaseTable upsert but it will be a no-op/update
                         setSubprojects(prev => [...prev, ...(data as Subproject[])]);
-                        alert(`${data.length} subprojects imported successfully!`);
+                        let msg = `${data.length} subprojects imported successfully!`;
+                        if (skippedCount > 0) msg += ` (${skippedCount} duplicates skipped)`;
+                        alert(msg);
                     }
                 } else {
                     setSubprojects(prev => [...prev, ...newSubprojects]);
-                    alert(`${newSubprojects.length} subprojects imported locally!`);
+                    let msg = `${newSubprojects.length} subprojects imported locally!`;
+                    if (skippedCount > 0) msg += ` (${skippedCount} duplicates skipped)`;
+                    alert(msg);
                 }
+            } else if (skippedCount > 0) {
+                alert(`All ${skippedCount} items in the file were skipped because they already exist in the system (Duplicate UIDs).`);
+            } else {
+                alert("No valid data found to import.");
             }
 
         } catch (error: any) {
@@ -328,7 +350,7 @@ export const handleSubprojectsUpload = (
             alert(`Failed to import file. ${error.message}`);
         } finally {
             setIsUploading(false);
-            if (e.target) e.target.value = '';
+            if(e.target) e.target.value = '';
         }
     };
     reader.readAsArrayBuffer(file);
