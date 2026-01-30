@@ -9,6 +9,7 @@ import IPOLevelDashboard from './dashboards/IPOLevelDashboard';
 import NutritionDashboard from './dashboards/NutritionDashboard';
 import FarmProductivityDashboard from './dashboards/FarmProductivityDashboard';
 import SCADDashboard from './dashboards/SCADDashboard';
+import AgriculturalInterventionsDashboard from './dashboards/AgriculturalInterventionsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,7 +23,7 @@ export interface DashboardsPageProps {
     otherProgramExpenses: OtherProgramExpense[];
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD';
+type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser } = useAuth();
@@ -202,6 +203,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         <TabButton tabName="Physical" label="Physical" />
                         <TabButton tabName="Financial" label="Financial" />
                         <TabButton tabName="SCAD" label="SCAD" />
+                        <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
                         <TabButton tabName="GAD" label="GAD" />
                         <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
                         <TabButton tabName="Nutrition" label="Nutrition" />
@@ -215,6 +217,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'Physical' && <PhysicalDashboard data={filteredData} setModalData={setModalData} />}
                 {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
                 {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
+                {activeTab === 'Agricultural Interventions' && <AgriculturalInterventionsDashboard subprojects={filteredData.subprojects} />}
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
