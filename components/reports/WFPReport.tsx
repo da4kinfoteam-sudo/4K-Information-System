@@ -1,7 +1,8 @@
+
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
+import { getObjectTypeByCode, XLSX } from './ReportUtils';
 
 interface WFPReportProps {
     data: {
@@ -16,6 +17,15 @@ interface WFPReportProps {
     selectedYear: string;
     selectedOu: string;
 }
+
+const formatCurrencyWhole = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
+};
+
+const formatNumber = (num: number) => {
+    if (!num) return '';
+    return Math.ceil(num).toLocaleString('en-US');
+};
 
 const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, selectedOu }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
@@ -220,9 +230,21 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 const totalQuarterlyPhysical = item.q1Physical + item.q2Physical + item.q3Physical + item.q4Physical;
                 const totalQuarterlyFinancial = item.q1Financial + item.q2Financial + item.q3Financial + item.q4Financial;
                 aoa.push([
-                    item.indicator, item.totalPhysicalTarget, item.mooeCost, item.coCost, item.totalCost,
-                    item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical, totalQuarterlyPhysical,
-                    item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial, totalQuarterlyFinancial
+                    item.indicator, 
+                    Math.ceil(item.totalPhysicalTarget), 
+                    Math.ceil(item.mooeCost), 
+                    Math.ceil(item.coCost), 
+                    Math.ceil(item.totalCost),
+                    Math.ceil(item.q1Physical), 
+                    Math.ceil(item.q2Physical), 
+                    Math.ceil(item.q3Physical), 
+                    Math.ceil(item.q4Physical), 
+                    Math.ceil(totalQuarterlyPhysical),
+                    Math.ceil(item.q1Financial), 
+                    Math.ceil(item.q2Financial), 
+                    Math.ceil(item.q3Financial), 
+                    Math.ceil(item.q4Financial), 
+                    Math.ceil(totalQuarterlyFinancial)
                 ]);
             });
         };
@@ -251,9 +273,21 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             const totalQuarterlyFinancial = totals.q1Financial + totals.q2Financial + totals.q3Financial + totals.q4Financial;
 
             aoa.push([
-                label, totals.totalPhysicalTarget, totals.mooeCost, totals.coCost, totals.totalCost,
-                totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical, totalQuarterlyPhysical,
-                totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial, totalQuarterlyFinancial
+                label, 
+                Math.ceil(totals.totalPhysicalTarget), 
+                Math.ceil(totals.mooeCost), 
+                Math.ceil(totals.coCost), 
+                Math.ceil(totals.totalCost),
+                Math.ceil(totals.q1Physical), 
+                Math.ceil(totals.q2Physical), 
+                Math.ceil(totals.q3Physical), 
+                Math.ceil(totals.q4Physical), 
+                Math.ceil(totalQuarterlyPhysical),
+                Math.ceil(totals.q1Financial), 
+                Math.ceil(totals.q2Financial), 
+                Math.ceil(totals.q3Financial), 
+                Math.ceil(totals.q4Financial), 
+                Math.ceil(totalQuarterlyFinancial)
             ]);
         };
 
@@ -317,14 +351,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         return (
             <tr className="font-bold bg-gray-200 dark:bg-gray-700">
                 <td className={`${dataCellClass}`}>{label}</td>
-                <td className={`${dataCellClass} text-center`}>{totals.totalPhysicalTarget}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.mooeCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.coCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.totalCost)}</td>
-                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
-                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
-                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
-                 <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+                <td className={`${dataCellClass} text-center`}>{formatNumber(totals.totalPhysicalTarget)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.totalCost)}</td>
+                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{formatNumber(q)}</td>)}
+                <td className={`${dataCellClass} text-center`}>{formatNumber(totalQuarterlyPhysical)}</td>
+                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrencyWhole(q) : ''}</td>)}
+                 <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrencyWhole(totalQuarterlyFinancial) : ''}</td>
             </tr>
         );
     };
@@ -369,14 +403,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
-                <td className={`${dataCellClass} text-center`}>{totals.totalPhysicalTarget}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.mooeCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.coCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(totals.totalCost)}</td>
-                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
-                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
-                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
-                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+                <td className={`${dataCellClass} text-center`}>{formatNumber(totals.totalPhysicalTarget)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.totalCost)}</td>
+                {[totals.q1Physical, totals.q2Physical, totals.q3Physical, totals.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{formatNumber(q)}</td>)}
+                <td className={`${dataCellClass} text-center`}>{formatNumber(totalQuarterlyPhysical)}</td>
+                {[totals.q1Financial, totals.q2Financial, totals.q3Financial, totals.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrencyWhole(q) : ''}</td>)}
+                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrencyWhole(totalQuarterlyFinancial) : ''}</td>
             </tr>
         );
     };
@@ -387,14 +421,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         return (
             <tr key={key}>
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>{item.indicator}</td>
-                <td className={`${dataCellClass} text-center`}>{item.totalPhysicalTarget}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.mooeCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.coCost)}</td>
-                <td className={`${dataCellClass} text-right`}>{formatCurrency(item.totalCost)}</td>
-                {[item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{q || ''}</td>)}
-                <td className={`${dataCellClass} text-center`}>{totalQuarterlyPhysical || ''}</td>
-                {[item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrency(q) : ''}</td>)}
-                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrency(totalQuarterlyFinancial) : ''}</td>
+                <td className={`${dataCellClass} text-center`}>{formatNumber(item.totalPhysicalTarget)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(item.mooeCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(item.coCost)}</td>
+                <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(item.totalCost)}</td>
+                {[item.q1Physical, item.q2Physical, item.q3Physical, item.q4Physical].map((q, i) => <td key={i} className={`${dataCellClass} text-center`}>{formatNumber(q)}</td>)}
+                <td className={`${dataCellClass} text-center`}>{formatNumber(totalQuarterlyPhysical)}</td>
+                {[item.q1Financial, item.q2Financial, item.q3Financial, item.q4Financial].map((q, i) => <td key={i} className={`${dataCellClass} text-right`}>{q ? formatCurrencyWhole(q) : ''}</td>)}
+                <td className={`${dataCellClass} text-right`}>{totalQuarterlyFinancial ? formatCurrencyWhole(totalQuarterlyFinancial) : ''}</td>
             </tr>
         )
     };
