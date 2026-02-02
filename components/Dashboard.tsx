@@ -257,6 +257,12 @@ const FinancialsIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const AdIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 interface DashboardProps {
     subprojects: Subproject[];
     ipos: IPO[];
@@ -276,8 +282,12 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    
+    // Modal States
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
     const [dayModalData, setDayModalData] = useState<{ date: Date, items: CalendarEvent[] } | null>(null);
+    const [cardModal, setCardModal] = useState<{ title: string; metrics: { label: string; value: number | string; isCurrency?: boolean; subtext?: string }[] } | null>(null);
+
     const [mapFilters, setMapFilters] = useState({
         ipos: true,
         subprojects: true,
@@ -318,9 +328,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             };
             setModalData(activityItem);
         }
-        // Close day modal if needed, or keep it open behind? 
-        // For simplicity, let's keep day modal open so user can go back, or close it.
-        // But since modalData uses a full screen modal, it might overlay.
     };
 
     const availableYears = useMemo(() => {
@@ -334,63 +341,178 @@ const Dashboard: React.FC<DashboardProps> = ({
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
     }, [subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
     
+    // Core filtering logic for ALL cards/charts
     const filteredData = useMemo(() => {
         let dataToFilter = { 
             subprojects, ipos, activities,
             officeReqs, staffingReqs, otherProgramExpenses
         };
 
-        // 1. Filter by Year, Tier, Fund Type
-        if (selectedYear !== 'All') {
-            dataToFilter = {
-                subprojects: dataToFilter.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
-                ipos: dataToFilter.ipos.filter(i => new Date(i.registrationDate).getFullYear().toString() === selectedYear),
-                activities: dataToFilter.activities.filter(a => a.fundingYear?.toString() === selectedYear || new Date(a.date).getFullYear().toString() === selectedYear),
-                officeReqs: dataToFilter.officeReqs.filter(i => i.fundYear.toString() === selectedYear),
-                staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundYear.toString() === selectedYear),
-                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear),
-            };
+        // Filter Function for reuse
+        const filterItem = (item: any) => {
+            let matches = true;
+            // Year (fundYear or fundingYear)
+            const year = item.fundingYear || item.fundYear;
+            if (selectedYear !== 'All' && year?.toString() !== selectedYear) matches = false;
+            
+            // Tier
+            if (selectedTier !== 'All' && item.tier !== selectedTier) matches = false;
+            
+            // FundType
+            if (selectedFundType !== 'All' && item.fundType !== selectedFundType) matches = false;
+            
+            // OU
+            if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) matches = false;
+
+            return matches;
         }
 
-        if (selectedTier !== 'All') {
-            dataToFilter = {
-                ...dataToFilter,
-                subprojects: dataToFilter.subprojects.filter(p => p.tier === selectedTier),
-                activities: dataToFilter.activities.filter(a => a.tier === selectedTier),
-                officeReqs: dataToFilter.officeReqs.filter(i => i.tier === selectedTier),
-                staffingReqs: dataToFilter.staffingReqs.filter(i => i.tier === selectedTier),
-                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.tier === selectedTier),
-            };
+        // Special handling for IPO filtering: 
+        // 1. By Region if OU is selected.
+        // 2. By Registration Year if Year is selected (optional but applied here per prompt "All Cards must follow filters")
+        const filterIpo = (item: IPO) => {
+            if (selectedOu !== 'All') {
+                const targetRegion = ouToRegionMap[selectedOu];
+                if (item.region !== targetRegion) return false;
+            }
+            if (selectedYear !== 'All') {
+                const regYear = new Date(item.registrationDate).getFullYear().toString();
+                if (regYear !== selectedYear) return false;
+            }
+            // IPOs don't inherently have Tier/FundType unless linked, but we are filtering the registry list here.
+            return true;
         }
-        
-        if (selectedFundType !== 'All') {
-            dataToFilter = {
-                ...dataToFilter,
-                subprojects: dataToFilter.subprojects.filter(p => p.fundType === selectedFundType),
-                activities: dataToFilter.activities.filter(a => a.fundType === selectedFundType),
-                officeReqs: dataToFilter.officeReqs.filter(i => i.fundType === selectedFundType),
-                staffingReqs: dataToFilter.staffingReqs.filter(i => i.fundType === selectedFundType),
-                otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.fundType === selectedFundType),
-            };
-        }
-        
-        // 2. Then Filter by Operating Unit
-        if (selectedOu === 'All') {
-            return dataToFilter;
-        }
-
-        const targetRegion = ouToRegionMap[selectedOu];
 
         return {
-            subprojects: dataToFilter.subprojects.filter(p => p.operatingUnit === selectedOu),
-            ipos: dataToFilter.ipos.filter(i => i.region === targetRegion),
-            activities: dataToFilter.activities.filter(a => a.operatingUnit === selectedOu),
-            officeReqs: dataToFilter.officeReqs.filter(i => i.operatingUnit === selectedOu),
-            staffingReqs: dataToFilter.staffingReqs.filter(i => i.operatingUnit === selectedOu),
-            otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu),
+            subprojects: dataToFilter.subprojects.filter(filterItem),
+            ipos: dataToFilter.ipos.filter(filterIpo),
+            activities: dataToFilter.activities.filter(filterItem),
+            officeReqs: dataToFilter.officeReqs.filter(filterItem),
+            staffingReqs: dataToFilter.staffingReqs.filter(filterItem),
+            otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(filterItem),
         };
 
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
+
+    // --- Dashboard Calculations ---
+
+    const dashboardStats = useMemo(() => {
+        // 1. Financials
+        // Totals for Subprojects
+        let spAlloc = 0, spObli = 0, spDisb = 0;
+        filteredData.subprojects.forEach(sp => {
+            const alloc = sp.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
+            // Using logic: Actual Obli Date exists -> count Actual Amount (or fallback to alloc if missing actual amount but date present)
+            // Note: Data model has `actualAmount` on detail.
+            const obli = sp.details.reduce((acc, d) => d.actualObligationDate ? acc + (d.actualAmount || (d.pricePerUnit * d.numberOfUnits)) : acc, 0);
+            const disb = sp.details.reduce((acc, d) => d.actualDisbursementDate ? acc + (d.actualAmount || (d.pricePerUnit * d.numberOfUnits)) : acc, 0);
+            
+            spAlloc += alloc;
+            spObli += obli;
+            spDisb += disb;
+        });
+
+        // Totals for Trainings (Type='Training')
+        let trAlloc = 0, trObli = 0, trDisb = 0;
+        filteredData.activities.filter(a => a.type === 'Training').forEach(t => {
+            const alloc = t.expenses.reduce((acc, e) => acc + e.amount, 0);
+            const obli = t.expenses.reduce((acc, e) => e.actualObligationDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            const disb = t.expenses.reduce((acc, e) => e.actualDisbursementDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            
+            trAlloc += alloc;
+            trObli += obli;
+            trDisb += disb;
+        });
+
+        // Totals for Other Activities
+        let oaAlloc = 0, oaObli = 0, oaDisb = 0;
+        filteredData.activities.filter(a => a.type === 'Activity').forEach(oa => {
+            const alloc = oa.expenses.reduce((acc, e) => acc + e.amount, 0);
+            const obli = oa.expenses.reduce((acc, e) => e.actualObligationDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            const disb = oa.expenses.reduce((acc, e) => e.actualDisbursementDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            
+            oaAlloc += alloc;
+            oaObli += obli;
+            oaDisb += disb;
+        });
+
+        // Totals for PM (Office, Staffing, Other Expenses)
+        let pmAlloc = 0, pmObli = 0, pmDisb = 0;
+        const processPm = (items: any[], isStaff = false) => {
+            items.forEach(item => {
+                const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
+                const obli = item.actualObligationAmount || 0;
+                const disb = item.actualDisbursementAmount || 0;
+                pmAlloc += alloc;
+                pmObli += obli;
+                pmDisb += disb;
+            });
+        };
+        processPm(filteredData.officeReqs);
+        processPm(filteredData.staffingReqs, true);
+        processPm(filteredData.otherProgramExpenses);
+
+        const totalAlloc = spAlloc + trAlloc + oaAlloc + pmAlloc;
+        const totalObli = spObli + trObli + oaObli + pmObli;
+        const totalDisb = spDisb + trDisb + oaDisb + pmDisb;
+
+        // 2. Physical Counts
+        const completedSubprojects = filteredData.subprojects.filter(sp => sp.status === 'Completed').length;
+        const totalSubprojects = filteredData.subprojects.length;
+
+        const completedTrainings = filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).length;
+        const totalTrainings = filteredData.activities.filter(a => a.type === 'Training').length;
+
+        // 3. IPO Analysis (Using filtered lists to determine engagement)
+        // Set of IPOs in any Subproject (Target)
+        const targetIposWithSp = new Set(filteredData.subprojects.map(sp => sp.indigenousPeopleOrganization));
+        // Set of IPOs in Completed Subproject (Actual)
+        const actualIposWithSp = new Set(filteredData.subprojects.filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
+
+        // Set of IPOs in any Training (Target)
+        const targetIposWithTr = new Set(filteredData.activities.filter(a => a.type === 'Training').flatMap(t => t.participatingIpos));
+        // Set of IPOs in Completed Training (Actual)
+        const actualIposWithTr = new Set(filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => t.participatingIpos));
+
+        // "IPOs Assisted": Completed SP OR Completed Training
+        const actualIposAssisted = new Set([...actualIposWithSp, ...actualIposWithTr]);
+        // Target for "Assisted": Linked to SP OR Training (regardless of status)
+        const targetIposAssisted = new Set([...targetIposWithSp, ...targetIposWithTr]);
+
+        // 4. Ancestral Domains (ADs)
+        // Need to lookup IPO objects to get ADs. We use the full `ipos` list but filter by names in our target/actual sets
+        const ipoRegistryMap = new Map(ipos.map(i => [i.name, i]));
+
+        const getAds = (ipoNames: Set<string>) => {
+            const ads = new Set<string>();
+            ipoNames.forEach(name => {
+                const ipo = ipoRegistryMap.get(name);
+                if (ipo && ipo.ancestralDomainNo) ads.add(ipo.ancestralDomainNo);
+            });
+            return ads;
+        };
+
+        const actualAdsAssisted = getAds(actualIposAssisted);
+        const targetAdsAssisted = getAds(targetIposAssisted);
+
+        // Helper to ceil
+        const c = Math.ceil;
+
+        return {
+            financials: {
+                total: { alloc: c(totalAlloc), obli: c(totalObli), disb: c(totalDisb) },
+                subprojects: { alloc: c(spAlloc), obli: c(spObli), disb: c(spDisb) },
+                trainings: { alloc: c(trAlloc), obli: c(trObli), disb: c(trDisb) }
+            },
+            physical: {
+                subprojects: { target: totalSubprojects, actual: completedSubprojects },
+                trainings: { target: totalTrainings, actual: completedTrainings },
+                iposAssisted: { target: targetIposAssisted.size, actual: actualIposAssisted.size },
+                iposWithSp: { target: targetIposWithSp.size, actual: actualIposWithSp.size },
+                adsAssisted: { target: targetAdsAssisted.size, actual: actualAdsAssisted.size }
+            }
+        };
+    }, [filteredData, ipos]);
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
@@ -422,57 +544,131 @@ const Dashboard: React.FC<DashboardProps> = ({
     useEffect(() => {
         setActivitiesPage(1);
     }, [activitiesFilter, selectedYear, selectedOu, selectedTier, selectedFundType]);
-
-    const financialStats = useMemo(() => {
-        const subprojectTotal = filteredData.subprojects.reduce((sum, project) => {
-            return sum + calculateTotalBudget(project.details);
-        }, 0);
-
-        const trainingTotal = filteredData.activities
-            .filter(a => a.type === 'Training')
-            .reduce((sum, training) => {
-                const trainingBudget = training.expenses.reduce((s, e) => s + e.amount, 0);
-                return sum + trainingBudget;
-            }, 0);
-
-        const otherActivitiesTotal = filteredData.activities
-            .filter(a => a.type === 'Activity')
-            .reduce((sum, activity) => {
-                const activityTotal = activity.expenses.reduce((expenseSum, expense) => expenseSum + expense.amount, 0);
-                return sum + activityTotal;
-            }, 0);
-
-        const pmTotal = 
-            filteredData.officeReqs.reduce((sum, item) => sum + (item.numberOfUnits * item.pricePerUnit), 0) +
-            filteredData.staffingReqs.reduce((sum, item) => sum + item.annualSalary, 0) +
-            filteredData.otherProgramExpenses.reduce((sum, item) => sum + item.amount, 0);
-
-        return {
-            total: subprojectTotal + trainingTotal + otherActivitiesTotal + pmTotal,
-            subprojects: subprojectTotal,
-            trainings: trainingTotal
-        };
-    }, [filteredData]);
-
-    const ipoStats = useMemo(() => {
-        const iposInSubprojects = new Set(filteredData.subprojects.map(p => p.indigenousPeopleOrganization));
-        const iposInActivities = new Set(filteredData.activities.flatMap(a => a.participatingIpos));
-
-        const assistedNames = new Set([...iposInSubprojects, ...iposInActivities]);
-        
-        // We compare against filteredData.ipos to respect the filter if applied to IPO list context
-        const assistedCount = filteredData.ipos.filter(i => assistedNames.has(i.name)).length;
-        const withSubprojectsCount = filteredData.ipos.filter(i => iposInSubprojects.has(i.name)).length;
-
-        return { assisted: assistedCount, withSubprojects: withSubprojectsCount };
-    }, [filteredData]);
     
     const filteredIposForMap = mapFilters.ipos ? filteredData.ipos : [];
     const filteredSubprojectsForMap = mapFilters.subprojects ? filteredData.subprojects : [];
     const filteredTrainingsForMap = mapFilters.trainings ? filteredData.activities.filter(a => a.type === 'Training') : [];
 
+    // --- Card Click Handlers ---
+    const showTotalBudget = () => {
+        setCardModal({
+            title: "Total Budget Performance",
+            metrics: [
+                { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true },
+                { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true },
+                { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true },
+                { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" }
+            ]
+        });
+    };
+
+    const showSpBudget = () => {
+        setCardModal({
+            title: "Subprojects Budget Performance",
+            metrics: [
+                { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true },
+                { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true },
+                { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true }
+            ]
+        });
+    };
+
+    const showTrBudget = () => {
+        setCardModal({
+            title: "Trainings Budget Performance",
+            metrics: [
+                { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true },
+                { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true },
+                { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true }
+            ]
+        });
+    };
+
+    const showSpCount = () => {
+        setCardModal({
+            title: "Subprojects Count",
+            metrics: [
+                { label: "Completed Subprojects", value: dashboardStats.physical.subprojects.actual },
+                { label: "Total Target Subprojects", value: dashboardStats.physical.subprojects.target },
+                { label: "Completion Rate", value: dashboardStats.physical.subprojects.target > 0 ? `${Math.round((dashboardStats.physical.subprojects.actual / dashboardStats.physical.subprojects.target) * 100)}%` : "0%" }
+            ]
+        });
+    };
+
+    const showTrCount = () => {
+        setCardModal({
+            title: "Trainings Count",
+            metrics: [
+                { label: "Completed Trainings", value: dashboardStats.physical.trainings.actual },
+                { label: "Total Target Trainings", value: dashboardStats.physical.trainings.target },
+                { label: "Completion Rate", value: dashboardStats.physical.trainings.target > 0 ? `${Math.round((dashboardStats.physical.trainings.actual / dashboardStats.physical.trainings.target) * 100)}%` : "0%" }
+            ]
+        });
+    };
+
+    const showIposAssisted = () => {
+        setCardModal({
+            title: "IPOs Assisted (Subprojects + Trainings)",
+            metrics: [
+                { label: "IPOs with Completed SPs/Trainings", value: dashboardStats.physical.iposAssisted.actual },
+                { label: "Total Target IPOs", value: dashboardStats.physical.iposAssisted.target, subtext: "Linked to any SP/Training" }
+            ]
+        });
+    };
+
+    const showIposWithSp = () => {
+        setCardModal({
+            title: "IPOs with Subprojects",
+            metrics: [
+                { label: "IPOs with Completed SPs", value: dashboardStats.physical.iposWithSp.actual },
+                { label: "Total Target IPOs", value: dashboardStats.physical.iposWithSp.target, subtext: "Linked to any SP" }
+            ]
+        });
+    };
+
+    const showAdsAssisted = () => {
+        setCardModal({
+            title: "Ancestral Domains Assisted",
+            metrics: [
+                { label: "ADs with Completed SPs/Trainings", value: dashboardStats.physical.adsAssisted.actual },
+                { label: "Total Target ADs", value: dashboardStats.physical.adsAssisted.target, subtext: "Linked via IPOs" }
+            ]
+        });
+    };
+
     return (
-        <div>
+        <div className="space-y-8">
+            {/* Card Detail Modal */}
+            {cardModal && (
+                <div 
+                    className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 animate-fadeIn"
+                    onClick={() => setCardModal(null)}
+                >
+                    <div 
+                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 relative"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">{cardModal.title}</h3>
+                            <button onClick={() => setCardModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
+                        </div>
+                        <div className="space-y-4">
+                            {cardModal.metrics.map((metric, idx) => (
+                                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{metric.label}</p>
+                                        {metric.subtext && <p className="text-xs text-gray-400">{metric.subtext}</p>}
+                                    </div>
+                                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                        {metric.isCurrency && typeof metric.value === 'number' ? formatCurrency(metric.value) : metric.value}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Main Item Detail Modal */}
             {modalData && (
                 <div 
@@ -654,13 +850,62 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
-                <StatCard title="Total Budget" value={formatCurrency(financialStats.total)} icon={<FinancialsIcon />} color="text-purple-500" />
-                <StatCard title="Total Budget for Sub Projects" value={formatCurrency(financialStats.subprojects)} icon={<FinancialsIcon />} color="text-blue-500" />
-                <StatCard title="Total Budget for Trainings" value={formatCurrency(financialStats.trainings)} icon={<FinancialsIcon />} color="text-green-500" />
-                <StatCard title="Number of Subprojects" value={filteredData.subprojects.length.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-600" />
-                <StatCard title="Number of Trainings" value={filteredData.activities.filter(a => a.type === 'Training').length.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" />
-                <StatCard title="Number of IPOs assisted" value={ipoStats.assisted.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" />
-                <StatCard title="Number of IPOs with Sub Projects" value={ipoStats.withSubprojects.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-teal-500" />
+                <StatCard 
+                    title="Total Budget (Actual Disbursed)" 
+                    value={formatCurrency(dashboardStats.financials.total.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-purple-500" 
+                    onClick={showTotalBudget}
+                />
+                <StatCard 
+                    title="Total Budget for Subprojects (Disbursed)" 
+                    value={formatCurrency(dashboardStats.financials.subprojects.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-blue-500" 
+                    onClick={showSpBudget}
+                />
+                <StatCard 
+                    title="Total Budget for Trainings (Disbursed)" 
+                    value={formatCurrency(dashboardStats.financials.trainings.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-green-500" 
+                    onClick={showTrBudget}
+                />
+                <StatCard 
+                    title="Number of Subprojects (Completed)" 
+                    value={dashboardStats.physical.subprojects.actual.toString()} 
+                    icon={<ProjectsIcon className="h-8 w-8" />} 
+                    color="text-blue-600" 
+                    onClick={showSpCount}
+                />
+                <StatCard 
+                    title="Number of Trainings (Completed)" 
+                    value={dashboardStats.physical.trainings.actual.toString()} 
+                    icon={<TrainingIcon className="h-8 w-8" />} 
+                    color="text-green-600" 
+                    onClick={showTrCount}
+                />
+                <StatCard 
+                    title="Number of IPOs assisted" 
+                    value={dashboardStats.physical.iposAssisted.actual.toString()} 
+                    icon={<IpoIcon className="h-8 w-8" />} 
+                    color="text-yellow-500" 
+                    onClick={showIposAssisted}
+                />
+                <StatCard 
+                    title="Number of IPOs with subprojects" 
+                    value={dashboardStats.physical.iposWithSp.actual.toString()} 
+                    icon={<IpoIcon className="h-8 w-8" />} 
+                    color="text-teal-500" 
+                    onClick={showIposWithSp}
+                />
+                <StatCard 
+                    title="Number of Ancestral Domains assisted" 
+                    value={dashboardStats.physical.adsAssisted.actual.toString()} 
+                    icon={<AdIcon className="h-8 w-8" />} 
+                    color="text-orange-500" 
+                    onClick={showAdsAssisted}
+                />
             </div>
 
             {/* System Schedule Summary Card */}
