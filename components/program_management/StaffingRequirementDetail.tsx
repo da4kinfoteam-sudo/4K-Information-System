@@ -104,7 +104,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         });
 
         if (supabase) {
-            const { error } = await supabase.from('staffing_requirements').update(updatedItem).eq('id', item.id);
+            // Exclude ID from payload to avoid "column id can only be updated to DEFAULT" error
+            const { id, ...payload } = updatedItem;
+            const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);
                 return;

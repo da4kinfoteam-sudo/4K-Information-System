@@ -1,4 +1,64 @@
 
+-- 5. Program Management: Staffing Requirements
+create table if not exists staffing_requirements (
+  "id" bigint primary key generated always as identity
+);
+
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "uid" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "operatingUnit" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "uacsCode" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "obligationDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "fundType" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "fundYear" integer;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "tier" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "encodedBy" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "personnelPosition" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "status" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "salaryGrade" integer;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "annualSalary" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "personnelType" text;
+
+-- Accomplishment Fields
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualAmount" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualObligationDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementDate" text;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualObligationAmount" numeric;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementAmount" numeric;
+
+-- Monthly Disbursement Schedule (Target)
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJan" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementFeb" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementMar" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementApr" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementMay" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJun" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementJul" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementAug" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementSep" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementOct" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementNov" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "disbursementDec" numeric default 0;
+
+-- Monthly Disbursement Schedule (Actual)
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementJan" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementFeb" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementMar" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementApr" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementMay" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementJun" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementJul" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementAug" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementSep" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementOct" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementNov" numeric default 0;
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "actualDisbursementDec" numeric default 0;
+
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "created_at" timestamptz default now();
+ALTER TABLE staffing_requirements ADD COLUMN IF NOT EXISTS "updated_at" timestamptz default now();
+
+
 -- 6. Program Management: Other Expenses
 create table if not exists other_program_expenses (
   "id" bigint primary key generated always as identity
