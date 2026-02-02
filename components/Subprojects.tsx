@@ -8,6 +8,7 @@ import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import useLocalStorageState from '../hooks/useLocalStorageState';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -84,16 +85,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [isUploading, setIsUploading] = useState(false);
 
-    // Filters
-    const [searchTerm, setSearchTerm] = useState('');
-    const [ouFilter, setOuFilter] = useState('All');
-    const [packageFilter, setPackageFilter] = useState('All');
-    const [statusFilter, setStatusFilter] = useState('All');
-    const [yearImplementedFilter, setYearImplementedFilter] = useState('All');
+    // Filters - Persistent State
+    const [searchTerm, setSearchTerm] = useLocalStorageState('subprojects_searchTerm', '');
+    const [ouFilter, setOuFilter] = useLocalStorageState('subprojects_ouFilter', 'All');
+    const [packageFilter, setPackageFilter] = useLocalStorageState('subprojects_packageFilter', 'All');
+    const [statusFilter, setStatusFilter] = useLocalStorageState('subprojects_statusFilter', 'All');
+    const [yearImplementedFilter, setYearImplementedFilter] = useLocalStorageState('subprojects_yearImplementedFilter', 'All');
 
-    // Sorting
+    // Sorting - Persistent State
     type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
-    const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'startDate', direction: 'descending' });
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>('subprojects_sortConfig', { key: 'startDate', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
