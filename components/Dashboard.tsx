@@ -272,10 +272,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     officeReqs, staffingReqs, otherProgramExpenses
 }) => {
     const { currentUser } = useAuth();
-    const [selectedYear, setSelectedYear] = useState<string>('All');
+    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>('All');
-    const [selectedTier, setSelectedTier] = useState<string>('All');
-    const [selectedFundType, setSelectedFundType] = useState<string>('All');
+    const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
+    const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
     const [dayModalData, setDayModalData] = useState<{ date: Date, items: CalendarEvent[] } | null>(null);
     const [mapFilters, setMapFilters] = useState({

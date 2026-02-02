@@ -29,7 +29,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
-    const [selectedYear, setSelectedYear] = useState<string>('2026');
+    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
