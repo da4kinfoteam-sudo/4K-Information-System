@@ -67,7 +67,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
-        const updatedItem = {
+        const updatedItem: any = {
             ...formData,
             numberOfUnits: Number(formData.numberOfUnits),
             pricePerUnit: Number(formData.pricePerUnit),
@@ -86,11 +86,9 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             }
         }
         
-        onUpdate(updatedItem);
+        onUpdate(updatedItem as OfficeRequirement);
         setEditMode('none');
     };
-
-    // --- Edit Views ---
 
     if (editMode === 'details') {
         return (
@@ -102,14 +100,14 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Info & Targets</legend>
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Info</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment Name</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} className={commonInputClasses} rows={2}/></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price/Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
 
@@ -152,7 +150,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-salary actuals" /></div>
                                 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
@@ -172,8 +170,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         );
     }
 
-    // --- Read Only View ---
-
+    // Read Only View
     return (
         <div className="space-y-8">
             {/* Header */}
@@ -209,21 +206,23 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                        <DetailItem label="Equipment Name" value={item.equipment} />
-                        <DetailItem label="Specifications" value={item.specs} />
+                        <DetailItem label="Specs" value={item.specs} />
                         <div className="col-span-2">
                             <DetailItem label="Purpose" value={item.purpose} />
                         </div>
-                        <DetailItem label="Units" value={item.numberOfUnits} />
+                        <DetailItem label="Quantity" value={item.numberOfUnits} />
                         <DetailItem label="Price/Unit" value={formatCurrency(item.pricePerUnit)} />
                         <DetailItem label="Total Amount" value={formatCurrency(item.numberOfUnits * item.pricePerUnit)} />
-                        <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
-                        <div className="col-span-2">
-                            <DetailItem label="UACS Code" value={`${item.uacsCode} (${selectedParticular || 'Lookup Failed'})`} />
+                        
+                        <div className="col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                            <div className="grid grid-cols-2 gap-4">
+                                <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
+                                <DetailItem label="UACS Code" value={`${item.uacsCode} (${selectedParticular || 'Lookup Failed'})`} />
+                                <DetailItem label="Target Obligation" value={item.obligationDate} />
+                                <DetailItem label="Target Disbursement" value={item.disbursementDate} />
+                                <DetailItem label="Encoded By" value={item.encodedBy} />
+                            </div>
                         </div>
-                        <DetailItem label="Target Obligation" value={item.obligationDate} />
-                        <DetailItem label="Target Disbursement" value={item.disbursementDate} />
-                        <DetailItem label="Encoded By" value={item.encodedBy} />
                     </div>
                 </div>
 
@@ -233,7 +232,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
                             <DetailItem label="Actual Date" value={item.actualDate} />
-                            <DetailItem label="Actual Amount" value={formatCurrency(item.actualAmount || 0)} />
+                            <DetailItem label="Actual Amount (Misc)" value={formatCurrency(item.actualAmount || 0)} />
                         </div>
                         
                         <div>
