@@ -28,8 +28,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     // Default to current year
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>('All');
-    const [selectedTier, setSelectedTier] = useState<string>('All');
-    const [selectedFundType, setSelectedFundType] = useState<string>('All');
+    const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
+    const [selectedFundType, setSelectedFundType] = useState<string>('Current');
 
     // Enforce User OU restriction on mount/change
     useEffect(() => {
