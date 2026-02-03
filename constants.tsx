@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -224,6 +225,8 @@ export interface Activity extends BaseEntity {
     actualDate?: string;
     actualParticipantsMale?: number;
     actualParticipantsFemale?: number;
+    // Status
+    status: 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
 }
 
 // Aliases for compatibility

@@ -10,6 +10,7 @@ import { usePagination, useSelection, getUserPermissions } from './mainfunctions
 import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { fetchAll } from '../hooks/useSupabaseTable';
+import useLocalStorageState from '../hooks/useLocalStorageState';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -30,6 +31,17 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
     </svg>
 );
+
+const getStatusBadge = (status: Activity['status']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+}
 
 const defaultFormData: Activity = {
     id: 0,
@@ -55,7 +67,8 @@ const defaultFormData: Activity = {
     newTargetDate: '',
     actualDate: '',
     actualParticipantsMale: 0,
-    actualParticipantsFemale: 0
+    actualParticipantsFemale: 0,
+    status: 'Proposed'
 };
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, uacsCodes, referenceActivities = [], forcedType }) => {
@@ -84,12 +97,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         handleSelectAll, handleSelectRow, resetSelection 
     } = useSelection<Activity>();
 
-    // Filters
-    const [searchTerm, setSearchTerm] = useState('');
-    const [ouFilter, setOuFilter] = useState('All');
-    const [fundYearFilter, setFundYearFilter] = useState('All');
-    const [componentFilter, setComponentFilter] = useState<ActivityComponentType | 'All'>('All');
-    const [typeFilter, setTypeFilter] = useState<'All' | 'Training' | 'Activity'>(forcedType || 'All');
+    // Persistent Filters
+    const [searchTerm, setSearchTerm] = useLocalStorageState('activities_searchTerm', '');
+    const [ouFilter, setOuFilter] = useLocalStorageState('activities_ouFilter', 'All');
+    const [fundYearFilter, setFundYearFilter] = useLocalStorageState('activities_fundYearFilter', 'All');
+    const [componentFilter, setComponentFilter] = useLocalStorageState<ActivityComponentType | 'All'>('activities_componentFilter', 'All');
+    const [typeFilter, setTypeFilter] = useLocalStorageState<'All' | 'Training' | 'Activity'>('activities_typeFilter', forcedType || 'All');
 
     // Sorting
     type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
@@ -136,7 +149,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             ...defaultFormData,
             type: forcedType || 'Activity', // Use forced type initially if available
             operatingUnit: currentUser?.operatingUnit || '',
-            encodedBy: currentUser?.fullName || ''
+            encodedBy: currentUser?.fullName || '',
+            status: 'Proposed' // Default status for new items
         });
         setSelectedActivityType('');
         setIsMultiDay(false);
@@ -440,6 +454,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             ...formData,
             endDate: finalEndDate,
             uid: uid || formData.uid,
+            status: formData.status || 'Proposed', // Default status
             updated_at: new Date().toISOString()
         };
 
@@ -677,8 +692,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 <SortableHeader sortKey="name" label="Name" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Type</th>
                                 <SortableHeader sortKey="date" label="Date" />
-                                <SortableHeader sortKey="component" label="Component" />
-                                <SortableHeader sortKey="totalParticipants" label="Participants" />
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Description</th>
                                 <SortableHeader sortKey="budget" label="Budget" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">OU</th>
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
@@ -711,12 +725,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-accent hover:underline focus:outline-none">
                                                 {activity.name}
                                             </button>
-                                            {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
+                                            <div className="flex flex-col gap-1">
+                                                {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
+                                                <span className={getStatusBadge(activity.status)}>{activity.status}</span>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-1 rounded-full font-semibold ${activity.type === 'Training' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{activity.type}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(activity.date)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{totalParticipants > 0 ? totalParticipants : '-'}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate" title={activity.description}>{activity.description}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalActivityBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.operatingUnit}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
@@ -743,10 +759,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="space-y-4">
                                                         <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Description</h4>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-300">{activity.description || 'No description provided.'}</p>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Details</h4>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Component:</strong> {activity.component}</p>
                                                             {activity.type === 'Training' && activity.facilitator && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Facilitator: {activity.facilitator}</p>}
                                                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Encoded by: {activity.encodedBy}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Target Participants</h4>
+                                                            <div className="text-sm text-gray-600 dark:text-gray-300">
+                                                                <p>Male: {activity.participantsMale}</p>
+                                                                <p>Female: {activity.participantsFemale}</p>
+                                                                <p className="font-medium mt-1">Total: {totalParticipants}</p>
+                                                            </div>
                                                         </div>
                                                         {activity.participatingIpos.length > 0 && (
                                                             <div>
@@ -830,6 +854,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Information</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium">Status</label>
+                                    <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
+                                        <option value="Proposed">Proposed</option>
+                                        <option value="Ongoing">Ongoing</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block text-sm font-medium">Component</label>
                                     <select name="component" value={formData.component} onChange={handleInputChange} className={commonInputClasses}>

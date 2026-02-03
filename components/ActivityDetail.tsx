@@ -30,6 +30,17 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
 
+const getStatusBadge = (status: Activity['status']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+}
+
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
@@ -315,6 +326,15 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Basic Information</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
+                                                <label className="block text-sm font-medium">Status</label>
+                                                <select name="status" value={editedActivity.status} onChange={handleInputChange} className={commonInputClasses}>
+                                                    <option value="Proposed">Proposed</option>
+                                                    <option value="Ongoing">Ongoing</option>
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Cancelled">Cancelled</option>
+                                                </select>
+                                            </div>
+                                            <div>
                                                 <label className="block text-sm font-medium">Component</label>
                                                 <select name="component" value={editedActivity.component} onChange={handleInputChange} className={commonInputClasses}>
                                                     {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
@@ -589,6 +609,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                             )}
                         </div>
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                            <DetailItem label="Status" value={<span className={getStatusBadge(activity.status)}>{activity.status}</span>} />
                             <DetailItem label="UID" value={activity.uid} />
                             <DetailItem label="Type" value={activity.type} />
                             <DetailItem label="Date" value={
@@ -606,7 +627,25 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 <dd className="mt-1 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">{activity.description || 'No description provided.'}</dd>
                             </div>
                             
-                            {/* Participating IPOs moved here */}
+                            {/* Target Participants integrated here */}
+                            <div className="col-span-2 mt-4 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">Target Participants</h4>
+                                <div className="grid grid-cols-3 gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-gray-500">Male</span>
+                                        <span className="font-semibold">{activity.participantsMale}</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-gray-500">Female</span>
+                                        <span className="font-semibold">{activity.participantsFemale}</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-gray-500">Total</span>
+                                        <span className="font-semibold">{activity.participantsMale + activity.participantsFemale}</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="col-span-2 mt-2">
                                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Participating IPOs</dt>
                                 {activity.participatingIpos.length > 0 ? (
@@ -623,25 +662,6 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 )}
                             </div>
                         </dl>
-                    </div>
-
-                    {/* Participants Section - Moved below details */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Participants</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="flex flex-col p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                <span className="text-gray-600 dark:text-gray-300 text-sm">Male Target</span>
-                                <span className="font-bold text-lg text-gray-900 dark:text-white">{activity.participantsMale}</span>
-                            </div>
-                            <div className="flex flex-col p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                <span className="text-gray-600 dark:text-gray-300 text-sm">Female Target</span>
-                                <span className="font-bold text-lg text-gray-900 dark:text-white">{activity.participantsFemale}</span>
-                            </div>
-                            <div className="flex flex-col p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
-                                <span className="text-blue-700 dark:text-blue-300 text-sm font-medium">Total Target</span>
-                                <span className="font-bold text-lg text-blue-900 dark:text-white">{activity.participantsMale + activity.participantsFemale}</span>
-                            </div>
-                        </div>
                     </div>
 
                     {/* Expenses Section */}

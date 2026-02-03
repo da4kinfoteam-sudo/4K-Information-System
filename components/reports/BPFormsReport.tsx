@@ -362,9 +362,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         const mooeSpan = mooeCodes.length;
         const coSpan = coCodes.length;
         
-        const row1 = ["Program/Activity/Project"];
-        const row2 = [null]; // Placeholder for PAP
-        const row3 = [null]; // Placeholder for PAP
+        const row1: (string | null)[] = ["Program/Activity/Project"];
+        const row2: (string | null)[] = [null]; // Placeholder for PAP
+        const row3: (string | null)[] = [null]; // Placeholder for PAP
 
         // MOOE Section
         if (mooeSpan > 0) {
@@ -428,7 +428,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         const processRows = (items: any[], prefix: string) => {
             items.forEach((activity: any) => {
-                const row = [`${prefix}${activity.name}`];
+                const row: (string | number | null)[] = [`${prefix}${activity.name}`];
                 
                 // Add values according to ordered codes (rounded up)
                 allCodesOrdered.forEach(code => {
@@ -466,7 +466,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
 
         // Add Grand Total Row
-        const totalRow = ["GRAND TOTAL"];
+        const totalRow: (string | number | null)[] = ["GRAND TOTAL"];
         allCodesOrdered.forEach(code => totalRow.push(Math.ceil(grandTotals.uacsValues[code] || 0)));
         totalRow.push(Math.ceil(grandTotals.totalMOOE), Math.ceil(grandTotals.totalCO), Math.ceil(grandTotals.totalMOOE + grandTotals.totalCO));
         flatDataRows.push(totalRow);
@@ -619,7 +619,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                 </th>
                             ))}
                         </tr>
-                        <tr className="bg-gray-50 dark:bg-gray-700/50">
+                        <tr className="bg-gray-5 dark:bg-gray-700/50">
                             {/* MOOE Codes */}
                             {mooeParticulars.flatMap(p => headers.MOOE[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                             {/* CO Codes */}
