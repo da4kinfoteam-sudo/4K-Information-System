@@ -18,6 +18,7 @@ import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
 import OfficeRequirementDetail from './components/program_management/OfficeRequirementDetail';
 import StaffingRequirementDetail from './components/program_management/StaffingRequirementDetail';
+import OtherExpenseDetail from './components/program_management/OtherExpenseDetail';
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -109,6 +110,7 @@ const AppContent: React.FC = () => {
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
     const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
+    const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
     
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -215,6 +217,12 @@ const AppContent: React.FC = () => {
         setCurrentPage('/program-management/staffing-detail');
     };
 
+    const handleSelectOtherExpense = (req: OtherProgramExpense) => {
+        setSelectedOtherExpense(req);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/program-management/other-expense-detail');
+    };
+
     const handleBack = () => {
         if (historyStack.length === 0) return;
         
@@ -229,6 +237,7 @@ const AppContent: React.FC = () => {
         if (currentPage === '/ipo-detail') setSelectedIpo(null);
         if (currentPage === '/program-management/office-detail') setSelectedOfficeReq(null);
         if (currentPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
+        if (currentPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
     };
 
     if (!currentUser) {
@@ -312,6 +321,7 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
+                            onSelectOtherExpense={handleSelectOtherExpense}
                         />;
             case '/program-management/office-detail':
                 if (!selectedOfficeReq) return <div>Select an item</div>;
@@ -333,6 +343,17 @@ const AppContent: React.FC = () => {
                             onUpdate={(updatedItem) => {
                                 setStaffingReqs(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
                                 setSelectedStaffingReq(updatedItem);
+                            }}
+                        />;
+            case '/program-management/other-expense-detail':
+                if (!selectedOtherExpense) return <div>Select an item</div>;
+                return <OtherExpenseDetail 
+                            item={selectedOtherExpense}
+                            onBack={handleBack}
+                            uacsCodes={derivedUacsCodes}
+                            onUpdate={(updatedItem) => {
+                                setOtherProgramExpenses(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+                                setSelectedOtherExpense(updatedItem);
                             }}
                         />;
             case '/ipo':

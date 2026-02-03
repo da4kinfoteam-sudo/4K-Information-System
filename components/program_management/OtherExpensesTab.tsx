@@ -7,6 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import useLocalStorageState from '../../hooks/useLocalStorageState'; // Import for persistent state
+
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -51,9 +53,10 @@ interface OtherExpensesTabProps {
     items: OtherProgramExpense[];
     setItems: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    onSelect: (item: OtherProgramExpense) => void;
 }
 
-export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes }) => {
+export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
     
@@ -64,9 +67,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [itemToDelete, setItemToDelete] = useState<OtherProgramExpense | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
-    // Filters
-    const [ouFilter, setOuFilter] = useState('All');
-    const [yearFilter, setYearFilter] = useState('All');
+    // Filters - Persistent
+    const [ouFilter, setOuFilter] = useLocalStorageState('otherExpenses_ouFilter', 'All');
+    const [yearFilter, setYearFilter] = useLocalStorageState('otherExpenses_yearFilter', 'All');
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 
@@ -82,12 +85,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         // Target Schedule
         disbursementJan: 0, disbursementFeb: 0, disbursementMar: 0, disbursementApr: 0, disbursementMay: 0, disbursementJun: 0,
         disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0,
-        // Actual Schedule
+        // Actual Schedule (Init to 0)
         actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
         actualDisbursementJul: 0, actualDisbursementAug: 0, actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
     };
     const [formData, setFormData] = useState(initialFormState);
-    const [formTab, setFormTab] = useState<'Details' | 'Accomplishment'>('Details');
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
 
@@ -98,6 +100,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     useEffect(() => {
         if (view === 'form') {
             if (editingItem) {
+                // Should technically not be reachable via Add New but keeping logic robust
                 setFormData({ ...initialFormState, ...editingItem });
                 let foundType: ObjectType = 'MOOE'; let foundParticular = '';
                 outerLoop: for (const type of objectTypes) { if(uacsCodes[type]) { for (const part in uacsCodes[type]) { if (uacsCodes[type][part].hasOwnProperty(editingItem.uacsCode)) { foundType = type; foundParticular = part; break outerLoop; } } } }
@@ -106,26 +109,13 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 setFormData({ ...initialFormState, operatingUnit: currentUser?.operatingUnit || (canViewAll ? 'NPMO' : currentUser?.operatingUnit || ''), encodedBy: currentUser?.fullName || '' });
                 setSelectedObjectType('MOOE'); setSelectedParticular('');
             }
-            setFormTab('Details');
         }
     }, [view, editingItem, uacsCodes, currentUser, canViewAll]);
 
-    // Auto-calc totals from schedules
+    // Auto-calc totals from target schedules only
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    // NOTE: Removed Target Sum useEffect to decouple "Total Amount" (Obligation Target) from Disbursement Schedule.
-    // The user should input Total Target Amount manually.
-    
     const targetDisbursementTotal = months.reduce((sum, m) => sum + (Number((formData as any)[`disbursement${m}`]) || 0), 0);
     const isTargetMismatch = Math.abs(targetDisbursementTotal - (Number(formData.obligatedAmount) || 0)) > 0.01;
-
-    // Actual Sum
-    useEffect(() => {
-        // @ts-ignore
-        const total = months.reduce((sum, m) => sum + (Number(formData[`actualDisbursement${m}`]) || 0), 0);
-        if (total !== formData.actualDisbursementAmount) setFormData(prev => ({ ...prev, actualDisbursementAmount: total }));
-    }, months.map(m => (formData as any)[`actualDisbursement${m}`]));
-
 
     const availableYears = useMemo(() => {
         const years = new Set<string>(); 
@@ -165,48 +155,36 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         const submissionData: any = {
             ...formData,
             amount: Number(formData.amount), obligatedAmount: Number(formData.obligatedAmount), fundYear: Number(formData.fundYear),
-            actualAmount: Number(formData.actualAmount), actualObligationAmount: Number(formData.actualObligationAmount), actualDisbursementAmount: Number(formData.actualDisbursementAmount),
+            // Default 0 for new accomplishments
+            actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System', updated_at: new Date().toISOString()
         };
 
-        // Ensure monthly fields are numbers
+        // Ensure monthly fields are numbers (Target)
         months.forEach(m => {
             // @ts-ignore
             submissionData[`disbursement${m}`] = Number(formData[`disbursement${m}`]);
             // @ts-ignore
-            submissionData[`actualDisbursement${m}`] = Number(formData[`actualDisbursement${m}`]);
+            submissionData[`actualDisbursement${m}`] = 0; // Initialize actuals to 0
         });
 
-        // Always remove ID from payload to avoid Supabase identity column issues during update
+        // Always remove ID from payload
         delete submissionData.id;
 
-        if (!editingItem) {
-            submissionData.uid = formData.uid || `OE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
-            submissionData.created_at = new Date().toISOString();
-        }
+        submissionData.uid = formData.uid || `OE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
+        submissionData.created_at = new Date().toISOString();
 
         if (supabase) {
-            if (editingItem) {
-                const { data, error } = await supabase.from('other_program_expenses').update(submissionData).eq('id', editingItem.id).select().single();
-                if (error) { 
-                    console.error("Update error:", error); 
-                    alert(`Failed to update: ${error.message}`); 
-                    return; 
-                }
-                if (data) setItems(prev => prev.map(i => i.id === data.id ? data : i));
-            } else {
-                const { data, error } = await supabase.from('other_program_expenses').insert([submissionData]).select().single();
-                if (error) { 
-                    console.error("Create error:", error); 
-                    alert(`Failed to create: ${error.message}`); 
-                    return; 
-                }
-                if (data) setItems(prev => [data, ...prev]);
+            const { data, error } = await supabase.from('other_program_expenses').insert([submissionData]).select().single();
+            if (error) { 
+                console.error("Create error:", error); 
+                alert(`Failed to create: ${error.message}`); 
+                return; 
             }
+            if (data) setItems(prev => [data, ...prev]);
         } else {
-            const newItem = { ...submissionData, id: editingItem ? editingItem.id : Date.now() } as OtherProgramExpense;
-            if (editingItem) setItems(prev => prev.map(i => i.id === newItem.id ? newItem : i));
-            else setItems(prev => [newItem, ...prev]);
+            const newItem = { ...submissionData, id: Date.now() } as OtherProgramExpense;
+            setItems(prev => [newItem, ...prev]);
         }
         setView('list'); setEditingItem(null);
     };
@@ -239,7 +217,6 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleDownloadTemplate = () => {
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
-        // Removed actualMonthHeaders as they should not be present in the upload template
         const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'amount', 'obligatedAmount', 'uacsCode', 'particulars', ...monthHeaders];
         const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', amount: 20000, obligatedAmount: 10000, uacsCode: '50299990-99', particulars: 'Miscellaneous Expenses', disbursementJan: 10000, disbursementFeb: 5000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Other_Exp_Template.xlsx");
@@ -256,8 +233,6 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OE-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
-                    
-                    // Helper logic for operating unit
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
 
                     return parseOtherExpenseRow(row, {
@@ -288,75 +263,50 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         return (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">{editingItem ? 'Edit' : 'Add'} Other Expense</h3>
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Add Other Expense</h3>
                     <button onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
                 </div>
                 <form onSubmit={handleFormSubmit} className="space-y-6">
-                    <div className="border-b border-gray-200 dark:border-gray-700 mb-4"><nav className="-mb-px flex space-x-4"><button type="button" onClick={() => setFormTab('Details')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Details' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Details</button><button type="button" onClick={() => setFormTab('Accomplishment')} className={`pb-2 border-b-2 text-sm font-medium ${formTab === 'Accomplishment' ? 'border-accent text-accent' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Accomplishment</button></nav></div>
-                    {formTab === 'Details' && (
-                        <>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Allocation</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligated Amount</label><input type="number" name="obligatedAmount" value={formData.obligatedAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
-                            </div>
-                            <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particulars</label><textarea name="particulars" value={formData.particulars} onChange={handleInputChange} rows={3} required className={commonInputClasses} /></div>
-                                </div>
-                                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule (Target)</legend>
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                                        {monthFields.map(month => (
-                                            <div key={`target-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
-                                            // @ts-ignore
-                                            value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
-                                        ))}
-                                    </div>
-                                    <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col items-end gap-1">
-                                        <div className="flex justify-end items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Disbursement Target:</span>
-                                            <span className={`text-lg font-bold ${isTargetMismatch ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(targetDisbursementTotal)}</span>
-                                        </div>
-                                        {isTargetMismatch && (
-                                            <span className="text-xs text-red-600 font-medium">
-                                                Total Disbursement ({formatCurrency(targetDisbursementTotal)}) must equal Obligated Amount ({formatCurrency(Number(formData.obligatedAmount) || 0)})
-                                            </span>
-                                        )}
-                                    </div>
-                                </fieldset>
-                            </div>
-                        </>
-                    )}
-                    {formTab === 'Accomplishment' && (
-                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                            </div>
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule (Actual)</legend>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                                    {monthFields.map(month => (
-                                        <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
-                                        // @ts-ignore
-                                        value={formData[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
-                                    ))}
-                                </div>
-                                <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2"><span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Actual Disbursement:</span><span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualDisbursementAmount)}</span></div>
-                            </fieldset>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Allocation</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligated Amount</label><input type="number" name="obligatedAmount" value={formData.obligatedAmount} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                    </div>
+                    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particulars</label><textarea name="particulars" value={formData.particulars} onChange={handleInputChange} rows={3} required className={commonInputClasses} /></div>
                         </div>
-                    )}
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule (Target)</legend>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {monthFields.map(month => (
+                                    <div key={`target-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
+                                    // @ts-ignore
+                                    value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                ))}
+                            </div>
+                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col items-end gap-1">
+                                <div className="flex justify-end items-center gap-2">
+                                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Disbursement Target:</span>
+                                    <span className={`text-lg font-bold ${isTargetMismatch ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(targetDisbursementTotal)}</span>
+                                </div>
+                                {isTargetMismatch && (
+                                    <span className="text-xs text-red-600 font-medium">
+                                        Total Disbursement ({formatCurrency(targetDisbursementTotal)}) must equal Obligated Amount ({formatCurrency(Number(formData.obligatedAmount) || 0)})
+                                    </span>
+                                )}
+                            </div>
+                        </fieldset>
+                    </div>
                     <div className="flex justify-end gap-4"><button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button><button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button></div>
                 </form>
             </div>
@@ -405,18 +355,31 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
-                        <tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Particulars</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th></tr>
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">OU</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">UACS Code</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Particulars</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Amount</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Fund</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
+                        </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {paginatedData.map((item) => (
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-medium">
+                                    <button onClick={() => onSelect(item)} className="text-left text-accent hover:underline focus:outline-none">
+                                        {item.uacsCode}
+                                    </button>
+                                </td>
                                 <td className="px-6 py-4 text-sm text-gray-900 dark:text-white"><div className="truncate w-64" title={item.particulars}>{item.particulars}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div><div className="mt-1 text-xs font-mono">{item.uacsCode}</div></td>
+                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    {canEdit && (isSelectionMode ? <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/> : <><button onClick={() => { setEditingItem(item); setView('form'); }} className="text-accent hover:text-green-900 mr-3">Edit</button><button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button></>)}
+                                    {canEdit && (isSelectionMode ? <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/> : <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>)}
                                 </td>
                             </tr>
                         ))}
