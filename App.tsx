@@ -47,7 +47,8 @@ const getPageName = (path: string) => {
 
 const AppContent: React.FC = () => {
     const { currentUser } = useAuth();
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    // Initialize Sidebar state based on screen width (Open on Desktop by default)
+    const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
 

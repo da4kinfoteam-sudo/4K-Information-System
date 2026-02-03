@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
@@ -397,6 +396,19 @@ const Dashboard: React.FC<DashboardProps> = ({
     // --- Dashboard Calculations ---
 
     const dashboardStats = useMemo(() => {
+        // 4. Ancestral Domains (ADs)
+        // Need to lookup IPO objects to get ADs. We use the full `ipos` list but filter by names in our target/actual sets
+        const ipoRegistryMap = new Map<string, IPO>(ipos.map(i => [i.name, i]));
+
+        const getAds = (ipoNames: Set<string>) => {
+            const ads = new Set<string>();
+            ipoNames.forEach(name => {
+                const ipo = ipoRegistryMap.get(name);
+                if (ipo && ipo.ancestralDomainNo) ads.add(ipo.ancestralDomainNo);
+            });
+            return ads;
+        };
+
         // 1. Financials
         // Totals for Subprojects
         let spAlloc = 0, spObli = 0, spDisb = 0;
@@ -478,19 +490,6 @@ const Dashboard: React.FC<DashboardProps> = ({
         const actualIposAssisted = new Set([...actualIposWithSp, ...actualIposWithTr]);
         // Target for "Assisted": Linked to SP OR Training (regardless of status)
         const targetIposAssisted = new Set([...targetIposWithSp, ...targetIposWithTr]);
-
-        // 4. Ancestral Domains (ADs)
-        // Need to lookup IPO objects to get ADs. We use the full `ipos` list but filter by names in our target/actual sets
-        const ipoRegistryMap = new Map(ipos.map(i => [i.name, i]));
-
-        const getAds = (ipoNames: Set<string>) => {
-            const ads = new Set<string>();
-            ipoNames.forEach(name => {
-                const ipo = ipoRegistryMap.get(name);
-                if (ipo && ipo.ancestralDomainNo) ads.add(ipo.ancestralDomainNo);
-            });
-            return ads;
-        };
 
         const actualAdsAssisted = getAds(actualIposAssisted);
         const targetAdsAssisted = getAds(targetIposAssisted);

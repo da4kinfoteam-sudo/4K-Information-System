@@ -96,11 +96,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
         <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md z-20">
             <div className="flex items-center justify-between p-4">
                 <div className="flex items-center">
-                    {/* Mobile Menu Button */}
+                    {/* Menu Button - Now visible on all screen sizes to toggle sidebar */}
                     <button 
                         onClick={toggleSidebar} 
-                        className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4"
-                        aria-label="Open sidebar"
+                        className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4"
+                        aria-label="Toggle sidebar"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />

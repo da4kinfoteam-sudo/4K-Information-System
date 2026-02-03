@@ -391,14 +391,18 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
         // Use a loop to construct typed array
-        const dataPoints: MonthlyDataPoint[] = [];
-        const mData = monthlyData as unknown as Record<number, MonthlyDataPoint>; 
-        for(let i=0; i<12; i++) {
-            dataPoints.push(mData[i] || { target: 0, obligation: 0, disbursement: 0 });
-        }
+        const dataPoints = useMemo(() => {
+             const points: MonthlyDataPoint[] = [];
+             // Force cast monthlyData for index access if strict types block it, or map from known keys
+             const mData = monthlyData as unknown as Record<number, MonthlyDataPoint>;
+             for(let i=0; i<12; i++) {
+                 points.push(mData[i] || { target: 0, obligation: 0, disbursement: 0 });
+             }
+             return points;
+        }, [monthlyData]);
 
         // Calculate maxVal safely with type assertion
-        const values: number[] = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
+        const values: number[] = dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement));
         const maxVal: number = Math.max(...values, 1000);
 
         const height = 300;
@@ -425,7 +429,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d: MonthlyDataPoint, i: number) => {
+                    {dataPoints.map((d, i) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         // Ensure values are numbers
                         const tVal = Number(d.target || 0);

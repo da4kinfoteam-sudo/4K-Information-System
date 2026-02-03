@@ -89,7 +89,7 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         setExpandedTypes(newSet);
     };
 
-    const typeTotals = useMemo(() => {
+    const typeTotals = useMemo<Record<string, { target: number, actual: number }>>(() => {
         const totals: Record<string, { target: number, actual: number }> = {};
         Object.keys(data).forEach(type => {
             let t = 0; 
@@ -188,7 +188,7 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                 {Object.keys(data).sort().map(type => {
                                     const isExpanded = expandedTypes.has(type);
-                                    const totals = typeTotals[type];
+                                    const totals = typeTotals[type] || { target: 0, actual: 0 };
                                     const rate = totals.target > 0 ? (totals.actual / totals.target) * 100 : 0;
 
                                     return (
