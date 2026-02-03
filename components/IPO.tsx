@@ -9,6 +9,7 @@ import { usePagination, useSelection, getUserPermissions } from './mainfunctions
 import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchAll } from '../hooks/useSupabaseTable';
+import useLocalStorageState from '../hooks/useLocalStorageState';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -88,6 +89,7 @@ const normalizeRegionName = (inputRegion: string) => {
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
+    const isAdmin = currentUser?.role === 'Administrator';
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);
     const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
@@ -103,10 +105,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
 
-    const [searchTerm, setSearchTerm] = useState('');
-    const [regionFilter, setRegionFilter] = useState('All');
-    const [commodityFilter, setCommodityFilter] = useState('All');
-    const [flagFilter, setFlagFilter] = useState({ 
+    // Persistent Filters using useLocalStorageState
+    const [searchTerm, setSearchTerm] = useLocalStorageState('ipos_searchTerm', '');
+    const [regionFilter, setRegionFilter] = useLocalStorageState('ipos_regionFilter', 'All');
+    const [flagFilter, setFlagFilter] = useLocalStorageState('ipos_flagFilter', { 
         womenLed: false, 
         withinGida: false, 
         withinElcac: false, 
@@ -114,6 +116,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         withSubprojects: false,
         withTrainings: false
     });
+
     type SortKeys = keyof IPO | 'totalInvested';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
     const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
@@ -203,14 +206,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
     }, [editingIpo]);
     
-    const allCommodities = useMemo(() => {
-        const commoditySet = new Set<string>();
-        ipos.forEach(ipo => {
-            ipo.commodities.forEach(c => commoditySet.add(c.particular));
-        });
-        return Array.from(commoditySet).sort();
-    }, [ipos]);
-
     const processedIpos = useMemo(() => {
         let filteredIpos = [...ipos];
 
@@ -245,18 +240,17 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             filteredIpos = filteredIpos.filter(ipo => iposWithTr.has(ipo.name));
         }
 
-        if (commodityFilter !== 'All') {
-            filteredIpos = filteredIpos.filter(ipo => 
-                ipo.commodities.some(c => c.particular === commodityFilter)
-            );
-        }
-
         if (searchTerm) {
             const lowercasedSearchTerm = searchTerm.toLowerCase();
             filteredIpos = filteredIpos.filter(ipo =>
                 ipo.name.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
-                ipo.location.toLowerCase().includes(lowercasedSearchTerm)
+                ipo.location.toLowerCase().includes(lowercasedSearchTerm) ||
+                // Integrated Commodity Search
+                ipo.commodities.some(c => 
+                    c.particular.toLowerCase().includes(lowercasedSearchTerm) ||
+                    c.type.toLowerCase().includes(lowercasedSearchTerm)
+                )
             );
         }
 
@@ -284,12 +278,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         }
 
         return filteredIpos;
-    }, [ipos, searchTerm, regionFilter, sortConfig, commodityFilter, flagFilter, calculateTotalInvestment, subprojects, activities]);
+    }, [ipos, searchTerm, regionFilter, sortConfig, flagFilter, calculateTotalInvestment, subprojects, activities]);
     
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedIpos 
-    } = usePagination(processedIpos, [searchTerm, regionFilter, commodityFilter, flagFilter, sortConfig]);
+    } = usePagination(processedIpos, [searchTerm, regionFilter, flagFilter, sortConfig]);
 
     const requestSort = (key: SortKeys) => {
         let direction: 'ascending' | 'descending' = 'ascending';
@@ -645,7 +639,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
                             <input
                                 type="text"
-                                placeholder="Search by name, contact, or location..."
+                                placeholder="Search by name, contact, location or commodity..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className={`w-full md:w-auto ${commonInputClasses} mt-0`}
@@ -657,17 +651,10 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                 </select>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Commodity:</label>
-                                <select value={commodityFilter} onChange={(e) => setCommodityFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                    <option value="All">All Commodities</option>
-                                    {allCommodities.map(c => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                            </div>
                         </div>
                         
                         <div className="flex items-center gap-2">
-                            {canEdit && isSelectionMode && selectedIds.length > 0 && (
+                            {isAdmin && isSelectionMode && selectedIds.length > 0 && (
                                 <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
                                     Delete Selected ({selectedIds.length})
                                 </button>
@@ -678,13 +665,15 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                     <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
                                     <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
                                     <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading)} accept=".xlsx, .xls" disabled={isUploading} />
-                                    <button
-                                        onClick={handleToggleSelectionMode}
-                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                                        title="Toggle Multi-Delete Mode"
-                                    >
-                                        <TrashIcon />
-                                    </button>
+                                    {isAdmin && (
+                                        <button
+                                            onClick={handleToggleSelectionMode}
+                                            className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                            title="Toggle Multi-Delete Mode"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -730,7 +719,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Flags</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodities</th>
                                 <SortableHeader sortKey="levelOfDevelopment" label="Level" />
-                                {canEdit && (
+                                {isAdmin && (
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                         {isSelectionMode ? (
                                             <div className="flex items-center justify-end gap-2">
@@ -784,7 +773,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                             {ipo.commodities.map(c => c.particular).join(', ')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{ipo.levelOfDevelopment}</td>
-                                        {canEdit && (
+                                        {isAdmin && (
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                                 <div className="flex items-center justify-end">
                                                     {isSelectionMode ? (
