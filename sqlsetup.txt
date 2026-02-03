@@ -1,4 +1,13 @@
 
-ALTER TABLE activities ADD COLUMN IF NOT EXISTS "status" text DEFAULT 'Proposed';
--- Update existing rows to have 'Ongoing' as default status per requirement
-UPDATE activities SET status = 'Ongoing' WHERE status IS NULL;
+-- Update existing activities to ensure expense items have the new actual financial fields initialized to 0
+UPDATE activities
+SET expenses = (
+  SELECT jsonb_agg(
+    elem || jsonb_build_object(
+      'actualObligationAmount', COALESCE((elem->>'actualObligationAmount')::numeric, 0),
+      'actualDisbursementAmount', COALESCE((elem->>'actualDisbursementAmount')::numeric, 0)
+    )
+  )
+  FROM jsonb_array_elements(expenses) AS elem
+)
+WHERE expenses IS NOT NULL AND jsonb_array_length(expenses) > 0;

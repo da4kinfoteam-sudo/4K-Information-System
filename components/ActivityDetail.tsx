@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits, ReferenceActivity, ActivityComponentType, otherActivityComponents } from '../constants';
@@ -539,7 +540,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <input 
                                                     type="number" 
                                                     name="actualParticipantsMale" 
-                                                    value={editedActivity.actualParticipantsMale || 0} 
+                                                    value={editedActivity.actualParticipantsMale ?? 0} 
                                                     onChange={handleNumericChange} 
                                                     disabled={isLocked(editedActivity.actualParticipantsMale)}
                                                     className={commonInputClasses} 
@@ -550,7 +551,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <input 
                                                     type="number" 
                                                     name="actualParticipantsFemale" 
-                                                    value={editedActivity.actualParticipantsFemale || 0} 
+                                                    value={editedActivity.actualParticipantsFemale ?? 0} 
                                                     onChange={handleNumericChange} 
                                                     disabled={isLocked(editedActivity.actualParticipantsFemale)}
                                                     className={commonInputClasses} 
@@ -563,19 +564,29 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Utilization</legend>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
+                                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
                                                     <tr>
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
-                                                        <th className="px-3 py-2 text-right font-medium">Obli. Amount</th>
-                                                        <th className="px-3 py-2 text-right font-medium">Disb. Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligated Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation Date</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursed Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement Date</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                                                     {editedActivity.expenses.map((expense) => (
                                                         <tr key={expense.id}>
                                                             <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{expense.expenseParticular}</td>
+                                                            <td className="px-3 py-2">
+                                                                <input 
+                                                                    type="number" 
+                                                                    value={expense.actualObligationAmount !== undefined && expense.actualObligationAmount !== null ? expense.actualObligationAmount : ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', e.target.value === '' ? undefined : parseFloat(e.target.value))} 
+                                                                    disabled={isLocked(expense.actualObligationAmount)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                    placeholder="0.00" 
+                                                                />
+                                                            </td>
                                                             <td className="px-3 py-2">
                                                                 <input 
                                                                     type="date" 
@@ -587,31 +598,21 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                             </td>
                                                             <td className="px-3 py-2">
                                                                 <input 
+                                                                    type="number" 
+                                                                    value={expense.actualDisbursementAmount !== undefined && expense.actualDisbursementAmount !== null ? expense.actualDisbursementAmount : ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementAmount', e.target.value === '' ? undefined : parseFloat(e.target.value))} 
+                                                                    disabled={isLocked(expense.actualDisbursementAmount)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                    placeholder="0.00" 
+                                                                />
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <input 
                                                                     type="date" 
                                                                     value={expense.actualDisbursementDate || ''} 
                                                                     onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} 
                                                                     disabled={isLocked(expense.actualDisbursementDate)}
                                                                     className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
-                                                                />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input 
-                                                                    type="number" 
-                                                                    value={expense.actualObligationAmount || ''} 
-                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', parseFloat(e.target.value))} 
-                                                                    disabled={isLocked(expense.actualObligationAmount)}
-                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
-                                                                    placeholder="0.00" 
-                                                                />
-                                                            </td>
-                                                            <td className="px-3 py-2">
-                                                                <input 
-                                                                    type="number" 
-                                                                    value={expense.actualDisbursementAmount || ''} 
-                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementAmount', parseFloat(e.target.value))} 
-                                                                    disabled={isLocked(expense.actualDisbursementAmount)}
-                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
-                                                                    placeholder="0.00" 
                                                                 />
                                                             </td>
                                                         </tr>
@@ -663,6 +664,12 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                 </div>
                 <div className="flex items-center gap-4">
                     {/* Granular Edit Buttons available inside sections now, main header just for Back */}
+                    {canEditAccomplishment && (
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            Edit Accomplishment
+                        </button>
+                    )}
                     <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                         Back to {previousPageName}
@@ -837,10 +844,10 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                             <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
                                                 <tr>
                                                     <th className="px-4 py-2 text-left">Item</th>
-                                                    <th className="px-4 py-2 text-left">Actual Obligation</th>
-                                                    <th className="px-4 py-2 text-left">Actual Disbursement</th>
-                                                    <th className="px-4 py-2 text-right">Obli. Amount</th>
-                                                    <th className="px-4 py-2 text-right">Disb. Amount</th>
+                                                    <th className="px-4 py-2 text-left">Actual Obligation Date</th>
+                                                    <th className="px-4 py-2 text-left">Actual Disbursement Date</th>
+                                                    <th className="px-4 py-2 text-right">Actual Obligated Amount</th>
+                                                    <th className="px-4 py-2 text-right">Actual Disbursed Amount</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -850,10 +857,10 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualObligationDate)}</td>
                                                         <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualDisbursementDate)}</td>
                                                         <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
-                                                            {exp.actualObligationAmount ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
+                                                            {exp.actualObligationAmount !== undefined && exp.actualObligationAmount !== null ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>
                                                         <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
-                                                            {exp.actualDisbursementAmount ? formatCurrency(exp.actualDisbursementAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
+                                                            {exp.actualDisbursementAmount !== undefined && exp.actualDisbursementAmount !== null ? formatCurrency(exp.actualDisbursementAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>
                                                     </tr>
                                                 ))}
