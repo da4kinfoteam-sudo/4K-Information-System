@@ -1,7 +1,6 @@
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
-import { formatCurrency } from '../reports/ReportUtils';
 import { parseLocation } from '../LocationPicker';
 
 interface FinancialDashboardProps {
@@ -21,6 +20,10 @@ interface MonthlyDataPoint {
     obligation: number;
     disbursement: number;
 }
+
+const formatCurrencyWhole = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
+};
 
 const getComponentColor = (name: string) => {
     switch (name) {
@@ -288,7 +291,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         // Helper to safely add to matrix
         const addToMatrix = (ou: string, component: string, alloc: number, obli: number, disb: number) => {
-            if (!matrix[ou]) return; // Should allow 'Unassigned' or dynamic OUs if strictly needed, but sticking to predefined list for cleaner table
+            if (!matrix[ou]) return; 
             const targetComp = component || 'Program Management';
             if (matrix[ou][targetComp]) {
                 matrix[ou][targetComp].alloc += alloc;
@@ -355,7 +358,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     <div>
                         <div className="flex justify-between text-xs mb-1">
                             <span className="text-gray-500 dark:text-gray-400 font-medium">Target Allocation</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrency(target)}</span>
+                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(target)}</span>
                         </div>
                         <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
                             <div className="bg-green-300 h-full rounded-full" style={{ width: '100%' }}></div>
@@ -365,7 +368,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     <div>
                         <div className="flex justify-between text-xs mb-1">
                             <span className="text-gray-500 dark:text-gray-400 font-medium">Actual Obligation ({obliPercent.toFixed(1)}%)</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrency(obligation)}</span>
+                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(obligation)}</span>
                         </div>
                         <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
                             <div className="bg-green-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(obliPercent, 100)}%` }}></div>
@@ -375,7 +378,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     <div>
                         <div className="flex justify-between text-xs mb-1">
                             <span className="text-gray-500 dark:text-gray-400 font-medium">Actual Disbursement ({disbPercent.toFixed(1)}%)</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrency(disbursement)}</span>
+                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(disbursement)}</span>
                         </div>
                         <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
                             <div className="bg-green-700 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(disbPercent, 100)}%` }}></div>
@@ -423,7 +426,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         return (
                             <g key={t}>
                                 <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#e5e7eb" strokeDasharray="4" />
-                                <text x={padding - 5} y={y + 4} textAnchor="end" fill="#9ca3af">{formatCurrency(maxVal * t).replace('₱', '')}</text>
+                                <text x={padding - 5} y={y + 4} textAnchor="end" fill="#9ca3af">{formatCurrencyWhole(maxVal * t).replace('₱', '')}</text>
                             </g>
                         );
                     })}
@@ -444,17 +447,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                             <g key={i}>
                                 {/* Target Bar */}
                                 <rect x={xBase + 5} y={yTarget} width={barWidth} height={Math.max(0, height - padding - yTarget)} fill="#86efac" className="opacity-80 hover:opacity-100 transition-opacity" rx="1">
-                                    <title>Target: {formatCurrency(tVal)}</title>
+                                    <title>Target: {formatCurrencyWhole(tVal)}</title>
                                 </rect>
                                 
                                 {/* Obligation Bar */}
                                 <rect x={xBase + 5 + barWidth} y={yOb} width={barWidth} height={Math.max(0, height - padding - yOb)} fill="#22c55e" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Obligation: {formatCurrency(oVal)}</title>
+                                    <title>Obligation: {formatCurrencyWhole(oVal)}</title>
                                 </rect>
 
                                 {/* Disbursement Bar */}
                                 <rect x={xBase + 5 + barWidth * 2} y={yDisb} width={barWidth} height={Math.max(0, height - padding - yDisb)} fill="#15803d" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Disbursement: {formatCurrency(dVal)}</title>
+                                    <title>Disbursement: {formatCurrencyWhole(dVal)}</title>
                                 </rect>
 
                                 {/* Month Label */}
@@ -503,10 +506,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                                     <td className="px-4 py-2 font-medium">{ou}</td>
                                     {headers.map(h => (
                                         <td key={h} className="px-4 py-2 text-right">
-                                            {formatCurrency(matrixData[ou]?.[h]?.[metricKey] || 0)}
+                                            {formatCurrencyWhole(matrixData[ou]?.[h]?.[metricKey] || 0)}
                                         </td>
                                     ))}
-                                    <td className="px-4 py-2 text-right font-bold bg-gray-50 dark:bg-gray-800/50">{formatCurrency(rowTotal)}</td>
+                                    <td className="px-4 py-2 text-right font-bold bg-gray-50 dark:bg-gray-800/50">{formatCurrencyWhole(rowTotal)}</td>
                                 </tr>
                             );
                         })}
@@ -515,9 +518,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         <tr>
                             <td className="px-4 py-3">TOTAL</td>
                             {headers.map(h => (
-                                <td key={h} className="px-4 py-3 text-right">{formatCurrency(columnTotals[h])}</td>
+                                <td key={h} className="px-4 py-3 text-right">{formatCurrencyWhole(columnTotals[h])}</td>
                             ))}
-                            <td className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600 text-blue-700 dark:text-blue-300">{formatCurrency(grandTotal)}</td>
+                            <td className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600 text-blue-700 dark:text-blue-300">{formatCurrencyWhole(grandTotal)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -536,7 +539,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                             <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
                             <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Budget Allocation</h4>
                         </div>
-                        <p className="text-3xl font-bold">{formatCurrency(totalAllocation)}</p>
+                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalAllocation)}>{formatCurrencyWhole(totalAllocation)}</p>
                         <p className="text-xs mt-2 opacity-80">Total Target</p>
                     </div>
 
@@ -545,7 +548,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                             <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
                             <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Total Obligation</h4>
                         </div>
-                        <p className="text-3xl font-bold">{formatCurrency(totalObligation)}</p>
+                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalObligation)}>{formatCurrencyWhole(totalObligation)}</p>
                         <div className="flex justify-between items-center mt-2">
                             <p className="text-xs opacity-80">Actual Obligated</p>
                             <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded text-white">
@@ -559,7 +562,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                             <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
                             <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Total Disbursement</h4>
                         </div>
-                        <p className="text-3xl font-bold">{formatCurrency(totalDisbursement)}</p>
+                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalDisbursement)}>{formatCurrencyWhole(totalDisbursement)}</p>
                         <div className="flex justify-between items-center mt-2">
                             <p className="text-xs opacity-80">Actual Disbursed</p>
                             <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded text-white">
@@ -627,7 +630,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                                                 ></div>
                                             </div>
                                         </div>
-                                        <div className="w-32 text-right font-semibold text-gray-800 dark:text-gray-100">{formatCurrency(amount)}</div>
+                                        <div className="w-32 text-right font-semibold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(amount)}</div>
                                     </div>
                                 );
                             })}

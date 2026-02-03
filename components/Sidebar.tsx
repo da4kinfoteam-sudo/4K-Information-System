@@ -70,11 +70,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
         const isExpanded = expandedGroups.has(item.name);
         const isActive = item.href === currentPage || (isGroup && item.children?.some(c => c.href === currentPage));
 
-        // Updated Theme Colors to match #e9eef6 background
-        // Using emerald for active/highlights to maintain the green theme request, but tweaked for harmony
+        // Updated Theme Colors to match white background
+        // Active state remains Emerald as requested
         const activeClass = 'bg-emerald-600 text-white shadow-md font-semibold';
-        const inactiveClass = 'text-slate-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium';
-        const groupActiveClass = 'bg-slate-200/50 dark:bg-gray-700/50 text-emerald-800 dark:text-emerald-400 font-semibold';
+        // Inactive: Dark gray text, subtle gray hover
+        const inactiveClass = 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium';
+        // Group Active: Very light slate background
+        const groupActiveClass = 'bg-slate-50 dark:bg-gray-700/50 text-emerald-800 dark:text-emerald-400 font-semibold';
 
         if (isGroup) {
             return (
@@ -89,7 +91,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
                         {isExpanded ? <ChevronDown /> : <ChevronRight />}
                     </button>
                     {isExpanded && (
-                        <ul className="mt-1 ml-4 border-l-2 border-slate-300 dark:border-gray-600 pl-2 space-y-1">
+                        <ul className="mt-1 ml-4 border-l-2 border-gray-200 dark:border-gray-600 pl-2 space-y-1">
                             {item.children?.map(child => renderNavItem(child))}
                         </ul>
                     )}
@@ -122,13 +124,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
             <div className={`relative z-30 transition-all duration-300 ease-in-out ${isOpen ? 'w-64' : 'w-0'}`}>
                 {/* Main Aside */}
                 <aside 
-                    className={`fixed top-0 left-0 h-full bg-[#e9eef6] dark:bg-gray-800 shadow-xl md:shadow-none flex flex-col transition-transform duration-300 ease-in-out w-64 ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:absolute`}
+                    className={`fixed top-0 left-0 h-full bg-white dark:bg-gray-800 shadow-xl md:shadow-none flex flex-col transition-transform duration-300 ease-in-out w-64 ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:absolute border-r border-gray-200 dark:border-gray-700`}
                     style={{ left: 0 }} 
                 >
                     {/* Header / Logo */}
-                    <div className="p-6 border-b border-slate-300 dark:border-gray-700 flex flex-col items-center text-center flex-shrink-0">
+                    <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex flex-col items-center text-center flex-shrink-0">
                         <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center group w-full">
-                            <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow">
+                            <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow border border-gray-100 dark:border-gray-600">
                                 <img 
                                     src="/assets/4klogo.png" 
                                     alt="DA 4K Logo" 
@@ -154,14 +156,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
                     </nav>
                     
                     {/* Footer / Settings */}
-                    <div className="p-4 border-t border-slate-300 dark:border-gray-700 flex-shrink-0">
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
                         <a 
                             href="/settings"
                             onClick={(e) => {
                                 e.preventDefault();
                                 handleLinkClick('/settings');
                             }}
-                            className={`flex items-center gap-3 p-3 rounded-lg transition-colors duration-200 ${currentPage === '/settings' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium'}`}
+                            className={`flex items-center gap-3 p-3 rounded-lg transition-colors duration-200 ${currentPage === '/settings' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium'}`}
                         >
                             <span>User Settings</span>
                         </a>
@@ -171,11 +173,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
                 {/* Desktop Toggle Notch */}
                 <div 
                     onClick={toggleSidebar}
-                    className={`hidden md:flex absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-[#e9eef6] dark:bg-gray-800 rounded-r-xl cursor-pointer items-center justify-center shadow-md border-r border-y border-slate-300 dark:border-gray-700 z-40 transition-all duration-300 ease-in-out hover:bg-slate-200 dark:hover:bg-gray-700`}
+                    className={`hidden md:flex absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-white dark:bg-gray-800 rounded-r-xl cursor-pointer items-center justify-center shadow-[2px_0_5px_rgba(0,0,0,0.05)] border-r border-y border-gray-200 dark:border-gray-700 z-40 transition-all duration-300 ease-in-out hover:bg-gray-50 dark:hover:bg-gray-700`}
                     style={{ right: '-20px' }} 
                     title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
                 >
-                    <div className="w-1 h-8 bg-slate-400 dark:bg-gray-500 rounded-full"></div>
+                    <div className="w-1 h-8 bg-gray-300 dark:bg-gray-500 rounded-full"></div>
                 </div>
             </div>
         </>
