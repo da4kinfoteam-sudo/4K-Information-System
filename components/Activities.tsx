@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect } from 'react';
 import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
@@ -690,7 +689,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
                                 <SortableHeader sortKey="name" label="Name" />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Type</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Status</th>
                                 <SortableHeader sortKey="date" label="Date" />
                                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Description</th>
                                 <SortableHeader sortKey="budget" label="Budget" />
@@ -725,12 +724,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-accent hover:underline focus:outline-none">
                                                 {activity.name}
                                             </button>
-                                            <div className="flex flex-col gap-1">
-                                                {activity.uid && <div className="text-xs text-gray-400 font-normal">{activity.uid}</div>}
-                                                <span className={getStatusBadge(activity.status)}>{activity.status}</span>
-                                            </div>
+                                            {activity.uid && <div className="text-xs text-gray-400 font-normal mt-1">{activity.uid}</div>}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-1 rounded-full font-semibold ${activity.type === 'Training' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{activity.type}</span></td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(activity.date)}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate" title={activity.description}>{activity.description}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(totalActivityBudget)}</td>
@@ -760,7 +756,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                     <div className="space-y-4">
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Details</h4>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Component:</strong> {activity.component}</p>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Type:</strong> <span className={`px-2 py-0.5 rounded-full font-semibold ${activity.type === 'Training' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{activity.type}</span></p>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1"><strong>Component:</strong> {activity.component}</p>
+                                                            {activity.description && (
+                                                                <div className="mt-2">
+                                                                    <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Description:</p>
+                                                                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">{activity.description}</p>
+                                                                </div>
+                                                            )}
                                                             {activity.type === 'Training' && activity.facilitator && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Facilitator: {activity.facilitator}</p>}
                                                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Encoded by: {activity.encodedBy}</p>
                                                         </div>
@@ -859,6 +862,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
                                         <option value="Proposed">Proposed</option>
                                         <option value="Ongoing">Ongoing</option>
+                                        <option value="Completed">Completed</option>
                                         <option value="Cancelled">Cancelled</option>
                                     </select>
                                 </div>
