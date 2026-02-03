@@ -467,6 +467,13 @@ const AppContent: React.FC = () => {
                             planningSchedules={planningSchedules}
                             setPlanningSchedules={setPlanningSchedules}
                         />;
+            // New Page Placeholders
+            case '/marketing-database':
+                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Marketing Database Module - Coming Soon</div>;
+            case '/level-of-development':
+                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Level of Development Module - Coming Soon</div>;
+            case '/commodity-mapping':
+                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Commodity Mapping Module - Coming Soon</div>;
             default:
                 return <div className="p-6">Page not found</div>;
         }
@@ -476,6 +483,7 @@ const AppContent: React.FC = () => {
         <div className={`flex h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-200 ${isDarkMode ? 'dark' : ''}`}>
             <Sidebar 
                 isOpen={isSidebarOpen} 
+                toggleSidebar={toggleSidebar}
                 closeSidebar={() => setIsSidebarOpen(false)} 
                 currentPage={currentPage} 
                 setCurrentPage={(page) => {

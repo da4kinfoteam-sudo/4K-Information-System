@@ -96,10 +96,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
         <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md z-20">
             <div className="flex items-center justify-between p-4">
                 <div className="flex items-center">
-                    {/* Menu Button - Now visible on all screen sizes to toggle sidebar */}
+                    {/* Menu Button - Visible ONLY on mobile, hidden on desktop (md:hidden) since sidebar notch exists */}
                     <button 
                         onClick={toggleSidebar} 
-                        className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4"
+                        className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4 md:hidden"
                         aria-label="Toggle sidebar"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -203,4 +203,3 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
 };
 
 export default Header;
-// --- End of components/Header.tsx ---

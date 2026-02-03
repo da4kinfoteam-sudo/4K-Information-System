@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -57,6 +58,14 @@ export interface NavLink {
     name: string;
     href: string;
     type?: string;
+}
+
+export interface NavItem {
+    name: string;
+    href?: string;
+    children?: NavItem[];
+    hiddenFor?: string[]; // Roles that CANNOT view this
+    icon?: React.ReactNode;
 }
 
 export interface User extends BaseEntity {
@@ -473,6 +482,38 @@ export const navigationLinks: NavLink[] = [
     { name: 'separator3', href: '#', type: 'separator' },
     { name: 'Indigenous Peoples Organization', href: '/ipo' },
     { name: 'References', href: '/references' },
+];
+
+export const navigationStructure: NavItem[] = [
+    { name: 'Homepage', href: '/', icon: <HomeIcon /> },
+    {
+        name: 'Reports',
+        children: [
+            { name: 'Dashboard', href: '/dashboards' },
+            { name: 'Reports', href: '/reports' }
+        ],
+        icon: <ActivitiesIcon />
+    },
+    {
+        name: 'Data Collection Forms',
+        children: [
+            { name: 'Subprojects', href: '/subprojects' },
+            { name: 'Activities', href: '/activities' },
+            { name: 'Program Management', href: '/program-management' }
+        ],
+        icon: <ProjectsIcon />
+    },
+    { name: 'Indigenous Peoples Organization', href: '/ipo', icon: <IpoIcon /> },
+    {
+        name: 'Resources',
+        children: [
+            { name: 'Marketing Database', href: '/marketing-database' },
+            { name: 'Level of Development', href: '/level-of-development' },
+            { name: 'Commodity Mapping', href: '/commodity-mapping' },
+            { name: 'References', href: '/references', hiddenFor: ['Management'] }
+        ],
+        icon: <ManagementIcon />
+    }
 ];
 
 // Initial Data (Empty as per new instruction, but structure required)

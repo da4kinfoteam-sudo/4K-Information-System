@@ -1,37 +1,114 @@
 
-import React from 'react';
-import { navigationLinks, NavLink, SettingsIcon } from '../constants';
+import React, { useState, useEffect } from 'react';
+import { navigationStructure, NavItem } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
     isOpen: boolean;
+    toggleSidebar: () => void;
     closeSidebar: () => void;
     currentPage: string;
     setCurrentPage: (page: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, setCurrentPage }) => {
+const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, currentPage, setCurrentPage }) => {
     const { currentUser } = useAuth();
-    
-    const NavItem: React.FC<{ link: NavLink }> = ({ link }) => {
-        const isActive = currentPage === link.href;
-        return (
-            <a 
-                href={link.href}
-                onClick={(e) => {
-                    e.preventDefault();
-                    setCurrentPage(link.href);
-                    // Only close on mobile (when window width is small)
-                    if (window.innerWidth < 768) {
-                        closeSidebar();
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+    // Auto-expand groups based on current page
+    useEffect(() => {
+        const newExpanded = new Set(expandedGroups);
+        let changed = false;
+        navigationStructure.forEach(item => {
+            if (item.children) {
+                if (item.children.some(child => child.href === currentPage)) {
+                    if (!newExpanded.has(item.name)) {
+                        newExpanded.add(item.name);
+                        changed = true;
                     }
-                }}
-                className={`flex items-center p-3 my-1 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 whitespace-nowrap overflow-hidden ${isActive ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : 'font-medium'}`}
-            >
-                <span>{link.name}</span>
-            </a>
+                }
+            }
+        });
+        if (changed) setExpandedGroups(newExpanded);
+    }, [currentPage]);
+
+    const toggleGroup = (name: string) => {
+        setExpandedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(name)) newSet.delete(name);
+            else newSet.add(name);
+            return newSet;
+        });
+    };
+
+    const handleLinkClick = (href: string) => {
+        setCurrentPage(href);
+        if (window.innerWidth < 768) {
+            closeSidebar();
+        }
+    };
+
+    const ChevronDown = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+    );
+
+    const ChevronRight = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+    );
+
+    const renderNavItem = (item: NavItem) => {
+        // Permission Check
+        if (item.hiddenFor && currentUser && item.hiddenFor.includes(currentUser.role)) {
+            return null;
+        }
+
+        const isGroup = !!item.children;
+        const isExpanded = expandedGroups.has(item.name);
+        const isActive = item.href === currentPage || (isGroup && item.children?.some(c => c.href === currentPage));
+
+        // Updated Theme Colors to match #e9eef6 background
+        // Using emerald for active/highlights to maintain the green theme request, but tweaked for harmony
+        const activeClass = 'bg-emerald-600 text-white shadow-md font-semibold';
+        const inactiveClass = 'text-slate-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium';
+        const groupActiveClass = 'bg-slate-200/50 dark:bg-gray-700/50 text-emerald-800 dark:text-emerald-400 font-semibold';
+
+        if (isGroup) {
+            return (
+                <li key={item.name} className="mb-1">
+                    <button
+                        onClick={() => toggleGroup(item.name)}
+                        className={`w-full flex items-center justify-between p-3 rounded-lg transition-all duration-200 text-left ${isActive ? groupActiveClass : inactiveClass}`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <span>{item.name}</span>
+                        </div>
+                        {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                    </button>
+                    {isExpanded && (
+                        <ul className="mt-1 ml-4 border-l-2 border-slate-300 dark:border-gray-600 pl-2 space-y-1">
+                            {item.children?.map(child => renderNavItem(child))}
+                        </ul>
+                    )}
+                </li>
+            );
+        }
+
+        return (
+            <li key={item.name} className="mb-1">
+                <a
+                    href={item.href}
+                    onClick={(e) => { e.preventDefault(); if(item.href) handleLinkClick(item.href); }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${item.href === currentPage ? activeClass : inactiveClass}`}
+                >
+                    <span>{item.name}</span>
+                </a>
+            </li>
         );
-    }
+    };
 
     return (
         <>
@@ -41,76 +118,66 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, currentPage, se
                 onClick={closeSidebar}
             ></div>
 
-            {/* Sidebar */}
-            <aside 
-                className={`fixed top-0 left-0 h-full bg-white dark:bg-gray-800 shadow-xl z-30 transform transition-all duration-300 ease-in-out md:relative md:shadow-none flex flex-col ${isOpen ? 'w-64 translate-x-0' : 'w-64 -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'}`}
-            >
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex flex-col items-center text-center flex-shrink-0 whitespace-nowrap overflow-hidden">
-                    <div className="flex items-center justify-between w-full">
-                         <div className="w-6 md:hidden"></div> {/* Mobile Spacer left */}
-                         <div className="hidden md:block w-full"> {/* Desktop wrapper */}
-                             <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center group">
-                                <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow">
-                                    <img 
-                                        src="/assets/4klogo.png" 
-                                        alt="DA 4K Logo" 
-                                        className="h-[5.2rem] w-[5.2rem] object-contain"
-                                    />
-                                </div>
-                                <h1 className="text-lg font-bold text-gray-800 dark:text-white leading-tight">4K Information System</h1>
-                            </a>
-                         </div>
-                         
-                         {/* Mobile View */}
-                         <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center md:hidden w-full">
-                            <img 
-                                src="/assets/4klogo.png" 
-                                alt="DA 4K Logo" 
-                                className="h-[3.25rem] w-[3.25rem] object-contain mb-1"
-                            />
-                            <h1 className="text-lg font-bold text-gray-800 dark:text-white">4K IS</h1>
+            {/* Sidebar Wrapper */}
+            <div className={`relative z-30 transition-all duration-300 ease-in-out ${isOpen ? 'w-64' : 'w-0'}`}>
+                {/* Main Aside */}
+                <aside 
+                    className={`fixed top-0 left-0 h-full bg-[#e9eef6] dark:bg-gray-800 shadow-xl md:shadow-none flex flex-col transition-transform duration-300 ease-in-out w-64 ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:absolute`}
+                    style={{ left: 0 }} 
+                >
+                    {/* Header / Logo */}
+                    <div className="p-6 border-b border-slate-300 dark:border-gray-700 flex flex-col items-center text-center flex-shrink-0">
+                        <a href="/" onClick={(e) => { e.preventDefault(); setCurrentPage('/'); }} className="flex flex-col items-center group w-full">
+                            <div className="p-3 bg-white dark:bg-gray-700 rounded-full shadow-sm mb-3 group-hover:shadow-md transition-shadow">
+                                <img 
+                                    src="/assets/4klogo.png" 
+                                    alt="DA 4K Logo" 
+                                    className="h-24 w-24 object-contain"
+                                />
+                            </div>
+                            <h1 className="text-xl font-bold text-slate-800 dark:text-white leading-tight">4K Information System</h1>
                         </a>
-
-                        <button onClick={closeSidebar} className="md:hidden text-gray-500 hover:text-gray-800 dark:hover:text-white self-start ml-auto absolute right-4 top-4">
+                        
+                        {/* Mobile Close Button */}
+                        <button onClick={closeSidebar} className="md:hidden absolute top-4 right-4 text-slate-500 hover:text-slate-800 dark:hover:text-white">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
                     </div>
+
+                    {/* Navigation */}
+                    <nav className="p-4 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+                        <ul>
+                            {navigationStructure.map(item => renderNavItem(item))}
+                        </ul>
+                    </nav>
+                    
+                    {/* Footer / Settings */}
+                    <div className="p-4 border-t border-slate-300 dark:border-gray-700 flex-shrink-0">
+                        <a 
+                            href="/settings"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                handleLinkClick('/settings');
+                            }}
+                            className={`flex items-center gap-3 p-3 rounded-lg transition-colors duration-200 ${currentPage === '/settings' ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-600 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium'}`}
+                        >
+                            <span>User Settings</span>
+                        </a>
+                    </div>
+                </aside>
+
+                {/* Desktop Toggle Notch */}
+                <div 
+                    onClick={toggleSidebar}
+                    className={`hidden md:flex absolute top-1/2 -translate-y-1/2 w-5 h-16 bg-[#e9eef6] dark:bg-gray-800 rounded-r-xl cursor-pointer items-center justify-center shadow-md border-r border-y border-slate-300 dark:border-gray-700 z-40 transition-all duration-300 ease-in-out hover:bg-slate-200 dark:hover:bg-gray-700`}
+                    style={{ right: '-20px' }} 
+                    title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+                >
+                    <div className="w-1 h-8 bg-slate-400 dark:bg-gray-500 rounded-full"></div>
                 </div>
-                <nav className="p-4 flex-1 overflow-y-auto overflow-x-hidden">
-                    <ul>
-                        {navigationLinks.map((link) => {
-                             // Hide References for Management Role
-                             if (link.href === '/references' && currentUser?.role === 'Management') return null;
-                             
-                             return (
-                                <li key={link.name}>
-                                    {link.type === 'separator' ? (
-                                        <hr className="my-2 border-gray-200 dark:border-gray-700" />
-                                    ) : (
-                                        <NavItem link={link} />
-                                    )}
-                                </li>
-                             );
-                        })}
-                    </ul>
-                </nav>
-                
-                <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 whitespace-nowrap overflow-hidden">
-                    <a 
-                        href="/settings"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            setCurrentPage('/settings');
-                            if (window.innerWidth < 768) closeSidebar();
-                        }}
-                        className={`flex items-center p-3 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors duration-200 ${currentPage === '/settings' ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : 'font-medium'}`}
-                    >
-                        <span>User Settings</span>
-                    </a>
-                </div>
-            </aside>
+            </div>
         </>
     );
 };
