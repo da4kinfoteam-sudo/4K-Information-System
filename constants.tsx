@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -193,6 +192,8 @@ export interface ActivityExpense {
     actualObligationDate?: string;
     actualDisbursementDate?: string;
     actualAmount?: number;
+    actualObligationAmount?: number;
+    actualDisbursementAmount?: number;
 }
 
 export interface Activity extends BaseEntity {

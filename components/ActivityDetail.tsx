@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits, ReferenceActivity, ActivityComponentType, otherActivityComponents } from '../constants';
@@ -15,6 +14,7 @@ interface ActivityDetailProps {
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
+    onSelectIpo: (ipo: IPO) => void;
 }
 
 const formatDate = (dateString?: string) => {
@@ -48,10 +48,11 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [] }) => {
+const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [], onSelectIpo }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const { addIpoHistory } = useIpoHistory();
+    const isAdmin = currentUser?.role === 'Administrator';
     
     // Modes: 'none' | 'details' | 'expenses' | 'accomplishment'
     const [editMode, setEditMode] = useState<'none' | 'details' | 'expenses' | 'accomplishment'>('none');
@@ -60,10 +61,21 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
     const [selectedActivityType, setSelectedActivityType] = useState('');
     const [isMultiDay, setIsMultiDay] = useState(false);
     
-    // Permission Toggles (Future proofing)
-    const canEditDetails = canEdit;
-    const canEditExpenses = canEdit;
+    // Permission Toggles
+    const isCompleted = activity.status === 'Completed';
+    // Edit Details/Expenses locked if completed, unless Admin
+    const canEditDetails = canEdit && (!isCompleted || isAdmin);
+    const canEditExpenses = canEdit && (!isCompleted || isAdmin);
     const canEditAccomplishment = canEdit;
+
+    // Helper to check if a field is locked for non-admins (User role)
+    // Locked if value exists (non-null, non-empty, non-zero)
+    const isLocked = (value: any) => {
+        if (isAdmin) return false;
+        if (value === null || value === undefined || value === '') return false;
+        if (typeof value === 'number' && value === 0) return false;
+        return true;
+    };
 
     // Budget Edit State
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
@@ -277,6 +289,18 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         if (editMode === 'expenses') eventType = "Expenses Updated";
         if (editMode === 'accomplishment') eventType = "Accomplishment Updated";
 
+        // Logic: Automatically set status to Completed if actualDate is present
+        let updatedStatus = editedActivity.status;
+        if (editMode === 'accomplishment' && editedActivity.actualDate) {
+            updatedStatus = 'Completed';
+            if (activity.status !== 'Completed') {
+                eventType = "Activity Completed";
+            }
+        } else if (editMode === 'accomplishment' && !editedActivity.actualDate && editedActivity.status === 'Completed') {
+             // Revert if date cleared (optional logic, but good for consistency)
+             updatedStatus = 'Ongoing';
+        }
+
         const historyEntry = {
             date: new Date().toISOString(),
             event: eventType,
@@ -295,6 +319,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
 
         const updatedActivity = {
             ...editedActivity,
+            status: updatedStatus,
             endDate: finalEndDate,
             history: [...(activity.history || []), historyEntry]
         };
@@ -303,7 +328,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
 
     if (editMode !== 'none') {
         return (
@@ -330,9 +355,10 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <select name="status" value={editedActivity.status} onChange={handleInputChange} className={commonInputClasses}>
                                                     <option value="Proposed">Proposed</option>
                                                     <option value="Ongoing">Ongoing</option>
-                                                    <option value="Completed">Completed</option>
                                                     <option value="Cancelled">Cancelled</option>
+                                                    {/* Removed Completed Option */}
                                                 </select>
+                                                <p className="text-xs text-gray-500 mt-1">Status becomes 'Completed' automatically when Date of Conduct is set.</p>
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium">Component</label>
@@ -498,16 +524,37 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Actual Accomplishment</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             <div>
-                                                <label className="block text-sm font-medium">Actual Date Conducted</label>
-                                                <input type="date" name="actualDate" value={editedActivity.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                                <label className="block text-sm font-medium">Date of Conduct</label>
+                                                <input 
+                                                    type="date" 
+                                                    name="actualDate" 
+                                                    value={editedActivity.actualDate || ''} 
+                                                    onChange={handleInputChange} 
+                                                    disabled={isLocked(editedActivity.actualDate)}
+                                                    className={commonInputClasses} 
+                                                />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium">Actual Male Participants</label>
-                                                <input type="number" name="actualParticipantsMale" value={editedActivity.actualParticipantsMale || 0} onChange={handleNumericChange} className={commonInputClasses} />
+                                                <input 
+                                                    type="number" 
+                                                    name="actualParticipantsMale" 
+                                                    value={editedActivity.actualParticipantsMale || 0} 
+                                                    onChange={handleNumericChange} 
+                                                    disabled={isLocked(editedActivity.actualParticipantsMale)}
+                                                    className={commonInputClasses} 
+                                                />
                                             </div>
                                             <div>
                                                 <label className="block text-sm font-medium">Actual Female Participants</label>
-                                                <input type="number" name="actualParticipantsFemale" value={editedActivity.actualParticipantsFemale || 0} onChange={handleNumericChange} className={commonInputClasses} />
+                                                <input 
+                                                    type="number" 
+                                                    name="actualParticipantsFemale" 
+                                                    value={editedActivity.actualParticipantsFemale || 0} 
+                                                    onChange={handleNumericChange} 
+                                                    disabled={isLocked(editedActivity.actualParticipantsFemale)}
+                                                    className={commonInputClasses} 
+                                                />
                                             </div>
                                         </div>
                                     </fieldset>
@@ -521,7 +568,8 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
+                                                        <th className="px-3 py-2 text-right font-medium">Obli. Amount</th>
+                                                        <th className="px-3 py-2 text-right font-medium">Disb. Amount</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -529,13 +577,42 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         <tr key={expense.id}>
                                                             <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{expense.expenseParticular}</td>
                                                             <td className="px-3 py-2">
-                                                                <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                                <input 
+                                                                    type="date" 
+                                                                    value={expense.actualObligationDate || ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} 
+                                                                    disabled={isLocked(expense.actualObligationDate)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                />
                                                             </td>
                                                             <td className="px-3 py-2">
-                                                                <input type="date" value={expense.actualDisbursementDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" />
+                                                                <input 
+                                                                    type="date" 
+                                                                    value={expense.actualDisbursementDate || ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} 
+                                                                    disabled={isLocked(expense.actualDisbursementDate)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                />
                                                             </td>
                                                             <td className="px-3 py-2">
-                                                                <input type="number" value={expense.actualAmount || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualAmount', parseFloat(e.target.value))} className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
+                                                                <input 
+                                                                    type="number" 
+                                                                    value={expense.actualObligationAmount || ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', parseFloat(e.target.value))} 
+                                                                    disabled={isLocked(expense.actualObligationAmount)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                    placeholder="0.00" 
+                                                                />
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                <input 
+                                                                    type="number" 
+                                                                    value={expense.actualDisbursementAmount || ''} 
+                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementAmount', parseFloat(e.target.value))} 
+                                                                    disabled={isLocked(expense.actualDisbursementAmount)}
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
+                                                                    placeholder="0.00" 
+                                                                />
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -650,12 +727,22 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Participating IPOs</dt>
                                 {activity.participatingIpos.length > 0 ? (
                                     <ul className="flex flex-wrap gap-2">
-                                        {activity.participatingIpos.map((ipoName, idx) => (
-                                            <li key={idx} className="flex items-center gap-2 text-sm bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                                <span className="text-gray-700 dark:text-gray-200">{ipoName}</span>
-                                            </li>
-                                        ))}
+                                        {activity.participatingIpos.map((ipoName, idx) => {
+                                            const ipo = ipos.find(i => i.name === ipoName);
+                                            return (
+                                                <li key={idx}>
+                                                    <button 
+                                                        onClick={() => ipo && onSelectIpo(ipo)}
+                                                        disabled={!ipo}
+                                                        className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full transition-colors ${ipo ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 cursor-pointer' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'}`}
+                                                        title={ipo ? 'View IPO Profile' : 'IPO details not found'}
+                                                    >
+                                                        <span className="w-2 h-2 rounded-full bg-current"></span>
+                                                        <span>{ipoName}</span>
+                                                    </button>
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 ) : (
                                     <p className="text-sm text-gray-500 italic">No participating IPOs selected.</p>
@@ -752,7 +839,8 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                     <th className="px-4 py-2 text-left">Item</th>
                                                     <th className="px-4 py-2 text-left">Actual Obligation</th>
                                                     <th className="px-4 py-2 text-left">Actual Disbursement</th>
-                                                    <th className="px-4 py-2 text-right">Actual Amount</th>
+                                                    <th className="px-4 py-2 text-right">Obli. Amount</th>
+                                                    <th className="px-4 py-2 text-right">Disb. Amount</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -762,7 +850,10 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                         <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualObligationDate)}</td>
                                                         <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualDisbursementDate)}</td>
                                                         <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
-                                                            {exp.actualAmount ? formatCurrency(exp.actualAmount) : '-'}
+                                                            {exp.actualObligationAmount ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                            {exp.actualDisbursementAmount ? formatCurrency(exp.actualDisbursementAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>
                                                     </tr>
                                                 ))}
