@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
@@ -18,6 +17,10 @@ interface BPFormsReportProps {
     selectedOu: string;
 }
 
+const formatCurrencyWhole = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
+};
+
 const ActivityRow: React.FC<{
     activity: any;
     mooeCodes: string[];
@@ -32,18 +35,18 @@ const ActivityRow: React.FC<{
             
             {/* MOOE Columns */}
             {mooeCodes.map((code: string) => (
-                <td key={`mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
+                <td key={`mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrencyWhole(activity.uacsValues[code]) : ''}</td>
             ))}
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-blue-50 dark:bg-blue-900/20`}>{activity.totalMOOE > 0 ? formatCurrency(activity.totalMOOE) : ''}</td>
+            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-blue-50 dark:bg-blue-900/20`}>{activity.totalMOOE > 0 ? formatCurrencyWhole(activity.totalMOOE) : ''}</td>
             
             {/* CO Columns */}
             {coCodes.map((code: string) => (
-                <td key={`co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrency(activity.uacsValues[code]) : ''}</td>
+                <td key={`co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>{activity.uacsValues[code] > 0 ? formatCurrencyWhole(activity.uacsValues[code]) : ''}</td>
             ))}
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-orange-50 dark:bg-orange-900/20`}>{activity.totalCO > 0 ? formatCurrency(activity.totalCO) : ''}</td>
+            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-orange-50 dark:bg-orange-900/20`}>{activity.totalCO > 0 ? formatCurrencyWhole(activity.totalCO) : ''}</td>
             
             {/* Grand Total */}
-            <td className={`${dataCellClass} font-bold bg-green-50 dark:bg-green-900/20 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrency(activity.totalMOOE + activity.totalCO) : ''}</td>
+            <td className={`${dataCellClass} font-bold bg-green-50 dark:bg-green-900/20 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrencyWhole(activity.totalMOOE + activity.totalCO) : ''}</td>
         </tr>
     );
 };
@@ -92,18 +95,18 @@ const SummaryRow: React.FC<{
             
             {/* MOOE Summary */}
             {mooeCodes.map((code: string) => (
-                <td key={`mooe-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
+                <td key={`mooe-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrencyWhole(summary.uacsValues[code]) : ''}</td>
             ))}
-            <td className={`${numberCellClass} bg-blue-100 dark:bg-blue-900/30`}>{summary.totalMOOE > 0 ? formatCurrency(summary.totalMOOE) : ''}</td>
+            <td className={`${numberCellClass} bg-blue-100 dark:bg-blue-900/30`}>{summary.totalMOOE > 0 ? formatCurrencyWhole(summary.totalMOOE) : ''}</td>
 
             {/* CO Summary */}
             {coCodes.map((code: string) => (
-                <td key={`co-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrency(summary.uacsValues[code]) : ''}</td>
+                <td key={`co-${code}`} className={numberCellClass}>{summary.uacsValues[code] > 0 ? formatCurrencyWhole(summary.uacsValues[code]) : ''}</td>
             ))}
-            <td className={`${numberCellClass} bg-orange-100 dark:bg-orange-900/30`}>{summary.totalCO > 0 ? formatCurrency(summary.totalCO) : ''}</td>
+            <td className={`${numberCellClass} bg-orange-100 dark:bg-orange-900/30`}>{summary.totalCO > 0 ? formatCurrencyWhole(summary.totalCO) : ''}</td>
 
             {/* Grand Total Summary */}
-            <td className={`${numberCellClass} bg-green-100 dark:bg-green-900/30`}>{(summary.totalMOOE + summary.totalCO) > 0 ? formatCurrency(summary.totalMOOE + summary.totalCO) : ''}</td>
+            <td className={`${numberCellClass} bg-green-100 dark:bg-green-900/30`}>{(summary.totalMOOE + summary.totalCO) > 0 ? formatCurrencyWhole(summary.totalMOOE + summary.totalCO) : ''}</td>
         </tr>
     );
 };
@@ -157,11 +160,12 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
         
         data.trainings.forEach(t => {
+            if (t.component === 'Program Management') return; // Skip Program Management Trainings
+
             t.expenses.forEach(e => {
                 ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
-                const packageType = t.component === 'Program Management' ? 'Trainings' : undefined;
                 lineItems.push({
-                    component: t.component, packageType, activityName: t.name,
+                    component: t.component, packageType: undefined, activityName: t.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
                 });
             });
@@ -224,7 +228,6 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
-                    'Trainings': { items: [] },
                     'Staff Requirements': { items: [] },
                     'Office Requirements': { items: [] },
                     'Activities': { items: [] }
@@ -427,14 +430,14 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             items.forEach((activity: any) => {
                 const row = [`${prefix}${activity.name}`];
                 
-                // Add values according to ordered codes
+                // Add values according to ordered codes (rounded up)
                 allCodesOrdered.forEach(code => {
-                    row.push(activity.uacsValues[code] || 0);
+                    row.push(Math.ceil(activity.uacsValues[code] || 0));
                 });
                 
-                row.push(activity.totalMOOE);
-                row.push(activity.totalCO);
-                row.push(activity.totalMOOE + activity.totalCO);
+                row.push(Math.ceil(activity.totalMOOE));
+                row.push(Math.ceil(activity.totalCO));
+                row.push(Math.ceil(activity.totalMOOE + activity.totalCO));
                 flatDataRows.push(row);
             });
         };
@@ -464,13 +467,13 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         // Add Grand Total Row
         const totalRow = ["GRAND TOTAL"];
-        allCodesOrdered.forEach(code => totalRow.push(grandTotals.uacsValues[code] || 0));
-        totalRow.push(grandTotals.totalMOOE, grandTotals.totalCO, grandTotals.totalMOOE + grandTotals.totalCO);
+        allCodesOrdered.forEach(code => totalRow.push(Math.ceil(grandTotals.uacsValues[code] || 0)));
+        totalRow.push(Math.ceil(grandTotals.totalMOOE), Math.ceil(grandTotals.totalCO), Math.ceil(grandTotals.totalMOOE + grandTotals.totalCO));
         flatDataRows.push(totalRow);
 
         // Combine all
         const aoa = [row1, row2, row3, ...flatDataRows];
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const ws: any = XLSX.utils.aoa_to_sheet(aoa);
 
         // Setup Merges
         if(!ws['!merges']) ws['!merges'] = [];
@@ -524,7 +527,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 const cell_ref = XLSX.utils.encode_cell(cell_address);
                 if(ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
                     ws[cell_ref].t = 'n';
-                    ws[cell_ref].z = '#,##0.00';
+                    // Whole number currency
+                    ws[cell_ref].z = '#,##0';
                 }
             }
         }
@@ -538,9 +542,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
     const coParticulars = Object.keys(headers.CO).sort();
     
     // Ensure all MOOE cols + 1 for Total MOOE
-    const mooeColSpan = mooeCodes.length + 1; 
+    const mooeSpan = mooeCodes.length; 
     // Ensure all CO cols + 1 for Total CO
-    const coColSpan = coCodes.length + 1;
+    const coSpan = coCodes.length;
 
     const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
     const borderClass = "border border-gray-300 dark:border-gray-600";
@@ -576,7 +580,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
                 </div>
             </div>
-            <div id="bp-forms-table" className="overflow-x-auto relative">
+            <div id="bp-forms-table" className="overflow-x-auto overflow-y-auto max-h-[75vh] relative custom-scrollbar">
                 <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
                     <thead className="sticky top-0 z-20 shadow-sm">
                         <tr className="bg-gray-200 dark:bg-gray-800">
@@ -713,21 +717,21 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                             {/* MOOE Totals */}
                             {mooeCodes.map((code: string) => (
                                 <td key={`total-mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
-                                    {grandTotals.uacsValues[code] > 0 ? formatCurrency(grandTotals.uacsValues[code]) : ''}
+                                    {grandTotals.uacsValues[code] > 0 ? formatCurrencyWhole(grandTotals.uacsValues[code]) : ''}
                                 </td>
                             ))}
-                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-blue-100 dark:bg-blue-900/40`}>{grandTotals.totalMOOE > 0 ? formatCurrency(grandTotals.totalMOOE) : ''}</td>
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-blue-100 dark:bg-blue-900/40`}>{grandTotals.totalMOOE > 0 ? formatCurrencyWhole(grandTotals.totalMOOE) : ''}</td>
 
                             {/* CO Totals */}
                             {coCodes.map((code: string) => (
                                 <td key={`total-co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
-                                    {grandTotals.uacsValues[code] > 0 ? formatCurrency(grandTotals.uacsValues[code]) : ''}
+                                    {grandTotals.uacsValues[code] > 0 ? formatCurrencyWhole(grandTotals.uacsValues[code]) : ''}
                                 </td>
                             ))}
-                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-orange-100 dark:bg-orange-900/40`}>{grandTotals.totalCO > 0 ? formatCurrency(grandTotals.totalCO) : ''}</td>
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-orange-100 dark:bg-orange-900/40`}>{grandTotals.totalCO > 0 ? formatCurrencyWhole(grandTotals.totalCO) : ''}</td>
 
                             {/* Grand Total */}
-                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-green-100 dark:bg-green-900/40`}>{(grandTotals.totalMOOE + grandTotals.totalCO) > 0 ? formatCurrency(grandTotals.totalMOOE + grandTotals.totalCO) : ''}</td>
+                            <td className={`${dataCellClass} text-right whitespace-nowrap bg-green-100 dark:bg-green-900/40`}>{(grandTotals.totalMOOE + grandTotals.totalCO) > 0 ? formatCurrencyWhole(grandTotals.totalMOOE + grandTotals.totalCO) : ''}</td>
                         </tr>
                     </tfoot>
                 </table>
