@@ -13,7 +13,7 @@ interface StaffingRequirementDetailProps {
     onUpdate: (item: StaffingRequirement) => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
@@ -27,12 +27,14 @@ const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const isAdmin = currentUser?.role === 'Administrator';
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
     
     // Expense Management State
     const [expensesList, setExpensesList] = useState<StaffingExpense[]>(item.expenses || []);
+    const [expandedExpenseIds, setExpandedExpenseIds] = useState<Set<number>>(new Set());
     
     // Temp State for adding/editing expense in detail view
     const initialExpenseState = {
@@ -96,12 +98,21 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
     }, [item, editMode]);
 
+    // Helper to calculate total actual disbursement for an item
+    const calculateActualDisbursementTotal = (expense: StaffingExpense) => {
+        return months.reduce((sum, m) => sum + (Number((expense as any)[`actualDisbursement${m}`]) || 0), 0);
+    };
+
     // Recalculate Totals only for accomplishment here, detailed target aggregation happens on submit
     useEffect(() => {
         if (editMode === 'accomplishment') {
             // Aggregate from expensesList for accomplishment
             const totalActualObligation = expensesList.reduce((acc, exp) => acc + (exp.actualObligationAmount || 0), 0);
-            const totalActualDisbursement = expensesList.reduce((acc, exp) => acc + (exp.actualDisbursementAmount || 0), 0);
+            
+            // Calculate actual disbursement from monthly fields
+            const totalActualDisbursement = expensesList.reduce((acc, exp) => {
+                return acc + calculateActualDisbursementTotal(exp);
+            }, 0);
             
             // Only update if different to avoid loop
             if (totalActualObligation !== formData.actualObligationAmount || totalActualDisbursement !== formData.actualDisbursementAmount) {
@@ -186,7 +197,37 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     // Accomplishment Per Expense Handler
     const handleExpenseAccomplishmentChange = (id: number, field: keyof StaffingExpense, value: any) => {
-        setExpensesList(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+        setExpensesList(prev => prev.map(e => {
+            if (e.id === id) {
+                const updated = { ...e, [field]: value };
+                // Also update the aggregated actualDisbursementAmount if a month field changed
+                if (String(field).startsWith('actualDisbursement')) {
+                    updated.actualDisbursementAmount = calculateActualDisbursementTotal(updated);
+                }
+                return updated;
+            }
+            return e;
+        }));
+    };
+
+    const toggleExpenseExpand = (id: number) => {
+        setExpandedExpenseIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
+    };
+
+    // Locking Logic
+    const isLocked = (value: any) => {
+        // If user is admin, never locked
+        if (isAdmin) return false;
+        // If user is 'User' role, check if value exists
+        if (value !== undefined && value !== null && value !== '' && value !== 0) {
+            return true;
+        }
+        return false;
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -199,7 +240,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0,
             // Calculate Actuals Total from breakdown
             actualObligationAmount: 0,
-            actualDisbursementAmount: 0
+            actualDisbursementAmount: 0,
+            // Actual Monthly Aggregates for root level
+            actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
+            actualDisbursementJul: 0, actualDisbursementAug: 0, actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
         };
         
         let primaryUacs = formData.uacsCode; 
@@ -214,15 +258,24 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             months.forEach(m => { 
                 // @ts-ignore
                 aggregatedTotals[`disbursement${m}`] = 0; 
+                // @ts-ignore
+                aggregatedTotals[`actualDisbursement${m}`] = 0; 
             });
 
             expensesList.forEach(exp => {
                 aggregatedTotals.annualSalary += exp.amount;
                 aggregatedTotals.actualObligationAmount += (exp.actualObligationAmount || 0);
-                aggregatedTotals.actualDisbursementAmount += (exp.actualDisbursementAmount || 0);
+                
+                // Recalculate total actual disbursement per item
+                const itemActualDisbursement = calculateActualDisbursementTotal(exp);
+                aggregatedTotals.actualDisbursementAmount += itemActualDisbursement;
+                exp.actualDisbursementAmount = itemActualDisbursement;
+
                 months.forEach(m => {
                     // @ts-ignore
                     aggregatedTotals[`disbursement${m}`] += (exp[`disbursement${m}`] || 0);
+                    // @ts-ignore
+                    aggregatedTotals[`actualDisbursement${m}`] += (exp[`actualDisbursement${m}`] || 0);
                 });
             });
         }
@@ -239,10 +292,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             updated_at: new Date().toISOString()
         };
 
-        // Recalculate monthly actual aggregates for legacy support/summary
-        // Assuming actual disbursement happens in month of `actualDisbursementDate` if provided, otherwise manual distribution logic needed
-        // For simplicity, we aggregate totals. Detailed monthly actuals logic for breakdown is handled per expense object now.
-        
         if (supabase) {
             const { id, ...payload } = updatedItem;
             const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
@@ -336,7 +385,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 
                                 <div className="mb-3">
                                     <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
-                                        {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule
+                                        {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule (Target)
                                     </button>
                                     {isExpenseScheduleOpen && (
                                         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded border border-gray-200 dark:border-gray-700">
@@ -386,62 +435,73 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Item Breakdown</legend>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-50 dark:bg-gray-700/50">
-                                        <tr>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Particulars</th>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Target Amount</th>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Act. Obligation Date</th>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Act. Obligation Amt</th>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Act. Disbursement Date</th>
-                                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Act. Disbursement Amt</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                        {expensesList.map(exp => (
-                                            <tr key={exp.id}>
-                                                <td className="px-3 py-2 text-sm text-gray-900 dark:text-white font-medium">{exp.expenseParticular} <span className="text-xs text-gray-500">({exp.uacsCode})</span></td>
-                                                <td className="px-3 py-2 text-sm text-gray-500">{formatCurrency(exp.amount)}</td>
-                                                <td className="px-3 py-2">
+                            <div className="space-y-6">
+                                {expensesList.map((exp) => {
+                                    const totalActualDisbursement = calculateActualDisbursementTotal(exp);
+                                    return (
+                                        <div key={exp.id} className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                            <div className="flex flex-col sm:flex-row justify-between mb-4 border-b border-gray-200 dark:border-gray-600 pb-2">
+                                                <div>
+                                                    <h4 className="font-bold text-gray-800 dark:text-white">{exp.expenseParticular}</h4>
+                                                    <span className="text-xs text-gray-500 font-mono">{exp.uacsCode}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xs text-gray-500">Target Amount: {formatCurrency(exp.amount)}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Actual Obligation Date</label>
                                                     <input 
                                                         type="date" 
                                                         value={exp.actualObligationDate || ''} 
                                                         onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationDate', e.target.value)} 
-                                                        className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:bg-gray-700 dark:border-gray-600"
+                                                        disabled={isLocked(exp.actualObligationDate)}
+                                                        className={commonInputClasses}
                                                     />
-                                                </td>
-                                                <td className="px-3 py-2">
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Actual Obligated Amount</label>
                                                     <input 
                                                         type="number" 
                                                         value={exp.actualObligationAmount || ''} 
                                                         onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', parseFloat(e.target.value) || 0)} 
-                                                        className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:bg-gray-700 dark:border-gray-600"
+                                                        disabled={isLocked(exp.actualObligationAmount)}
+                                                        className={commonInputClasses}
                                                         placeholder="0.00"
                                                     />
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    <input 
-                                                        type="date" 
-                                                        value={exp.actualDisbursementDate || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementDate', e.target.value)} 
-                                                        className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:bg-gray-700 dark:border-gray-600"
-                                                    />
-                                                </td>
-                                                <td className="px-3 py-2">
-                                                    <input 
-                                                        type="number" 
-                                                        value={exp.actualDisbursementAmount || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', parseFloat(e.target.value) || 0)} 
-                                                        className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:bg-gray-700 dark:border-gray-600"
-                                                        placeholder="0.00"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wide">Actual Monthly Disbursements</label>
+                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Total: {formatCurrency(totalActualDisbursement)}</span>
+                                                </div>
+                                                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                                                    {months.map(month => (
+                                                        <div key={month}>
+                                                            <label className="block text-[10px] text-gray-500 uppercase">{month}</label>
+                                                            <input 
+                                                                type="number" 
+                                                                // @ts-ignore
+                                                                value={(exp as any)[`actualDisbursement${month}`] || ''} 
+                                                                onChange={(e) => handleExpenseAccomplishmentChange(exp.id, `actualDisbursement${month}` as keyof StaffingExpense, parseFloat(e.target.value) || 0)} 
+                                                                // @ts-ignore
+                                                                disabled={isLocked((exp as any)[`actualDisbursement${month}`])}
+                                                                className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 disabled:bg-gray-100 disabled:dark:bg-gray-900/50"
+                                                                placeholder="0"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
+                            
                             <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-6 text-sm">
                                 <div>
                                     <span className="text-gray-500 dark:text-gray-400 block text-xs">Total Actual Obligation</span>
@@ -449,7 +509,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 </div>
                                 <div>
                                     <span className="text-gray-500 dark:text-gray-400 block text-xs">Total Actual Disbursement</span>
-                                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(expensesList.reduce((s, e) => s + (e.actualDisbursementAmount || 0), 0))}</span>
+                                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(expensesList.reduce((s, e) => s + calculateActualDisbursementTotal(e), 0))}</span>
                                 </div>
                             </div>
                         </fieldset>
@@ -514,18 +574,38 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <DetailItem label="Encoded By" value={item.encodedBy} />
                     </div>
                     
-                    {/* Breakdown of Expenses */}
+                    {/* Breakdown of Expenses with Toggleable Schedule */}
                     {item.expenses && item.expenses.length > 0 && (
                         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-3">Cost Breakdown</h4>
-                            <ul className="space-y-2 text-sm">
+                            <ul className="space-y-3 text-sm">
                                 {item.expenses.map((exp, i) => (
-                                    <li key={i} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                        <div>
-                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{exp.expenseParticular}</span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 block">{exp.uacsCode}</span>
+                                    <li key={i} className="flex flex-col bg-gray-50 dark:bg-gray-700/50 rounded overflow-hidden">
+                                        <div className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleExpenseExpand(exp.id)}>
+                                            <div>
+                                                <span className="font-semibold text-gray-800 dark:text-gray-200 block">{exp.expenseParticular}</span>
+                                                <span className="text-xs text-gray-500 dark:text-gray-400">{exp.uacsCode}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(exp.amount)}</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 transition-transform ${expandedExpenseIds.has(exp.id) ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </div>
                                         </div>
-                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(exp.amount)}</span>
+                                        {expandedExpenseIds.has(exp.id) && (
+                                            <div className="p-3 border-t border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Target Monthly Disbursement</p>
+                                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                    {months.map(m => (
+                                                        <div key={m} className="flex flex-col">
+                                                            <span className="text-[10px] text-gray-400">{m}</span>
+                                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{formatCurrency((exp as any)[`disbursement${m}`] || 0)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
@@ -554,26 +634,32 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
                         {item.expenses && item.expenses.length > 0 && (
                             <div className="mt-4">
-                                <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Per Item Breakdown</h4>
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full text-xs text-left">
-                                        <thead>
-                                            <tr>
-                                                <th className="py-1">Item</th>
-                                                <th className="py-1 text-right">Actual Obli.</th>
-                                                <th className="py-1 text-right">Actual Disb.</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {item.expenses.map((exp, idx) => (
-                                                <tr key={idx} className="border-t border-gray-100 dark:border-gray-700">
-                                                    <td className="py-1">{exp.expenseParticular}</td>
-                                                    <td className="py-1 text-right">{exp.actualObligationAmount ? formatCurrency(exp.actualObligationAmount) : '-'}</td>
-                                                    <td className="py-1 text-right">{exp.actualDisbursementAmount ? formatCurrency(exp.actualDisbursementAmount) : '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Per Item Actuals</h4>
+                                <div className="space-y-4">
+                                    {item.expenses.map((exp, idx) => (
+                                        <div key={idx} className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-bold text-sm text-gray-800 dark:text-white">{exp.expenseParticular}</span>
+                                                <div className="text-right text-xs">
+                                                    <div className="text-gray-500">Act. Obli: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(exp.actualObligationAmount || 0)}</span></div>
+                                                    <div className="text-emerald-600">Act. Disb: <span className="font-bold">{formatCurrency(calculateActualDisbursementTotal(exp))}</span></div>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                {months.map(m => {
+                                                    const val = (exp as any)[`actualDisbursement${m}`] || 0;
+                                                    if (val === 0) return null;
+                                                    return (
+                                                        <div key={m} className="flex flex-col bg-white dark:bg-gray-800 p-1 rounded border border-gray-200 dark:border-gray-600">
+                                                            <span className="text-[10px] text-gray-400 text-center">{m}</span>
+                                                            <span className="text-[10px] font-bold text-center text-emerald-600 dark:text-emerald-400">{formatCurrency(val)}</span>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                            {calculateActualDisbursementTotal(exp) === 0 && <p className="text-xs text-gray-400 italic text-center">No disbursement recorded</p>}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

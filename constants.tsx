@@ -297,6 +297,19 @@ export interface StaffingExpense {
     actualObligationDate?: string;
     actualDisbursementAmount?: number;
     actualDisbursementDate?: string;
+    // Actual Monthly Disbursement
+    actualDisbursementJan?: number;
+    actualDisbursementFeb?: number;
+    actualDisbursementMar?: number;
+    actualDisbursementApr?: number;
+    actualDisbursementMay?: number;
+    actualDisbursementJun?: number;
+    actualDisbursementJul?: number;
+    actualDisbursementAug?: number;
+    actualDisbursementSep?: number;
+    actualDisbursementOct?: number;
+    actualDisbursementNov?: number;
+    actualDisbursementDec?: number;
 }
 
 export interface StaffingRequirement extends BaseProgramManagementItem {

@@ -1,13 +1,9 @@
 
--- Update existing activities to ensure expense items have the new actual financial fields initialized to 0
-UPDATE activities
-SET expenses = (
-  SELECT jsonb_agg(
-    elem || jsonb_build_object(
-      'actualObligationAmount', COALESCE((elem->>'actualObligationAmount')::numeric, 0),
-      'actualDisbursementAmount', COALESCE((elem->>'actualDisbursementAmount')::numeric, 0)
-    )
-  )
-  FROM jsonb_array_elements(expenses) AS elem
-)
-WHERE expenses IS NOT NULL AND jsonb_array_length(expenses) > 0;
+-- Add expenses JSONB column to staffing_requirements if it doesn't exist
+ALTER TABLE staffing_requirements 
+ADD COLUMN IF NOT EXISTS expenses JSONB DEFAULT '[]'::jsonb;
+
+-- Ensure numeric fields for aggregation exist just in case
+ALTER TABLE staffing_requirements 
+ADD COLUMN IF NOT EXISTS "actualObligationAmount" NUMERIC DEFAULT 0,
+ADD COLUMN IF NOT EXISTS "actualDisbursementAmount" NUMERIC DEFAULT 0;
