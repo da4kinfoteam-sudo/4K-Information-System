@@ -110,7 +110,9 @@ export interface SubprojectDetail {
     actualNumberOfUnits?: number;
     actualObligationDate?: string;
     actualDisbursementDate?: string;
-    actualAmount?: number;
+    actualAmount?: number; // Legacy total
+    actualObligationAmount?: number; // New split field
+    actualDisbursementAmount?: number; // New split field
     isCompleted?: boolean;
 }
 

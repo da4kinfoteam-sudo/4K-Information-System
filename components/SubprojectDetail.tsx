@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
@@ -173,6 +172,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     }
 
+    // Helper to check if a field is locked
+    const isLocked = (value: any) => {
+        if (isAdmin) return false;
+        // If value exists (non-null/empty/zero), it's locked for regular users
+        if (value !== undefined && value !== null && value !== '' && value !== 0) return true;
+        return false;
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         if (name === 'status') {
@@ -240,7 +247,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             actualDeliveryDate: '',
             actualObligationDate: '',
             actualDisbursementDate: '',
-            actualAmount: 0
+            actualAmount: 0,
+            actualObligationAmount: 0,
+            actualDisbursementAmount: 0
         };
 
         if (editingDetailIndex !== null) {
@@ -429,7 +438,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
 
     if (editMode !== 'none') {
         return (
@@ -658,11 +667,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <tr>
                                                         <th className="px-3 py-2 text-left font-medium">Completed</th>
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual No. of Units</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Units</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation Date</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement Date</th>
+                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement Amount</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -694,9 +704,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         type="number" 
                                                                         value={(detail as any).actualNumberOfUnits || ''} 
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         placeholder={`0 ${detail.unitOfMeasure}`}
-                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualNumberOfUnits}
+                                                                        disabled={isLocked(originalDetail?.actualNumberOfUnits)}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -704,8 +714,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         type="date" 
                                                                         value={(detail as any).actualDeliveryDate || ''} 
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
-                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualDeliveryDate} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                        disabled={isLocked(originalDetail?.actualDeliveryDate)} 
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -713,8 +723,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         type="date" 
                                                                         value={(detail as any).actualObligationDate || ''} 
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
-                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualObligationDate} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                        disabled={isLocked(originalDetail?.actualObligationDate)} 
+                                                                    />
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <input 
+                                                                        type="number" 
+                                                                        value={(detail as any).actualObligationAmount || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationAmount', parseFloat(e.target.value))} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                        placeholder="0.00" 
+                                                                        disabled={isLocked(originalDetail?.actualObligationAmount)} 
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -722,18 +742,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         type="date" 
                                                                         value={(detail as any).actualDisbursementDate || ''} 
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
-                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualDisbursementDate} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                        disabled={isLocked(originalDetail?.actualDisbursementDate)} 
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <input 
                                                                         type="number" 
-                                                                        value={(detail as any).actualAmount || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualAmount', parseFloat(e.target.value))} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" 
+                                                                        value={(detail as any).actualDisbursementAmount || ''} 
+                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', parseFloat(e.target.value))} 
+                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         placeholder="0.00" 
-                                                                        disabled={!isAdmin && wasCompleted && !!originalDetail?.actualAmount} 
+                                                                        disabled={isLocked(originalDetail?.actualDisbursementAmount)} 
                                                                     />
                                                                 </td>
                                                             </tr>
@@ -771,13 +791,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             <tr key={index}>
                                                                 <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
                                                                 <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                                                                    {commodity.averageYield ? `${commodity.averageYield} (Yield/Ha)` : ''} 
+                                                                    {commodity.averageYield ? `${commodity.averageYield} (Yield Kg/Ha)` : ''} 
                                                                     {commodity.typeName === 'Animal Commodity' ? ' (Heads)' : ''}
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <div className="flex items-center gap-2">
                                                                         <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'actualYield', parseFloat(e.target.value))} className="w-24 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
-                                                                        <span className="text-xs text-gray-500">{isCrop ? 'Yield/Ha' : 'Heads'}</span>
+                                                                        <span className="text-xs text-gray-500">{isCrop ? 'Yield Kg/Ha' : 'Heads'}</span>
                                                                     </div>
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1052,7 +1072,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <div key={i} className="p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
                                                     <p className="font-bold text-gray-800 dark:text-gray-200">{c.name}</p>
                                                     <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                                                        {c.actualYield && <p>Yield: <span className="font-semibold text-gray-900 dark:text-white">{c.actualYield}</span> {c.typeName === 'Animal Commodity' ? 'Heads' : 'Yield/Ha'}</p>}
+                                                        {c.actualYield && <p>Yield: <span className="font-semibold text-gray-900 dark:text-white">{c.actualYield}</span> {c.typeName === 'Animal Commodity' ? 'Heads' : 'Yield Kg/Ha'}</p>}
                                                         {c.income && <p>Income: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(c.income)}</span></p>}
                                                         {c.marketingPercentage && <p>Marketing: {c.marketingPercentage}%</p>}
                                                     </div>

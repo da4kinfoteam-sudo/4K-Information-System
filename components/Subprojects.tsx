@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes, philippineRegions } from '../constants';
@@ -9,6 +8,7 @@ import { usePagination, useSelection, getUserPermissions } from './mainfunctions
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import { supabase } from '../supabaseClient';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -28,6 +28,12 @@ interface SubprojectsProps {
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+
+const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
     </svg>
 );
 
@@ -67,6 +73,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
     const [selectedRegion, setSelectedRegion] = useState('');
+    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
     
     // Use Shared Permissions Hook
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -332,8 +339,101 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         const deletedNames = subprojects.filter(s => selectedIds.includes(s.id)).map(s => s.name).join(', ');
         logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
 
+        if (supabase) {
+             supabase.from('subprojects').delete().in('id', selectedIds).then(({ error }) => {
+                if(error) {
+                    console.error("Error deleting:", error);
+                    alert("Failed to delete selected items");
+                }
+             });
+        }
+        
         setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
         resetSelection();
+    };
+
+    const handleClone = async () => {
+        const itemsToClone = subprojects.filter(s => selectedIds.includes(s.id));
+        if (itemsToClone.length === 0) return;
+
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} subprojects? This will create new entries with the same details but reset accomplishments.`)) return;
+
+        const currentTimestamp = new Date().toISOString();
+        const currentYear = new Date().getFullYear();
+
+        const newItemsPayload = itemsToClone.map((item, index) => {
+            const { id, uid, created_at, updated_at, history, ...rest } = item;
+            
+            const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+            const newUid = `SP-${currentYear}-${sequence}${index}`;
+
+            // Reset details actuals
+            const clonedDetails = item.details.map(d => ({
+                ...d,
+                id: Date.now() + Math.random(),
+                actualDeliveryDate: '',
+                actualNumberOfUnits: 0,
+                actualObligationDate: '',
+                actualDisbursementDate: '',
+                actualAmount: 0,
+                actualObligationAmount: 0,
+                actualDisbursementAmount: 0,
+                isCompleted: false
+            }));
+
+            // Reset commodities actuals
+            const clonedCommodities = item.subprojectCommodities?.map(c => ({
+                ...c,
+                actualYield: 0,
+                income: 0
+            })) || [];
+
+            return {
+                ...rest,
+                uid: newUid,
+                status: 'Proposed',
+                actualCompletionDate: undefined,
+                catchUpPlanRemarks: '',
+                newTargetCompletionDate: '',
+                details: clonedDetails,
+                subprojectCommodities: clonedCommodities,
+                encodedBy: currentUser?.fullName || 'System Clone',
+                created_at: currentTimestamp,
+                updated_at: currentTimestamp,
+                history: [{
+                    date: currentTimestamp,
+                    event: 'Cloned from ' + uid,
+                    user: currentUser?.fullName || 'System'
+                }]
+            };
+        });
+
+        if (supabase) {
+            const { data, error } = await supabase.from('subprojects').insert(newItemsPayload).select();
+            if (error) {
+                alert('Failed to clone items: ' + error.message);
+            } else if (data) {
+                setSubprojects(prev => [...data as Subproject[], ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${data.length} subprojects.`);
+            }
+        } else {
+            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+            setSubprojects(prev => [...(newLocalItems as Subproject[]), ...prev]);
+            resetSelection();
+            alert(`Successfully cloned ${newLocalItems.length} subprojects (Local).`);
+        }
+    };
+
+    const handleToggleMode = (intent: 'delete' | 'clone') => {
+        if (isSelectionMode && selectionIntent === intent) {
+            toggleSelectionMode(); // Toggle off
+        } else if (isSelectionMode && selectionIntent !== intent) {
+            setSelectionIntent(intent); // Switch intent
+        } else {
+            setSelectionIntent(intent);
+            toggleSelectionMode(); // Toggle on
+        }
     };
 
     // --- Form Handlers ---
@@ -692,7 +792,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     const getStatusBadge = (status: Subproject['status']) => {
         const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
         switch (status) {
-            case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+            case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
             case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
             case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
             case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
@@ -700,7 +800,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         }
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
     const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string }> = ({ sortKey, label, className }) => {
         const isSorted = sortConfig?.key === sortKey;
@@ -723,7 +823,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 onClick={() => setActiveTab(tabName)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
                     ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
             >
@@ -737,7 +837,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Subprojects Management</h2>
                 {canEdit && (
-                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                         + Add New Subproject
                     </button>
                 )}
@@ -801,19 +901,29 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
                         {isSelectionMode && selectedIds.length > 0 && (
-                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                                Delete Selected ({selectedIds.length})
+                            <button 
+                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                            >
+                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                             </button>
                         )}
                         <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
                         {canEdit && (
                             <>
                                 <button onClick={downloadSubprojectsTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
-                                <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                                <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
                                 <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                                <button 
+                                    onClick={() => handleToggleMode('clone')} 
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                    title="Toggle Clone Mode"
+                                >
+                                    <DuplicateIcon />
+                                </button>
                                 <button
-                                    onClick={toggleSelectionMode}
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    onClick={() => handleToggleMode('delete')}
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
                                     title="Toggle Multi-Delete Mode"
                                 >
                                     <TrashIcon />
@@ -850,7 +960,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                 type="checkbox" 
                                                 onChange={(e) => handleSelectAll(e, paginatedSubprojects)} 
                                                 checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(s => selectedIds.includes(s.id))}
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                             />
                                         </div>
                                     ) : (
@@ -862,8 +972,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedSubprojects.map((s) => {
                                 const budget = calculateTotalBudget(s.details);
-                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
-                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
+                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualObligationAmount || 0) : sum, 0);
+                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualDisbursementAmount || d.actualAmount || 0) : sum, 0);
                                 const totalItems = s.details.length;
                                 const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
                                 const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
@@ -873,10 +983,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
                                 return (
                                 <React.Fragment key={s.id}>
-                                    <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
                                         <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
-                                            <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-accent hover:underline">
+                                            <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-emerald-600 hover:underline">
                                                 {s.name}
                                             </button>
                                             <div className="text-xs text-gray-400">{s.uid}</div>
@@ -906,7 +1016,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                             checked={selectedIds.includes(s.id)} 
                                                             onChange={(e) => { e.stopPropagation(); handleSelectRow(s.id); }} 
                                                             onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                         />
                                                     )}
                                                     {/* Edit Button Removed */}
@@ -1017,7 +1127,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
                             {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                         </select>
                         <span className="text-gray-700 dark:text-gray-300">entries</span>
@@ -1154,7 +1264,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                     </button>
                                                     <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -1198,7 +1308,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                 <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                             </div>
                                         ) : (
-                                            <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                            <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
                                         )}
                                     </div>
                                 </div>
@@ -1219,7 +1329,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
                                                 <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                    <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                     </button>
                                                     <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -1244,7 +1354,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                    {editingDetailId !== null ? (<div className="flex gap-1 h-9 items-end"><button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button><button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button></div>) : (<button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>)}
+                                    {editingDetailId !== null ? (<div className="flex gap-1 h-9 items-end"><button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button><button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button></div>) : (<button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>)}
                                 </div>
                              </fieldset>
                         </div>
@@ -1252,7 +1362,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 </div>
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Subproject</button>
+                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Subproject</button>
                 </div>
             </form>
         </div>
