@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
@@ -115,7 +114,6 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     // Auto-calc totals from target schedules only
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const targetDisbursementTotal = months.reduce((sum, m) => sum + (Number((formData as any)[`disbursement${m}`]) || 0), 0);
-    const isTargetMismatch = Math.abs(targetDisbursementTotal - (Number(formData.obligatedAmount) || 0)) > 0.01;
 
     const availableYears = useMemo(() => {
         const years = new Set<string>(); 
@@ -297,13 +295,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col items-end gap-1">
                                 <div className="flex justify-end items-center gap-2">
                                     <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Disbursement Target:</span>
-                                    <span className={`text-lg font-bold ${isTargetMismatch ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{formatCurrency(targetDisbursementTotal)}</span>
+                                    <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(targetDisbursementTotal)}</span>
                                 </div>
-                                {isTargetMismatch && (
-                                    <span className="text-xs text-red-600 font-medium">
-                                        Total Disbursement ({formatCurrency(targetDisbursementTotal)}) must equal Obligated Amount ({formatCurrency(Number(formData.obligatedAmount) || 0)})
-                                    </span>
-                                )}
                             </div>
                         </fieldset>
                     </div>
@@ -357,12 +350,12 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">OU</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">UACS Code</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Particulars</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Amount</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Fund</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UACS Code</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Particulars</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

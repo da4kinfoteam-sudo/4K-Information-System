@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect } from 'react';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
@@ -62,13 +61,11 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     }, [item, editMode]);
 
     // Recalculate Totals when monthly fields change
-    // Note: For Other Expenses, obligatedAmount is usually manually set or equals 'amount', but if we use schedule to drive it:
     useEffect(() => {
         if (editMode === 'details') {
             // @ts-ignore
             const total = months.reduce((sum, m) => sum + (Number(formData[`disbursement${m}`]) || 0), 0);
-            // Optional: Sync obligatedAmount with schedule if strictly enforced, otherwise let user edit. 
-            // Here we don't force overwrite unless logic requires it. Keeping manual entry for flexibility.
+            // Optional: Sync obligatedAmount with schedule if strictly enforced
         } else if (editMode === 'accomplishment') {
             // @ts-ignore
             const total = months.reduce((sum, m) => sum + (Number(formData[`actualDisbursement${m}`]) || 0), 0);
@@ -191,15 +188,8 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" /></div>
-                                
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label><input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                {/* Actual Disbursement Amount is calculated from schedule below, read-only here for reference or manual override if needed */}
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Actual Disbursement</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} readOnly className={`${commonInputClasses} bg-gray-100 cursor-not-allowed`} /></div>
                             </div>
                         </fieldset>
 
@@ -211,6 +201,10 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                     // @ts-ignore
                                     value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
                                 ))}
+                            </div>
+                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Actual Disbursement:</span>
+                                <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
                             </div>
                         </fieldset>
 
@@ -225,6 +219,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     }
 
     // --- Read Only View ---
+    const totalTargetDisbursement = months.reduce((sum, m) => sum + (Number((item as any)[`disbursement${m}`]) || 0), 0);
 
     return (
         <div className="space-y-8">
@@ -269,8 +264,12 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                             <DetailItem label="UACS Code" value={`${item.uacsCode} (${selectedParticular || 'Lookup Failed'})`} />
                         </div>
                         <DetailItem label="Target Obligation Date" value={item.obligationDate} />
+                        
+                        {/* Aligned Financial Targets */}
                         <DetailItem label="Target Allocation Amount" value={formatCurrency(item.amount)} />
                         <DetailItem label="Target Obligated Amount" value={formatCurrency(item.obligatedAmount || 0)} />
+                        <DetailItem label="Target Disbursement Amount" value={formatCurrency(totalTargetDisbursement)} />
+                        
                         <DetailItem label="Encoded By" value={item.encodedBy} />
                     </div>
                     
