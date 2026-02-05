@@ -28,7 +28,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         });
     };
 
-    const indentClasses: { [key: number]: string } = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14' };
+    const indentClasses: { [key: number]: string } = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14', 4: 'pl-20' };
     const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
 
     const bar1Data = useMemo(() => {
@@ -145,6 +145,44 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         });
 
         // --- Production & Livelihood Packages (Subprojects) ---
+        
+        // 1. Overall Reach (Top Level Indicators)
+        // Calculated based on ALL subprojects in the dataset, applying First Encounter logic
+        const allTargetADs = data.subprojects.map(sp => ({
+            id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+            date: sp.estimatedCompletionDate
+        })).filter(x => x.id);
+        const allActualADs = data.subprojects.map(sp => ({
+            id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+            date: sp.actualCompletionDate
+        })).filter(x => x.id);
+
+        const allTargetIPOs = data.subprojects.map(sp => ({
+            id: sp.indigenousPeopleOrganization,
+            date: sp.estimatedCompletionDate
+        }));
+        const allActualIPOs = data.subprojects.map(sp => ({
+            id: sp.indigenousPeopleOrganization,
+            date: sp.actualCompletionDate
+        }));
+
+        // Insert as a specific package that sorts to the top
+        finalData['Production and Livelihood'].packages['Subproject Reach'] = {
+            items: [
+                {
+                    indicator: "Number of Ancestral Domains covered",
+                    target: calculateFirstEncounter(allTargetADs),
+                    actual: calculateFirstEncounter(allActualADs)
+                },
+                {
+                    indicator: "Number of IPOs with subprojects",
+                    target: calculateFirstEncounter(allTargetIPOs),
+                    actual: calculateFirstEncounter(allActualIPOs)
+                }
+            ]
+        };
+
+        // 2. Package Breakdown
         const packages: Record<string, Subproject[]> = {};
         data.subprojects.forEach(sp => {
             const pkg = sp.packageType || 'Other';
@@ -158,11 +196,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
             const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
 
-            // 1. ADs Covered
+            // Per Package Indicators
             const targetADs = subprojects.map(sp => ({
                 id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-                date: sp.estimatedCompletionDate // or startDate? Requirement says "delivered", usually implies completion for physical count, but for AD/IPO coverage? Prompt says "AD should be first encounter". Usually coverage aligns with project start or end. Let's use completion to match "delivered" logic context unless specified otherwise. However, coverage often counts at start. Prompt says "Subproject should be on estimated month of completion". Let's stick to completion dates for consistency within the row group unless clearly wrong.
-            })).filter(x => x.id); // Filter out unknown ADs
+                date: sp.estimatedCompletionDate 
+            })).filter(x => x.id); 
             const actualADs = subprojects.map(sp => ({
                 id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
                 date: sp.actualCompletionDate
@@ -174,7 +212,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 actual: calculateFirstEncounter(actualADs)
             });
 
-            // 2. IPOs
             const targetIPOs = subprojects.map(sp => ({
                 id: sp.indigenousPeopleOrganization,
                 date: sp.estimatedCompletionDate
@@ -190,7 +227,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 actual: calculateFirstEncounter(actualIPOs)
             });
 
-            // 3. Subprojects Delivered
             const targetSPs = subprojects.map(sp => ({
                 val: 1,
                 date: sp.estimatedCompletionDate
@@ -216,7 +252,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             // Filter trainings for this component
             const relevantTrainings = data.trainings.filter(t => t.component === componentName);
             
-            // For Date: "always use the end date"
             const getTargetDate = (t: Training) => t.endDate || t.date;
             const getActualDate = (t: Training) => t.actualDate;
 
@@ -225,7 +260,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             const actualTrainings = relevantTrainings.map(t => ({ val: 1, date: getActualDate(t) }));
 
             // 2. Number of IPOs trained
-            // Flatten participating IPOs
             const targetIPOs: { id: string, date?: string }[] = [];
             const actualIPOs: { id: string, date?: string }[] = [];
             
@@ -248,33 +282,39 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 date: getActualDate(t) 
             }));
 
-            const items = [
-                {
-                    indicator: "Number of Trainings conducted",
-                    target: calculateSumOverTime(targetTrainings),
-                    actual: calculateSumOverTime(actualTrainings)
-                },
-                {
-                    indicator: "Number of IPOs trained",
-                    target: calculateFirstEncounter(targetIPOs),
-                    actual: calculateFirstEncounter(actualIPOs)
-                },
-                {
-                    indicator: "Number of Participants",
-                    target: calculateSumOverTime(targetPax),
-                    actual: calculateSumOverTime(actualPax)
-                }
-            ];
+            // Create a "Training" group item
+            const trainingGroup = {
+                indicator: "Trainings",
+                isExpandable: true,
+                items: [
+                    {
+                        indicator: "Number of Trainings conducted",
+                        target: calculateSumOverTime(targetTrainings),
+                        actual: calculateSumOverTime(actualTrainings)
+                    },
+                    {
+                        indicator: "Number of IPOs trained",
+                        target: calculateFirstEncounter(targetIPOs),
+                        actual: calculateFirstEncounter(actualIPOs)
+                    },
+                    {
+                        indicator: "Number of Participants",
+                        target: calculateSumOverTime(targetPax),
+                        actual: calculateSumOverTime(actualPax)
+                    }
+                ]
+            };
 
             if (isPackage) {
-                // For Production, it's inside packages
+                // For Production, it's inside packages, so we treat the "Trainings" itself as a package
                 if (!finalData['Production and Livelihood'].packages['Trainings']) {
                     finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
                 }
-                items.forEach(i => finalData['Production and Livelihood'].packages['Trainings'].items.push(i));
+                // For PL, we add the inner items directly to the package, as the Package Header "Trainings" acts as the group
+                trainingGroup.items.forEach(i => finalData['Production and Livelihood'].packages['Trainings'].items.push(i));
             } else {
-                // For Social Prep & Marketing, push to top array
-                items.forEach(i => targetContainer.push(i));
+                // For Social Prep & Marketing, push the Group Object
+                targetContainer.push(trainingGroup);
             }
         };
 
@@ -283,18 +323,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         processTrainings('Production and Livelihood', [], true);
 
         // --- Other Activities (Program Management) ---
-        // Keep as individual line items as per PM structure usually
         data.otherActivities.forEach(oa => {
             const item = createBar1Item(oa.name, 1, oa.date, oa.actualDate);
             if (oa.component === 'Program Management') {
                  addItemToGroup(finalData['Program Management'].packages['Activities'].items, item);
             } 
-            // If Other Activity is tagged Social/Marketing, should it aggregate? 
-            // Prompt says "for other Trainings...". Assuming 'Activity' type in these components are treated like trainings for aggregation or kept separate? 
-            // Current `processTrainings` only filters `data.trainings` (type='Training'). 
-            // Let's assume 'Other Activities' (type='Activity') are distinct line items unless PM.
             else if (finalData[oa.component] && Array.isArray(finalData[oa.component])) {
-                // If it falls into Social/Marketing, add as line item below aggregates?
                 addItemToGroup(finalData[oa.component], item);
             }
         });
@@ -302,19 +336,16 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         // --- PM Items ---
         const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
-                if (isOtherExpense) return; // Other Expenses do not have physical targets for BAR 1
+                if (isOtherExpense) return; 
 
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const count = isStaff ? 1 : (pm.numberOfUnits || 1);
-                // Target: Obligation Date (as a proxy for target completion if not specified)
-                // Actual: Actual Date
                 const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate);
                 addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
             });
         }
         processPm(data.staffingReqs, 'Staff Requirements', true);
         processPm(data.officeReqs, 'Office Requirements');
-        // Removed otherProgramExpenses as they are financial only usually, or handled above if physical.
 
         const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages).sort();
         const sortedPLPackageData: { [key: string]: any } = {};
@@ -339,6 +370,32 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         };
 
         items.forEach(item => {
+            // Recursive check for expandable items inside the list (like Trainings in Social Prep)
+            if (item.isExpandable && item.items) {
+                 // For groups like "Trainings", we usually aggregate the first child (Number of Trainings) 
+                 // or we don't aggregate them into the component total if they are dissimilar units.
+                 // However, Grand Total logic typically sums up physical counts.
+                 // Let's sum up the sub-items.
+                 const subTotal = calculateTotals(item.items);
+                 // Assuming we want to sum up the children. 
+                 // Note: Summing Trainings + IPOs + Pax is meaningless. 
+                 // Usually for BAR1, the parent row (Trainings) takes the value of "Number of Trainings".
+                 const primaryMetric = item.items.find((i: any) => i.indicator.includes("Number of Trainings"));
+                 if (primaryMetric) {
+                    // Add only the primary metric to the grand total to avoid double counting or mixed units
+                     for (let i = 1; i <= 12; i++) {
+                        total.target[`m${i}`] += (primaryMetric.target[`m${i}`] || 0);
+                        total.actual[`m${i}`] += (primaryMetric.actual[`m${i}`] || 0);
+                    }
+                    total.target.q1 += (primaryMetric.target.q1 || 0); total.actual.q1 += (primaryMetric.actual.q1 || 0);
+                    total.target.q2 += (primaryMetric.target.q2 || 0); total.actual.q2 += (primaryMetric.actual.q2 || 0);
+                    total.target.q3 += (primaryMetric.target.q3 || 0); total.actual.q3 += (primaryMetric.actual.q3 || 0);
+                    total.target.q4 += (primaryMetric.target.q4 || 0); total.actual.q4 += (primaryMetric.actual.q4 || 0);
+                    total.target.total += (primaryMetric.target.total || 0); total.actual.total += (primaryMetric.actual.total || 0);
+                 }
+                 return;
+            }
+
             for (let i = 1; i <= 12; i++) {
                 total.target[`m${i}`] += (item.target[`m${i}`] || 0);
                 total.actual[`m${i}`] += (item.actual[`m${i}`] || 0);
@@ -476,6 +533,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 </tr>
             )
         }
+        // If items contain nested indicators (like Trainings), calculateTotals handles grabbing the primary metric
         const totals = calculateTotals(items);
         return (
              <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer text-xs">
@@ -562,7 +620,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             header2
         ];
 
-        const processItems = (items: any[]) => {
+        const processItems = (items: any[], prefix = "") => {
             items.forEach(item => {
                 const getVals = (source: any) => {
                     const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
@@ -579,7 +637,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                };
 
                 aoa.push([
-                    item.indicator,
+                    prefix + item.indicator,
                     // Targets
                     t.m1, t.m2, t.m3, t.q1,
                     t.m4, t.m5, t.m6, t.q2,
@@ -600,6 +658,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     a.yearEndNov, getPct(a.yearEndNov, t.yearEndNov),
                     a.total, getPct(a.total, t.total)
                 ]);
+
+                // Recursive check for children (Trainings)
+                if (item.isExpandable && item.items && item.items.length > 0) {
+                     processItems(item.items, prefix + "    ");
+                }
             });
         };
 
@@ -646,13 +709,13 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         Object.entries(bar1Data).forEach(([component, items]) => {
             aoa.push([component, ...Array(49).fill(null)]);
             if (Array.isArray(items)) {
-                if (items.length > 0) processItems(items);
+                if (items.length > 0) processItems(items, "  ");
             } else if ((items as any).isExpandable) {
-                if ((items as any).items.length > 0) processItems((items as any).items);
+                if ((items as any).items.length > 0) processItems((items as any).items, "  ");
             } else if ((items as any).isNestedExpandable) {
                 Object.entries((items as any).packages).forEach(([packageName, packageData]: [string, any]) => {
                     aoa.push([`  ${packageName}`, ...Array(49).fill(null)]);
-                    if ((packageData as any).items.length > 0) processItems((packageData as any).items);
+                    if ((packageData as any).items.length > 0) processItems((packageData as any).items, "    ");
                 });
             }
         });
@@ -753,15 +816,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-            
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
 
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
@@ -800,22 +854,47 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                                  return (
                                     <React.Fragment key={key}>
                                         {renderSummaryRow(componentData, key, key, isComponentExpanded, 0)}
-                                        {isComponentExpanded && componentData.map((item: any, index: number) => renderDataRow(item, `${key}-${index}`, 1))}
+                                        {/* Handle Nested Expandable Items inside Array (e.g. Trainings) */}
+                                        {isComponentExpanded && componentData.map((item: any, index: number) => {
+                                            if (item.isExpandable) {
+                                                const nestedKey = `${key}-nested-${index}`;
+                                                const isNestedExpanded = expandedRows.has(nestedKey);
+                                                return (
+                                                    <React.Fragment key={nestedKey}>
+                                                        {renderSummaryRow(item.items, item.indicator, nestedKey, isNestedExpanded, 1)}
+                                                        {isNestedExpanded && item.items.map((subItem: any, subIndex: number) => renderDataRow(subItem, `${nestedKey}-${subIndex}`, 2))}
+                                                    </React.Fragment>
+                                                )
+                                            }
+                                            return renderDataRow(item, `${key}-${index}`, 1)
+                                        })}
                                     </React.Fragment>
                                 );
                             }
                             if (componentData.isNestedExpandable) {
                                 const isComponentExpanded = expandedRows.has(key);
+                                // For Production & Livelihood, we manually handle packages, including the 'Overall Reach' summary package
+                                const sortedPackageKeys = Object.keys(componentData.packages).sort((a,b) => a.localeCompare(b));
+                                
+                                // Calculate total for component summary row from all items in all packages
                                 const allPackageItems = Object.values(componentData.packages).flatMap((pkg: any) => pkg.items);
+                                
                                  return (
                                     <React.Fragment key={key}>
                                         {renderSummaryRow(allPackageItems, key, key, isComponentExpanded, 0)}
-                                        {isComponentExpanded && Object.entries(componentData.packages).map(([packageName, packageData]: [string, any]) => (
-                                            <React.Fragment key={packageName}>
-                                                {renderSummaryRow(packageData.items, packageName, packageName, expandedRows.has(packageName), 1)}
-                                                {expandedRows.has(packageName) && packageData.items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, 2))}
-                                            </React.Fragment>
-                                        ))}
+                                        {isComponentExpanded && sortedPackageKeys.map((packageName) => {
+                                            const packageData = componentData.packages[packageName];
+                                            const isPkgExpanded = expandedRows.has(packageName);
+                                            // Handling for special "Trainings" package inside PL which mimics the Social Prep structure
+                                            const items = packageData.items;
+
+                                            return (
+                                                <React.Fragment key={packageName}>
+                                                    {renderSummaryRow(items, packageName, packageName, isPkgExpanded, 1)}
+                                                    {isPkgExpanded && items.map((item: any, index: number) => renderDataRow(item, `${packageName}-${index}`, 2))}
+                                                </React.Fragment>
+                                            );
+                                        })}
                                     </React.Fragment>
                                 );
                             }
