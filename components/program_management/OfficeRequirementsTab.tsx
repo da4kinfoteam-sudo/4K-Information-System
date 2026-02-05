@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
@@ -6,13 +5,21 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
-import { parseLocation } from '../LocationPicker'; // Utility import if needed
+import { parseLocation } from '../LocationPicker'; 
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import useLocalStorageState from '../../hooks/useLocalStorageState';
+
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+
+const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
     </svg>
 );
 
@@ -45,10 +52,11 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<OfficeRequirement | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
-    // Filter State
-    const [ouFilter, setOuFilter] = useState('All');
-    const [yearFilter, setYearFilter] = useState('All');
+    // Filters - Persistent
+    const [ouFilter, setOuFilter] = useLocalStorageState('office_ouFilter', 'All');
+    const [yearFilter, setYearFilter] = useLocalStorageState('office_yearFilter', 'All');
 
     // Selection Hook
     const { 
@@ -200,6 +208,65 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         setSelectedIds([]);
     };
 
+    const handleClone = async () => {
+        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
+        if (itemsToClone.length === 0) return;
+
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} office requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
+
+        const currentTimestamp = new Date().toISOString();
+        const newItemsPayload = itemsToClone.map((item, index) => {
+            const { id, uid, created_at, updated_at, ...rest } = item;
+            const newUid = `OR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
+            
+            // Reset actuals
+            const resetActuals: any = {
+                actualDate: '',
+                actualAmount: 0,
+                actualObligationDate: '',
+                actualDisbursementDate: '',
+                actualObligationAmount: 0,
+                actualDisbursementAmount: 0
+            };
+
+            return {
+                ...rest,
+                ...resetActuals,
+                uid: newUid,
+                encodedBy: currentUser?.fullName || 'System Clone',
+                created_at: currentTimestamp,
+                updated_at: currentTimestamp,
+            };
+        });
+
+        if (supabase) {
+            const { data, error } = await supabase.from('office_requirements').insert(newItemsPayload).select();
+            if (error) {
+                alert('Failed to clone items: ' + error.message);
+            } else if (data) {
+                setItems(prev => [...data, ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${data.length} items.`);
+            }
+        } else {
+            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+            setItems(prev => [...newLocalItems, ...prev]);
+            resetSelection();
+            alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
+        }
+    };
+
+    const handleToggleMode = (intent: 'delete' | 'clone') => {
+        if (isSelectionMode && selectionIntent === intent) {
+            toggleSelectionMode(); // Toggle off
+        } else if (isSelectionMode && selectionIntent !== intent) {
+            setSelectionIntent(intent); // Switch intent
+        } else {
+            setSelectionIntent(intent);
+            toggleSelectionMode(); // Toggle on
+        }
+    };
+
     // --- Import/Export ---
     const handleDownloadReport = () => {
         const data = filteredItems.map(item => ({
@@ -290,10 +357,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     // --- Render ---
     if (view === 'form') {
         return (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Add Office Requirement</h3>
-                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Add Office Requirement</h3>
+                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
                 </div>
                 <form onSubmit={handleFormSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
@@ -323,9 +390,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
                         <div className="md:col-span-2 text-right font-bold text-lg mt-2 text-gray-800 dark:text-white">Total: {formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))}</div>
                     </div>
-                    <div className="flex justify-end gap-4">
-                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button>
+                    <div className="flex justify-end gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 hover:brightness-95 transition-colors">Save Item</button>
                     </div>
                 </form>
             </div>
@@ -334,12 +401,12 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     // List View
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
             {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete</button></div></div></div>
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete</button></div></div></div>
             )}
             {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Bulk Deletion</h3><p className="my-4">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete All</button></div></div></div>
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Bulk Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete All</button></div></div></div>
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
@@ -349,25 +416,41 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 </div>
                 <div className="flex items-center gap-2">
                     {isSelectionMode && selectedIds.length > 0 && (
-                        <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">Delete Selected ({selectedIds.length})</button>
+                        <button 
+                            onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                        >
+                            {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
+                        </button>
                     )}
                     {canEdit && (
                         <button 
                             onClick={() => { setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95"
+                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
                         >
                             + Add New
                         </button>
                     )}
-                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
                     {canEdit && (
                         <>
                             <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
                                 {isUploading ? 'Uploading...' : 'Upload XLSX'}
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
-                            <button onClick={toggleSelectionMode} className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} title="Toggle Multi-Delete Mode">
+                            <button 
+                                onClick={() => handleToggleMode('clone')} 
+                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                title="Toggle Clone Mode"
+                            >
+                                <DuplicateIcon />
+                            </button>
+                            <button 
+                                onClick={() => handleToggleMode('delete')} 
+                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                title="Toggle Multi-Delete Mode"
+                            >
                                 <TrashIcon />
                             </button>
                         </>
@@ -395,7 +478,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                    <button onClick={() => onSelect(item)} className="text-left hover:text-accent hover:underline focus:outline-none">
+                                    <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
                                         {item.equipment}
                                     </button>
                                 </td>
@@ -416,23 +499,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 </table>
             </div>
             
-            {/* Pagination */}
             <div className="py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">Show</span>
-                    <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">
-                        {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
-                    </select>
-                    <span className="text-gray-700 dark:text-gray-300">entries</span>
-                </div>
-                <div className="flex items-center gap-4 text-sm">
-                    <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
-                        <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                        <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
-                    </div>
-                </div>
+                <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
+                <div className="flex items-center gap-4 text-sm"><span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span><div className="flex items-center gap-2"><button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button><span className="px-2 font-medium">{currentPage} / {totalPages}</span><button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button></div></div>
             </div>
         </div>
     );

@@ -1,4 +1,3 @@
-
 // Author: 4K
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -133,7 +132,7 @@ const Login: React.FC = () => {
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800 dark:text-white text-center">4K Information System</h1>
                     <div className="flex items-center gap-2 mt-3">
-                        <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'online' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></span>
+                        <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}></span>
                         <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                             {dbStatus === 'online' ? 'Database Connected' : 'Offline Mode'}
                         </p>
@@ -154,7 +153,7 @@ const Login: React.FC = () => {
                             required 
                             value={identifier} 
                             onChange={(e) => setIdentifier(e.target.value)}
-                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm text-gray-900 dark:text-white"
+                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white"
                             placeholder="Enter your username or email"
                         />
                     </div>
@@ -165,14 +164,14 @@ const Login: React.FC = () => {
                             required 
                             value={password} 
                             onChange={(e) => setPassword(e.target.value)}
-                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm text-gray-900 dark:text-white"
+                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white"
                             placeholder="Enter your password"
                         />
                     </div>
                     <button 
                         type="submit" 
                         disabled={isLoading}
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-accent hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
                         {isLoading ? (
                             <div className="flex items-center">

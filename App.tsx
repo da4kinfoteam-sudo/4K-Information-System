@@ -11,7 +11,7 @@ import References, { ReferenceUacs, ReferenceParticular, ReferenceCommodity } fr
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
-import ActivityDetail from './components/ActivityDetail';
+import { ActivityDetail } from './components/ActivityDetail';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';

@@ -31,10 +31,18 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+    </svg>
+);
+
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+
 const getStatusBadge = (status: Activity['status']) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
         case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
         case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
         case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
@@ -87,6 +95,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
     const [selectedActivityType, setSelectedActivityType] = useState(''); // Stores the specific activity name from dropdown
+    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Shared Hooks
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -289,6 +298,82 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             }
         }
         resetSelection();
+    };
+
+    const handleClone = async () => {
+        const itemsToClone = activities.filter(a => selectedIds.includes(a.id));
+        if (itemsToClone.length === 0) return;
+
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} activities? This will create new entries with the same details but reset accomplishments.`)) return;
+
+        const currentTimestamp = new Date().toISOString();
+        const currentYear = new Date().getFullYear();
+
+        const newActivitiesPayload = itemsToClone.map((item, index) => {
+            const { id, uid, created_at, updated_at, history, ...rest } = item;
+            
+            const prefix = item.type === 'Training' ? 'TRN' : 'ACT';
+            const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+            const newUid = `${prefix}-${currentYear}-${sequence}${index}`;
+
+            // Deep copy expenses and reset actuals
+            const clonedExpenses = item.expenses.map(exp => ({
+                ...exp,
+                id: Date.now() + Math.random(), // New temp ID
+                actualObligationAmount: 0,
+                actualObligationDate: '',
+                actualDisbursementAmount: 0,
+                actualDisbursementDate: '',
+                actualAmount: 0 // Legacy field
+            }));
+
+            return {
+                ...rest,
+                uid: newUid,
+                status: 'Proposed', // Reset status
+                actualDate: '',
+                actualParticipantsMale: 0,
+                actualParticipantsFemale: 0,
+                catchUpPlanRemarks: '',
+                newTargetDate: '',
+                expenses: clonedExpenses,
+                encodedBy: currentUser?.fullName || 'System Clone',
+                created_at: currentTimestamp,
+                updated_at: currentTimestamp,
+                history: [{
+                    date: currentTimestamp,
+                    event: 'Cloned from ' + uid,
+                    user: currentUser?.fullName || 'System'
+                }]
+            };
+        });
+
+        if (supabase) {
+            const { data, error } = await supabase.from('activities').insert(newActivitiesPayload).select();
+            if (error) {
+                alert('Failed to clone items: ' + error.message);
+            } else if (data) {
+                setActivities(prev => [...data as Activity[], ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${data.length} activities.`);
+            }
+        } else {
+            const newLocalItems = newActivitiesPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+            setActivities(prev => [...newLocalItems as Activity[], ...prev]);
+            resetSelection();
+            alert(`Successfully cloned ${newLocalItems.length} activities (Local).`);
+        }
+    };
+
+    const handleToggleMode = (intent: 'delete' | 'clone') => {
+        if (isSelectionMode && selectionIntent === intent) {
+            toggleSelectionMode(); // Toggle off
+        } else if (isSelectionMode && selectionIntent !== intent) {
+            setSelectionIntent(intent); // Switch intent
+        } else {
+            setSelectionIntent(intent);
+            toggleSelectionMode(); // Toggle on
+        }
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -566,8 +651,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
       return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
     }
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
-
     const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
       const isSorted = sortConfig?.key === sortKey;
       const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
@@ -594,7 +677,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 onClick={() => setActiveTab(tabName)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
                     ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
             >
@@ -603,14 +686,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         );
     }
     
-    // ... [No changes needed in handleDownloadReport, handleDownloadTemplate, handleFileUpload because they are imported] ...
-
     const renderListView = () => (
         <>
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Activities Management</h2>
                 {canEdit && (
-                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                         + Add New Activity
                     </button>
                 )}
@@ -661,19 +742,29 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     <div className="flex-grow"></div>
                     <div className="flex items-center gap-2">
                         {isSelectionMode && selectedIds.length > 0 && (
-                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
-                                Delete Selected ({selectedIds.length})
+                            <button 
+                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                            >
+                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                             </button>
                         )}
-                        <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                        <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
                         {canEdit && (
                             <>
                                 <button onClick={downloadActivitiesTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
-                                <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
+                                <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
                                 <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                                <button 
+                                    onClick={() => handleToggleMode('clone')} 
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                    title="Toggle Clone Mode"
+                                >
+                                    <DuplicateIcon />
+                                </button>
                                 <button
-                                    onClick={toggleSelectionMode}
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    onClick={() => handleToggleMode('delete')}
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
                                     title="Toggle Multi-Delete Mode"
                                 >
                                     <TrashIcon />
@@ -702,7 +793,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                 type="checkbox" 
                                                 onChange={(e) => handleSelectAll(e, paginatedActivities)} 
                                                 checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedIds.includes(a.id))}
-                                                className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                             />
                                         </div>
                                     ) : (
@@ -718,10 +809,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                 
                                 return (
                                 <React.Fragment key={activity.id}>
-                                    <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                    <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
                                         <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === activity.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
-                                            <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-accent hover:underline focus:outline-none">
+                                            <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
                                                 {activity.name}
                                             </button>
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal mt-1">{activity.uid}</div>}
@@ -740,10 +831,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                             checked={selectedIds.includes(activity.id)} 
                                                             onChange={(e) => { e.stopPropagation(); handleSelectRow(activity.id); }} 
                                                             onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                         />
                                                     )}
-                                                    {/* Edit button removed */}
                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(activity); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
                                                 </div>
                                             )}
@@ -782,7 +872,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                                                     {activity.participatingIpos.map(ipoName => {
                                                                         const ipo = ipos.find(i => i.name === ipoName);
                                                                         return (
-                                                                            <button key={ipoName} onClick={(e) => { e.stopPropagation(); if (ipo) onSelectIpo(ipo); }} className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-accent disabled:cursor-not-allowed" disabled={!ipo} title={ipo ? `View details for ${ipoName}` : `${ipoName} (details not found)`}>
+                                                                            <button key={ipoName} onClick={(e) => { e.stopPropagation(); if (ipo) onSelectIpo(ipo); }} className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed" disabled={!ipo} title={ipo ? `View details for ${ipoName}` : `${ipoName} (details not found)`}>
                                                                                 {ipoName}
                                                                             </button>
                                                                         );
@@ -820,8 +910,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">
-                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                         </select>
                         <span className="text-gray-700 dark:text-gray-300">entries</span>
                     </div>
@@ -901,7 +990,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             type="checkbox" 
                                             checked={isMultiDay} 
                                             onChange={handleMultiDayToggle}
-                                            className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                            className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                         />
                                         <span>Multi-day Activity?</span>
                                     </label>
@@ -990,12 +1079,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                         <div>
                                             <span className="font-semibold">{exp.expenseParticular}</span>
-                                            <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {exp.obligationMonth}</div>
+                                            <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {formatDate(exp.obligationMonth)}</div>
                                         </div>
                                         <div className="flex items-center gap-4">
                                             <span className="font-bold">{formatCurrency(exp.amount)}</span>
                                             <div className="flex items-center gap-2">
-                                                <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                                <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                 </button>
                                                 <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
@@ -1025,7 +1114,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             <button type="button" onClick={handleCancelExpenseEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                         </div>
                                     ) : (
-                                        <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 text-accent hover:bg-green-200">+</button>
+                                        <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
                                     )}
                                 </div>
                             </div>
@@ -1035,7 +1124,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Activity</button>
+                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Activity</button>
                 </div>
             </form>
         </div>

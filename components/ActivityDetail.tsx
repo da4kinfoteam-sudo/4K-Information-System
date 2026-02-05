@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, tiers, operatingUnits, ReferenceActivity, ActivityComponentType, otherActivityComponents } from '../constants';
@@ -34,7 +33,7 @@ const formatCurrency = (amount: number) => {
 const getStatusBadge = (status: Activity['status']) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
         case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
         case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
         case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
@@ -49,7 +48,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [], onSelectIpo }) => {
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onUpdateActivity, uacsCodes, referenceActivities = [], onSelectIpo }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const { addIpoHistory } = useIpoHistory();
@@ -329,7 +328,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
 
     if (editMode !== 'none') {
         return (
@@ -356,6 +355,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                                                 <select name="status" value={editedActivity.status} onChange={handleInputChange} className={commonInputClasses}>
                                                     <option value="Proposed">Proposed</option>
                                                     <option value="Ongoing">Ongoing</option>
+                                                    <option value="Completed">Completed</option>
                                                     <option value="Cancelled">Cancelled</option>
                                                     {/* Removed Completed Option */}
                                                 </select>
@@ -653,8 +653,9 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
     }
 
     return (
-        <div className="space-y-8">
-             <header className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-8 animate-fadeIn">
+            {/* Header */}
+            <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{activity.name}</h1>
                     <p className="text-md text-gray-500 dark:text-gray-400">
@@ -677,6 +678,7 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
                 </div>
             </header>
 
+            {/* Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Column: Info & Expenses */}
                 <div className="lg:col-span-2 space-y-8">
@@ -901,5 +903,3 @@ const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack,
         </div>
     );
 };
-
-export default ActivityDetail;

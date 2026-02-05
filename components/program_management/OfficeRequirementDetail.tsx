@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect } from 'react';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
@@ -14,7 +13,7 @@ interface OfficeRequirementDetailProps {
     onUpdate: (item: OfficeRequirement) => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
@@ -102,7 +101,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Info</legend>
+                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Basic Info</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
@@ -112,7 +111,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                         </fieldset>
 
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding & Targets</legend>
+                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding & Targets</legend>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
@@ -127,13 +126,13 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Amount</label><input type="text" value={formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))} disabled className={`${commonInputClasses} bg-gray-100 cursor-not-allowed`} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Total Amount</label><input type="text" value={formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))} disabled className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800 cursor-not-allowed`} /></div>
                             </div>
                         </fieldset>
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Details</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Details</button>
                         </div>
                     </form>
                 </div>
@@ -151,7 +150,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
+                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" /></div>
@@ -166,7 +165,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -177,7 +176,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     // --- Read Only View ---
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 animate-fadeIn">
             {/* Header */}
             <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -186,13 +185,13 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>
