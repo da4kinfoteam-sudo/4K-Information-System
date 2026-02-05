@@ -290,10 +290,6 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Accomplishment Report</h3>
                     <div className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                            <DetailItem label="Actual Date" value={item.actualDate} />
-                            <DetailItem label="Actual Amount (Misc)" value={formatCurrency(item.actualAmount || 0)} />
-                        </div>
                         
                         <div>
                             <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Financial Performance</h4>
@@ -305,7 +301,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                 </div>
                                 <div className="space-y-3">
                                     <p className="text-xs font-bold uppercase text-gray-400">Disbursement</p>
-                                    <DetailItem label="Date" value={item.actualDisbursementDate} />
+                                    {/* Disbursement Date removed as redundant */}
                                     <DetailItem label="Total Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
                                 </div>
                             </div>
