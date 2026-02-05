@@ -77,24 +77,45 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     // Reset form data when switching edit modes or items
     useEffect(() => {
         setFormData(item);
-        setExpensesList(item.expenses || []);
         
-        // If legacy item with no expenses array but flat data, create a dummy expense to display
+        // Handling Legacy Data:
+        // If expenses array is empty but there is salary data (legacy record), create a default expense object
+        // using the root level fields.
         if ((!item.expenses || item.expenses.length === 0) && item.annualSalary > 0) {
             const dummyExpense: StaffingExpense = {
                 id: Date.now(),
-                objectType: 'MOOE', // Default assumption
+                objectType: 'MOOE', // Default assumption for legacy
                 expenseParticular: 'Salaries & Wages',
                 uacsCode: item.uacsCode,
                 obligationDate: item.obligationDate,
                 amount: item.annualSalary,
-                // Map flat fields
-                disbursementJan: item.disbursementJan, disbursementFeb: item.disbursementFeb, disbursementMar: item.disbursementMar,
-                disbursementApr: item.disbursementApr, disbursementMay: item.disbursementMay, disbursementJun: item.disbursementJun,
-                disbursementJul: item.disbursementJul, disbursementAug: item.disbursementAug, disbursementSep: item.disbursementSep,
-                disbursementOct: item.disbursementOct, disbursementNov: item.disbursementNov, disbursementDec: item.disbursementDec
+                // Explicitly map all months from root item to this expense
+                // @ts-ignore
+                disbursementJan: item.disbursementJan || 0, disbursementFeb: item.disbursementFeb || 0, disbursementMar: item.disbursementMar || 0,
+                // @ts-ignore
+                disbursementApr: item.disbursementApr || 0, disbursementMay: item.disbursementMay || 0, disbursementJun: item.disbursementJun || 0,
+                // @ts-ignore
+                disbursementJul: item.disbursementJul || 0, disbursementAug: item.disbursementAug || 0, disbursementSep: item.disbursementSep || 0,
+                // @ts-ignore
+                disbursementOct: item.disbursementOct || 0, disbursementNov: item.disbursementNov || 0, disbursementDec: item.disbursementDec || 0,
+                
+                // Also map legacy actuals if they exist on root
+                actualObligationAmount: item.actualObligationAmount,
+                actualDisbursementAmount: item.actualDisbursementAmount,
+                // @ts-ignore
+                actualDisbursementJan: item.actualDisbursementJan, actualDisbursementFeb: item.actualDisbursementFeb, actualDisbursementMar: item.actualDisbursementMar,
+                // ... map other months if needed, though primarily total matters for legacy display
             };
+            
+            // Ensure month loops populate strictly if not explicitly set above
+            months.forEach(m => {
+                // @ts-ignore
+                if (dummyExpense[`disbursement${m}`] === undefined) dummyExpense[`disbursement${m}`] = (item as any)[`disbursement${m}`] || 0;
+            });
+
             setExpensesList([dummyExpense]);
+        } else {
+            setExpensesList(item.expenses || []);
         }
     }, [item, editMode]);
 

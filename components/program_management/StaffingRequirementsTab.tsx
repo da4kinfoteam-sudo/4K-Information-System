@@ -16,6 +16,12 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+    </svg>
+);
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
 
 export const parseStaffingRequirementRow = (row: any, commonData: any): StaffingRequirement => {
@@ -58,6 +64,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<StaffingRequirement | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Filters - Persistent
     const [ouFilter, setOuFilter] = useLocalStorageState('staffing_ouFilter', 'All');
@@ -243,6 +250,83 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 
+    const handleClone = async () => {
+        const itemsToClone = items.filter(i => selectedIds.includes(i.id));
+        if (itemsToClone.length === 0) return;
+
+        if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} staffing requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
+
+        const currentTimestamp = new Date().toISOString();
+        const newItemsPayload = itemsToClone.map((item, index) => {
+            const { id, uid, created_at, updated_at, ...rest } = item;
+            const newUid = `SR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
+            
+            // Deep copy and reset expenses actuals
+            const clonedExpenses = (item.expenses || []).map(exp => ({
+                ...exp,
+                id: Date.now() + Math.random(), // New ID for expense
+                actualObligationAmount: 0,
+                actualObligationDate: '',
+                actualDisbursementAmount: 0,
+                actualDisbursementDate: '',
+                // Reset monthly actuals
+                actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0,
+                actualDisbursementMay: 0, actualDisbursementJun: 0, actualDisbursementJul: 0, actualDisbursementAug: 0,
+                actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
+            }));
+
+            // Reset root actuals
+            const resetActuals: any = {
+                actualDate: '',
+                actualAmount: 0,
+                actualObligationDate: '',
+                actualDisbursementDate: '',
+                actualObligationAmount: 0,
+                actualDisbursementAmount: 0,
+                actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0,
+                actualDisbursementMay: 0, actualDisbursementJun: 0, actualDisbursementJul: 0, actualDisbursementAug: 0,
+                actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
+            };
+
+            return {
+                ...rest,
+                ...resetActuals,
+                uid: newUid,
+                expenses: clonedExpenses,
+                encodedBy: currentUser?.fullName || 'System Clone',
+                created_at: currentTimestamp,
+                updated_at: currentTimestamp,
+            };
+        });
+
+        if (supabase) {
+            const { data, error } = await supabase.from('staffing_requirements').insert(newItemsPayload).select();
+            if (error) {
+                alert('Failed to clone items: ' + error.message);
+            } else if (data) {
+                setItems(prev => [...data, ...prev]);
+                resetSelection();
+                alert(`Successfully cloned ${data.length} items.`);
+            }
+        } else {
+            const newLocalItems = newItemsPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+            setItems(prev => [...newLocalItems, ...prev]);
+            resetSelection();
+            alert(`Successfully cloned ${newLocalItems.length} items (Local).`);
+        }
+    };
+
+    const handleToggleMode = (intent: 'delete' | 'clone') => {
+        if (isSelectionMode && selectionIntent === intent) {
+            toggleSelectionMode(); // Toggle off
+        } else if (isSelectionMode && selectionIntent !== intent) {
+            setSelectionIntent(intent); // Switch intent
+        } else {
+            setSelectionIntent(intent);
+            toggleSelectionMode(); // Toggle on
+        }
+    };
+
     // Import/Export
     const handleDownloadReport = () => {
         const data = filteredItems.map(item => ({
@@ -416,7 +500,12 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 </div>
                 <div className="flex items-center gap-2">
                     {isSelectionMode && selectedIds.length > 0 && (
-                        <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">Delete Selected ({selectedIds.length})</button>
+                        <button 
+                            onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                        >
+                            {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
+                        </button>
                     )}
                     {canEdit && (
                         <button 
@@ -426,7 +515,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             + Add New
                         </button>
                     )}
-                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
+                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
                     {canEdit && (
                         <>
                             <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
@@ -434,7 +523,18 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 {isUploading ? 'Uploading...' : 'Upload XLSX'}
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
-                            <button onClick={toggleSelectionMode} className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} title="Toggle Multi-Delete Mode">
+                            <button 
+                                onClick={() => handleToggleMode('clone')} 
+                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                title="Toggle Clone Mode"
+                            >
+                                <DuplicateIcon />
+                            </button>
+                            <button 
+                                onClick={() => handleToggleMode('delete')} 
+                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                title="Toggle Multi-Delete Mode"
+                            >
                                 <TrashIcon />
                             </button>
                         </>
