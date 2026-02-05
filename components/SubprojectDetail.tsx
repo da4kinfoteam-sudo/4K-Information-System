@@ -229,10 +229,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
         const delivery = new Date(currentDetail.deliveryDate + 'T00:00:00Z');
         const start = new Date(editedSubproject.startDate + 'T00:00:00Z');
-        const end = new Date(editedSubproject.estimatedCompletionDate + 'T00:00:00Z');
-
-        if (delivery < start || delivery > end) {
-            setDateError(`Delivery date must be between the project timeline (${formatDate(editedSubproject.startDate)} to ${formatDate(editedSubproject.estimatedCompletionDate)}).`);
+        
+        if (delivery < start) {
+            setDateError(`Delivery date must be on or after the project start date (${formatDate(editedSubproject.startDate)}).`);
             return;
         }
 
@@ -252,12 +251,35 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             actualDisbursementAmount: 0
         };
 
+        let updatedDetailItems: SubprojectDetailInput[] = [];
+
         if (editingDetailIndex !== null) {
-            setDetailItems(prev => prev.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item));
+            updatedDetailItems = detailItems.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item);
             setEditingDetailIndex(null);
         } else {
-            setDetailItems(prev => [...prev, newItem]);
+            updatedDetailItems = [...detailItems, newItem];
         }
+
+        setDetailItems(updatedDetailItems);
+
+        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
+        let newEstimatedCompletionDate = editedSubproject.estimatedCompletionDate;
+        const deliveryDates = updatedDetailItems
+            .map(d => d.deliveryDate)
+            .filter(d => d && d.trim() !== '')
+            .map(d => new Date(d).getTime())
+            .filter(t => !isNaN(t));
+
+        if (deliveryDates.length > 0) {
+            const maxDateTimestamp = Math.max(...deliveryDates);
+            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
+            newEstimatedCompletionDate = farthestDate;
+        }
+
+        setEditedSubproject(prev => ({
+            ...prev,
+            estimatedCompletionDate: newEstimatedCompletionDate
+        }));
 
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
@@ -438,7 +460,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditMode('none');
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
 
     if (editMode !== 'none') {
         return (

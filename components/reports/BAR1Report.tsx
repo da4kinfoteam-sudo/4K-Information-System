@@ -1,7 +1,6 @@
-
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
+import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
 import { getObjectTypeByCode, XLSX } from './ReportUtils';
 
 interface BAR1ReportProps {
@@ -12,6 +11,7 @@ interface BAR1ReportProps {
         officeReqs: OfficeRequirement[];
         staffingReqs: StaffingRequirement[];
         otherProgramExpenses: OtherProgramExpense[];
+        ipos: IPO[];
     };
     uacsCodes: any;
     selectedYear: string;
@@ -45,7 +45,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
-                    'Trainings': { items: [] },
+                    // Removed 'Trainings' from here
                     'Staff Requirements': { items: [] },
                     'Office Requirements': { items: [] },
                     'Activities': { items: [] }
@@ -61,7 +61,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             total: 0
         });
 
-        // Helper to aggregate items with same name/indicator
+        // Helper to aggregate items with same name/indicator (used for PM)
         const addItemToGroup = (list: any[], newItem: any) => {
             const existing = list.find(i => i.indicator === newItem.indicator);
             if (existing) {
@@ -94,58 +94,212 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
         };
 
+        // Standard Item Creation (for simple counting like PM items)
         const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string) => {
             const item: any = {
                 indicator,
                 target: initializeCounter(),
                 actual: initializeCounter()
             };
-
             incrementCounter(item.target, targetDate, physicalCount);
             incrementCounter(item.actual, actualDate, physicalCount);
-
             return item;
         };
 
-        // Process Subprojects
+        // Helper: Calculate First Encounter
+        // Entries: { id: unique_id_to_track, date: event_date }
+        const calculateFirstEncounter = (entries: { id: string; date?: string }[]) => {
+            const counter = initializeCounter();
+            // Filter valid dates, convert to Date object for sorting
+            const validEntries = entries
+                .filter(e => e.date)
+                .map(e => ({ ...e, d: new Date(e.date + 'T00:00:00Z') }))
+                .sort((a, b) => a.d.getTime() - b.d.getTime());
+
+            const seen = new Set<string>();
+
+            validEntries.forEach(entry => {
+                if (!seen.has(entry.id)) {
+                    seen.add(entry.id);
+                    incrementCounter(counter, entry.date, 1);
+                }
+            });
+            return counter;
+        };
+
+        // Helper: Calculate Sum over time (e.g. participants)
+        const calculateSumOverTime = (entries: { val: number; date?: string }[]) => {
+            const counter = initializeCounter();
+            entries.forEach(e => {
+                if (e.date) {
+                    incrementCounter(counter, e.date, e.val);
+                }
+            });
+            return counter;
+        }
+
+        // --- Data Preparation ---
+        const ipoAdMap = new Map<string, string>(); // Name -> AD No
+        data.ipos.forEach(ipo => {
+            if (ipo.ancestralDomainNo) ipoAdMap.set(ipo.name, ipo.ancestralDomainNo);
+        });
+
+        // --- Production & Livelihood Packages (Subprojects) ---
+        const packages: Record<string, Subproject[]> = {};
         data.subprojects.forEach(sp => {
-            // Target: Estimated completion date
-            // Actual: Actual completion date
-            const item = createBar1Item(sp.name, 1, sp.estimatedCompletionDate, sp.actualCompletionDate);
-            const packageKey = sp.packageType;
-            if (!finalData['Production and Livelihood'].packages[packageKey]) {
-                finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
-            }
-            addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
+            const pkg = sp.packageType || 'Other';
+            if (!packages[pkg]) packages[pkg] = [];
+            packages[pkg].push(sp);
         });
 
-        // Process Trainings
-        data.trainings.forEach(t => {
-            const item = createBar1Item(t.name, 1, t.date, t.actualDate);
-            if (t.component === 'Production and Livelihood') {
-                 const packageKey = 'Trainings';
-                 if (!finalData['Production and Livelihood'].packages[packageKey]) {
-                    finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
-                 }
-                 addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
-            } else if (t.component === 'Program Management') {
-                 addItemToGroup(finalData['Program Management'].packages['Trainings'].items, item);
-            } else if (finalData[t.component]) {
-                addItemToGroup(finalData[t.component], item);
+        Object.entries(packages).forEach(([pkgName, subprojects]) => {
+            if (!finalData['Production and Livelihood'].packages[pkgName]) {
+                finalData['Production and Livelihood'].packages[pkgName] = { items: [] };
             }
+            const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
+
+            // 1. ADs Covered
+            const targetADs = subprojects.map(sp => ({
+                id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+                date: sp.estimatedCompletionDate // or startDate? Requirement says "delivered", usually implies completion for physical count, but for AD/IPO coverage? Prompt says "AD should be first encounter". Usually coverage aligns with project start or end. Let's use completion to match "delivered" logic context unless specified otherwise. However, coverage often counts at start. Prompt says "Subproject should be on estimated month of completion". Let's stick to completion dates for consistency within the row group unless clearly wrong.
+            })).filter(x => x.id); // Filter out unknown ADs
+            const actualADs = subprojects.map(sp => ({
+                id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+                date: sp.actualCompletionDate
+            })).filter(x => x.id);
+
+            pkgItems.push({
+                indicator: "Number of Ancestral Domains covered",
+                target: calculateFirstEncounter(targetADs),
+                actual: calculateFirstEncounter(actualADs)
+            });
+
+            // 2. IPOs
+            const targetIPOs = subprojects.map(sp => ({
+                id: sp.indigenousPeopleOrganization,
+                date: sp.estimatedCompletionDate
+            }));
+            const actualIPOs = subprojects.map(sp => ({
+                id: sp.indigenousPeopleOrganization,
+                date: sp.actualCompletionDate
+            }));
+
+            pkgItems.push({
+                indicator: "Number of IPOs",
+                target: calculateFirstEncounter(targetIPOs),
+                actual: calculateFirstEncounter(actualIPOs)
+            });
+
+            // 3. Subprojects Delivered
+            const targetSPs = subprojects.map(sp => ({
+                val: 1,
+                date: sp.estimatedCompletionDate
+            }));
+            const actualSPs = subprojects.map(sp => ({
+                val: 1,
+                date: sp.actualCompletionDate
+            }));
+            
+            pkgItems.push({
+                indicator: "Number of subprojects delivered",
+                target: calculateSumOverTime(targetSPs),
+                actual: calculateSumOverTime(actualSPs)
+            });
         });
 
-        // Process Other Activities
+        // --- Trainings (Social Prep, Marketing, and Production "Trainings" Package) ---
+        const processTrainings = (
+            componentName: string, 
+            targetContainer: any[], 
+            isPackage: boolean = false
+        ) => {
+            // Filter trainings for this component
+            const relevantTrainings = data.trainings.filter(t => t.component === componentName);
+            
+            // For Date: "always use the end date"
+            const getTargetDate = (t: Training) => t.endDate || t.date;
+            const getActualDate = (t: Training) => t.actualDate;
+
+            // 1. Number of Trainings conducted
+            const targetTrainings = relevantTrainings.map(t => ({ val: 1, date: getTargetDate(t) }));
+            const actualTrainings = relevantTrainings.map(t => ({ val: 1, date: getActualDate(t) }));
+
+            // 2. Number of IPOs trained
+            // Flatten participating IPOs
+            const targetIPOs: { id: string, date?: string }[] = [];
+            const actualIPOs: { id: string, date?: string }[] = [];
+            
+            relevantTrainings.forEach(t => {
+                const tDate = getTargetDate(t);
+                const aDate = getActualDate(t);
+                t.participatingIpos.forEach(ipo => {
+                    targetIPOs.push({ id: ipo, date: tDate });
+                    if (aDate) actualIPOs.push({ id: ipo, date: aDate });
+                });
+            });
+
+            // 3. Number of Participants
+            const targetPax = relevantTrainings.map(t => ({ 
+                val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
+                date: getTargetDate(t) 
+            }));
+            const actualPax = relevantTrainings.map(t => ({ 
+                val: (t.actualParticipantsMale || 0) + (t.actualParticipantsFemale || 0), 
+                date: getActualDate(t) 
+            }));
+
+            const items = [
+                {
+                    indicator: "Number of Trainings conducted",
+                    target: calculateSumOverTime(targetTrainings),
+                    actual: calculateSumOverTime(actualTrainings)
+                },
+                {
+                    indicator: "Number of IPOs trained",
+                    target: calculateFirstEncounter(targetIPOs),
+                    actual: calculateFirstEncounter(actualIPOs)
+                },
+                {
+                    indicator: "Number of Participants",
+                    target: calculateSumOverTime(targetPax),
+                    actual: calculateSumOverTime(actualPax)
+                }
+            ];
+
+            if (isPackage) {
+                // For Production, it's inside packages
+                if (!finalData['Production and Livelihood'].packages['Trainings']) {
+                    finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
+                }
+                items.forEach(i => finalData['Production and Livelihood'].packages['Trainings'].items.push(i));
+            } else {
+                // For Social Prep & Marketing, push to top array
+                items.forEach(i => targetContainer.push(i));
+            }
+        };
+
+        processTrainings('Social Preparation', finalData['Social Preparation']);
+        processTrainings('Marketing and Enterprise', finalData['Marketing and Enterprise']);
+        processTrainings('Production and Livelihood', [], true);
+
+        // --- Other Activities (Program Management) ---
+        // Keep as individual line items as per PM structure usually
         data.otherActivities.forEach(oa => {
             const item = createBar1Item(oa.name, 1, oa.date, oa.actualDate);
             if (oa.component === 'Program Management') {
                  addItemToGroup(finalData['Program Management'].packages['Activities'].items, item);
-            } else if (finalData[oa.component]) {
+            } 
+            // If Other Activity is tagged Social/Marketing, should it aggregate? 
+            // Prompt says "for other Trainings...". Assuming 'Activity' type in these components are treated like trainings for aggregation or kept separate? 
+            // Current `processTrainings` only filters `data.trainings` (type='Training'). 
+            // Let's assume 'Other Activities' (type='Activity') are distinct line items unless PM.
+            else if (finalData[oa.component] && Array.isArray(finalData[oa.component])) {
+                // If it falls into Social/Marketing, add as line item below aggregates?
                 addItemToGroup(finalData[oa.component], item);
             }
         });
 
-        // Process PM Items
+        // --- PM Items ---
         const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
                 if (isOtherExpense) return; // Other Expenses do not have physical targets for BAR 1
@@ -160,7 +314,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         }
         processPm(data.staffingReqs, 'Staff Requirements', true);
         processPm(data.officeReqs, 'Office Requirements');
-        processPm(data.otherProgramExpenses, 'Office Requirements', false, true);
+        // Removed otherProgramExpenses as they are financial only usually, or handled above if physical.
 
         const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages).sort();
         const sortedPLPackageData: { [key: string]: any } = {};
@@ -318,7 +472,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                      <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    {/* Span across targets (20) + separator (1) + actuals (28) = 49 */}
                     <td colSpan={49} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
                 </tr>
             )
@@ -517,7 +670,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         
         // Basic Merges for Headers
         if(!ws['!merges']) ws['!merges'] = [];
-        // Top Row Merges
         ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 20 } }); // Physical Targets
         ws['!merges'].push({ s: { r: 0, c: 22 }, e: { r: 0, c: 49 } }); // Physical Accomplishments
 

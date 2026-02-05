@@ -478,16 +478,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             return;
         }
 
+        let updatedDetails: SubprojectDetail[] = [];
+
         if (editingDetailId !== null) {
-            setFormData(prev => ({
-                ...prev,
-                details: prev.details.map(d => d.id === editingDetailId ? { 
-                    ...d, 
-                    ...currentDetail,
-                    pricePerUnit: Number(currentDetail.pricePerUnit),
-                    numberOfUnits: Number(currentDetail.numberOfUnits)
-                } : d)
-            }));
+            updatedDetails = formData.details.map(d => d.id === editingDetailId ? { 
+                ...d, 
+                ...currentDetail,
+                pricePerUnit: Number(currentDetail.pricePerUnit),
+                numberOfUnits: Number(currentDetail.numberOfUnits)
+            } : d);
             setEditingDetailId(null);
         } else {
             const newDetail: SubprojectDetail = {
@@ -496,8 +495,28 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 pricePerUnit: Number(currentDetail.pricePerUnit),
                 numberOfUnits: Number(currentDetail.numberOfUnits)
             };
-            setFormData(prev => ({ ...prev, details: [...prev.details, newDetail] }));
+            updatedDetails = [...formData.details, newDetail];
         }
+
+        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
+        let newEstimatedCompletionDate = formData.estimatedCompletionDate;
+        const deliveryDates = updatedDetails
+            .map(d => d.deliveryDate)
+            .filter(d => d && d.trim() !== '')
+            .map(d => new Date(d).getTime())
+            .filter(t => !isNaN(t));
+
+        if (deliveryDates.length > 0) {
+            const maxDateTimestamp = Math.max(...deliveryDates);
+            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
+            newEstimatedCompletionDate = farthestDate;
+        }
+
+        setFormData(prev => ({ 
+            ...prev, 
+            details: updatedDetails,
+            estimatedCompletionDate: newEstimatedCompletionDate
+        }));
 
         setCurrentDetail(prev => ({
             ...prev,

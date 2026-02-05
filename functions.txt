@@ -1,0 +1,59 @@
+// --- 1. For components/Subprojects.tsx ---
+// Location: Inside the `handleAddDetail` function.
+// Place this code immediately AFTER `updatedDetails` is defined (around line 175) 
+// and BEFORE `setFormData` is called.
+
+// START CODE BLOCK
+        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
+        let newEstimatedCompletionDate = formData.estimatedCompletionDate;
+        const deliveryDates = updatedDetails
+            .map(d => d.deliveryDate)
+            .filter(d => d && d.trim() !== '')
+            .map(d => new Date(d).getTime())
+            .filter(t => !isNaN(t));
+
+        if (deliveryDates.length > 0) {
+            const maxDateTimestamp = Math.max(...deliveryDates);
+            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
+            newEstimatedCompletionDate = farthestDate;
+        }
+// END CODE BLOCK
+
+// NOTE: Update your setFormData call to use `newEstimatedCompletionDate`:
+/*
+        setFormData(prev => ({ 
+            ...prev, 
+            details: updatedDetails,
+            estimatedCompletionDate: newEstimatedCompletionDate
+        }));
+*/
+
+
+// --- 2. For components/SubprojectDetail.tsx ---
+// Location: Inside the `handleAddDetail` function.
+// Place this code immediately AFTER `updatedDetailItems` is defined (around line 185)
+// and BEFORE `setDetailItems` or `setEditedSubproject` is called.
+
+// START CODE BLOCK
+        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
+        let newEstimatedCompletionDate = editedSubproject.estimatedCompletionDate;
+        const deliveryDates = updatedDetailItems
+            .map(d => d.deliveryDate)
+            .filter(d => d && d.trim() !== '')
+            .map(d => new Date(d).getTime())
+            .filter(t => !isNaN(t));
+
+        if (deliveryDates.length > 0) {
+            const maxDateTimestamp = Math.max(...deliveryDates);
+            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
+            newEstimatedCompletionDate = farthestDate;
+        }
+// END CODE BLOCK
+
+// NOTE: Update your setEditedSubproject call to use `newEstimatedCompletionDate`:
+/*
+        setEditedSubproject(prev => ({
+            ...prev,
+            estimatedCompletionDate: newEstimatedCompletionDate
+        }));
+*/
