@@ -337,8 +337,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     const handleDownloadTemplate = () => {
         const monthHeaders = ['disbursementJan', 'disbursementFeb', 'disbursementMar', 'disbursementApr', 'disbursementMay', 'disbursementJun', 'disbursementJul', 'disbursementAug', 'disbursementSep', 'disbursementOct', 'disbursementNov', 'disbursementDec'];
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'personnelType', ...monthHeaders];
-        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', uacsCode: '50100000-00', personnelPosition: 'PDO II', status: 'Contractual', salaryGrade: 15, personnelType: 'Technical', disbursementJan: 45000, disbursementFeb: 45000, disbursementMar: 45000, disbursementApr: 45000, disbursementMay: 45000, disbursementJun: 45000, disbursementJul: 45000, disbursementAug: 45000, disbursementSep: 45000, disbursementOct: 45000, disbursementNov: 45000, disbursementDec: 45000 }];
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'uacsCode', 'personnelPosition', 'status', 'salaryGrade', 'personnelType', 'amount', ...monthHeaders];
+        const exampleData = [{ operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', uacsCode: '50100000-00', personnelPosition: 'PDO II', status: 'Contractual', salaryGrade: 15, personnelType: 'Technical', amount: 540000, disbursementJan: 45000, disbursementFeb: 45000, disbursementMar: 45000, disbursementApr: 45000, disbursementMay: 45000, disbursementJun: 45000, disbursementJul: 45000, disbursementAug: 45000, disbursementSep: 45000, disbursementOct: 45000, disbursementNov: 45000, disbursementDec: 45000 }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template"); XLSX.writeFile(wb, "Staffing_Req_Template.xlsx");
     };
 
@@ -350,12 +350,14 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const data = event.target?.result; const workbook = XLSX.read(data, { type: 'array' });
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
+                
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `SR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
                     const resolvedOU = row.operatingUnit ? resolveOperatingUnit(row.operatingUnit) : 'NPMO';
-
-                    return parseStaffingRequirementRow(row, {
+                    
+                    // Create base object
+                    const parsed = parseStaffingRequirementRow(row, {
                         uid, 
                         operatingUnit: resolvedOU, 
                         fundYear: fundYear, 
@@ -368,7 +370,35 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         created_at: currentTimestamp, 
                         updated_at: currentTimestamp
                     });
+
+                    // Construct default expense object from flat row data for legacy support
+                    const annualSalary = Number(row.amount || row.annualSalary) || 0;
+                    const expense: StaffingExpense = {
+                        id: Date.now() + index,
+                        objectType: 'MOOE', // Default
+                        expenseParticular: 'Salaries & Wages',
+                        uacsCode: row.uacsCode || '',
+                        obligationDate: row.obligationDate || '',
+                        amount: annualSalary,
+                        // Map monthly values from row
+                        disbursementJan: Number(row.disbursementJan) || 0, disbursementFeb: Number(row.disbursementFeb) || 0, disbursementMar: Number(row.disbursementMar) || 0,
+                        disbursementApr: Number(row.disbursementApr) || 0, disbursementMay: Number(row.disbursementMay) || 0, disbursementJun: Number(row.disbursementJun) || 0,
+                        disbursementJul: Number(row.disbursementJul) || 0, disbursementAug: Number(row.disbursementAug) || 0, disbursementSep: Number(row.disbursementSep) || 0,
+                        disbursementOct: Number(row.disbursementOct) || 0, disbursementNov: Number(row.disbursementNov) || 0, disbursementDec: Number(row.disbursementDec) || 0,
+                        
+                        // Initialize actuals
+                        actualObligationAmount: 0, actualObligationDate: '', actualDisbursementAmount: 0, actualDisbursementDate: '',
+                        actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0,
+                        actualDisbursementMay: 0, actualDisbursementJun: 0, actualDisbursementJul: 0, actualDisbursementAug: 0,
+                        actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
+                    };
+
+                    parsed.expenses = [expense];
+                    parsed.annualSalary = annualSalary; // Ensure root salary matches
+
+                    return parsed;
                 });
+                
                 if (supabase) {
                     const { error } = await supabase.from('staffing_requirements').insert(newItems); if (error) throw error;
                     const { data } = await supabase.from('staffing_requirements').select('*').order('id', { ascending: true }); if (data) setItems(data as StaffingRequirement[]);
@@ -479,7 +509,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     </fieldset>
                     
                     <div className="flex justify-end gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 hover:brightness-95 transition-colors">Save Staffing Requirement</button>
                     </div>
                 </form>

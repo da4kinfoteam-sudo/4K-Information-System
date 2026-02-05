@@ -24,6 +24,13 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString; // Return original if parse fails
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -52,28 +59,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
 
-    // Primary UACS Lookup State
-    const [primaryUacsDescription, setPrimaryUacsDescription] = useState('');
-
-    // Update UACS Description Lookup
-    useEffect(() => {
-        if (item.uacsCode && uacsCodes) {
-            let desc = 'Lookup Failed';
-            let found = false;
-            for (const type of Object.keys(uacsCodes)) {
-                for (const part of Object.keys(uacsCodes[type])) {
-                    if (uacsCodes[type][part][item.uacsCode]) {
-                        desc = part; // Use particular name as description
-                        found = true;
-                        break;
-                    }
-                }
-                if (found) break;
-            }
-            setPrimaryUacsDescription(desc);
-        }
-    }, [item.uacsCode, uacsCodes]);
-
     // Reset form data when switching edit modes or items
     useEffect(() => {
         setFormData(item);
@@ -86,7 +71,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 id: Date.now(),
                 objectType: 'MOOE', // Default assumption for legacy
                 expenseParticular: 'Salaries & Wages',
-                uacsCode: item.uacsCode,
+                uacsCode: item.uacsCode || 'N/A', // Force usage of root code
                 obligationDate: item.obligationDate,
                 amount: item.annualSalary,
                 // Explicitly map all months from root item to this expense
@@ -104,7 +89,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 actualDisbursementAmount: item.actualDisbursementAmount,
                 // @ts-ignore
                 actualDisbursementJan: item.actualDisbursementJan, actualDisbursementFeb: item.actualDisbursementFeb, actualDisbursementMar: item.actualDisbursementMar,
-                // ... map other months if needed, though primarily total matters for legacy display
             };
             
             // Ensure month loops populate strictly if not explicitly set above
@@ -365,7 +349,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 {expensesList.map((expense, idx) => (
                                     <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-600 flex justify-between items-start">
                                         <div>
-                                            <p className="font-semibold text-gray-800 dark:text-white text-sm">{expense.expenseParticular || 'Unspecified'}</p>
+                                            <p className="font-semibold text-gray-800 dark:text-white text-sm">{expense.expenseParticular || 'Unspecified Particular'}</p>
                                             <p className="text-xs text-gray-500 dark:text-gray-400">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
                                         </div>
                                         <div className="flex items-center gap-4">
@@ -381,6 +365,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         </div>
                                     </div>
                                 ))}
+                                {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
                                 <div className="flex justify-end pt-2 border-t border-gray-300 dark:border-gray-600">
                                     <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">Total Annual Requirement:</span>
                                     <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}</span>
@@ -455,89 +440,31 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Financial Item Breakdown</legend>
-                            <div className="space-y-6">
-                                {expensesList.map((exp) => {
-                                    const totalActualDisbursement = calculateActualDisbursementTotal(exp);
-                                    return (
-                                        <div key={exp.id} className="bg-gray-50 dark:bg-gray-700/30 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                                            <div className="flex flex-col sm:flex-row justify-between mb-4 border-b border-gray-200 dark:border-gray-600 pb-2">
-                                                <div>
-                                                    <h4 className="font-bold text-gray-800 dark:text-white">{exp.expenseParticular}</h4>
-                                                    <span className="text-xs text-gray-500 font-mono">{exp.uacsCode}</span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-500">Target Amount: {formatCurrency(exp.amount)}</p>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Actual Obligation Date</label>
-                                                    <input 
-                                                        type="date" 
-                                                        value={exp.actualObligationDate || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationDate', e.target.value)} 
-                                                        disabled={isLocked(exp.actualObligationDate)}
-                                                        className={commonInputClasses}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Actual Obligated Amount</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={exp.actualObligationAmount || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', parseFloat(e.target.value) || 0)} 
-                                                        disabled={isLocked(exp.actualObligationAmount)}
-                                                        className={commonInputClasses}
-                                                        placeholder="0.00"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div>
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 font-bold uppercase tracking-wide">Actual Monthly Disbursements</label>
-                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Total: {formatCurrency(totalActualDisbursement)}</span>
-                                                </div>
-                                                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-                                                    {months.map(month => (
-                                                        <div key={month}>
-                                                            <label className="block text-[10px] text-gray-500 uppercase">{month}</label>
-                                                            <input 
-                                                                type="number" 
-                                                                // @ts-ignore
-                                                                value={(exp as any)[`actualDisbursement${month}`] || ''} 
-                                                                onChange={(e) => handleExpenseAccomplishmentChange(exp.id, `actualDisbursement${month}` as keyof StaffingExpense, parseFloat(e.target.value) || 0)} 
-                                                                // @ts-ignore
-                                                                disabled={isLocked((exp as any)[`actualDisbursement${month}`])}
-                                                                className="w-full text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-800 disabled:bg-gray-100 disabled:dark:bg-gray-900/50"
-                                                                placeholder="0"
-                                                            />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
                             </div>
-                            
-                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-6 text-sm">
-                                <div>
-                                    <span className="text-gray-500 dark:text-gray-400 block text-xs">Total Actual Obligation</span>
-                                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(expensesList.reduce((s, e) => s + (e.actualObligationAmount || 0), 0))}</span>
-                                </div>
-                                <div>
-                                    <span className="text-gray-500 dark:text-gray-400 block text-xs">Total Actual Disbursement</span>
-                                    <span className="font-bold text-gray-900 dark:text-white">{formatCurrency(expensesList.reduce((s, e) => s + calculateActualDisbursementTotal(e), 0))}</span>
-                                </div>
+                        </fieldset>
+
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Actual Monthly Disbursement</legend>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {months.map(month => (
+                                    <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
+                                    // @ts-ignore
+                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                ))}
+                            </div>
+                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Actual Disbursement:</span>
+                                <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
                             </div>
                         </fieldset>
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -557,13 +484,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>
@@ -587,10 +514,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
                         <DetailItem label="Type" value={item.personnelType} />
                         <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
-                        <div className="col-span-2">
-                            <DetailItem label="Primary UACS" value={`${item.uacsCode} (${primaryUacsDescription || 'Lookup Failed'})`} />
-                        </div>
-                        <DetailItem label="Primary Obligation Date" value={item.obligationDate} />
                         <DetailItem label="Total Annual Requirement" value={formatCurrency(item.annualSalary)} />
                         <DetailItem label="Encoded By" value={item.encodedBy} />
                     </div>
@@ -616,6 +539,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         </div>
                                         {expandedExpenseIds.has(exp.id) && (
                                             <div className="p-3 border-t border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
+                                                <div className="mb-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                                                    Target Obligation Date: {formatDate(exp.obligationDate)}
+                                                </div>
                                                 <p className="text-xs font-bold text-gray-500 uppercase mb-2">Target Monthly Disbursement</p>
                                                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                                                     {months.map(m => (
