@@ -1,5 +1,5 @@
 // Author: 4K 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,8 +39,44 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
     
+    // Construct display expenses, handling legacy data where expenses array might be empty but root data exists
+    const displayExpenses = useMemo(() => {
+        if (item.expenses && item.expenses.length > 0) return item.expenses;
+
+        // Legacy Fallback: Construct a single expense from root fields
+        if (item.annualSalary > 0 || item.uacsCode) {
+             const legacy: StaffingExpense = {
+                id: 99999, // Dummy ID for display
+                objectType: 'MOOE',
+                expenseParticular: 'Salaries & Wages',
+                uacsCode: item.uacsCode || '',
+                obligationDate: item.obligationDate,
+                amount: item.annualSalary,
+                
+                // Map Targets
+                disbursementJan: item.disbursementJan || 0, disbursementFeb: item.disbursementFeb || 0, disbursementMar: item.disbursementMar || 0,
+                disbursementApr: item.disbursementApr || 0, disbursementMay: item.disbursementMay || 0, disbursementJun: item.disbursementJun || 0,
+                disbursementJul: item.disbursementJul || 0, disbursementAug: item.disbursementAug || 0, disbursementSep: item.disbursementSep || 0,
+                disbursementOct: item.disbursementOct || 0, disbursementNov: item.disbursementNov || 0, disbursementDec: item.disbursementDec || 0,
+
+                // Map Actuals
+                actualObligationAmount: item.actualObligationAmount,
+                actualObligationDate: item.actualObligationDate,
+                actualDisbursementAmount: item.actualDisbursementAmount,
+                actualDisbursementDate: item.actualDisbursementDate,
+
+                actualDisbursementJan: item.actualDisbursementJan || 0, actualDisbursementFeb: item.actualDisbursementFeb || 0, actualDisbursementMar: item.actualDisbursementMar || 0,
+                actualDisbursementApr: item.actualDisbursementApr || 0, actualDisbursementMay: item.actualDisbursementMay || 0, actualDisbursementJun: item.actualDisbursementJun || 0,
+                actualDisbursementJul: item.actualDisbursementJul || 0, actualDisbursementAug: item.actualDisbursementAug || 0, actualDisbursementSep: item.actualDisbursementSep || 0,
+                actualDisbursementOct: item.actualDisbursementOct || 0, actualDisbursementNov: item.actualDisbursementNov || 0, actualDisbursementDec: item.actualDisbursementDec || 0,
+            };
+            return [legacy];
+        }
+        return [];
+    }, [item]);
+
     // Expense Management State
-    const [expensesList, setExpensesList] = useState<StaffingExpense[]>(item.expenses || []);
+    const [expensesList, setExpensesList] = useState<StaffingExpense[]>([]);
     const [expandedExpenseIds, setExpandedExpenseIds] = useState<Set<number>>(new Set());
     
     // Temp State for adding/editing expense in detail view
@@ -59,49 +95,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
 
-    // Reset form data when switching edit modes or items
+    // Reset form data and hydrate expenses list (including legacy fix) when item changes
     useEffect(() => {
         setFormData(item);
-        
-        // Handling Legacy Data:
-        // If expenses array is empty but there is salary data (legacy record), create a default expense object
-        // using the root level fields.
-        if ((!item.expenses || item.expenses.length === 0) && item.annualSalary > 0) {
-            const dummyExpense: StaffingExpense = {
-                id: Date.now(),
-                objectType: 'MOOE', // Default assumption for legacy
-                expenseParticular: 'Salaries & Wages',
-                uacsCode: item.uacsCode || 'N/A', // Force usage of root code
-                obligationDate: item.obligationDate,
-                amount: item.annualSalary,
-                // Explicitly map all months from root item to this expense
-                // @ts-ignore
-                disbursementJan: item.disbursementJan || 0, disbursementFeb: item.disbursementFeb || 0, disbursementMar: item.disbursementMar || 0,
-                // @ts-ignore
-                disbursementApr: item.disbursementApr || 0, disbursementMay: item.disbursementMay || 0, disbursementJun: item.disbursementJun || 0,
-                // @ts-ignore
-                disbursementJul: item.disbursementJul || 0, disbursementAug: item.disbursementAug || 0, disbursementSep: item.disbursementSep || 0,
-                // @ts-ignore
-                disbursementOct: item.disbursementOct || 0, disbursementNov: item.disbursementNov || 0, disbursementDec: item.disbursementDec || 0,
-                
-                // Also map legacy actuals if they exist on root
-                actualObligationAmount: item.actualObligationAmount,
-                actualDisbursementAmount: item.actualDisbursementAmount,
-                // @ts-ignore
-                actualDisbursementJan: item.actualDisbursementJan, actualDisbursementFeb: item.actualDisbursementFeb, actualDisbursementMar: item.actualDisbursementMar,
-            };
-            
-            // Ensure month loops populate strictly if not explicitly set above
-            months.forEach(m => {
-                // @ts-ignore
-                if (dummyExpense[`disbursement${m}`] === undefined) dummyExpense[`disbursement${m}`] = (item as any)[`disbursement${m}`] || 0;
-            });
-
-            setExpensesList([dummyExpense]);
-        } else {
-            setExpensesList(item.expenses || []);
-        }
-    }, [item, editMode]);
+        setExpensesList(displayExpenses);
+    }, [item, displayExpenses, editMode]);
 
     // Helper to calculate total actual disbursement for an item
     const calculateActualDisbursementTotal = (expense: StaffingExpense) => {
@@ -464,7 +462,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -484,13 +482,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>
@@ -519,12 +517,12 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     </div>
                     
                     {/* Breakdown of Expenses with Toggleable Schedule */}
-                    {item.expenses && item.expenses.length > 0 && (
+                    {displayExpenses.length > 0 && (
                         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-3">Cost Breakdown</h4>
                             <ul className="space-y-3 text-sm">
-                                {item.expenses.map((exp, i) => (
-                                    <li key={i} className="flex flex-col bg-gray-50 dark:bg-gray-700/50 rounded overflow-hidden">
+                                {displayExpenses.map((exp, i) => (
+                                    <li key={i} className="flex flex-col bg-gray-50 dark:bg-gray-700/50 rounded overflow-hidden border border-gray-200 dark:border-gray-600">
                                         <div className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleExpenseExpand(exp.id)}>
                                             <div>
                                                 <span className="font-semibold text-gray-800 dark:text-gray-200 block">{exp.expenseParticular}</span>
@@ -539,10 +537,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         </div>
                                         {expandedExpenseIds.has(exp.id) && (
                                             <div className="p-3 border-t border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
-                                                <div className="mb-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
-                                                    Target Obligation Date: {formatDate(exp.obligationDate)}
+                                                <div className="flex justify-between mb-2">
+                                                    <div>
+                                                        <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase block">Target Obligation Date</span>
+                                                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{formatDate(exp.obligationDate)}</span>
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs font-bold text-gray-500 uppercase mb-2">Target Monthly Disbursement</p>
+                                                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Target Monthly Disbursement</p>
                                                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                                                     {months.map(m => (
                                                         <div key={m} className="flex flex-col">
@@ -579,11 +580,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                             </div>
                         </div>
 
-                        {item.expenses && item.expenses.length > 0 && (
+                        {displayExpenses.length > 0 && (
                             <div className="mt-4">
                                 <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Per Item Actuals</h4>
                                 <div className="space-y-4">
-                                    {item.expenses.map((exp, idx) => (
+                                    {displayExpenses.map((exp, idx) => (
                                         <div key={idx} className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
                                             <div className="flex justify-between items-center mb-2">
                                                 <span className="font-bold text-sm text-gray-800 dark:text-white">{exp.expenseParticular}</span>
