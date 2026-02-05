@@ -1,12 +1,13 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
-import { StaffingRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
+import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
+import useLocalStorageState from '../../hooks/useLocalStorageState';
+
 declare const XLSX: any;
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -30,6 +31,7 @@ export const parseStaffingRequirementRow = (row: any, commonData: any): Staffing
         salaryGrade: Number(row.salaryGrade) || 1,
         annualSalary: finalAnnualSalary,
         personnelType: row.personnelType || 'Technical',
+        expenses: row.expenses || []
     };
 
     months.forEach(m => {
@@ -57,9 +59,9 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const [itemToDelete, setItemToDelete] = useState<StaffingRequirement | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
-    // Filters
-    const [ouFilter, setOuFilter] = useState('All');
-    const [yearFilter, setYearFilter] = useState('All');
+    // Filters - Persistent
+    const [ouFilter, setOuFilter] = useLocalStorageState('staffing_ouFilter', 'All');
+    const [yearFilter, setYearFilter] = useLocalStorageState('staffing_yearFilter', 'All');
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 
@@ -77,9 +79,23 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
         actualDisbursementJul: 0, actualDisbursementAug: 0, actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
     };
+    
     const [formData, setFormData] = useState(initialFormState);
-    const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
+    const [expensesList, setExpensesList] = useState<StaffingExpense[]>([]);
+    
+    // Temp State for adding expense
+    const initialExpenseState = {
+        objectType: 'MOOE' as ObjectType,
+        expenseParticular: '',
+        uacsCode: '',
+        obligationDate: '',
+        amount: 0,
+        disbursementJan: 0, disbursementFeb: 0, disbursementMar: 0, disbursementApr: 0, disbursementMay: 0, disbursementJun: 0,
+        disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0
+    };
+    const [currentExpense, setCurrentExpense] = useState(initialExpenseState);
     const [selectedParticular, setSelectedParticular] = useState('');
+    const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
 
     useEffect(() => {
         if (currentUser && !canViewAll) setOuFilter(currentUser.operatingUnit);
@@ -89,17 +105,11 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     useEffect(() => {
         if (view === 'form') {
             setFormData({ ...initialFormState, operatingUnit: currentUser?.operatingUnit || (canViewAll ? 'NPMO' : currentUser?.operatingUnit || ''), encodedBy: currentUser?.fullName || '' });
-            setSelectedObjectType('MOOE'); setSelectedParticular('');
+            setExpensesList([]);
+            setCurrentExpense(initialExpenseState);
+            setSelectedParticular('');
         }
     }, [view, uacsCodes, currentUser, canViewAll]);
-
-    // Auto-calc annual (Target only for Add New)
-    useEffect(() => {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        // @ts-ignore
-        const total = months.reduce((sum, m) => sum + (Number(formData[`disbursement${m}`]) || 0), 0);
-        if (total !== formData.annualSalary) setFormData(prev => ({ ...prev, annualSalary: total }));
-    }, [formData.disbursementJan, formData.disbursementFeb, formData.disbursementMar, formData.disbursementApr, formData.disbursementMay, formData.disbursementJun, formData.disbursementJul, formData.disbursementAug, formData.disbursementSep, formData.disbursementOct, formData.disbursementNov, formData.disbursementDec]);
 
     const availableYears = useMemo(() => {
         const years = new Set<string>(); 
@@ -124,26 +134,76 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setCurrentExpense(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleAddExpense = () => {
+        if (!currentExpense.uacsCode || !currentExpense.amount) {
+            alert("UACS Code and Amount are required for an expense item.");
+            return;
+        }
+        const newExpense: StaffingExpense = {
+            id: Date.now(),
+            ...currentExpense,
+            amount: Number(currentExpense.amount),
+            // @ts-ignore dynamic month assignment
+            disbursementJan: Number(currentExpense.disbursementJan), disbursementFeb: Number(currentExpense.disbursementFeb), disbursementMar: Number(currentExpense.disbursementMar),
+            disbursementApr: Number(currentExpense.disbursementApr), disbursementMay: Number(currentExpense.disbursementMay), disbursementJun: Number(currentExpense.disbursementJun),
+            disbursementJul: Number(currentExpense.disbursementJul), disbursementAug: Number(currentExpense.disbursementAug), disbursementSep: Number(currentExpense.disbursementSep),
+            disbursementOct: Number(currentExpense.disbursementOct), disbursementNov: Number(currentExpense.disbursementNov), disbursementDec: Number(currentExpense.disbursementDec)
+        };
+        setExpensesList(prev => [...prev, newExpense]);
+        setCurrentExpense(initialExpenseState);
+        setSelectedParticular('');
+        setIsExpenseScheduleOpen(false);
+    };
+
+    const handleRemoveExpense = (id: number) => {
+        setExpensesList(prev => prev.filter(e => e.id !== id));
+    };
+
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.operatingUnit) return alert("Operating Unit is required.");
-        if (!formData.uacsCode) return alert("UACS Code is required.");
+        
+        // Aggregate totals from expensesList
+        const aggregatedTotals = {
+            annualSalary: 0,
+            disbursementJan: 0, disbursementFeb: 0, disbursementMar: 0, disbursementApr: 0, disbursementMay: 0, disbursementJun: 0,
+            disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0
+        };
+        
+        let primaryUacs = '';
+        let primaryObligationDate = '';
+
+        expensesList.forEach((exp, idx) => {
+            if (idx === 0) {
+                primaryUacs = exp.uacsCode;
+                primaryObligationDate = exp.obligationDate;
+            }
+            aggregatedTotals.annualSalary += exp.amount;
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            months.forEach(m => {
+                // @ts-ignore
+                aggregatedTotals[`disbursement${m}`] += (exp[`disbursement${m}`] || 0);
+            });
+        });
 
         const submissionData: any = {
             ...formData,
-            salaryGrade: Number(formData.salaryGrade), annualSalary: Number(formData.annualSalary), fundYear: Number(formData.fundYear),
-            actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0, // Defaults for new
-            encodedBy: formData.encodedBy || currentUser?.fullName || 'System', updated_at: new Date().toISOString()
+            ...aggregatedTotals,
+            uacsCode: primaryUacs, // Use first expense as main reference
+            obligationDate: primaryObligationDate,
+            salaryGrade: Number(formData.salaryGrade),
+            fundYear: Number(formData.fundYear),
+            expenses: expensesList, // Store detailed list
+            actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0,
+            encodedBy: formData.encodedBy || currentUser?.fullName || 'System', 
+            updated_at: new Date().toISOString()
         };
-        // Ensure month fields are numbers
-        ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].forEach(m => {
-            // @ts-ignore
-            submissionData[`disbursement${m}`] = Number(formData[`disbursement${m}`]);
-            // @ts-ignore
-            submissionData[`actualDisbursement${m}`] = 0; // Default new
-        });
 
-        // Always remove ID from payload to avoid Supabase identity column issues during update
         delete submissionData.id;
 
         submissionData.uid = formData.uid || `SR-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
@@ -238,45 +298,106 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     if (view === 'form') {
         const monthFields = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Add Staffing Requirement</h3>
-                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button>
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Add Staffing Requirement</h3>
+                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
                 </div>
-                <form onSubmit={handleFormSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
-                    </div>
-                    <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                <form onSubmit={handleFormSubmit} className="space-y-8">
+                    {/* Group 1: Profile */}
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
-                        </div>
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Disbursement Schedule (Salary Target)</legend>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                                {monthFields.map(month => (
-                                    <div key={month}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
-                                    // @ts-ignore
-                                    value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
-                                ))}
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
+                                <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>
                             </div>
-                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2"><span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Annual Salary:</span><span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.annualSalary)}</span></div>
-                        </fieldset>
-                    </div>
+                        </div>
+                    </fieldset>
+
+                    {/* Group 2: Funding */}
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding Source</legend>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        </div>
+                    </fieldset>
+
+                    {/* Group 3: Financial Requirements (Multiple Objects) */}
+                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
+                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Financial Requirements</legend>
+                        
+                        {/* Expense List */}
+                        <div className="space-y-3 mb-6">
+                            {expensesList.map((expense, idx) => (
+                                <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-600 flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold text-gray-800 dark:text-white text-sm">{expense.expenseParticular || 'Unspecified Particular'}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(expense.amount)}</p>
+                                        <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="text-red-500 hover:text-red-700">
+                                            <TrashIcon />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
+                            <div className="flex justify-end pt-2 border-t border-gray-300 dark:border-gray-600">
+                                <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">Total Annual Requirement:</span>
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}</span>
+                            </div>
+                        </div>
+
+                        {/* Add Expense Form Area */}
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-md border border-emerald-200 dark:border-emerald-800">
+                            <h4 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 border-b border-gray-100 dark:border-gray-700 pb-2">Add Financial Item</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={(e) => {
+                                    const code = e.target.value;
+                                    const part = selectedParticular;
+                                    setCurrentExpense(prev => ({ ...prev, uacsCode: code, expenseParticular: part }));
+                                }} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[currentExpense.objectType][selectedParticular] && Object.entries(uacsCodes[currentExpense.objectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                                
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date</label><input type="date" name="obligationDate" value={currentExpense.obligationDate} onChange={handleExpenseChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} min="0" /></div>
+                            </div>
+                            
+                            <div className="mb-3">
+                                <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+                                    {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule
+                                </button>
+                                {isExpenseScheduleOpen && (
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded border border-gray-200 dark:border-gray-700">
+                                        {monthFields.map(month => (
+                                            <div key={`exp-${month}`}>
+                                                <label className="block text-[10px] font-medium text-gray-500 uppercase">{month}</label>
+                                                <input type="number" name={`disbursement${month}`} 
+                                                // @ts-ignore
+                                                value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="w-full px-1 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <button type="button" onClick={handleAddExpense} className="w-full py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition-colors">Add Item to List</button>
+                        </div>
+                    </fieldset>
                     
-                    <div className="flex justify-end gap-4"><button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button><button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button></div>
+                    <div className="flex justify-end gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                        <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 hover:brightness-95 transition-colors">Save Staffing Requirement</button>
+                    </div>
                 </form>
             </div>
         );
@@ -284,9 +405,9 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     // List View
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-            {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete</button></div></div></div>)}
-            {isMultiDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Bulk Deletion</h3><p className="my-4">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white">Delete All</button></div></div></div>)}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
+            {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete</button></div></div></div>)}
+            {isMultiDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Bulk Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete All</button></div></div></div>)}
 
             <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
                 <div className="flex items-center gap-4">
@@ -300,7 +421,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     {canEdit && (
                         <button 
                             onClick={() => { setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95"
+                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
                         >
                             + Add New
                         </button>
@@ -309,7 +430,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     {canEdit && (
                         <>
                             <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
                                 {isUploading ? 'Uploading...' : 'Upload XLSX'}
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
@@ -332,7 +453,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                    <button onClick={() => onSelect(item)} className="text-left hover:text-accent hover:underline focus:outline-none">
+                                    <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
                                         {item.personnelPosition}
                                     </button>
                                     <div className="text-xs text-gray-400">SG-{item.salaryGrade}</div>

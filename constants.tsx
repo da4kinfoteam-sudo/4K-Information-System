@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -274,13 +273,13 @@ export interface OfficeRequirement extends BaseProgramManagementItem {
     pricePerUnit: number;
 }
 
-export interface StaffingRequirement extends BaseProgramManagementItem {
-    personnelPosition: string;
-    status: string;
-    salaryGrade: number;
-    annualSalary: number;
-    personnelType: 'Technical' | 'Administrative' | 'Support';
-    // Target Disbursement
+export interface StaffingExpense {
+    id: number;
+    objectType: ObjectType;
+    expenseParticular: string;
+    uacsCode: string;
+    obligationDate: string;
+    amount: number;
     disbursementJan?: number;
     disbursementFeb?: number;
     disbursementMar?: number;
@@ -293,7 +292,29 @@ export interface StaffingRequirement extends BaseProgramManagementItem {
     disbursementOct?: number;
     disbursementNov?: number;
     disbursementDec?: number;
-    // Actual Disbursement
+}
+
+export interface StaffingRequirement extends BaseProgramManagementItem {
+    personnelPosition: string;
+    status: string;
+    salaryGrade: number;
+    annualSalary: number;
+    personnelType: 'Technical' | 'Administrative' | 'Support';
+    expenses?: StaffingExpense[]; // Nested structure for multiple object codes
+    // Target Disbursement (Legacy/Aggregate)
+    disbursementJan?: number;
+    disbursementFeb?: number;
+    disbursementMar?: number;
+    disbursementApr?: number;
+    disbursementMay?: number;
+    disbursementJun?: number;
+    disbursementJul?: number;
+    disbursementAug?: number;
+    disbursementSep?: number;
+    disbursementOct?: number;
+    disbursementNov?: number;
+    disbursementDec?: number;
+    // Actual Disbursement (Legacy/Aggregate)
     actualDisbursementJan?: number;
     actualDisbursementFeb?: number;
     actualDisbursementMar?: number;
