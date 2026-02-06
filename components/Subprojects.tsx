@@ -25,6 +25,11 @@ interface SubprojectsProps {
     commodityCategories: { [key: string]: string[] };
 }
 
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -61,6 +66,8 @@ const defaultFormData: Subproject = {
     operatingUnit: '',
     encodedBy: ''
 };
+
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
 const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
@@ -131,6 +138,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         disbursementMonth: ''
     });
     const [editingDetailId, setEditingDetailId] = useState<number | null>(null);
+    const [dateError, setDateError] = useState('');
 
     // Commodity Form State
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
@@ -438,6 +446,27 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     // --- Form Handlers ---
 
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper inside component to use state
+    const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setCurrentDetail(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = formData.fundingYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
+    }
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
@@ -453,6 +482,25 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     newData.location = '';
                     newData.ipo_id = undefined;
                 }
+            }
+            
+            // Sync details if fundingYear changes
+            if (name === 'fundingYear') {
+                const newYear = parseInt(value as string) || new Date().getFullYear();
+                const updatedDetails = prev.details.map(d => {
+                    const updateDate = (dateStr: string) => {
+                        if (!dateStr) return dateStr;
+                        const parts = dateStr.split('-');
+                        if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
+                        return dateStr;
+                    };
+                    return {
+                        ...d,
+                        obligationMonth: updateDate(d.obligationMonth),
+                        disbursementMonth: updateDate(d.disbursementMonth)
+                    };
+                });
+                newData.details = updatedDetails;
             }
 
             return newData;
@@ -473,9 +521,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     };
 
     const handleAddDetail = () => {
+        setDateError('');
         if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
             alert("Please fill in required detail fields (Particulars, UACS, Price, Qty).");
             return;
+        }
+
+        if (currentDetail.deliveryDate && formData.startDate) {
+            if (new Date(currentDetail.deliveryDate) < new Date(formData.startDate)) {
+                setDateError('Delivery date cannot be before start date.');
+                return;
+            }
         }
 
         let updatedDetails: SubprojectDetail[] = [];
@@ -552,6 +608,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleCancelDetailEdit = () => {
         setEditingDetailId(null);
+        setDateError('');
         setCurrentDetail({
             type: '',
             particulars: '',
@@ -761,6 +818,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         setFormData(defaultFormData);
         setEditingDetailId(null);
         setEditingCommodityIndex(null);
+        setDateError('');
         setCurrentDetail({
             type: '',
             particulars: '',
@@ -804,6 +862,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
+    const formatMonthYear = (dateString?: string) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return dateString;
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
     };
@@ -818,8 +883,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
         }
     };
-
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
     const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string }> = ({ sortKey, label, className }) => {
         const isSorted = sortConfig?.key === sortKey;
@@ -1077,6 +1140,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                                                         <div>
                                                                             <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars}</span>
                                                                             <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode} | {detail.numberOfUnits} {detail.unitOfMeasure}</span>
+                                                                            {/* Display Month Year for Obligation/Disbursement */}
+                                                                            <span className="text-xs text-gray-400 block">
+                                                                                Obl: {formatMonthYear(detail.obligationMonth)} | Disb: {formatMonthYear(detail.disbursementMonth)}
+                                                                            </span>
                                                                         </div>
                                                                         <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</span>
                                                                     </li>
@@ -1343,7 +1410,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <div key={d.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailId === d.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                             <div>
                                                 <span className="font-semibold">{d.particulars}</span>
-                                                <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}</div>
+                                                <div className="text-xs text-gray-500">
+                                                    {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}
+                                                    <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
@@ -1358,7 +1428,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                     ))}
                                     <div className="text-right font-bold pt-2">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
                                 </div>
-                                {/* Budget Detail Form Fields - Same as before */}
+                                {/* Budget Detail Form Fields */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
                                     <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
@@ -1367,9 +1437,31 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                                         <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                         <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                     </div>
-                                    <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                    <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                    <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                    <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-medium">Obligation Month</label>
+                                        <select 
+                                            value={getMonthFromDateStr(currentDetail.obligationMonth)} 
+                                            onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} 
+                                            className={commonInputClasses + " py-1.5 text-sm"}
+                                        >
+                                            <option value="">Select Month</option>
+                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium">Disbursement Month</label>
+                                        <select 
+                                            value={getMonthFromDateStr(currentDetail.disbursementMonth)} 
+                                            onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} 
+                                            className={commonInputClasses + " py-1.5 text-sm"}
+                                        >
+                                            <option value="">Select Month</option>
+                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                        </select>
+                                    </div>
+
                                     <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option><option>bag</option><option>roll</option><option>gram</option><option>liter</option><option>meter</option></select></div>
                                     <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                     <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>

@@ -24,6 +24,11 @@ interface SubprojectDetailInput extends Omit<SubprojectDetail, 'id'> {
     isCompleted?: boolean;
 }
 
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     if (dateString.includes('T')) {
@@ -31,6 +36,13 @@ const formatDate = (dateString?: string) => {
     }
     const date = new Date(dateString + 'T00:00:00Z');
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+};
+
+const formatMonthYear = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 };
 
 const formatCurrency = (amount: number) => {
@@ -123,7 +135,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     }, [subproject, editMode]);
 
-    // Calculate Project Completion Rate (Weighted by Items or just simple item count? Using simple Item Count completion based on delivery)
+    // Calculate Project Completion Rate
     const projectCompletionStats = useMemo(() => {
         const totalItems = subproject.details.length;
         if (totalItems === 0) return { percent: 0, text: '0%' };
@@ -180,8 +192,38 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return false;
     };
 
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string | undefined) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper to update date in detail form (Budget Edit) based on month dropdown
+    const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setCurrentDetail(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = editedSubproject.fundingYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
+    }
+
+    // Helper to update actual date in accomplishment table based on month dropdown
+    const updateDetailActualDateFromMonth = (index: number, field: keyof SubprojectDetailInput, monthIndex: string) => {
+        const mIndex = parseInt(monthIndex);
+        const year = editedSubproject.fundingYear || new Date().getFullYear();
+        const newValue = monthIndex !== '' ? `${year}-${String(mIndex + 1).padStart(2, '0')}-01` : '';
+        handleDetailAccomplishmentChange(index, field, newValue);
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        
         if (name === 'status') {
             const newStatus = value as Subproject['status'];
             if (newStatus === 'Completed' && !editedSubproject.actualCompletionDate) {
@@ -199,6 +241,25 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                  [name]: value,
                  location: selectedIpo ? selectedIpo.location : '' 
              }));
+        } else if (name === 'fundingYear') {
+            // Sync details if fundingYear changes
+            const newYear = parseInt(value as string) || new Date().getFullYear();
+            setDetailItems(prev => prev.map(d => {
+                const updateDate = (dateStr?: string) => {
+                    if (!dateStr) return dateStr;
+                    const parts = dateStr.split('-');
+                    if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
+                    return dateStr;
+                };
+                return {
+                    ...d,
+                    obligationMonth: updateDate(d.obligationMonth) || '',
+                    disbursementMonth: updateDate(d.disbursementMonth) || '',
+                    actualObligationDate: updateDate(d.actualObligationDate),
+                    actualDisbursementDate: updateDate(d.actualDisbursementDate)
+                };
+            }));
+            setEditedSubproject(prev => ({ ...prev, [name]: newYear }));
         } else {
             setEditedSubproject(prev => ({ ...prev, [name]: value }));
         }
@@ -224,7 +285,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
         if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth || !currentDetail.uacsCode) {
-            alert('Please fill out all detail fields, including UACS classification.');
+            alert('Please fill out all detail fields, including UACS classification and monthly targets.');
             return;
         }
         const delivery = new Date(currentDetail.deliveryDate + 'T00:00:00Z');
@@ -631,7 +692,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                     <div>
                                                         <span className="font-semibold">{d.particulars}</span>
-                                                        <div className="text-xs text-gray-500">{d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
+                                                        <div className="text-xs text-gray-500">
+                                                            {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}
+                                                            <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
+                                                        </div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
                                                         <span className="font-bold">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
@@ -658,8 +722,29 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
 
                                             <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
-                                            <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentDetail.obligationMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                            <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentDetail.disbursementMonth} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                            
+                                            <div>
+                                                <label className="block text-xs font-medium">Obligation Month</label>
+                                                <select 
+                                                    value={getMonthFromDateStr(currentDetail.obligationMonth)} 
+                                                    onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} 
+                                                    className={commonInputClasses + " py-1.5 text-sm"}
+                                                >
+                                                    <option value="">Select Month</option>
+                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium">Disbursement Month</label>
+                                                <select 
+                                                    value={getMonthFromDateStr(currentDetail.disbursementMonth)} 
+                                                    onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} 
+                                                    className={commonInputClasses + " py-1.5 text-sm"}
+                                                >
+                                                    <option value="">Select Month</option>
+                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                            </div>
 
                                             <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
@@ -741,13 +826,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input 
-                                                                        type="date" 
-                                                                        value={(detail as any).actualObligationDate || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', e.target.value)} 
+                                                                    <select 
+                                                                        value={getMonthFromDateStr(detail.actualObligationDate)} 
+                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualObligationDate', e.target.value)}
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
-                                                                        disabled={isLocked(originalDetail?.actualObligationDate)} 
-                                                                    />
+                                                                        disabled={isLocked(originalDetail?.actualObligationDate)}
+                                                                    >
+                                                                        <option value="">Select Month</option>
+                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                                    </select>
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <input 
@@ -760,13 +847,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input 
-                                                                        type="date" 
-                                                                        value={(detail as any).actualDisbursementDate || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', e.target.value)} 
+                                                                    <select 
+                                                                        value={getMonthFromDateStr(detail.actualDisbursementDate)} 
+                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualDisbursementDate', e.target.value)}
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
-                                                                        disabled={isLocked(originalDetail?.actualDisbursementDate)} 
-                                                                    />
+                                                                        disabled={isLocked(originalDetail?.actualDisbursementDate)}
+                                                                    >
+                                                                        <option value="">Select Month</option>
+                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                                    </select>
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <input 
@@ -1021,8 +1110,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <td className="px-4 py-2 font-medium">{detail.particulars}</td>
                                                 <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
                                                 <td className="px-4 py-2">{detail.uacsCode}</td>
-                                                <td className="px-4 py-2">{formatDate(detail.obligationMonth)}</td>
-                                                <td className="px-4 py-2">{formatDate(detail.disbursementMonth)}</td>
+                                                <td className="px-4 py-2">{formatMonthYear(detail.obligationMonth)}</td>
+                                                <td className="px-4 py-2">{formatMonthYear(detail.disbursementMonth)}</td>
                                                 <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
                                                 <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
                                                 <td className="px-4 py-2 text-center">
