@@ -83,15 +83,31 @@ const defaultFormData: Activity = {
     status: 'Proposed'
 };
 
+// Interface for Repeating Activity Entries
+interface RepeatingEntry {
+    id: number;
+    date: string;
+    participantsMale: number;
+    participantsFemale: number;
+    participatingIpos: string[];
+}
+
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
     const [formData, setFormData] = useState<Activity>(defaultFormData);
-    const [isMultiDay, setIsMultiDay] = useState(false);
     
-    // Note: editingItem is now only used for internal logic during creation flow if needed,
-    // but the main list Edit button is removed.
+    // New Conduct Type State
+    const [conductType, setConductType] = useState<'Single' | 'Multi-day' | 'Repeating'>('Single');
+    
+    // Repeating Activity States
+    const [repeatingEntries, setRepeatingEntries] = useState<RepeatingEntry[]>([]);
+    const [currentRepeatingEntry, setCurrentRepeatingEntry] = useState<RepeatingEntry>({
+        id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: []
+    });
+    const [editingRepeatingId, setEditingRepeatingId] = useState<number | null>(null);
+
     const [editingItem, setEditingItem] = useState<Activity | null>(null); 
     
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -166,7 +182,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             status: 'Proposed' // Default status for new items
         });
         setSelectedActivityType('');
-        setIsMultiDay(false);
+        setConductType('Single');
+        setRepeatingEntries([]);
     }, [currentUser, forcedType, referenceActivities, view]);
 
     // When component changes in form, reset types
@@ -392,8 +409,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
             };
             
-            // Sync dates if not multi-day
-            if (name === 'date' && !isMultiDay) {
+            // Sync dates if not multi-day and not repeating (since date is irrelevant in Repeating main form)
+            if (name === 'date' && conductType === 'Single') {
                 updated.endDate = value;
             }
 
@@ -420,12 +437,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         if (name === 'component') setSelectedActivityType('');
     };
 
-    const handleMultiDayToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const checked = e.target.checked;
-        setIsMultiDay(checked);
-        if (!checked) {
-            setFormData(prev => ({ ...prev, endDate: prev.date }));
-        }
+    const handleConductTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value as 'Single' | 'Multi-day' | 'Repeating';
+        setConductType(val);
+        
+        setFormData(prev => {
+            if (val === 'Single') return { ...prev, endDate: prev.date };
+            if (val === 'Repeating') return { ...prev, date: '', endDate: '' };
+            return prev;
+        });
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -443,9 +463,53 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         }
     };
     
+    // --- Handlers for Single/Multi-day Mode Ipo Selection ---
     const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
         setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
+    };
+
+    // --- Handlers for Repeating Mode ---
+    const handleRepeatingEntryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        const isNumber = e.target.type === 'number';
+        setCurrentRepeatingEntry(prev => ({ ...prev, [name]: isNumber ? (value === '' ? '' : parseFloat(value)) : value }));
+    };
+
+    const handleRepeatingIpoSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
+        setCurrentRepeatingEntry(prev => ({ ...prev, participatingIpos: selectedOptions }));
+    };
+
+    const handleAddRepeatingEntry = () => {
+        if (!currentRepeatingEntry.date || currentRepeatingEntry.participatingIpos.length === 0) {
+            alert("Date and at least one IPO are required.");
+            return;
+        }
+
+        const newEntry = { ...currentRepeatingEntry, id: Date.now() + Math.random() };
+
+        if (editingRepeatingId !== null) {
+            setRepeatingEntries(prev => prev.map(e => e.id === editingRepeatingId ? { ...newEntry, id: editingRepeatingId } : e));
+            setEditingRepeatingId(null);
+        } else {
+            setRepeatingEntries(prev => [...prev, newEntry]);
+        }
+
+        setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+    };
+
+    const handleEditRepeatingEntry = (entry: RepeatingEntry) => {
+        setCurrentRepeatingEntry(entry);
+        setEditingRepeatingId(entry.id);
+    };
+
+    const handleDeleteRepeatingEntry = (id: number) => {
+        setRepeatingEntries(prev => prev.filter(e => e.id !== id));
+        if (editingRepeatingId === id) {
+            setEditingRepeatingId(null);
+            setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+        }
     };
 
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -562,53 +626,98 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
-        if (!formData.name || !formData.date) {
-            alert('Please fill out all required fields (Name and Date).');
+        if (!formData.name) {
+            alert('Please fill out Activity Name/Title.');
             return;
+        }
+
+        // Validate dates based on mode
+        if (conductType !== 'Repeating' && !formData.date) {
+             alert('Start Date is required.');
+             return;
+        }
+        if (conductType === 'Repeating' && repeatingEntries.length === 0) {
+             alert('Please add at least one activity to the schedule list for Repeating Activity.');
+             return;
         }
 
         // New Item logic
         let newId = activities.length > 0 ? Math.max(...activities.map(a => a.id), 0) + 1 : 1;
         const currentYear = new Date().getFullYear();
-        let uid = formData.uid;
-        if (!uid) {
-            const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
-            const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-            uid = `${prefix}-${currentYear}-${sequence}`;
-        }
+        const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
 
-        // Ensure endDate is set
-        const finalEndDate = isMultiDay ? formData.endDate : formData.date;
-
-        const submissionData = {
+        // Prepare Base Data (Common fields)
+        const baseData = {
             ...formData,
-            endDate: finalEndDate,
-            uid: uid || formData.uid,
-            status: formData.status || 'Proposed', // Default status
+            status: formData.status || 'Proposed',
             updated_at: new Date().toISOString()
         };
 
-        const participatingIposList = formData.participatingIpos.join(', ');
+        const activitiesToSave: Activity[] = [];
+
+        if (conductType === 'Repeating') {
+            repeatingEntries.forEach((entry, idx) => {
+                const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+                const uniqueUid = `${prefix}-${currentYear}-${sequence}-${idx}`;
+                
+                // Clone expenses for each activity with unique IDs
+                const clonedExpenses = formData.expenses.map((exp, eIdx) => ({
+                    ...exp,
+                    id: Date.now() + Math.random() + eIdx
+                }));
+
+                activitiesToSave.push({
+                    ...baseData,
+                    uid: uniqueUid,
+                    date: entry.date,
+                    endDate: entry.date, // Repeating are usually single instances repeated
+                    participantsMale: entry.participantsMale,
+                    participantsFemale: entry.participantsFemale,
+                    participatingIpos: entry.participatingIpos,
+                    expenses: clonedExpenses,
+                    // ID will be handled by DB or generated for offline below
+                    id: 0, 
+                    created_at: new Date().toISOString()
+                });
+            });
+        } else {
+            // Single or Multi-day
+            const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+            const uid = `${prefix}-${currentYear}-${sequence}`;
+            const finalEndDate = conductType === 'Multi-day' ? formData.endDate : formData.date;
+
+            activitiesToSave.push({
+                ...baseData,
+                uid: uid,
+                endDate: finalEndDate,
+                id: 0,
+                created_at: new Date().toISOString()
+            });
+        }
 
         if (supabase) {
             try {
                 // Log Create
-                logAction(`Created ${formData.type}`, formData.name, participatingIposList);
+                logAction(`Created ${activitiesToSave.length} ${formData.type}(s)`, formData.name);
 
-                // Add to IPO History for EACH participating IPO
-                for (const ipoName of formData.participatingIpos) {
-                    const ipo = ipos.find(i => i.name === ipoName);
-                    if (ipo) {
-                        await addIpoHistory(ipo.id, `${formData.type} Created: ${formData.name}`);
+                for (const act of activitiesToSave) {
+                     // Add to IPO History for EACH participating IPO
+                     for (const ipoName of act.participatingIpos) {
+                        const ipo = ipos.find(i => i.name === ipoName);
+                        if (ipo) {
+                            await addIpoHistory(ipo.id, `${act.type} Created: ${act.name} (${act.date})`);
+                        }
                     }
+                    
+                    // Remove ID for insert to let DB auto-generate
+                    const { id, ...insertData } = act;
+                    const { error } = await supabase.from('activities').insert([insertData]);
+                    if (error) throw error;
                 }
-
-                // Remove ID for insert to let DB auto-generate
-                const { id, ...insertData } = submissionData;
-                const { error } = await supabase.from('activities').insert([insertData]);
-                if (error) throw error;
                 
                 refreshData();
+                alert(`Successfully saved ${activitiesToSave.length} activities.`);
+
             } catch (error: any) {
                 console.error("Error saving activity:", error);
                 alert("Failed to save activity. " + error.message);
@@ -616,20 +725,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             }
         } else {
             // Offline fallback
-            const newActivity: Activity = {
-                ...submissionData,
-                endDate: finalEndDate,
-                uid,
-                id: newId,
-                created_at: new Date().toISOString(),
-            };
-            setActivities(prev => [newActivity, ...prev]);
+            const newActivitiesWithIds = activitiesToSave.map((act, i) => ({ ...act, id: newId + i }));
+            setActivities(prev => [...newActivitiesWithIds, ...prev]);
+             alert(`Successfully saved ${activitiesToSave.length} activities (Local).`);
         }
         
         handleCancelEdit();
     };
-
-    // Removed handleEditClick as editing is now only via detail page
     
     const handleAddNewClick = () => {
         setEditingItem(null);
@@ -640,6 +742,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         setEditingItem(null);
         setFormData(defaultFormData);
         setSelectedActivityType('');
+        setConductType('Single');
+        setRepeatingEntries([]);
+        setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
         setActiveTab('details');
         setEditingExpenseId(null);
         setCurrentExpense({
@@ -1034,26 +1139,43 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-sm font-medium">Start Date</label>
-                                    <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                    <label className="block text-sm font-medium">Conduct Type</label>
+                                    <select 
+                                        value={conductType} 
+                                        onChange={handleConductTypeChange}
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="Single">Single Day Activity</option>
+                                        <option value="Multi-day">Multi Day Activity</option>
+                                        <option value="Repeating">Repeating Activity</option>
+                                    </select>
                                 </div>
-                                <div className="flex flex-col justify-end">
-                                    <label className="flex items-center gap-2 text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={isMultiDay} 
-                                            onChange={handleMultiDayToggle}
-                                            className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                        />
-                                        <span>Multi-day Activity?</span>
-                                    </label>
-                                    {isMultiDay && (
+                                
+                                {conductType === 'Single' && (
+                                    <div>
+                                        <label className="block text-sm font-medium">Date of Conduct</label>
+                                        <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                )}
+                                {conductType === 'Multi-day' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium">Start Date</label>
+                                            <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                        </div>
                                         <div>
                                             <label className="block text-sm font-medium">End Date</label>
                                             <input type="date" name="endDate" value={formData.endDate || formData.date} onChange={handleInputChange} className={commonInputClasses} />
                                         </div>
-                                    )}
-                                </div>
+                                    </>
+                                )}
+                                {conductType === 'Repeating' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-400 dark:text-gray-500">Date of Conduct</label>
+                                        <input type="text" disabled value="Multiple Dates (See Below)" className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800 cursor-not-allowed`} />
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-sm font-medium">Location</label>
                                     <LocationPicker value={formData.location} onChange={(val) => setFormData(prev => ({...prev, location: val}))} />
@@ -1065,42 +1187,112 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                             </div>
                         </fieldset>
 
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants & IPOs</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                <div>
-                                    <label className="block text-sm font-medium">Male Participants (Target)</label>
-                                    <input type="number" name="participantsMale" value={formData.participantsMale} onChange={handleInputChange} min="0" className={commonInputClasses} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium">Female Participants (Target)</label>
-                                    <input type="number" name="participantsFemale" value={formData.participantsFemale} onChange={handleInputChange} min="0" className={commonInputClasses} />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium">Total Target</label>
-                                    <input type="number" value={(formData.participantsMale || 0) + (formData.participantsFemale || 0)} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm font-medium">Participating IPOs</label>
-                                    <div className="flex items-center gap-2">
-                                        <label className="text-xs">Filter by Region:</label>
-                                        <select value={ipoRegionFilter} onChange={e => setIpoRegionFilter(e.target.value)} className="text-xs border rounded p-1 dark:bg-gray-700 dark:border-gray-600">
-                                            <option value="All">All</option>
-                                            {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
+                        {conductType !== 'Repeating' ? (
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants & IPOs</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium">Male Participants (Target)</label>
+                                        <input type="number" name="participantsMale" value={formData.participantsMale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Female Participants (Target)</label>
+                                        <input type="number" name="participantsFemale" value={formData.participantsFemale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Total Target</label>
+                                        <input type="number" value={(formData.participantsMale || 0) + (formData.participantsFemale || 0)} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
                                     </div>
                                 </div>
-                                <select multiple name="participatingIpos" value={formData.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-40`}>
-                                    {filteredIposForSelection.map(ipo => (
-                                        <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
-                            </div>
-                        </fieldset>
+                                
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="block text-sm font-medium">Participating IPOs</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-xs">Filter by Region:</label>
+                                            <select value={ipoRegionFilter} onChange={e => setIpoRegionFilter(e.target.value)} className="text-xs border rounded p-1 dark:bg-gray-700 dark:border-gray-600">
+                                                <option value="All">All</option>
+                                                {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <select multiple name="participatingIpos" value={formData.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-40`}>
+                                        {filteredIposForSelection.map(ipo => (
+                                            <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
+                                </div>
+                            </fieldset>
+                        ) : (
+                            <fieldset className="border border-blue-300 dark:border-blue-700 p-4 rounded-md bg-blue-50 dark:bg-blue-900/10">
+                                <legend className="px-2 font-semibold text-blue-700 dark:text-blue-300">Repeating Activity Schedule</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 p-4 bg-white dark:bg-gray-800 rounded shadow-sm">
+                                     <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Date of Conduct</label>
+                                        <input type="date" name="date" value={currentRepeatingEntry.date} onChange={handleRepeatingEntryChange} className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Male Target</label>
+                                        <input type="number" name="participantsMale" value={currentRepeatingEntry.participantsMale} onChange={handleRepeatingEntryChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Female Target</label>
+                                        <input type="number" name="participantsFemale" value={currentRepeatingEntry.participantsFemale} onChange={handleRepeatingEntryChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1 flex items-end">
+                                        <button 
+                                            type="button" 
+                                            onClick={handleAddRepeatingEntry}
+                                            className="w-full py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                                        >
+                                            {editingRepeatingId ? 'Update Entry' : 'Add to Schedule'}
+                                        </button>
+                                    </div>
+                                    <div className="md:col-span-4">
+                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Participating IPOs</label>
+                                         <select multiple value={currentRepeatingEntry.participatingIpos} onChange={handleRepeatingIpoSelect} className={`${commonInputClasses} h-20 text-xs`}>
+                                            {filteredIposForSelection.map(ipo => (
+                                                <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[10px] text-gray-400 mt-0.5">Hold Ctrl/Cmd to select multiple IPOs for this specific date.</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-xs text-left text-gray-700 dark:text-gray-300">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-400">
+                                            <tr>
+                                                <th scope="col" className="px-3 py-2">Date</th>
+                                                <th scope="col" className="px-3 py-2">Participants</th>
+                                                <th scope="col" className="px-3 py-2">IPOs</th>
+                                                <th scope="col" className="px-3 py-2 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {repeatingEntries.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-3 py-4 text-center italic text-gray-500">No schedule entries added yet.</td>
+                                                </tr>
+                                            ) : (
+                                                repeatingEntries.map((entry, idx) => (
+                                                    <tr key={entry.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                                        <td className="px-3 py-2">{formatDate(entry.date)}</td>
+                                                        <td className="px-3 py-2">M: {entry.participantsMale}, F: {entry.participantsFemale}</td>
+                                                        <td className="px-3 py-2 truncate max-w-xs" title={entry.participatingIpos.join(', ')}>{entry.participatingIpos.length} IPOs</td>
+                                                        <td className="px-3 py-2 text-right space-x-2">
+                                                            <button type="button" onClick={() => handleEditRepeatingEntry(entry)} className="text-blue-600 hover:underline">Edit</button>
+                                                            <button type="button" onClick={() => handleDeleteRepeatingEntry(entry.id)} className="text-red-600 hover:underline">Delete</button>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+                        )}
 
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
@@ -1127,6 +1319,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     <div className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Expenses</legend>
+                            <div className="mb-2 text-sm text-gray-500 italic">Note: These expenses will apply to {conductType === 'Repeating' ? 'EACH activity entry created' : 'this activity'}.</div>
                             <div className="space-y-2 mb-4">
                                 {formData.expenses.map((exp) => (
                                     <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
@@ -1197,7 +1390,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                     <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Activity</button>
+                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save {conductType === 'Repeating' ? 'Activities' : 'Activity'}</button>
                 </div>
             </form>
         </div>
