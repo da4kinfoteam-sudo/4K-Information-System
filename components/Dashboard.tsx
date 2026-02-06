@@ -482,14 +482,14 @@ const Dashboard: React.FC<DashboardProps> = ({
         const actualIposWithSp = new Set(filteredData.subprojects.filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
 
         // Set of IPOs in any Training (Target)
-        const targetIposWithTr = new Set(filteredData.activities.filter(a => a.type === 'Training').flatMap(t => t.participatingIpos));
+        const targetIposWithTr = new Set<string>(filteredData.activities.filter(a => a.type === 'Training').flatMap(t => t.participatingIpos));
         // Set of IPOs in Completed Training (Actual)
-        const actualIposWithTr = new Set(filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => t.participatingIpos));
+        const actualIposWithTr = new Set<string>(filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => t.participatingIpos));
 
         // "IPOs Assisted": Completed SP OR Completed Training
-        const actualIposAssisted = new Set([...actualIposWithSp, ...actualIposWithTr]);
+        const actualIposAssisted = new Set<string>([...actualIposWithSp, ...actualIposWithTr]);
         // Target for "Assisted": Linked to SP OR Training (regardless of status)
-        const targetIposAssisted = new Set([...targetIposWithSp, ...targetIposWithTr]);
+        const targetIposAssisted = new Set<string>([...targetIposWithSp, ...targetIposWithTr]);
 
         const actualAdsAssisted = getAds(actualIposAssisted);
         const targetAdsAssisted = getAds(targetIposAssisted);

@@ -17,6 +17,11 @@ interface ActivityDetailProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
+
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     if (dateString.includes('T')) {
@@ -24,6 +29,13 @@ const formatDate = (dateString?: string) => {
     }
     const date = new Date(dateString + 'T00:00:00Z');
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+};
+
+const formatMonthYear = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 };
 
 const formatCurrency = (amount: number) => {
@@ -121,6 +133,46 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
             .map(ra => ra.activity_name);
     }, [editedActivity.component, referenceActivities]);
 
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string | undefined) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper inside component to use state for Expense Form (Targets)
+    const updateExpenseDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setCurrentExpense(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = editedActivity.fundingYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setCurrentExpense(prev => ({ ...prev, [field]: dateStr }));
+    }
+
+    // Helper for Actuals (Accomplishments)
+    const updateActualDateFromMonth = (id: number, field: keyof ActivityExpense, monthIndex: string) => {
+        setEditedActivity(prev => ({
+            ...prev,
+            expenses: prev.expenses.map(e => {
+                if (e.id === id) {
+                    let newValue = '';
+                    if (monthIndex !== '') {
+                        const mIndex = parseInt(monthIndex);
+                        const year = prev.fundingYear || new Date().getFullYear();
+                        newValue = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+                    }
+                    return { ...e, [field]: newValue };
+                }
+                return e;
+            })
+        }));
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setEditedActivity(prev => {
@@ -135,6 +187,26 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
             // Sync end date if not multi-day
             if (name === 'date' && !isMultiDay) {
                 updated.endDate = value;
+            }
+
+            // Sync expense dates if fundingYear changes
+            if (name === 'fundingYear') {
+                const newYear = parseInt(value as string) || new Date().getFullYear();
+                updated.expenses = prev.expenses.map(exp => {
+                    const updateDate = (d: string | undefined) => {
+                         if (!d) return d;
+                         const parts = d.split('-');
+                         if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
+                         return d;
+                    };
+                    return {
+                        ...exp,
+                        obligationMonth: updateDate(exp.obligationMonth) || '',
+                        disbursementMonth: updateDate(exp.disbursementMonth) || '',
+                        actualObligationDate: updateDate(exp.actualObligationDate),
+                        actualDisbursementDate: updateDate(exp.actualDisbursementDate)
+                    };
+                });
             }
 
             return updated;
@@ -475,7 +547,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                                     <div>
                                                         <span className="font-semibold">{exp.expenseParticular}</span>
-                                                        <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {formatDate(exp.obligationMonth)}</div>
+                                                        <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {formatMonthYear(exp.obligationMonth)} | Disb: {formatMonthYear(exp.disbursementMonth)}</div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
                                                         <span className="font-bold">{formatCurrency(exp.amount)}</span>
@@ -496,8 +568,28 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                             <div><label className="block text-xs font-medium">Expense Class</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                             <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} disabled={!currentExpense.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentExpense.expenseParticular && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
                                             
-                                            <div><label className="block text-xs font-medium">Obligation Month</label><input type="date" name="obligationMonth" value={currentExpense.obligationMonth} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                            <div><label className="block text-xs font-medium">Disbursement Month</label><input type="date" name="disbursementMonth" value={currentExpense.disbursementMonth} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                            <div>
+                                                <label className="block text-xs font-medium">Obligation Month</label>
+                                                <select 
+                                                    value={getMonthFromDateStr(currentExpense.obligationMonth)} 
+                                                    onChange={(e) => updateExpenseDateFromMonth('obligationMonth', e.target.value)} 
+                                                    className={commonInputClasses + " py-1.5 text-sm"}
+                                                >
+                                                    <option value="">Select Month</option>
+                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium">Disbursement Month</label>
+                                                <select 
+                                                    value={getMonthFromDateStr(currentExpense.disbursementMonth)} 
+                                                    onChange={(e) => updateExpenseDateFromMonth('disbursementMonth', e.target.value)} 
+                                                    className={commonInputClasses + " py-1.5 text-sm"}
+                                                >
+                                                    <option value="">Select Month</option>
+                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                            </div>
                                             
                                             <div className="flex gap-2 items-end">
                                                 <div className="flex-grow">
@@ -588,13 +680,15 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                                 />
                                                             </td>
                                                             <td className="px-3 py-2">
-                                                                <input 
-                                                                    type="date" 
-                                                                    value={expense.actualObligationDate || ''} 
-                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} 
+                                                                <select 
+                                                                    value={getMonthFromDateStr(expense.actualObligationDate)} 
+                                                                    onChange={(e) => updateActualDateFromMonth(expense.id, 'actualObligationDate', e.target.value)} 
                                                                     disabled={isLocked(expense.actualObligationDate)}
-                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
-                                                                />
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                                                >
+                                                                    <option value="">Select Month</option>
+                                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                                </select>
                                                             </td>
                                                             <td className="px-3 py-2">
                                                                 <input 
@@ -607,13 +701,15 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                                 />
                                                             </td>
                                                             <td className="px-3 py-2">
-                                                                <input 
-                                                                    type="date" 
-                                                                    value={expense.actualDisbursementDate || ''} 
-                                                                    onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualDisbursementDate', e.target.value)} 
+                                                                <select 
+                                                                    value={getMonthFromDateStr(expense.actualDisbursementDate)} 
+                                                                    onChange={(e) => updateActualDateFromMonth(expense.id, 'actualDisbursementDate', e.target.value)} 
                                                                     disabled={isLocked(expense.actualDisbursementDate)}
-                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500" 
-                                                                />
+                                                                    className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                                                >
+                                                                    <option value="">Select Month</option>
+                                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                                </select>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -788,8 +884,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                             <tr key={exp.id} className="border-b border-gray-200 dark:border-gray-700">
                                                 <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
                                                 <td className="px-4 py-2">{exp.uacsCode}</td>
-                                                <td className="px-4 py-2">{formatDate(exp.obligationMonth)}</td>
-                                                <td className="px-4 py-2">{formatDate(exp.disbursementMonth)}</td>
+                                                <td className="px-4 py-2">{formatMonthYear(exp.obligationMonth)}</td>
+                                                <td className="px-4 py-2">{formatMonthYear(exp.disbursementMonth)}</td>
                                                 <td className="px-4 py-2 text-right font-medium">{formatCurrency(exp.amount)}</td>
                                             </tr>
                                         ))
@@ -856,8 +952,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 {activity.expenses.map(exp => (
                                                     <tr key={exp.id} className="border-b border-gray-100 dark:border-gray-700">
                                                         <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
-                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualObligationDate)}</td>
-                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatDate(exp.actualDisbursementDate)}</td>
+                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatMonthYear(exp.actualObligationDate)}</td>
+                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatMonthYear(exp.actualDisbursementDate)}</td>
                                                         <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
                                                             {exp.actualObligationAmount !== undefined && exp.actualObligationAmount !== null ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>

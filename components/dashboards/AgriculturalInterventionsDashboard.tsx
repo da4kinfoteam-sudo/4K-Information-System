@@ -94,8 +94,8 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         Object.keys(data).forEach(type => {
             let t = 0; 
             let a = 0;
-            // Explicit cast for Object.values return
-            const items: InterventionStats[] = Object.values(data[type]);
+            // Explicit cast for Object.values return because TS might infer as unknown[] in some configs
+            const items = Object.values(data[type]) as InterventionStats[];
             items.forEach((val) => {
                 t += val.target;
                 a += val.actual;
@@ -119,7 +119,8 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         const flatData: any[] = [];
         
         Object.keys(data).sort().forEach(type => {
-            Object.entries(data[type]).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, stats]) => {
+            Object.entries(data[type]).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, rawStats]) => {
+                const stats = rawStats as InterventionStats;
                 const deliveryRate = stats.target > 0 ? (stats.actual / stats.target) : 0;
                 flatData.push({
                     'Item Type': type,

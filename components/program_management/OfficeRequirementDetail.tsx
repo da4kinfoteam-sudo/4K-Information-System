@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect } from 'react';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
@@ -12,6 +13,11 @@ interface OfficeRequirementDetailProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onUpdate: (item: OfficeRequirement) => void;
 }
+
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
@@ -58,9 +64,57 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         setFormData(item);
     }, [item, editMode]);
 
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string | undefined) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper to construct date string based on Fund Year and Selected Month
+    const updateDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setFormData(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = formData.fundYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setFormData(prev => ({ ...prev, [field]: dateStr }));
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        // If Fund Year changes in details, update existing dates
+        if (name === 'fundYear') {
+            const newYear = parseInt(value) || new Date().getFullYear();
+            setFormData(prev => {
+                const newData = { ...prev, [name]: newYear };
+                if (prev.obligationDate) {
+                    const m = prev.obligationDate.split('-')[1];
+                    if (m) newData.obligationDate = `${newYear}-${m}-01`;
+                }
+                if (prev.disbursementDate) {
+                    const m = prev.disbursementDate.split('-')[1];
+                    if (m) newData.disbursementDate = `${newYear}-${m}-01`;
+                }
+                // Actuals also depend on fund year per requirement
+                if (prev.actualObligationDate) {
+                    const m = prev.actualObligationDate.split('-')[1];
+                    if (m) newData.actualObligationDate = `${newYear}-${m}-01`;
+                }
+                if (prev.actualDisbursementDate) {
+                    const m = prev.actualDisbursementDate.split('-')[1];
+                    if (m) newData.actualDisbursementDate = `${newYear}-${m}-01`;
+                }
+                return newData;
+            });
+        } else {
+            setFormData(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -121,8 +175,28 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
 
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Disbursement Date</label><input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Obligation Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(formData.obligationDate)} 
+                                        onChange={(e) => updateDateFromMonth('obligationDate', e.target.value)} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Disbursement Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(formData.disbursementDate)} 
+                                        onChange={(e) => updateDateFromMonth('disbursementDate', e.target.value)} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
                             
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
@@ -152,13 +226,33 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date (Misc)</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" /></div>
                                 
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(formData.actualObligationDate)} 
+                                        onChange={(e) => updateDateFromMonth('actualObligationDate', e.target.value)} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Date</label><input type="date" name="actualDisbursementDate" value={formData.actualDisbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(formData.actualDisbursementDate)} 
+                                        onChange={(e) => updateDateFromMonth('actualDisbursementDate', e.target.value)} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>

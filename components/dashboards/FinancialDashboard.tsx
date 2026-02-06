@@ -21,6 +21,21 @@ interface MonthlyDataPoint {
     disbursement: number;
 }
 
+interface FinancialData {
+    components: { [key: string]: { target: number; obligation: number; disbursement: number } };
+    provinceData: { [key: string]: number };
+    totalAllocation: number;
+    totalObligation: number;
+    totalDisbursement: number;
+    monthlyData: { [key: number]: MonthlyDataPoint };
+}
+
+interface MatrixData {
+    [ou: string]: {
+        [component: string]: { alloc: number; obli: number; disb: number };
+    };
+}
+
 const formatCurrencyWhole = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
 };
@@ -97,7 +112,7 @@ const SimplePieChart: React.FC<{ data: { label: string; value: number; color: st
 
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
-    const financialData = useMemo(() => {
+    const financialData = useMemo<FinancialData>(() => {
         const components: { [key: string]: { target: number; obligation: number; disbursement: number } } = {
             'Social Preparation': { target: 0, obligation: 0, disbursement: 0 },
             'Production and Livelihood': { target: 0, obligation: 0, disbursement: 0 },
@@ -276,9 +291,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     }, [data]);
 
     // Matrix Logic for breakdown table
-    const matrixData = useMemo(() => {
+    const matrixData = useMemo<MatrixData>(() => {
         // Initialize Matrix
-        const matrix: Record<string, Record<string, { alloc: number, obli: number, disb: number }>> = {};
+        const matrix: MatrixData = {};
         
         operatingUnits.forEach(ou => {
             matrix[ou] = {

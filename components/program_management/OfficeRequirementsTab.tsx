@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
@@ -10,6 +11,11 @@ import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExport
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 
 declare const XLSX: any;
+
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -139,9 +145,48 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     // --- Handlers ---
 
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper to construct date string based on Fund Year and Selected Month
+    const updateDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setFormData(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = formData.fundYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setFormData(prev => ({ ...prev, [field]: dateStr }));
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        
+        // If Fund Year changes, update existing dates to align with new year
+        if (name === 'fundYear') {
+            const newYear = parseInt(value) || new Date().getFullYear();
+            setFormData(prev => {
+                const newData = { ...prev, [name]: newYear };
+                if (prev.obligationDate) {
+                    const m = prev.obligationDate.split('-')[1];
+                    if (m) newData.obligationDate = `${newYear}-${m}-01`;
+                }
+                if (prev.disbursementDate) {
+                    const m = prev.disbursementDate.split('-')[1];
+                    if (m) newData.disbursementDate = `${newYear}-${m}-01`;
+                }
+                return newData;
+            });
+        } else {
+            setFormData(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -287,7 +332,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Office Requirements");
-        XLSX.writeFile(wb, "Office_Requirements_Report.xlsx");
+        XLSX.utils.book_append_sheet(wb, "Office_Requirements_Report.xlsx");
     };
 
     const handleDownloadTemplate = () => {
@@ -374,8 +419,28 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Disbursement Date</label><input type="date" name="disbursementDate" value={formData.disbursementDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Obligation Month</label>
+                            <select 
+                                value={getMonthFromDateStr(formData.obligationDate)} 
+                                onChange={(e) => updateDateFromMonth('obligationDate', e.target.value)} 
+                                className={commonInputClasses}
+                            >
+                                <option value="">Select Month</option>
+                                {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Disbursement Month</label>
+                            <select 
+                                value={getMonthFromDateStr(formData.disbursementDate)} 
+                                onChange={(e) => updateDateFromMonth('disbursementDate', e.target.value)} 
+                                className={commonInputClasses}
+                            >
+                                <option value="">Select Month</option>
+                                {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                            </select>
+                        </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
