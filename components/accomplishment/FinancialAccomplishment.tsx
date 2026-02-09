@@ -4,6 +4,7 @@ import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProg
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
+import useLocalStorageState from '../../hooks/useLocalStorageState';
 
 interface Props {
     subprojects: Subproject[];
@@ -100,19 +101,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
 
-    // Filter States (Active)
-    const [selectedYear, setSelectedYear] = useState<number | null>(null);
-    const [selectedOu, setSelectedOu] = useState<string>('All');
-    const [selectedTier, setSelectedTier] = useState<string>('All');
-    const [selectedFundType, setSelectedFundType] = useState<string>('All');
+    // Filter States (Persistent)
+    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', null);
+    const [selectedOu, setSelectedOu] = useLocalStorageState<string>('fin_selectedOu', 'All');
+    const [selectedTier, setSelectedTier] = useLocalStorageState<string>('fin_selectedTier', 'All');
+    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('fin_selectedFundType', 'All');
     
     // Filter States (Form/Modal)
-    const [formYear, setFormYear] = useState<string>(new Date().getFullYear().toString());
-    const [formOu, setFormOu] = useState<string>('All');
-    const [formTier, setFormTier] = useState<string>('All');
-    const [formFundType, setFormFundType] = useState<string>('All');
+    const [formYear, setFormYear] = useState<string>(selectedYear ? selectedYear.toString() : new Date().getFullYear().toString());
+    const [formOu, setFormOu] = useState<string>(selectedOu);
+    const [formTier, setFormTier] = useState<string>(selectedTier);
+    const [formFundType, setFormFundType] = useState<string>(selectedFundType);
 
-    const [isYearModalOpen, setIsYearModalOpen] = useState(true);
+    // Only open modal if no year is selected (first load or cleared)
+    const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
     
     const [items, setItems] = useState<FinancialItem[]>([]);
     const [expandedObjectTypes, setExpandedObjectTypes] = useState<Set<string>>(new Set(['MOOE', 'CO']));
@@ -125,6 +127,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     useEffect(() => {
         if (currentUser && currentUser.role === 'User') {
             setFormOu(currentUser.operatingUnit);
+            setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser]);
 
@@ -352,6 +355,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
         })).sort((a, b) => a.objectType.localeCompare(b.objectType));
     }, [items, uacsCodes]);
 
+    // --- 2.1 Grand Total Calculation ---
+    const grandTotals = useMemo(() => {
+        return items.reduce((acc, item) => ({
+            targetObli: acc.targetObli + (item.targetObligationAmount || 0),
+            actualObli: acc.actualObli + (item.actualObligationAmount || 0),
+            targetDisb: acc.targetDisb + (item.targetDisbursementAmount || 0),
+            actualDisb: acc.actualDisb + (item.actualDisbursementAmount || 0)
+        }), { targetObli: 0, actualObli: 0, targetDisb: 0, actualDisb: 0 });
+    }, [items]);
+
 
     // --- 3. Handlers ---
 
@@ -565,14 +578,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
             {isYearModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fadeIn">
                     <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl max-w-md w-full relative">
-                        <button 
-                            onClick={() => setIsYearModalOpen(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
+                        {selectedYear && (
+                             <button 
+                                onClick={() => setIsYearModalOpen(false)}
+                                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        )}
                         <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6 border-b pb-2 dark:border-gray-700">Filter Financial Data</h3>
                         
                         <div className="space-y-4">
@@ -682,10 +697,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             return (
                                 <React.Fragment key={typeGroup.objectType}>
                                     {/* Level 1: Object Type Header (Container) */}
-                                    <tr className="bg-gray-100 dark:bg-gray-700/80 border-b-2 border-gray-200 dark:border-gray-600">
+                                    <tr className="bg-emerald-200/80 dark:bg-gray-700/80 border-b-2 border-emerald-300 dark:border-gray-600">
                                         <td colSpan={10} className="px-4 py-3">
-                                            <button onClick={() => toggleObjectType(typeGroup.objectType)} className="flex items-center gap-2 text-md font-bold text-gray-800 dark:text-white focus:outline-none group">
-                                                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-emerald-600 transition-transform duration-200 ${isTypeExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <button onClick={() => toggleObjectType(typeGroup.objectType)} className="flex items-center gap-2 text-md font-bold text-emerald-900 dark:text-white focus:outline-none group w-full">
+                                                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-emerald-700 dark:text-emerald-400 transition-transform duration-200 ${isTypeExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                                 </svg>
                                                 {typeGroup.objectType}
@@ -703,9 +718,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                         return (
                                             <React.Fragment key={group.key}>
                                                 {/* Group Header Row (UACS) */}
-                                                <tr className="bg-gray-50 dark:bg-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700">
+                                                <tr className="bg-emerald-50 dark:bg-gray-700/40 hover:bg-emerald-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700 border-l-4 border-l-emerald-400 dark:border-l-emerald-600">
                                                     <td className="px-4 py-3 pl-8">
-                                                        <button onClick={() => toggleGroup(group.key)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none group text-left">
+                                                        <button onClick={() => toggleGroup(group.key)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none group text-left w-full">
                                                              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-emerald-500 transition-transform duration-200 ${isExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                                             </svg>
@@ -877,13 +892,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <button 
                                                                                     onClick={() => handleConfirmItem(item)}
                                                                                     disabled={item.isConfirmed}
-                                                                                    className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                                                                                    className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 w-full ${
                                                                                         item.isConfirmed 
-                                                                                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                                                                            ? 'bg-gray-100 text-gray-500 cursor-not-allowed border border-gray-300' 
                                                                                             : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
                                                                                     }`}
                                                                                 >
-                                                                                    {item.isConfirmed ? 'Saved' : 'Save'}
+                                                                                    {item.isConfirmed ? (
+                                                                                        <>
+                                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                                                                            </svg>
+                                                                                            Saved
+                                                                                        </>
+                                                                                    ) : 'Save'}
                                                                                 </button>
                                                                             )}
                                                                         </td>
@@ -928,6 +950,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             </tr>
                         )}
                     </tbody>
+                    <tfoot className="bg-emerald-100 dark:bg-emerald-900 border-t-2 border-emerald-300 dark:border-emerald-700 font-bold">
+                        <tr>
+                            <td className="px-4 py-3 text-right text-emerald-900 dark:text-emerald-100">GRAND TOTAL</td>
+                            <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetObli)}</td>
+                            <td className="px-4 py-3"></td>
+                            <td className="px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualObli)}</td>
+                            <td className="px-4 py-3"></td>
+                            <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetDisb)}</td>
+                            <td className="px-4 py-3"></td>
+                            <td className="px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualDisb)}</td>
+                            <td className="px-4 py-3"></td>
+                            <td className="px-4 py-3"></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
