@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
@@ -7,6 +6,7 @@ import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
 import PICSReport from './reports/PICSReport';
 import BAR1Report from './reports/BAR1Report';
+import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import { useAuth } from '../contexts/AuthContext';
 
 interface ReportsProps {
@@ -20,7 +20,7 @@ interface ReportsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1';
+type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Monthly Matrix';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const { currentUser } = useAuth();
@@ -144,6 +144,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BAR1':
                 return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
+            case 'Monthly Matrix':
+                return <MonthlyReportMatrix data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             default:
                 return null;
         }
@@ -220,6 +222,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                         <TabButton tabName="BEDS" label="BEDS" />
                         <TabButton tabName="PICS" label="PICS" />
                         <TabButton tabName="BAR1" label="BAR1" />
+                        <TabButton tabName="Monthly Matrix" label="Monthly Matrix" />
                     </nav>
                 </div>
             </div>
