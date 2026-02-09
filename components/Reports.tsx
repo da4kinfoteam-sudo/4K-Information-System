@@ -141,7 +141,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 onClick={() => setActiveTab(tabName)}
                 className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
                     ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
+                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
                         : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
             >
