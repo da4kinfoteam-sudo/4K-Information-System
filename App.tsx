@@ -18,7 +18,8 @@ import ProgramManagement from './components/ProgramManagement';
 import OfficeRequirementDetail from './components/program_management/OfficeRequirementDetail';
 import StaffingRequirementDetail from './components/program_management/StaffingRequirementDetail';
 import OtherExpenseDetail from './components/program_management/OtherExpenseDetail';
-import FinancialAccomplishment from './components/accomplishment/FinancialAccomplishment'; // Import new component
+import FinancialAccomplishment from './components/accomplishment/FinancialAccomplishment'; 
+import PhysicalAccomplishment from './components/accomplishment/PhysicalAccomplishment'; // Import new component
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -345,7 +346,20 @@ const AppContent: React.FC = () => {
                             onSelectOtherExpense={handleSelectOtherExpense}
                         />;
             case '/accomplishment/physical':
-                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Physical Accomplishment Module - Coming Soon</div>;
+                return <PhysicalAccomplishment 
+                            subprojects={subprojects}
+                            setSubprojects={setSubprojects}
+                            activities={activities}
+                            setActivities={setActivities}
+                            officeReqs={officeReqs}
+                            setOfficeReqs={setOfficeReqs}
+                            staffingReqs={staffingReqs}
+                            setStaffingReqs={setStaffingReqs}
+                            onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
+                            onSelectOfficeReq={handleSelectOfficeReq}
+                            onSelectStaffingReq={handleSelectStaffingReq}
+                        />;
                 
             case '/program-management/office-detail':
                 if (!selectedOfficeReq) return <div>Select an item</div>;
