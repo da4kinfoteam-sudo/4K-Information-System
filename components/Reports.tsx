@@ -42,10 +42,12 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         const years = new Set<string>();
         subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
         trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
-        otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
-        officeReqs.forEach(i => years.add(i.fundYear.toString()));
-        staffingReqs.forEach(i => years.add(i.fundYear.toString()));
-        otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
+        // Fixed: Use fundingYear instead of date for consistency
+        otherActivities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
+        // Fixed: Safe access to fundYear
+        officeReqs.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
+        staffingReqs.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
+        otherProgramExpenses.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
         // Ensure current year is always an option even if no data
         years.add(new Date().getFullYear().toString());
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
@@ -67,10 +69,12 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 ...filtered,
                 subprojects: filtered.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
                 trainings: filtered.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-                otherActivities: filtered.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear),
-                officeReqs: filtered.officeReqs.filter(i => i.fundYear.toString() === selectedYear),
-                staffingReqs: filtered.staffingReqs.filter(i => i.fundYear.toString() === selectedYear),
-                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear),
+                // Fixed: Filter by fundingYear instead of date
+                otherActivities: filtered.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear),
+                // Fixed: Safe access using optional chaining to prevent crashes on null fundYear
+                officeReqs: filtered.officeReqs.filter(i => i.fundYear?.toString() === selectedYear),
+                staffingReqs: filtered.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear),
+                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear),
             };
         }
 
