@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
-import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
+import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
 import { formatCurrency, XLSX } from './ReportUtils';
 
 interface MonthlyReportMatrixProps {
@@ -11,6 +11,7 @@ interface MonthlyReportMatrixProps {
         officeReqs: OfficeRequirement[];
         staffingReqs: StaffingRequirement[];
         otherProgramExpenses: OtherProgramExpense[];
+        ipos: IPO[];
     };
     selectedYear: string;
     selectedOu: string;
@@ -44,32 +45,20 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
 
         // Helper: Check if a target date falls within Jan 1 to Selected Month End of selected year
         const isTargetDue = (dateStr?: string) => {
-            if (!dateStr || selectedYear === 'All') return false; // Strict year filtering required for matrix
+            if (!dateStr || selectedYear === 'All') return false; 
             const d = new Date(dateStr);
             return d.getFullYear() === year && d.getMonth() <= selectedMonth;
         };
 
         // Helper: Check if actuals were INPUTTED by user on or before selected month
-        // This simulates the "Timestamp of Input" requirement by checking creation time or history logs
         const wasInputtedByMonth = (item: any) => {
             if (selectedYear === 'All') return false;
             
-            // 1. Check creation date first (if created after report month, it shouldn't exist in report)
             const createdAt = new Date(item.created_at || new Date().toISOString());
             if (createdAt.getFullYear() === year && createdAt.getMonth() > selectedMonth) return false;
             if (createdAt.getFullYear() > year) return false;
 
-            // 2. For "Completed" or "Delivered" status, check history if available
-            // If item has no specific history, we assume 'actualDate' implies input time if 'created_at' check passed
-            // However, strictly, if a user updates an old record in Dec, it appears in Dec report. 
-            // We use history to filter *out* updates that happened AFTER the report month.
-            
-            // If we have history, check if the latest relevant update was within the window
             if (item.history && item.history.length > 0) {
-                // Find first entry where it was marked completed/delivered? 
-                // Or simply: If ANY history exists <= selected month, we count current value.
-                // LIMITATION: We cannot reconstruct previous partial values from text logs.
-                // We show CURRENT value if the record existed and was touched by selected month.
                 const hasHistoryInWindow = item.history.some((h: any) => {
                     const hDate = new Date(h.date);
                     return hDate.getFullYear() < year || (hDate.getFullYear() === year && hDate.getMonth() <= selectedMonth);
@@ -77,7 +66,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
                 return hasHistoryInWindow;
             }
 
-            // Fallback: If created before or in this month, show it.
             return true;
         };
 
@@ -131,28 +119,76 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
             }
         };
 
-        // 1. Subprojects
+        // --- 1. Subprojects Logic (Aggregated) ---
+        const subprojectStats: Record<string, { cost: number, target: number, actual: number, obli: number, disb: number }> = {};
+        
+        // Trackers for ADs and IPOs
+        // We track Target if the SP is due by selected month
+        // We track Actual if the SP is completed and input by selected month
+        const targetIpoSet = new Set<string>();
+        const actualIpoSet = new Set<string>();
+        const targetAdSet = new Set<string>();
+        const actualAdSet = new Set<string>();
+
+        // IPO Map for AD lookup
+        const ipoMap = new Map<string, string>();
+        data.ipos.forEach(i => ipoMap.set(i.name, i.ancestralDomainNo));
+
         data.subprojects.forEach(sp => {
+            const pkg = sp.packageType || 'Other';
+            if (!subprojectStats[pkg]) subprojectStats[pkg] = { cost: 0, target: 0, actual: 0, obli: 0, disb: 0 };
+            
             const cost = sp.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
             
-            // Target Logic: Based on estimatedCompletionDate or details deliveryDate?
-            // Usually Physical Target is based on the item delivery schedule.
-            const targetQty = sp.details.filter(d => isTargetDue(d.deliveryDate)).length > 0 ? 1 : 0; // Project level count
-            // Or count details? Matrix usually counts Project as 1. Let's count Project.
+            // Target
+            // A project is a target if any of its components are due, or based on completion date
+            // Usually simpler to check estimatedCompletionDate for the whole project
+            const isTarget = isTargetDue(sp.estimatedCompletionDate);
             
-            // Actual Logic: Input Timestamp
-            const actualQty = (wasInputtedByMonth(sp) && sp.status === 'Completed') ? 1 : 0;
+            // Actual
+            const isActual = wasInputtedByMonth(sp) && sp.status === 'Completed';
 
             const obli = sp.details.reduce((acc, d) => acc + (isFinancialActualInWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
             const disb = sp.details.reduce((acc, d) => acc + (isFinancialActualInWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || 0) : 0), 0);
 
-            const item = createRow(sp.name, 'Project', cost, targetQty, actualQty, obli, disb);
-            const pkg = sp.packageType || 'Other';
-            if (!structure['Production and Livelihood'].packages[pkg]) structure['Production and Livelihood'].packages[pkg] = [];
-            addItem(structure['Production and Livelihood'].packages[pkg], item);
+            // Aggregate Package Stats
+            subprojectStats[pkg].cost += cost;
+            if (isTarget) subprojectStats[pkg].target += 1;
+            if (isActual) subprojectStats[pkg].actual += 1;
+            subprojectStats[pkg].obli += obli;
+            subprojectStats[pkg].disb += disb;
+
+            // Track Indicators
+            if (isTarget) {
+                targetIpoSet.add(sp.indigenousPeopleOrganization);
+                const ad = ipoMap.get(sp.indigenousPeopleOrganization);
+                if (ad) targetAdSet.add(ad);
+            }
+            if (isActual) {
+                actualIpoSet.add(sp.indigenousPeopleOrganization);
+                const ad = ipoMap.get(sp.indigenousPeopleOrganization);
+                if (ad) actualAdSet.add(ad);
+            }
         });
 
-        // 2. Trainings/Activities
+        // Add "Subproject Provisions" group
+        if (!structure['Production and Livelihood'].packages['Subproject Provisions']) {
+            structure['Production and Livelihood'].packages['Subproject Provisions'] = [];
+        }
+        const spProvisions = structure['Production and Livelihood'].packages['Subproject Provisions'];
+
+        // Add Indicator Rows
+        spProvisions.push(createRow("Number of Ancestral Domains", "Number", 0, targetAdSet.size, actualAdSet.size, 0, 0));
+        spProvisions.push(createRow("Number of IPOs", "Number", 0, targetIpoSet.size, actualIpoSet.size, 0, 0));
+
+        // Add Package Rows (Sorted)
+        Object.keys(subprojectStats).sort().forEach(pkg => {
+            const s = subprojectStats[pkg];
+            spProvisions.push(createRow(pkg, "Project", s.cost, s.target, s.actual, s.obli, s.disb));
+        });
+
+
+        // --- 2. Trainings/Activities ---
         const processActivity = (act: any) => {
             const cost = act.expenses.reduce((acc: number, e: any) => acc + e.amount, 0);
             const targetQty = isTargetDue(act.date) ? 1 : 0;
@@ -161,7 +197,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
             const obli = act.expenses.reduce((acc: number, e: any) => acc + (isFinancialActualInWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
             const disb = act.expenses.reduce((acc: number, e: any) => acc + (isFinancialActualInWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
 
-            const item = createRow(act.name, 'Batch', cost, targetQty, actualQty, obli, disb);
+            const item = createRow(act.name, 'Number', cost, targetQty, actualQty, obli, disb);
             
             if (act.component === 'Production and Livelihood') {
                 if (!structure['Production and Livelihood'].packages['Trainings']) structure['Production and Livelihood'].packages['Trainings'] = [];
@@ -175,21 +211,17 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
         data.trainings.forEach(processActivity);
         data.otherActivities.forEach(processActivity);
 
-        // 3. PM Items
+        // --- 3. PM Items ---
         const processPM = (items: any[], typeKey: string, isStaff = false) => {
             items.forEach(pm => {
                 const cost = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
                 const targetQty = isTargetDue(pm.obligationDate) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
                 
-                // Actual based on input/update time relative to report month?
-                // For PM, actual is usually if it was procured/hired.
                 const hasActual = pm.actualDate || pm.actualObligationDate;
                 const actualQty = (wasInputtedByMonth(pm) && hasActual) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
 
                 const obli = isFinancialActualInWindow(pm.actualObligationDate) ? (pm.actualObligationAmount || 0) : 0;
                 
-                // PM Disbursement (can be monthly)
-                // We sum up monthly actuals if they fall within window
                 let disb = 0;
                 if (isStaff || typeKey === 'Other') {
                     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -223,7 +255,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
 
     const handleDownload = () => {
         const rows: any[][] = [
-            ["Indicator", "Cost", "Unit", "Target", "Actual", "Variance", "Percentage", "Obligation", "Disbursement", "Obli Rate", "Disb Rate", "Unutilized", "Unpaid"]
+            ["Indicator", "Cost (Allocation)", "Unit", "Target (Cumulative)", "Actual (Cumulative)", "Variance", "Percentage", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid Obligation"]
         ];
 
         const processItems = (items: any[], indent: string) => {
@@ -284,6 +316,9 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
             disbursement: acc.disbursement + i.disbursement,
         }), { cost: 0, target: 0, actual: 0, obligation: 0, disbursement: 0 });
         
+        // Note: Summing dissimilar units (Projects + Indicators) for Total Target/Actual can be meaningless in the "Subproject Provisions" group,
+        // but typically totals are requested. 
+        
         const variance = total.target - total.actual;
         const percentage = total.target > 0 ? (total.actual / total.target) * 100 : 0;
         const obliRate = total.cost > 0 ? (total.obligation / total.cost) * 100 : 0;
@@ -340,34 +375,30 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, selecte
                     <thead className="bg-emerald-100 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-xs font-bold uppercase">
                         <tr>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-left w-1/4">Indicator</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Cost (Alloc)</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Cost (Allocation)</th>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Unit</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Target (Cum)</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Actual (Cum)</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Target (Cumulative)</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Actual (Cumulative)</th>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Variance</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">% Comp</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Percentage</th>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Obligation</th>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Disbursement</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Obli Rate</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Disb Rate</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Obligation Rate</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Disbursement Rate</th>
                             <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Unutilized</th>
-                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Unpaid Obli</th>
+                            <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-right">Unpaid Obligation</th>
                         </tr>
                     </thead>
                     <tbody className="text-sm">
                         {Object.entries(matrixData).map(([key, val]: [string, any]) => {
                              const isExpanded = expandedRows.has(key);
-                             let itemsToSum: any[] = [];
                              
-                             if (Array.isArray(val)) itemsToSum = val;
-                             else if (val.isNested) itemsToSum = Object.values(val.packages).flatMap((p: any) => p);
-
                              return (
                                 <React.Fragment key={key}>
                                      {/* Group Header */}
                                      <tr onClick={() => toggleRow(key)} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer font-bold">
                                          <td className="p-2 border border-gray-300 dark:border-gray-600 flex items-center gap-2">
-                                            <span className="text-gray-500 dark:text-gray-400 font-mono text-xs">{isExpanded ? '[-]' : '[+]'}</span>
+                                            <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span>
                                             {key}
                                          </td>
                                          <td colSpan={12} className="border border-gray-300 dark:border-gray-600"></td>
