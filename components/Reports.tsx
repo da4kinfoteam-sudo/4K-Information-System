@@ -54,6 +54,10 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     }, [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const filteredData = useMemo(() => {
+        // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
+        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+
         let filtered = {
             subprojects: subprojects,
             ipos: ipos,
@@ -102,21 +106,28 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             };
         }
 
-        if (selectedOu === 'All') {
-            return filtered;
-        }
+        // Apply OU Filtering and then Deep Sanitization on the result
+        const filterByOu = (list: any[]) => {
+            if (selectedOu === 'All') return list;
+            return list.filter(item => item.operatingUnit === selectedOu);
+        };
 
-        const targetRegion = ouToRegionMap[selectedOu];
+        const targetRegion = selectedOu !== 'All' ? ouToRegionMap[selectedOu] : null;
+        const filterIpoByRegion = (list: IPO[]) => {
+            if (selectedOu === 'All' || !targetRegion) return list;
+            return list.filter(i => i.region === targetRegion);
+        };
 
         return {
-            subprojects: filtered.subprojects.filter(p => p.operatingUnit === selectedOu),
-            ipos: filtered.ipos.filter(i => i.region === targetRegion),
-            trainings: filtered.trainings.filter(t => t.operatingUnit === selectedOu),
-            otherActivities: filtered.otherActivities.filter(a => a.operatingUnit === selectedOu),
-            officeReqs: filtered.officeReqs.filter(i => i.operatingUnit === selectedOu),
-            staffingReqs: filtered.staffingReqs.filter(i => i.operatingUnit === selectedOu),
-            otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu),
+            subprojects: filterByOu(filtered.subprojects).map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            ipos: filterIpoByRegion(filtered.ipos),
+            trainings: filterByOu(filtered.trainings).map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: filterByOu(filtered.otherActivities).map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            officeReqs: filterByOu(filtered.officeReqs),
+            staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+            otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
         };
+
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
