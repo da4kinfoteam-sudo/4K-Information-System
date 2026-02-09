@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
@@ -35,6 +36,10 @@ const MONTHS = [
 
 const dataCellClass = "p-2 border border-gray-300 dark:border-gray-600 text-right whitespace-nowrap text-xs";
 const textCellClass = "p-2 border border-gray-300 dark:border-gray-600 text-left text-xs";
+
+const formatCurrencyWhole = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
+};
 
 const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedOu }) => {
     const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
@@ -89,7 +94,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         };
 
         // 1. Subprojects Logic
-        // Group by package
         const packages: Record<string, Subproject[]> = {};
         const ipoAdMap = new Map<string, string>();
         data.ipos.forEach(i => ipoAdMap.set(i.name, i.ancestralDomainNo));
@@ -100,43 +104,32 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             packages[pkg].push(sp);
         });
 
-        // Initialize Subproject Provisions container
         if (!structure['Production and Livelihood'].packages['Subproject Provisions']) {
             structure['Production and Livelihood'].packages['Subproject Provisions'] = [];
         }
         const spProvisions = structure['Production and Livelihood'].packages['Subproject Provisions'];
 
-        // Totals for Top Level Indicators
         const targetIpoSet = new Set<string>();
         const actualIpoSet = new Set<string>();
         const targetAdSet = new Set<string>();
         const actualAdSet = new Set<string>();
 
-        // Process Packages
         Object.keys(packages).sort().forEach(pkg => {
             const subList = packages[pkg];
-            
-            // Filter Targets: Based on Estimated Completion Date
             const targetCount = subList.filter(sp => isTargetDue(sp.estimatedCompletionDate)).length;
-
-            // Filter Actuals: Completed subprojects within the date window based on Actual Completion Date
             const actualCount = subList.filter(sp => {
                  if (sp.status !== 'Completed') return false;
-                 // Check actual completion date vs report date
                  if (!sp.actualCompletionDate) return false;
                  const d = new Date(sp.actualCompletionDate);
                  return d <= reportDate;
             }).length;
 
-            // Add to Top Level Sets (Logic: If it contributes to target count, it contributes to target IPO/AD)
             subList.forEach(sp => {
                 const ad = ipoAdMap.get(sp.indigenousPeopleOrganization);
-
                 if (isTargetDue(sp.estimatedCompletionDate)) {
                     targetIpoSet.add(sp.indigenousPeopleOrganization);
                     if (ad) targetAdSet.add(ad);
                 }
-
                 if (sp.status === 'Completed' && sp.actualCompletionDate && new Date(sp.actualCompletionDate) <= reportDate) {
                     actualIpoSet.add(sp.indigenousPeopleOrganization);
                     if (ad) actualAdSet.add(ad);
@@ -146,17 +139,13 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             spProvisions.push(createRow(pkg, "Project", targetCount, actualCount));
         });
 
-        // Prepend Indicator Rows
         spProvisions.unshift(createRow("Number of IPOs", "Number", targetIpoSet.size, actualIpoSet.size));
         spProvisions.unshift(createRow("Number of Ancestral Domains", "Number", targetAdSet.size, actualAdSet.size));
-
 
         // 2. Trainings/Activities
         const processActivity = (act: any) => {
             const targetQty = isTargetDue(act.date) ? 1 : 0;
-            // Actual if actualDate exists and is <= reportDate
             const actualQty = (act.actualDate && new Date(act.actualDate) <= reportDate) ? 1 : 0;
-            
             const item = createRow(act.name, 'Number', targetQty, actualQty);
             
             if (act.component === 'Production and Livelihood') {
@@ -175,22 +164,16 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const processPM = (items: any[], typeKey: string, isStaff = false) => {
             items.forEach(pm => {
                 const targetQty = isTargetDue(pm.obligationDate) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
-                // Actual based on actualDate or actualObligationDate
                 const actDate = pm.actualDate || pm.actualObligationDate;
                 const actualQty = (actDate && new Date(actDate) <= reportDate) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
-
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const unit = isStaff ? 'Pax' : 'Unit';
-                
                 const item = createRow(indicator, unit, targetQty, actualQty);
                 addItem(structure['Program Management'].packages[typeKey], item);
             });
         };
         processPM(data.staffingReqs, 'Staffing', true);
         processPM(data.officeReqs, 'Office');
-        // Other Expenses skipped for physical if they are just financial line items, but typically included if they have physical output
-        // If purely financial, skip. Assuming they might have output:
-        // processPM(data.otherProgramExpenses, 'Office'); 
 
         return structure;
     }, [data, selectedYear, selectedMonth]);
@@ -202,21 +185,23 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
         const reportDateLimit = new Date(targetYearInt, selectedMonth + 1, 0);
 
-        const yearMap = new Map<number, { alloc: number, obli: number, disb: number }>();
+        // Key: "year|fundType"
+        const groupingMap = new Map<string, { year: number, fundType: string, alloc: number, obli: number, disb: number }>();
         
-        // Helper to check date limit for financial transactions
         const isDateInReportWindow = (dateStr?: string) => {
             if (!dateStr) return false;
             const d = new Date(dateStr);
             return d <= reportDateLimit;
         };
 
-        const addToYear = (year: number, alloc: number, obli: number, disb: number) => {
+        const addToGroup = (year: number, fundType: string, alloc: number, obli: number, disb: number) => {
             if (!year) return;
-            if (year > targetYearInt) return; // Ignore future years relative to report year
+            const ft = fundType || 'Current';
+            const key = `${year}|${ft}`;
             
-            if (!yearMap.has(year)) yearMap.set(year, { alloc: 0, obli: 0, disb: 0 });
-            const entry = yearMap.get(year)!;
+            if (!groupingMap.has(key)) groupingMap.set(key, { year, fundType: ft, alloc: 0, obli: 0, disb: 0 });
+            const entry = groupingMap.get(key)!;
+            // Round Up (Ceil)
             entry.alloc += alloc;
             entry.obli += obli;
             entry.disb += disb;
@@ -225,19 +210,21 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         // 1. Subprojects
         financialData.subprojects.forEach(sp => {
             const y = sp.fundingYear || 0;
+            const ft = sp.fundType || 'Current';
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
             const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || 0) : 0), 0);
-            addToYear(y, alloc, obli, disb);
+            addToGroup(y, ft, alloc, obli, disb);
         });
 
         // 2. Activities
         const processAct = (act: any) => {
             const y = act.fundingYear || 0;
+            const ft = act.fundType || 'Current';
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
             const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
             const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
-            addToYear(y, alloc, obli, disb);
+            addToGroup(y, ft, alloc, obli, disb);
         };
         financialData.trainings.forEach(processAct);
         financialData.otherActivities.forEach(processAct);
@@ -245,15 +232,12 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         // 3. PM Items
         const processPM = (item: any, isStaff = false) => {
             const y = item.fundYear || 0;
+            const ft = item.fundType || 'Current';
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
             const obli = isDateInReportWindow(item.actualObligationDate) ? (item.actualObligationAmount || 0) : 0;
             
             let disb = 0;
-            if (isStaff || item.particulars /* OtherExpense */) {
-                // Logic adjusted: Use aggregated actualDisbursementAmount but considering the date cut-off.
-                // Since monthly breakdowns don't carry specific dates in the flat object structure easily without parsing,
-                // we assume if the funding year is < targetYear, all recorded disbursements happened in the past.
-                // If funding year == targetYear, we sum months up to selected month.
+            if (isStaff || item.particulars) {
                 if (y < targetYearInt) {
                     disb = item.actualDisbursementAmount || 0;
                 } else if (y === targetYearInt) {
@@ -263,30 +247,75 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                      });
                 }
             } else {
-                // Office Req (Single Shot)
                 disb = isDateInReportWindow(item.actualDisbursementDate) ? (item.actualDisbursementAmount || 0) : 0;
             }
-            addToYear(y, alloc, obli, disb);
+            addToGroup(y, ft, alloc, obli, disb);
         };
         financialData.staffingReqs.forEach(s => processPM(s, true));
         financialData.officeReqs.forEach(s => processPM(s));
         financialData.otherProgramExpenses.forEach(s => processPM(s));
 
-        // Transform to Array and Sort ASCENDING (Oldest first, Current last)
-        const result = Array.from(yearMap.entries()).map(([year, stats]) => {
-            const obliRate = stats.alloc > 0 ? (stats.obli / stats.alloc) * 100 : 0;
-            const disbRate = stats.obli > 0 ? (stats.disb / stats.obli) * 100 : 0;
-            const unutilized = stats.alloc - stats.obli;
-            const unpaid = stats.obli - stats.disb;
-            return { year, ...stats, obliRate, disbRate, unutilized, unpaid };
+        // Transform and Label
+        const rows = Array.from(groupingMap.values()).map(row => {
+            // Round Up Amounts
+            const alloc = Math.ceil(row.alloc);
+            const obli = Math.ceil(row.obli);
+            const disb = Math.ceil(row.disb);
+            const unutilized = alloc - obli;
+            const unpaid = obli - disb;
+            const obliRate = alloc > 0 ? (obli / alloc) * 100 : 0;
+            const disbRate = obli > 0 ? (disb / obli) * 100 : 0;
+
+            let label = `${row.year}`;
+            // If Year is current selected year
+            if (row.year === targetYearInt) {
+                if (row.fundType === 'Current') label = `Current Year (${row.year})`;
+                else label = `${row.fundType} (${row.year})`;
+            } 
+            // If Year is previous year
+            else if (row.year === targetYearInt - 1) {
+                if (row.fundType === 'Continuing') label = `Continuing (${row.year})`;
+                else if (row.fundType === 'Current') label = `${row.year}`; // Historical
+                else label = `${row.year} (${row.fundType})`;
+            }
+            // Older years
+            else {
+                 label = `${row.year}`;
+                 if (row.fundType !== 'Current') label += ` (${row.fundType})`;
+            }
+
+            return {
+                ...row,
+                label,
+                alloc, obli, disb, unutilized, unpaid, obliRate, disbRate
+            };
         });
 
-        // Sorting: Ascending Year
-        return result.sort((a, b) => a.year - b.year);
+        // Sort: Year Descending. 
+        // Logic: 
+        // 1. Current Year (2027)
+        // 2. Continuing (2026)
+        // 3. Historical Descending
+        
+        return rows.sort((a, b) => {
+            // Primary: Year Descending
+            if (b.year !== a.year) return b.year - a.year;
+            
+            // Secondary: If same year (e.g. 2026 has both Current and Continuing)
+            // Continuing should come before Current for the previous year context if it exists
+            // Or prioritize 'Continuing' generally for visibility
+            if (a.fundType === 'Continuing' && b.fundType !== 'Continuing') return -1;
+            if (b.fundType === 'Continuing' && a.fundType !== 'Continuing') return 1;
+            
+            // Prioritize Current over others if not Continuing
+            if (a.fundType === 'Current' && b.fundType !== 'Current') return -1;
+            if (b.fundType === 'Current' && a.fundType !== 'Current') return 1;
+            
+            return 0;
+        });
 
-    }, [financialData, selectedYear, selectedMonth]);
+    }, [financialData, selectedYear, selectedMonth, targetYearInt]);
 
-    // Calculate Grand Total for Financials
     const financialGrandTotal = useMemo(() => {
         return financialHistoryData.reduce((acc, row) => ({
             alloc: acc.alloc + row.alloc,
@@ -300,7 +329,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
     const handlePrint = () => window.print();
 
-    // Export Functionality
     const handleDownload = () => {
         const wb = XLSX.utils.book_new();
 
@@ -330,18 +358,13 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         XLSX.utils.book_append_sheet(wb, wsPhys, "Physical");
 
         // 2. Financial Sheet
-        const finRows: any[][] = [["Fund Year", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]];
+        const finRows: any[][] = [["Fund Source", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]];
         financialHistoryData.forEach(row => {
-            let label = row.year.toString();
-            if (row.year === targetYearInt) label = `Current Year (${row.year})`;
-            else if (row.year === targetYearInt - 1) label = `Continuing (${row.year})`;
-
             finRows.push([
-                label, row.alloc, row.obli, row.disb, row.obliRate/100, row.disbRate/100, row.unutilized, row.unpaid
+                row.label, row.alloc, row.obli, row.disb, row.obliRate/100, row.disbRate/100, row.unutilized, row.unpaid
             ]);
         });
 
-        // Grand Total Row
         if (financialHistoryData.length > 0) {
             const obliRateTotal = financialGrandTotal.alloc > 0 ? (financialGrandTotal.obli / financialGrandTotal.alloc) : 0;
             const disbRateTotal = financialGrandTotal.obli > 0 ? (financialGrandTotal.disb / financialGrandTotal.obli) : 0;
@@ -358,7 +381,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         XLSX.writeFile(wb, `Monthly_Report_${selectedYear}_${MONTHS[selectedMonth].label}.xlsx`);
     };
 
-    // Render Helpers
     const renderPhysRow = (item: any, idx: string, level: number) => {
         const indent = level === 0 ? '' : level === 1 ? 'pl-6' : 'pl-10';
         return (
@@ -455,7 +477,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                     <table className="min-w-full border-collapse">
                         <thead className="bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 text-xs font-bold uppercase">
                             <tr>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-left">Fund Year</th>
+                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-left">Fund Source</th>
                                 <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Allocation</th>
                                 <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Obligation</th>
                                 <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Disbursement</th>
@@ -466,42 +488,36 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {financialHistoryData.map((row) => {
-                                let label = row.year.toString();
-                                if (row.year === targetYearInt) label = `Current Year (${row.year})`;
-                                else if (row.year === targetYearInt - 1) label = `Continuing (${row.year})`;
-
-                                return (
-                                    <tr key={row.year} className="hover:bg-blue-50 dark:hover:bg-blue-900/10">
-                                        <td className="p-2 border border-gray-300 dark:border-gray-600 font-bold">{label}</td>
-                                        <td className={dataCellClass}>{formatCurrency(row.alloc)}</td>
-                                        <td className={dataCellClass}>{formatCurrency(row.obli)}</td>
-                                        <td className={dataCellClass}>{formatCurrency(row.disb)}</td>
-                                        <td className={`${dataCellClass} text-center`}>{row.obliRate.toFixed(1)}%</td>
-                                        <td className={`${dataCellClass} text-center`}>{row.disbRate.toFixed(1)}%</td>
-                                        <td className={dataCellClass}>{formatCurrency(row.unutilized)}</td>
-                                        <td className={dataCellClass}>{formatCurrency(row.unpaid)}</td>
-                                    </tr>
-                                );
-                            })}
+                            {financialHistoryData.map((row) => (
+                                <tr key={`${row.year}-${row.fundType}`} className="hover:bg-blue-50 dark:hover:bg-blue-900/10">
+                                    <td className="p-2 border border-gray-300 dark:border-gray-600 font-bold">{row.label}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(row.alloc)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(row.obli)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(row.disb)}</td>
+                                    <td className={`${dataCellClass} text-center`}>{row.obliRate.toFixed(1)}%</td>
+                                    <td className={`${dataCellClass} text-center`}>{row.disbRate.toFixed(1)}%</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(row.unutilized)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(row.unpaid)}</td>
+                                </tr>
+                            ))}
                             {financialHistoryData.length > 0 && (
                                 <tr className="bg-blue-100 dark:bg-blue-900/30 font-bold border-t-2 border-blue-300">
                                     <td className="p-2 border border-gray-300 dark:border-gray-600">Grand Total</td>
-                                    <td className={dataCellClass}>{formatCurrency(financialGrandTotal.alloc)}</td>
-                                    <td className={dataCellClass}>{formatCurrency(financialGrandTotal.obli)}</td>
-                                    <td className={dataCellClass}>{formatCurrency(financialGrandTotal.disb)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.alloc)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.obli)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.disb)}</td>
                                     <td className={`${dataCellClass} text-center`}>
                                         {(financialGrandTotal.alloc > 0 ? (financialGrandTotal.obli / financialGrandTotal.alloc * 100) : 0).toFixed(1)}%
                                     </td>
                                     <td className={`${dataCellClass} text-center`}>
                                         {(financialGrandTotal.obli > 0 ? (financialGrandTotal.disb / financialGrandTotal.obli * 100) : 0).toFixed(1)}%
                                     </td>
-                                    <td className={dataCellClass}>{formatCurrency(financialGrandTotal.unutilized)}</td>
-                                    <td className={dataCellClass}>{formatCurrency(financialGrandTotal.unpaid)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.unutilized)}</td>
+                                    <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.unpaid)}</td>
                                 </tr>
                             )}
                             {financialHistoryData.length === 0 && (
-                                <tr><td colSpan={8} className="p-4 text-center text-gray-500 italic">No financial data available up to selected year.</td></tr>
+                                <tr><td colSpan={8} className="p-4 text-center text-gray-500 italic">No financial data available.</td></tr>
                             )}
                         </tbody>
                     </table>

@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
@@ -74,6 +75,14 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         return true;
     };
 
+    // Filter logic for Financial History Table (Ignores Year AND Fund Type filter)
+    // This allows Table 2 in MonthlyReportMatrix to show Current vs Continuing breakdown
+    const financialBaseFilter = (item: any) => {
+        if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+        // NOTE: fundType filter is INTENTIONALLY skipped here to allow aggregation of Current vs Continuing
+        return true;
+    };
+
     // Data filtered by Year (For Physical Reports)
     const filteredData = useMemo(() => {
         let filtered = {
@@ -109,17 +118,17 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         };
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
-    // Data IGNORING Year Filter (For Financial History Table)
+    // Data IGNORING Year and FundType Filter (For Financial History Table)
     const financialFilteredData = useMemo(() => {
-        // Apply OU, Tier, Fund filters but skip Year
+        // Apply OU and Tier filters only
         let filtered = {
-            subprojects: subprojects.filter(baseFilter),
+            subprojects: subprojects.filter(financialBaseFilter),
             ipos: ipos,
-            trainings: trainings.filter(baseFilter),
-            otherActivities: otherActivities.filter(baseFilter),
-            officeReqs: officeReqs.filter(baseFilter),
-            staffingReqs: staffingReqs.filter(baseFilter),
-            otherProgramExpenses: otherProgramExpenses.filter(baseFilter)
+            trainings: trainings.filter(financialBaseFilter),
+            otherActivities: otherActivities.filter(financialBaseFilter),
+            officeReqs: officeReqs.filter(financialBaseFilter),
+            staffingReqs: staffingReqs.filter(financialBaseFilter),
+            otherProgramExpenses: otherProgramExpenses.filter(financialBaseFilter)
         };
 
         return {
@@ -131,7 +140,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
             otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
         };
-    }, [selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [selectedOu, selectedTier, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -163,7 +172,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             case 'BAR1':
                 return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Monthly Matrix':
-                // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History)
+                // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
                 return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             default:
                 return null;
