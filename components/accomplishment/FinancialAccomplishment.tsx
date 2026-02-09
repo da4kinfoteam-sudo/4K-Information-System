@@ -83,7 +83,14 @@ const getMonthFromDateStr = (dateStr: string | undefined) => {
 };
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+  // Round up to nearest whole number
+  const rounded = Math.ceil(amount);
+  return new Intl.NumberFormat('en-PH', { 
+      style: 'currency', 
+      currency: 'PHP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0 
+  }).format(rounded);
 }
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
@@ -104,8 +111,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // Filter States (Persistent)
     const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', null);
     const [selectedOu, setSelectedOu] = useLocalStorageState<string>('fin_selectedOu', 'All');
-    const [selectedTier, setSelectedTier] = useLocalStorageState<string>('fin_selectedTier', 'All');
-    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('fin_selectedFundType', 'All');
+    const [selectedTier, setSelectedTier] = useLocalStorageState<string>('fin_selectedTier', 'Tier 1');
+    const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('fin_selectedFundType', 'Current');
     
     // Filter States (Form/Modal)
     const [formYear, setFormYear] = useState<string>(selectedYear ? selectedYear.toString() : new Date().getFullYear().toString());
@@ -117,11 +124,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
     
     const [items, setItems] = useState<FinancialItem[]>([]);
-    const [expandedObjectTypes, setExpandedObjectTypes] = useState<Set<string>>(new Set(['MOOE', 'CO']));
-    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [expandedSubGroups, setExpandedSubGroups] = useState<Set<string>>(new Set());
-    // Track expanded rows for monthly breakdown
-    const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    
+    // Persistent Expansion States (Stored as Arrays in localStorage)
+    const [expandedObjectTypes, setExpandedObjectTypes] = useLocalStorageState<string[]>('fin_expandedObjectTypes', ['MOOE', 'CO']);
+    const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('fin_expandedGroups', []);
+    const [expandedSubGroups, setExpandedSubGroups] = useLocalStorageState<string[]>('fin_expandedSubGroups', []);
+    const [expandedRows, setExpandedRows] = useLocalStorageState<string[]>('fin_expandedRows', []);
 
     // Initialize User OU lock
     useEffect(() => {
@@ -383,37 +391,29 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     const toggleObjectType = (type: string) => {
         setExpandedObjectTypes(prev => {
-            const next = new Set(prev);
-            if (next.has(type)) next.delete(type);
-            else next.add(type);
-            return next;
+            if (prev.includes(type)) return prev.filter(t => t !== type);
+            return [...prev, type];
         });
     };
 
     const toggleGroup = (key: string) => {
         setExpandedGroups(prev => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
+            if (prev.includes(key)) return prev.filter(k => k !== key);
+            return [...prev, key];
         });
     };
 
     const toggleSubGroup = (key: string) => {
         setExpandedSubGroups(prev => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
+            if (prev.includes(key)) return prev.filter(k => k !== key);
+            return [...prev, key];
         });
     };
 
     const toggleRowExpansion = (uniqueId: string) => {
         setExpandedRows(prev => {
-            const next = new Set(prev);
-            if (next.has(uniqueId)) next.delete(uniqueId);
-            else next.add(uniqueId);
-            return next;
+            if (prev.includes(uniqueId)) return prev.filter(id => id !== uniqueId);
+            return [...prev, uniqueId];
         });
     }
 
@@ -693,7 +693,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {groupedItems.map((typeGroup) => {
-                            const isTypeExpanded = expandedObjectTypes.has(typeGroup.objectType);
+                            const isTypeExpanded = expandedObjectTypes.includes(typeGroup.objectType);
                             return (
                                 <React.Fragment key={typeGroup.objectType}>
                                     {/* Level 1: Object Type Header (Container) */}
@@ -710,7 +710,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                                     {/* Level 2: UACS Groups */}
                                     {isTypeExpanded && typeGroup.uacsGroups.map((group) => {
-                                        const isExpanded = expandedGroups.has(group.key);
+                                        const isExpanded = expandedGroups.includes(group.key);
                                         // Determine if all items have same month to display in group header
                                         const commonObliMonth = group.items.every(i => i.actualObligationMonth === group.items[0].actualObligationMonth) ? group.items[0].actualObligationMonth : '';
                                         const commonDisbMonth = group.items.every(i => i.actualDisbursementMonth === group.items[0].actualDisbursementMonth) ? group.items[0].actualDisbursementMonth : '';
@@ -776,7 +776,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                 {isExpanded && Object.entries(group.subGroups).map(([subKey, items]) => {
                                                     if (items.length === 0) return null;
                                                     const subId = `${group.key}-${subKey}`;
-                                                    const isSubExpanded = expandedSubGroups.has(subId);
+                                                    const isSubExpanded = expandedSubGroups.includes(subId);
 
                                                     return (
                                                         <React.Fragment key={subId}>
@@ -791,7 +791,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                 </td>
                                                             </tr>
                                                             {isSubExpanded && items.map(item => {
-                                                                const isBreakdownExpanded = expandedRows.has(item.uniqueId);
+                                                                const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
                                                                 const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
 
                                                                 return (

@@ -556,7 +556,7 @@ export const navigationStructure: NavItem[] = [
             { name: 'Financial', href: '/accomplishment/financial' },
             { name: 'Physical', href: '/accomplishment/physical' }
         ],
-        hiddenFor: ['Management'],
+        // hiddenFor: ['Management'], // Removed limitation for Management
         icon: <AccomplishmentIcon />
     },
     { name: 'Indigenous Peoples Organization', href: '/ipo', icon: <IpoIcon /> },
