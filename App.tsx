@@ -18,6 +18,7 @@ import ProgramManagement from './components/ProgramManagement';
 import OfficeRequirementDetail from './components/program_management/OfficeRequirementDetail';
 import StaffingRequirementDetail from './components/program_management/StaffingRequirementDetail';
 import OtherExpenseDetail from './components/program_management/OtherExpenseDetail';
+import FinancialAccomplishment from './components/accomplishment/FinancialAccomplishment'; // Import new component
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -323,6 +324,29 @@ const AppContent: React.FC = () => {
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
                         />;
+            // NEW ACCOMPLISHMENT ROUTES
+            case '/accomplishment/financial':
+                return <FinancialAccomplishment 
+                            subprojects={subprojects}
+                            setSubprojects={setSubprojects}
+                            activities={activities}
+                            setActivities={setActivities}
+                            officeReqs={officeReqs}
+                            setOfficeReqs={setOfficeReqs}
+                            staffingReqs={staffingReqs}
+                            setStaffingReqs={setStaffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
+                            setOtherProgramExpenses={setOtherProgramExpenses}
+                            uacsCodes={derivedUacsCodes}
+                            onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
+                            onSelectOfficeReq={handleSelectOfficeReq}
+                            onSelectStaffingReq={handleSelectStaffingReq}
+                            onSelectOtherExpense={handleSelectOtherExpense}
+                        />;
+            case '/accomplishment/physical':
+                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Physical Accomplishment Module - Coming Soon</div>;
+                
             case '/program-management/office-detail':
                 if (!selectedOfficeReq) return <div>Select an item</div>;
                 return <OfficeRequirementDetail 

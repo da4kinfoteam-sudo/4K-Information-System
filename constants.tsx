@@ -45,6 +45,12 @@ export const HomeIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+export const AccomplishmentIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 // Types
 export interface BaseEntity {
     id: number;
@@ -543,6 +549,15 @@ export const navigationStructure: NavItem[] = [
             { name: 'Program Management', href: '/program-management' }
         ],
         icon: <ProjectsIcon />
+    },
+    {
+        name: 'Accomplishment Forms',
+        children: [
+            { name: 'Financial', href: '/accomplishment/financial' },
+            { name: 'Physical', href: '/accomplishment/physical' }
+        ],
+        hiddenFor: ['Management'],
+        icon: <AccomplishmentIcon />
     },
     { name: 'Indigenous Peoples Organization', href: '/ipo', icon: <IpoIcon /> },
     {
