@@ -53,19 +53,37 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
     }, [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
-    const filteredData = useMemo(() => {
-        // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
-        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
-        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+    // Helper functions for filtering
+    const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+    const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
 
+    const filterByOu = (list: any[]) => {
+        if (selectedOu === 'All') return list;
+        return list.filter(item => item.operatingUnit === selectedOu);
+    };
+
+    const targetRegion = selectedOu !== 'All' ? ouToRegionMap[selectedOu] : null;
+    const filterIpoByRegion = (list: IPO[]) => {
+        if (selectedOu === 'All' || !targetRegion) return list;
+        return list.filter(i => i.region === targetRegion);
+    };
+
+    const baseFilter = (item: any) => {
+        if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+        if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+        return true;
+    };
+
+    // Data filtered by Year (For Physical Reports)
+    const filteredData = useMemo(() => {
         let filtered = {
-            subprojects: subprojects,
+            subprojects: subprojects.filter(baseFilter),
             ipos: ipos,
-            trainings: trainings,
-            otherActivities: otherActivities,
-            officeReqs: officeReqs,
-            staffingReqs: staffingReqs,
-            otherProgramExpenses: otherProgramExpenses
+            trainings: trainings.filter(baseFilter),
+            otherActivities: otherActivities.filter(baseFilter),
+            officeReqs: officeReqs.filter(baseFilter),
+            staffingReqs: staffingReqs.filter(baseFilter),
+            otherProgramExpenses: otherProgramExpenses.filter(baseFilter)
         };
 
         if (selectedYear !== 'All') {
@@ -73,49 +91,35 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 ...filtered,
                 subprojects: filtered.subprojects.filter(p => p.fundingYear?.toString() === selectedYear),
                 trainings: filtered.trainings.filter(t => t.fundingYear?.toString() === selectedYear),
-                // Fixed: Filter by fundingYear instead of date
                 otherActivities: filtered.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear),
-                // Fixed: Safe access using optional chaining to prevent crashes on null fundYear
                 officeReqs: filtered.officeReqs.filter(i => i.fundYear?.toString() === selectedYear),
                 staffingReqs: filtered.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear),
                 otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear),
             };
         }
 
-        if (selectedTier !== 'All') {
-            filtered = {
-                ...filtered,
-                subprojects: filtered.subprojects.filter(p => p.tier === selectedTier),
-                trainings: filtered.trainings.filter(t => t.tier === selectedTier),
-                otherActivities: filtered.otherActivities.filter(a => a.tier === selectedTier),
-                officeReqs: filtered.officeReqs.filter(i => i.tier === selectedTier),
-                staffingReqs: filtered.staffingReqs.filter(i => i.tier === selectedTier),
-                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.tier === selectedTier),
-            };
-        }
-
-        if (selectedFundType !== 'All') {
-            filtered = {
-                ...filtered,
-                subprojects: filtered.subprojects.filter(p => p.fundType === selectedFundType),
-                trainings: filtered.trainings.filter(t => t.fundType === selectedFundType),
-                otherActivities: filtered.otherActivities.filter(a => a.fundType === selectedFundType),
-                officeReqs: filtered.officeReqs.filter(i => i.fundType === selectedFundType),
-                staffingReqs: filtered.staffingReqs.filter(i => i.fundType === selectedFundType),
-                otherProgramExpenses: filtered.otherProgramExpenses.filter(i => i.fundType === selectedFundType),
-            };
-        }
-
-        // Apply OU Filtering and then Deep Sanitization on the result
-        const filterByOu = (list: any[]) => {
-            if (selectedOu === 'All') return list;
-            return list.filter(item => item.operatingUnit === selectedOu);
+        return {
+            subprojects: filterByOu(filtered.subprojects).map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            ipos: filterIpoByRegion(filtered.ipos),
+            trainings: filterByOu(filtered.trainings).map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: filterByOu(filtered.otherActivities).map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            officeReqs: filterByOu(filtered.officeReqs),
+            staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+            otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
         };
+    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
-        const targetRegion = selectedOu !== 'All' ? ouToRegionMap[selectedOu] : null;
-        const filterIpoByRegion = (list: IPO[]) => {
-            if (selectedOu === 'All' || !targetRegion) return list;
-            return list.filter(i => i.region === targetRegion);
+    // Data IGNORING Year Filter (For Financial History Table)
+    const financialFilteredData = useMemo(() => {
+        // Apply OU, Tier, Fund filters but skip Year
+        let filtered = {
+            subprojects: subprojects.filter(baseFilter),
+            ipos: ipos,
+            trainings: trainings.filter(baseFilter),
+            otherActivities: otherActivities.filter(baseFilter),
+            officeReqs: officeReqs.filter(baseFilter),
+            staffingReqs: staffingReqs.filter(baseFilter),
+            otherProgramExpenses: otherProgramExpenses.filter(baseFilter)
         };
 
         return {
@@ -127,8 +131,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             staffingReqs: filterByOu(filtered.staffingReqs).map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
             otherProgramExpenses: filterByOu(filtered.otherProgramExpenses),
         };
-
-    }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+    }, [selectedOu, selectedTier, selectedFundType, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -160,7 +163,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             case 'BAR1':
                 return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Monthly Matrix':
-                return <MonthlyReportMatrix data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History)
+                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             default:
                 return null;
         }
