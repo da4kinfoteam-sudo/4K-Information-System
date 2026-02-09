@@ -26,6 +26,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = () => {
+        // Clear all local storage items to reset persistency of filters and states
+        localStorage.clear();
         setCurrentUser(null);
     };
 
@@ -43,4 +45,3 @@ export const useAuth = () => {
     }
     return context;
 };
-// --- End of contexts/AuthContext.tsx ---
