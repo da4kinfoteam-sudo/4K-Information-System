@@ -194,6 +194,29 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }
         
         const rowMap = new Map<string, RowData>();
+        const prevYear = targetYearInt - 1;
+
+        // Initialize Template Rows to ensure they appear
+        // 1. Current Year (Bottom)
+        rowMap.set('current', {
+            label: `Current Year (${targetYearInt})`,
+            sortOrder: targetYearInt,
+            alloc: 0, obli: 0, disb: 0
+        });
+
+        // 2. Previous Year - Continuing (Above Current)
+        rowMap.set('prev_continuing', {
+            label: `Continuing (${prevYear})`,
+            sortOrder: prevYear + 0.5,
+            alloc: 0, obli: 0, disb: 0
+        });
+
+        // 3. Previous Year - Other (Above Continuing)
+        rowMap.set('prev_other', {
+            label: `${prevYear}`,
+            sortOrder: prevYear,
+            alloc: 0, obli: 0, disb: 0
+        });
 
         const getRowInfo = (year: number, fundType: string): { key: string, label: string, sortOrder: number } | null => {
             // Filter out future years
@@ -201,25 +224,24 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
             if (year === targetYearInt) {
                 // Only "Current" fund type for the "Current Year" row as per instructions
-                // "Current Year (2027) - displays data of current fund type"
                 if (fundType === 'Current') {
-                    return { key: 'current', label: `Current Year (${year})`, sortOrder: 4000 };
+                    return { key: 'current', label: `Current Year (${year})`, sortOrder: year };
                 }
-                return null; // Ignore other fund types for current year in this specific matrix view
+                return null; // Ignore other fund types for current year in this matrix
             } 
             
-            if (year === targetYearInt - 1) {
+            if (year === prevYear) {
                 // Previous Year
                 if (fundType === 'Continuing') {
-                    return { key: 'prev_continuing', label: `Continuing (${year})`, sortOrder: 3000 };
+                    return { key: 'prev_continuing', label: `Continuing (${year})`, sortOrder: year + 0.5 };
                 } else {
-                    return { key: 'prev_other', label: `${year}`, sortOrder: 2000 };
+                    return { key: 'prev_other', label: `${year}`, sortOrder: year };
                 }
             } 
             
-            if (year < targetYearInt - 1) {
+            if (year < prevYear) {
                 // Historical Years - Aggregate all fund types
-                return { key: `hist_${year}`, label: `${year}`, sortOrder: 1000 + year };
+                return { key: `hist_${year}`, label: `${year}`, sortOrder: year };
             }
 
             return null;
@@ -336,7 +358,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             };
         });
 
-        // Sort by order
+        // Sort by order: Historical (asc), Prev Other, Prev Continuing, Current
         return rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
     }, [financialData, selectedYear, selectedMonth, targetYearInt]);
