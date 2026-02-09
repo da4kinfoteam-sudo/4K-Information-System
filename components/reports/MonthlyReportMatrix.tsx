@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
@@ -185,23 +184,58 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
         const reportDateLimit = new Date(targetYearInt, selectedMonth + 1, 0);
 
-        // Key: "year|fundType"
-        const groupingMap = new Map<string, { year: number, fundType: string, alloc: number, obli: number, disb: number }>();
+        interface RowData {
+            label: string;
+            sortOrder: number;
+            alloc: number;
+            obli: number;
+            disb: number;
+        }
         
+        const rowMap = new Map<string, RowData>();
+
+        const getRowInfo = (year: number, fundType: string): { key: string, label: string, sortOrder: number } | null => {
+            if (year > targetYearInt) return null; // Skip future years
+
+            if (year === targetYearInt) {
+                // Current Selected Year (Bottom)
+                return { key: 'current', label: `Current Year (${year})`, sortOrder: 4000 };
+            } else if (year === targetYearInt - 1) {
+                // Previous Year
+                if (fundType === 'Continuing') {
+                    // Continuing from Previous Year (Above Current)
+                    return { key: 'prev_continuing', label: `Continuing (${year})`, sortOrder: 3000 };
+                } else {
+                    // Rest of Previous Year (Above Continuing)
+                    return { key: 'prev_other', label: `${year}`, sortOrder: 2000 };
+                }
+            } else {
+                // Historical Years (Top, Aggregated by Year)
+                return { key: `hist_${year}`, label: `${year}`, sortOrder: 1000 + year }; // e.g., 2025 -> 3025
+            }
+        };
+
         const isDateInReportWindow = (dateStr?: string) => {
             if (!dateStr) return false;
             const d = new Date(dateStr);
             return d <= reportDateLimit;
         };
 
-        const addToGroup = (year: number, fundType: string, alloc: number, obli: number, disb: number) => {
+        const aggregate = (year: number, fundType: string, alloc: number, obli: number, disb: number) => {
             if (!year) return;
-            const ft = fundType || 'Current';
-            const key = `${year}|${ft}`;
-            
-            if (!groupingMap.has(key)) groupingMap.set(key, { year, fundType: ft, alloc: 0, obli: 0, disb: 0 });
-            const entry = groupingMap.get(key)!;
-            // Round Up (Ceil)
+            const info = getRowInfo(year, fundType || 'Current');
+            if (!info) return;
+
+            if (!rowMap.has(info.key)) {
+                rowMap.set(info.key, {
+                    label: info.label,
+                    sortOrder: info.sortOrder,
+                    alloc: 0,
+                    obli: 0,
+                    disb: 0
+                });
+            }
+            const entry = rowMap.get(info.key)!;
             entry.alloc += alloc;
             entry.obli += obli;
             entry.disb += disb;
@@ -214,7 +248,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
             const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || 0) : 0), 0);
-            addToGroup(y, ft, alloc, obli, disb);
+            aggregate(y, ft, alloc, obli, disb);
         });
 
         // 2. Activities
@@ -224,7 +258,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
             const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
             const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
-            addToGroup(y, ft, alloc, obli, disb);
+            aggregate(y, ft, alloc, obli, disb);
         };
         financialData.trainings.forEach(processAct);
         financialData.otherActivities.forEach(processAct);
@@ -249,15 +283,14 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             } else {
                 disb = isDateInReportWindow(item.actualDisbursementDate) ? (item.actualDisbursementAmount || 0) : 0;
             }
-            addToGroup(y, ft, alloc, obli, disb);
+            aggregate(y, ft, alloc, obli, disb);
         };
         financialData.staffingReqs.forEach(s => processPM(s, true));
         financialData.officeReqs.forEach(s => processPM(s));
         financialData.otherProgramExpenses.forEach(s => processPM(s));
 
-        // Transform and Label
-        const rows = Array.from(groupingMap.values()).map(row => {
-            // Round Up Amounts
+        // Transform to array
+        const rows = Array.from(rowMap.entries()).map(([key, row]) => {
             const alloc = Math.ceil(row.alloc);
             const obli = Math.ceil(row.obli);
             const disb = Math.ceil(row.disb);
@@ -266,53 +299,15 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const obliRate = alloc > 0 ? (obli / alloc) * 100 : 0;
             const disbRate = obli > 0 ? (disb / obli) * 100 : 0;
 
-            let label = `${row.year}`;
-            // If Year is current selected year
-            if (row.year === targetYearInt) {
-                if (row.fundType === 'Current') label = `Current Year (${row.year})`;
-                else label = `${row.fundType} (${row.year})`;
-            } 
-            // If Year is previous year
-            else if (row.year === targetYearInt - 1) {
-                if (row.fundType === 'Continuing') label = `Continuing (${row.year})`;
-                else if (row.fundType === 'Current') label = `${row.year}`; // Historical
-                else label = `${row.year} (${row.fundType})`;
-            }
-            // Older years
-            else {
-                 label = `${row.year}`;
-                 if (row.fundType !== 'Current') label += ` (${row.fundType})`;
-            }
-
             return {
+                key,
                 ...row,
-                label,
                 alloc, obli, disb, unutilized, unpaid, obliRate, disbRate
             };
         });
 
-        // Sort: Year Descending. 
-        // Logic: 
-        // 1. Current Year (2027)
-        // 2. Continuing (2026)
-        // 3. Historical Descending
-        
-        return rows.sort((a, b) => {
-            // Primary: Year Descending
-            if (b.year !== a.year) return b.year - a.year;
-            
-            // Secondary: If same year (e.g. 2026 has both Current and Continuing)
-            // Continuing should come before Current for the previous year context if it exists
-            // Or prioritize 'Continuing' generally for visibility
-            if (a.fundType === 'Continuing' && b.fundType !== 'Continuing') return -1;
-            if (b.fundType === 'Continuing' && a.fundType !== 'Continuing') return 1;
-            
-            // Prioritize Current over others if not Continuing
-            if (a.fundType === 'Current' && b.fundType !== 'Current') return -1;
-            if (b.fundType === 'Current' && a.fundType !== 'Current') return 1;
-            
-            return 0;
-        });
+        // Sort by order: Historical (asc), Prev Other, Prev Continuing, Current
+        return rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
     }, [financialData, selectedYear, selectedMonth, targetYearInt]);
 
@@ -489,7 +484,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                         </thead>
                         <tbody className="text-sm">
                             {financialHistoryData.map((row) => (
-                                <tr key={`${row.year}-${row.fundType}`} className="hover:bg-blue-50 dark:hover:bg-blue-900/10">
+                                <tr key={row.key} className="hover:bg-blue-50 dark:hover:bg-blue-900/10">
                                     <td className="p-2 border border-gray-300 dark:border-gray-600 font-bold">{row.label}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(row.alloc)}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(row.obli)}</td>
