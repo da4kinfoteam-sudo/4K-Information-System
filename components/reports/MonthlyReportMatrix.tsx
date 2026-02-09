@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
@@ -195,24 +196,33 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const rowMap = new Map<string, RowData>();
 
         const getRowInfo = (year: number, fundType: string): { key: string, label: string, sortOrder: number } | null => {
-            if (year > targetYearInt) return null; // Skip future years
+            // Filter out future years
+            if (year > targetYearInt) return null; 
 
             if (year === targetYearInt) {
-                // Current Selected Year (Bottom)
-                return { key: 'current', label: `Current Year (${year})`, sortOrder: 4000 };
-            } else if (year === targetYearInt - 1) {
+                // Only "Current" fund type for the "Current Year" row as per instructions
+                // "Current Year (2027) - displays data of current fund type"
+                if (fundType === 'Current') {
+                    return { key: 'current', label: `Current Year (${year})`, sortOrder: 4000 };
+                }
+                return null; // Ignore other fund types for current year in this specific matrix view
+            } 
+            
+            if (year === targetYearInt - 1) {
                 // Previous Year
                 if (fundType === 'Continuing') {
-                    // Continuing from Previous Year (Above Current)
                     return { key: 'prev_continuing', label: `Continuing (${year})`, sortOrder: 3000 };
                 } else {
-                    // Rest of Previous Year (Above Continuing)
                     return { key: 'prev_other', label: `${year}`, sortOrder: 2000 };
                 }
-            } else {
-                // Historical Years (Top, Aggregated by Year)
-                return { key: `hist_${year}`, label: `${year}`, sortOrder: 1000 + year }; // e.g., 2025 -> 3025
+            } 
+            
+            if (year < targetYearInt - 1) {
+                // Historical Years - Aggregate all fund types
+                return { key: `hist_${year}`, label: `${year}`, sortOrder: 1000 + year };
             }
+
+            return null;
         };
 
         const isDateInReportWindow = (dateStr?: string) => {
@@ -245,9 +255,16 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         financialData.subprojects.forEach(sp => {
             const y = sp.fundingYear || 0;
             const ft = sp.fundType || 'Current';
+            
+            // Allocation: Full Budget
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
+            
+            // Obligation: Check actualObligationDate
             const obli = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
-            const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || 0) : 0), 0);
+            
+            // Disbursement: Check actualDisbursementDate
+            const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || d.actualAmount || 0) : 0), 0);
+            
             aggregate(y, ft, alloc, obli, disb);
         });
 
@@ -255,9 +272,11 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const processAct = (act: any) => {
             const y = act.fundingYear || 0;
             const ft = act.fundType || 'Current';
+            
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
-            const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
-            const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
+            const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || e.amount) : 0), 0);
+            const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || e.amount) : 0), 0);
+            
             aggregate(y, ft, alloc, obli, disb);
         };
         financialData.trainings.forEach(processAct);
@@ -267,24 +286,35 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const processPM = (item: any, isStaff = false) => {
             const y = item.fundYear || 0;
             const ft = item.fundType || 'Current';
+            
+            // Allocation: Full Amount
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
+            
+            // Obligation: Check date
             const obli = isDateInReportWindow(item.actualObligationDate) ? (item.actualObligationAmount || 0) : 0;
             
+            // Disbursement
             let disb = 0;
+            
             if (isStaff || item.particulars) {
-                if (y < targetYearInt) {
-                    disb = item.actualDisbursementAmount || 0;
-                } else if (y === targetYearInt) {
+                 // It has monthly columns
+                 if (y === targetYearInt) {
                      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                      months.forEach((m, idx) => {
-                         if (idx <= selectedMonth) disb += (item[`actualDisbursement${m}`] || 0);
+                         if (idx <= selectedMonth) disb += (Number(item[`actualDisbursement${m}`]) || 0);
                      });
-                }
+                 } else if (y < targetYearInt) {
+                     // For past years, take total actuals as they are fully "realized" relative to current report year context
+                     disb = item.actualDisbursementAmount || 0;
+                 }
             } else {
+                // Subproject/Activity/Office style (flat date)
                 disb = isDateInReportWindow(item.actualDisbursementDate) ? (item.actualDisbursementAmount || 0) : 0;
             }
+            
             aggregate(y, ft, alloc, obli, disb);
         };
+        
         financialData.staffingReqs.forEach(s => processPM(s, true));
         financialData.officeReqs.forEach(s => processPM(s));
         financialData.otherProgramExpenses.forEach(s => processPM(s));
@@ -306,7 +336,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             };
         });
 
-        // Sort by order: Historical (asc), Prev Other, Prev Continuing, Current
+        // Sort by order
         return rows.sort((a, b) => a.sortOrder - b.sortOrder);
 
     }, [financialData, selectedYear, selectedMonth, targetYearInt]);
