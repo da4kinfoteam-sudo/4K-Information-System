@@ -342,6 +342,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     // Core filtering logic for ALL cards/charts
     const filteredData = useMemo(() => {
+        // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
+        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+
         let dataToFilter = { 
             subprojects, ipos, activities,
             officeReqs, staffingReqs, otherProgramExpenses
@@ -351,6 +355,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         const filterItem = (item: any) => {
             let matches = true;
             // Year (fundYear or fundingYear)
+            // Fix: Safe access with optional chaining
             const year = item.fundingYear || item.fundYear;
             if (selectedYear !== 'All' && year?.toString() !== selectedYear) matches = false;
             
@@ -375,6 +380,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 if (item.region !== targetRegion) return false;
             }
             if (selectedYear !== 'All') {
+                if (!item.registrationDate) return false;
                 const regYear = new Date(item.registrationDate).getFullYear().toString();
                 if (regYear !== selectedYear) return false;
             }
@@ -383,11 +389,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         return {
-            subprojects: dataToFilter.subprojects.filter(filterItem),
+            subprojects: dataToFilter.subprojects.filter(filterItem).map(sp => ({ ...sp, details: sanitizeDetails(sp.details) })),
             ipos: dataToFilter.ipos.filter(filterIpo),
-            activities: dataToFilter.activities.filter(filterItem),
+            activities: dataToFilter.activities.filter(filterItem).map(act => ({ ...act, expenses: sanitizeExpenses(act.expenses) })),
             officeReqs: dataToFilter.officeReqs.filter(filterItem),
-            staffingReqs: dataToFilter.staffingReqs.filter(filterItem),
+            staffingReqs: dataToFilter.staffingReqs.filter(filterItem).map(sr => ({ ...sr, expenses: sanitizeExpenses(sr.expenses) })),
             otherProgramExpenses: dataToFilter.otherProgramExpenses.filter(filterItem),
         };
 
@@ -707,7 +713,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {modalData.details.map(detail => (
+                                            {(modalData.details || []).map(detail => (
                                                 <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
                                                     <td className="px-4 py-2">{detail.particulars}</td>
                                                     <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
@@ -716,7 +722,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             ))}
                                             <tr className="font-bold bg-gray-50 dark:bg-gray-700/50">
                                                 <td colSpan={2} className="px-4 py-2 text-right">Total Budget</td>
-                                                <td className="px-4 py-2 text-right">{formatCurrency(calculateTotalBudget(modalData.details))}</td>
+                                                <td className="px-4 py-2 text-right">{formatCurrency(calculateTotalBudget(modalData.details || []))}</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -738,7 +744,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <div>
                                     <h4 className="font-semibold text-md mt-4 mb-2 text-gray-700 dark:text-gray-200">Participating IPOs</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        {modalData.participatingIpos.map(ipoName => (
+                                        {(modalData.participatingIpos || []).map(ipoName => (
                                             <span key={ipoName} className="bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200">
                                                 {ipoName}
                                             </span>

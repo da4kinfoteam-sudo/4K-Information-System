@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
@@ -57,14 +56,18 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     }, [props]);
 
     const filteredData = useMemo(() => {
+        // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it
+        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+
         let data = {
-            subprojects: [...props.subprojects],
-            ipos: [...props.ipos],
-            trainings: [...props.trainings],
-            otherActivities: [...props.otherActivities],
-            officeReqs: [...props.officeReqs],
-            staffingReqs: [...props.staffingReqs],
-            otherProgramExpenses: [...props.otherProgramExpenses]
+            subprojects: props.subprojects,
+            ipos: props.ipos,
+            trainings: props.trainings,
+            otherActivities: props.otherActivities,
+            officeReqs: props.officeReqs,
+            staffingReqs: props.staffingReqs,
+            otherProgramExpenses: props.otherProgramExpenses
         };
 
         // Filter by Year
@@ -73,10 +76,10 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             // Note: We DO NOT filter IPOs by registration date here anymore. 
             // Dashboards like GAD and Physical need the full IPO registry to check for engagement status in the selected year.
             data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
-            data.otherActivities = data.otherActivities.filter(a => new Date(a.date).getFullYear().toString() === selectedYear);
-            data.officeReqs = data.officeReqs.filter(i => i.fundYear.toString() === selectedYear);
-            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear.toString() === selectedYear);
-            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear.toString() === selectedYear);
+            data.otherActivities = data.otherActivities.filter(a => a.date && new Date(a.date).getFullYear().toString() === selectedYear);
+            data.officeReqs = data.officeReqs.filter(i => i.fundYear?.toString() === selectedYear);
+            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear);
         }
 
         // Filter by Tier
@@ -111,7 +114,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.operatingUnit === selectedOu);
         }
 
-        return data;
+        return {
+            ...data,
+            subprojects: data.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            trainings: data.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: data.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            staffingReqs: data.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+        };
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, props]);
 
     const TabButton: React.FC<{ tabName: DashboardTab; label: string }> = ({ tabName, label }) => {
