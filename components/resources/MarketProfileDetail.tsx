@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { MarketingPartner, IPO, philippineRegions, CommodityNeed, referenceCommodityTypes } from '../../constants';
+import { MarketingPartner, IPO, philippineRegions, CommodityNeed, MarketLinkage, referenceCommodityTypes } from '../../constants';
 import LocationPicker, { parseLocation } from '../LocationPicker';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
@@ -18,16 +18,21 @@ interface MarketProfileDetailProps {
 const BUYER_TYPES = ['Private Company', 'Government'];
 const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cash on Delivery', 'Voucher'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const NEGOTIATION_STATUSES = ['Agreed', 'Contract Signed', 'Pending Test Buy'];
+const AGREEMENT_TYPES = ['Verbal', 'Contract', 'Warehouse Delivery Receipt'];
+const TIMEFRAMES = ['Per Week', 'Monthly', 'One-time Transaction'];
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
 const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onUpdatePartner, setPartners, commodityCategories }) => {
     const { currentUser } = useAuth();
     const isAdmin = currentUser?.role === 'Administrator';
-    const [isEditing, setIsEditing] = useState(false);
+    
+    // Modes
+    const [editMode, setEditMode] = useState<'none' | 'details' | 'linkages'>('none');
     const [formData, setFormData] = useState<MarketingPartner>(partner);
 
-    // Inline Commodity Entry State (for Edit mode)
+    // Inline Commodity Entry State (for Details edit mode)
     const [editingCommodityIdx, setEditingCommodityIdx] = useState<number | null>(null);
     const [tempCommodity, setTempCommodity] = useState<CommodityNeed>({
         id: '', name: '', type: '', sourceRegion: '', sourceProvince: '', qualityStandard: '',
@@ -36,26 +41,35 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
     });
     const [provinceOptions, setProvinceOptions] = useState<string[]>([]);
 
-    // Filter and Sort IPOs by Region Proximity
+    // Linkage Entry State
+    const [editingLinkageIdx, setEditingLinkageIdx] = useState<number | null>(null);
+    const [tempLinkage, setTempLinkage] = useState<MarketLinkage>({
+        id: '', region: '', ipoName: '', negotiationStatus: 'Agreed',
+        agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
+        agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
+        testBuyConducted: false
+    });
+
+    // Filter and Sort IPOs by Region Proximity (Potential)
     const potentialIpos = useMemo(() => {
         if (!formData.commodityNeeds) return [];
         const needsNames = formData.commodityNeeds.map(c => c.name.toLowerCase());
         const filtered = ipos.filter(ipo => 
             ipo.commodities.some(c => needsNames.includes(c.particular.toLowerCase()))
         );
-
         const partnerRegion = formData.region;
-        
         return filtered.sort((a, b) => {
-            // Priority 1: Same region
             if (a.region === partnerRegion && b.region !== partnerRegion) return -1;
             if (a.region !== partnerRegion && b.region === partnerRegion) return 1;
-            
-            // Priority 2: Alphabetical by region then name
             if (a.region !== b.region) return a.region.localeCompare(b.region);
             return a.name.localeCompare(b.name);
         });
     }, [formData.commodityNeeds, formData.region, ipos]);
+
+    const iposInLinkageRegion = useMemo(() => {
+        if (!tempLinkage.region) return [];
+        return ipos.filter(i => i.region === tempLinkage.region).sort((a, b) => a.name.localeCompare(b.name));
+    }, [tempLinkage.region, ipos]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -79,13 +93,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
 
     const handleTempCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setTempCommodity(prev => {
-            const updated = { ...prev, [name]: value };
-            if (name === 'type') {
-                updated.name = '';
-            }
-            return updated;
-        });
+        setTempCommodity(prev => ({ ...prev, [name]: value }));
     };
 
     // Region -> Province dropdown logic
@@ -112,11 +120,8 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
             const newList = [...(prev.commodityNeeds || [])];
             const cleanSource = tempCommodity.sourceRegion.includes('|') ? tempCommodity.sourceRegion.split('|')[1] : tempCommodity.sourceRegion;
             const itemToSave = { ...tempCommodity, sourceRegion: cleanSource };
-            if (editingCommodityIdx !== null) {
-                newList[editingCommodityIdx] = itemToSave;
-            } else {
-                newList.push({ ...itemToSave, id: Date.now() });
-            }
+            if (editingCommodityIdx !== null) newList[editingCommodityIdx] = itemToSave;
+            else newList.push({ ...itemToSave, id: Date.now() });
             return { ...prev, commodityNeeds: newList };
         });
         resetTempCommodity();
@@ -131,29 +136,63 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
         setEditingCommodityIdx(null);
     };
 
-    const handleEditCommodity = (idx: number) => {
-        const c = formData.commodityNeeds[idx];
-        setTempCommodity({ ...c });
-        setEditingCommodityIdx(idx);
+    const handleSaveLinkage = () => {
+        if (!tempLinkage.ipoName || !tempLinkage.region) return alert("Region and IPO are required.");
+        setFormData(prev => {
+            const newList = [...(prev.marketingLinkages || [])];
+            if (editingLinkageIdx !== null) newList[editingLinkageIdx] = tempLinkage;
+            else newList.push({ ...tempLinkage, id: Date.now() });
+            return { ...prev, marketingLinkages: newList };
+        });
+        resetTempLinkage();
+    };
+
+    const resetTempLinkage = () => {
+        setTempLinkage({
+            id: '', region: '', ipoName: '', negotiationStatus: 'Agreed',
+            agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
+            agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
+            testBuyConducted: false
+        });
+        setEditingLinkageIdx(null);
     };
 
     const handleSave = async () => {
         const historyEntry = {
             date: new Date().toISOString(),
-            event: 'Profile Updated',
+            event: editMode === 'details' ? 'Profile Details Updated' : 'Market Linkages Updated',
             user: currentUser?.fullName || 'System'
         };
 
         const updatedPartner = { 
             ...formData, 
-            history: [...(formData.history || []), historyEntry],
+            history: [...(partner.history || []), historyEntry],
             updated_at: new Date().toISOString() 
         };
         
         if (supabase) {
             try {
-                const { id, ...payload } = updatedPartner;
-                const { error } = await supabase.from('marketing_partners').update(payload).eq('id', id);
+                // Ensure field names exactly match the DB schema (quoted for camelCase)
+                const payload = {
+                    uid: updatedPartner.uid,
+                    companyName: updatedPartner.companyName,
+                    ownerName: updatedPartner.ownerName,
+                    contactNumber: updatedPartner.contactNumber,
+                    email: updatedPartner.email,
+                    location: updatedPartner.location,
+                    region: updatedPartner.region,
+                    buyerType: updatedPartner.buyerType,
+                    paymentMethods: updatedPartner.paymentMethods,
+                    commodityNeeds: updatedPartner.commodityNeeds,
+                    linkedIpoNames: updatedPartner.marketingLinkages?.map(l => l.ipoName) || [],
+                    history: updatedPartner.history,
+                    marketingLinkages: updatedPartner.marketingLinkages,
+                    remarks: updatedPartner.remarks,
+                    encodedBy: updatedPartner.encodedBy,
+                    updated_at: updatedPartner.updated_at
+                };
+
+                const { error } = await supabase.from('marketing_partners').update(payload).eq('id', partner.id);
                 if (error) throw error;
             } catch (err: any) {
                 alert("Failed to update database: " + err.message);
@@ -162,7 +201,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
         }
 
         onUpdatePartner(updatedPartner);
-        setIsEditing(false);
+        setEditMode('none');
     };
 
     const DetailBlock = ({ label, value }: { label: string, value: any }) => (
@@ -184,29 +223,32 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                         <p className="text-sm text-gray-500 dark:text-gray-400">Marketing Partner Profile | {partner.uid}</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
-                    {isAdmin && !isEditing && (
-                        <button onClick={() => setIsEditing(true)} className="px-6 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 shadow-md">
-                            Edit Profile
-                        </button>
-                    )}
-                </div>
             </header>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-8">
+                    {/* General Information Section */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white">General Information</h3>
-                            {isEditing && (
-                                <div className="flex gap-2">
-                                    <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold">Cancel</button>
-                                    <button onClick={handleSave} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-bold">Save Changes</button>
-                                </div>
-                            )}
+                            <div className="flex gap-2">
+                                {editMode === 'details' ? (
+                                    <>
+                                        <button onClick={() => setEditMode('none')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold">Cancel</button>
+                                        <button onClick={handleSave} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-bold shadow-md">Save Changes</button>
+                                    </>
+                                ) : (
+                                    isAdmin && editMode === 'none' && (
+                                        <button onClick={() => setEditMode('details')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            Edit Details
+                                        </button>
+                                    )
+                                )}
+                            </div>
                         </div>
 
-                        {isEditing ? (
+                        {editMode === 'details' ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-500">Company Name</label>
@@ -246,73 +288,23 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                     <div className="flex justify-between items-center mb-2">
                                         <label className="block text-xs font-bold text-gray-500 uppercase">Manage Commodity Needs</label>
                                     </div>
-                                    
                                     <div className="bg-gray-50 dark:bg-gray-900/40 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Type</label><select name="type" value={tempCommodity.type} onChange={handleTempCommodityChange} className={commonInputClasses}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Commodity Name</label><select name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} disabled={!tempCommodity.type} className={commonInputClasses}><option value="">Select Commodity</option>{tempCommodity.type && commodityCategories[tempCommodity.type]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Source Region</label>
+                                            <div><label className="block text-xs font-medium uppercase text-gray-500">Type</label><select name="type" value={tempCommodity.type} onChange={handleTempCommodityChange} className={commonInputClasses}><option value="">Select</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                            <div><label className="block text-xs font-medium uppercase text-gray-500">Commodity</label><select name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} disabled={!tempCommodity.type} className={commonInputClasses}><option value="">Select</option>{tempCommodity.type && commodityCategories[tempCommodity.type]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                            <div><label className="block text-xs font-medium uppercase text-gray-500">Source Region</label>
                                                 <select name="sourceRegion" value={tempCommodity.sourceRegion} onChange={handleTempCommodityChange} className={commonInputClasses}>
                                                     <option value="">Select Region</option>
-                                                    <option value="130000000|National Capital Region (NCR)">NCR</option>
-                                                    <option value="140000000|Cordillera Administrative Region (CAR)">CAR</option>
-                                                    <option value="010000000|Region I (Ilocos Region)">Region I</option>
-                                                    <option value="020000000|Region II (Cagayan Valley)">Region II</option>
-                                                    <option value="030000000|Region III (Central Luzon)">Region III</option>
-                                                    <option value="041000000|Region IV-A (CALABARZON)">Region IV-A</option>
-                                                    <option value="170000000|MIMAROPA Region">MIMAROPA</option>
-                                                    <option value="050000000|Region V (Bicol Region)">Region V</option>
-                                                    <option value="060000000|Region VI (Western Visayas)">Region VI</option>
-                                                    <option value="070000000|Region VII (Central Visayas)">Region VII</option>
-                                                    <option value="080000000|Region VIII (Eastern Visayas)">Region VIII</option>
-                                                    <option value="090000000|Region IX (Zamboanga Peninsula)">Region IX</option>
-                                                    <option value="100000000|Region X (Northern Mindanao)">Region X</option>
-                                                    <option value="110000000|Region XI (Davao Region)">Region XI</option>
-                                                    <option value="120000000|Region XII (SOCCSKSARGEN)">Region XII</option>
-                                                    <option value="130000000|Region XIII (Caraga)">Region XIII</option>
-                                                    <option value="150000000|Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)">BARMM</option>
-                                                    <option value="180000000|Negros Island Region (NIR)">NIR</option>
+                                                    {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                                 </select>
                                             </div>
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Source Province</label><select name="sourceProvince" value={tempCommodity.sourceProvince} onChange={handleTempCommodityChange} className={commonInputClasses} disabled={provinceOptions.length === 0}><option value="">Select Province</option>{provinceOptions.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                            <div><label className="block text-xs font-medium uppercase text-gray-500">Province</label><select name="sourceProvince" value={tempCommodity.sourceProvince} onChange={handleTempCommodityChange} className={commonInputClasses} disabled={provinceOptions.length === 0}><option value="">Select</option>{provinceOptions.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Quality Standard</label><input type="text" name="qualityStandard" value={tempCommodity.qualityStandard} onChange={handleTempCommodityChange} className={commonInputClasses} placeholder="Grade A, Organic, etc." /></div>
-                                            <div>
-                                                <label className="block text-xs font-bold uppercase text-gray-500 mb-2">Monthly Volume (Kg/Month)</label>
-                                                <div className="grid grid-cols-6 gap-2">
-                                                    {MONTHS.map(m => (
-                                                        <div key={m}><label className="block text-[10px] text-gray-400">{m}</label><input type="number" 
-                                                        // @ts-ignore
-                                                        value={tempCommodity[`volume${m}`] || ''} onChange={e => setTempCommodity({...tempCommodity, [`volume${m}`]: parseFloat(e.target.value) || 0})} className="w-full text-xs p-1 border rounded dark:bg-gray-700 dark:border-gray-600" /></div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-4 flex justify-end gap-2">
-                                            {editingCommodityIdx !== null && <button type="button" onClick={resetTempCommodity} className="px-4 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded">Cancel Edit</button>}
-                                            <button type="button" onClick={saveTempCommodity} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm hover:bg-emerald-700">{editingCommodityIdx !== null ? 'Update Item' : 'Add Requirement'}</button>
+                                        <div className="flex justify-end gap-2">
+                                            {editingCommodityIdx !== null && <button type="button" onClick={resetTempCommodity} className="px-4 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded">Cancel</button>}
+                                            <button type="button" onClick={saveTempCommodity} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm">{editingCommodityIdx !== null ? 'Update Item' : 'Add Item'}</button>
                                         </div>
                                     </div>
-
-                                    <div className="space-y-2 mt-4">
-                                        {(formData.commodityNeeds || []).map((c, i) => (
-                                            <div key={i} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm">
-                                                <div>
-                                                    <p className="font-bold text-sm text-gray-800 dark:text-white">{c.name} <span className="text-xs font-normal text-gray-400">({c.type})</span></p>
-                                                    <p className="text-xs text-gray-500">Source: {c.sourceProvince || 'Any'}, {c.sourceRegion}</p>
-                                                </div>
-                                                <div className="flex gap-4">
-                                                    <button type="button" onClick={() => handleEditCommodity(i)} className="text-xs text-emerald-600 font-bold">Edit</button>
-                                                    <button type="button" onClick={() => setFormData(prev => ({...prev, commodityNeeds: prev.commodityNeeds.filter((_, idx) => idx !== i)}))} className="text-xs text-red-600 font-bold">Delete</button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-bold text-gray-500">Remarks</label>
-                                    <textarea name="remarks" value={formData.remarks} onChange={handleInputChange} rows={3} className={commonInputClasses} />
                                 </div>
                             </div>
                         ) : (
@@ -328,56 +320,173 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                 <DetailBlock label="Contact Number" value={partner.contactNumber} />
                                 <DetailBlock label="Email Address" value={partner.email} />
                                 <DetailBlock label="Region" value={partner.region} />
-                                <div className="md:col-span-2">
-                                    <DetailBlock label="Location" value={partner.location} />
-                                </div>
-                                <div className="md:col-span-2">
-                                    <dt className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Detailed Commodity Needs</dt>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {partner.commodityNeeds?.map((c, i) => {
-                                            const totalVolume = MONTHS.reduce((sum, m) => sum + (Number((c as any)[`volume${m}`]) || 0), 0);
-                                            return (
-                                                <div key={i} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3">
-                                                    <div className="flex justify-between items-start">
-                                                        <h4 className="font-bold text-gray-800 dark:text-white">{c.name}</h4>
-                                                        <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold uppercase">{c.sourceProvince || 'Any Source'}</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[10px] font-bold text-gray-400 uppercase">Quality Standard</p>
-                                                        <p className="text-xs text-gray-700 dark:text-gray-300 italic">"{c.qualityStandard || 'None specified.'}"</p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-[10px] font-bold text-gray-400 uppercase flex justify-between">
-                                                            Monthly Volumes
-                                                            <span className="text-emerald-600">Total: {totalVolume.toLocaleString()} Kg/Yr</span>
-                                                        </p>
-                                                        <div className="grid grid-cols-6 gap-1 mt-1">
-                                                            {MONTHS.map(m => {
-                                                                const val = (c as any)[`volume${m}`] || 0;
-                                                                return (
-                                                                    <div key={m} className="flex flex-col items-center bg-white dark:bg-gray-800 p-0.5 rounded border border-gray-100 dark:border-gray-700">
-                                                                        <span className="text-[8px] text-gray-400 uppercase">{m}</span>
-                                                                        <span className={`text-[9px] font-bold ${val > 0 ? 'text-emerald-600' : 'text-gray-300'}`}>{val > 0 ? val.toLocaleString() : '-'}</span>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {(!partner.commodityNeeds || partner.commodityNeeds.length === 0) && (
-                                            <p className="col-span-2 text-center py-4 text-gray-400 italic text-sm">No commodity requirements listed.</p>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <DetailBlock label="Remarks" value={<p className="italic text-gray-600 dark:text-gray-400">{partner.remarks || 'No additional remarks.'}</p>} />
-                                </div>
+                                <div className="md:col-span-2"><DetailBlock label="Location" value={partner.location} /></div>
                             </div>
                         )}
                     </div>
 
+                    {/* Established Linkages Section */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">Marketing Linkages</h3>
+                            <div className="flex gap-2">
+                                {editMode === 'linkages' ? (
+                                    <>
+                                        <button onClick={() => setEditMode('none')} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold">Cancel</button>
+                                        <button onClick={handleSave} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-bold shadow-md">Save Linkages</button>
+                                    </>
+                                ) : (
+                                    isAdmin && editMode === 'none' && (
+                                        <button onClick={() => setEditMode('linkages')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                            Edit Market Linkage
+                                        </button>
+                                    )
+                                )}
+                            </div>
+                        </div>
+
+                        {editMode === 'linkages' ? (
+                            <div className="space-y-6">
+                                <div className="bg-gray-50 dark:bg-gray-900/40 p-4 rounded-lg border border-emerald-200 dark:border-emerald-800 space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase text-gray-500">Region</label>
+                                            <select value={tempLinkage.region} onChange={e => setTempLinkage({...tempLinkage, region: e.target.value, ipoName: ''})} className={commonInputClasses}>
+                                                <option value="">Select Region</option>
+                                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase text-gray-500">IPO</label>
+                                            <select value={tempLinkage.ipoName} onChange={e => setTempLinkage({...tempLinkage, ipoName: e.target.value})} disabled={!tempLinkage.region} className={commonInputClasses}>
+                                                <option value="">Select IPO</option>
+                                                {iposInLinkageRegion.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase text-gray-500">Negotiation Status</label>
+                                            <select value={tempLinkage.negotiationStatus} onChange={e => setTempLinkage({...tempLinkage, negotiationStatus: e.target.value as any})} className={commonInputClasses}>
+                                                {NEGOTIATION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold uppercase text-gray-500">Agreement Type</label>
+                                            <select value={tempLinkage.agreementType} onChange={e => setTempLinkage({...tempLinkage, agreementType: e.target.value as any})} className={commonInputClasses}>
+                                                {AGREEMENT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty (Kg)</label>
+                                                <input type="number" value={tempLinkage.agreedQuantityValue || ''} onChange={e => setTempLinkage({...tempLinkage, agreedQuantityValue: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-gray-500">Timeframe</label>
+                                                <select value={tempLinkage.agreedQuantityTimeframe} onChange={e => setTempLinkage({...tempLinkage, agreedQuantityTimeframe: e.target.value as any})} className={commonInputClasses}>
+                                                    {TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (₱/Kg)</label>
+                                                <input type="number" value={tempLinkage.agreedPricePerKg || ''} onChange={e => setTempLinkage({...tempLinkage, agreedPricePerKg: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold uppercase text-gray-500">Agreement Date</label>
+                                                <input type="date" value={tempLinkage.agreementDate} onChange={e => setTempLinkage({...tempLinkage, agreementDate: e.target.value})} className={commonInputClasses} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Test Buy Information */}
+                                    <div className="pt-4 border-t dark:border-gray-700">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" checked={tempLinkage.testBuyConducted} onChange={e => setTempLinkage({...tempLinkage, testBuyConducted: e.target.checked})} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                            <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Test Buy Information</span>
+                                        </label>
+                                        
+                                        {tempLinkage.testBuyConducted && (
+                                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Date</label>
+                                                    <input type="date" value={tempLinkage.testBuyDate || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyDate: e.target.value})} className={commonInputClasses} />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty (Kg)</label>
+                                                    <input type="number" value={tempLinkage.testBuyQuantity || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyQuantity: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Feedback</label>
+                                                    <textarea value={tempLinkage.testBuyFeedback || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyFeedback: e.target.value})} rows={2} className={commonInputClasses} />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex justify-end gap-2">
+                                        {editingLinkageIdx !== null && <button type="button" onClick={resetTempLinkage} className="px-4 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded">Cancel</button>}
+                                        <button type="button" onClick={handleSaveLinkage} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm shadow-md hover:bg-emerald-700">
+                                            {editingLinkageIdx !== null ? 'Update Linkage' : 'Establish Linkage'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {(formData.marketingLinkages || []).map((link, idx) => (
+                                        <div key={idx} className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                                            <div>
+                                                <p className="font-bold text-gray-800 dark:text-white">{link.ipoName}</p>
+                                                <p className="text-xs text-gray-500">{link.negotiationStatus} • {link.agreedQuantityValue}Kg {link.agreedQuantityTimeframe}</p>
+                                            </div>
+                                            <div className="flex gap-4">
+                                                <button type="button" onClick={() => handleEditLinkage(link, idx)} className="text-emerald-600 font-bold text-xs">Edit</button>
+                                                <button type="button" onClick={() => setFormData(prev => ({...prev, marketingLinkages: prev.marketingLinkages?.filter((_, i) => i !== idx)}))} className="text-red-600 font-bold text-xs">Remove</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {(partner.marketingLinkages || []).length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {partner.marketingLinkages?.map((link, idx) => (
+                                            <div key={idx} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3">
+                                                <div className="flex justify-between items-start">
+                                                    <h4 className="font-bold text-emerald-600 dark:text-emerald-400">{link.ipoName}</h4>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                        {link.negotiationStatus}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                    <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreedQuantityValue} Kg ({link.agreedQuantityTimeframe})</p></div>
+                                                    <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">₱{link.agreedPricePerKg}/Kg</p></div>
+                                                    <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreement Type</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementType}</p></div>
+                                                    <div><p className="text-[10px] text-gray-400 uppercase font-bold">Effective Date</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementDate ? new Date(link.agreementDate).toLocaleDateString() : 'N/A'}</p></div>
+                                                </div>
+                                                {link.testBuyConducted && (
+                                                    <div className="pt-2 border-t dark:border-gray-600">
+                                                        <p className="text-[10px] text-emerald-600 uppercase font-bold mb-1">Test Buy Completed</p>
+                                                        <p className="text-xs text-gray-500 italic">"{link.testBuyFeedback || 'No feedback provided.'}"</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-10 bg-gray-50 dark:bg-gray-700/20 rounded-xl border-2 border-dashed dark:border-gray-700">
+                                        <p className="text-sm text-gray-400 italic">No marketing linkages established yet.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-8">
+                    {/* Potential Partners Section (Matched IPOs) */}
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -386,7 +495,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                             </h3>
                             <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold">{potentialIpos.length} Matches</span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-3">
                             {potentialIpos.map(ipo => {
                                 const matchingComms = ipo.commodities.filter(c => 
                                     formData.commodityNeeds?.map(n => n.name.toLowerCase()).includes(c.particular.toLowerCase())
@@ -399,30 +508,19 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                             {isSameRegion && <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold uppercase">Nearby</span>}
                                         </div>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{ipo.region}</p>
-                                        <p className="text-[10px] text-gray-400 mt-0.5">{ipo.location}</p>
                                         <div className="mt-3 space-y-1">
-                                            <p className="text-[10px] font-bold text-gray-400 uppercase">Produces Matches:</p>
                                             <div className="flex flex-wrap gap-1">
                                                 {matchingComms.map((mc, idx) => (
-                                                    <span key={idx} className="text-[10px] bg-white dark:bg-gray-800 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 text-teal-600 font-bold">
-                                                        {mc.particular}
-                                                    </span>
+                                                    <span key={idx} className="text-[10px] bg-white dark:bg-gray-800 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 text-teal-600 font-bold">{mc.particular}</span>
                                                 ))}
                                             </div>
                                         </div>
                                     </div>
                                 );
                             })}
-                            {potentialIpos.length === 0 && (
-                                <div className="col-span-2 text-center py-8 text-gray-400 italic text-sm">
-                                    No IPOs found in the system that produce the commodities needed by this partner.
-                                </div>
-                            )}
                         </div>
                     </div>
-                </div>
 
-                <div className="space-y-8">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Partner History</h3>
                         {partner.history && partner.history.length > 0 ? (
@@ -446,6 +544,11 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
             </div>
         </div>
     );
+
+    function handleEditLinkage(link: MarketLinkage, idx: number) {
+        setTempLinkage({...link});
+        setEditingLinkageIdx(idx);
+    }
 };
 
 export default MarketProfileDetail;

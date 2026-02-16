@@ -409,6 +409,22 @@ export interface CommodityNeed {
     volumeDec: number;
 }
 
+export interface MarketLinkage {
+    id: number | string;
+    region: string;
+    ipoName: string;
+    negotiationStatus: 'Agreed' | 'Contract Signed' | 'Pending Test Buy';
+    agreedQuantityValue: number;
+    agreedQuantityTimeframe: 'Per Week' | 'Monthly' | 'One-time Transaction';
+    agreedPricePerKg: number;
+    agreementType: 'Verbal' | 'Contract' | 'Warehouse Delivery Receipt';
+    agreementDate: string;
+    testBuyConducted: boolean;
+    testBuyDate?: string;
+    testBuyQuantity?: number;
+    testBuyFeedback?: string;
+}
+
 export interface MarketingPartner extends BaseEntity {
     uid: string;
     companyName: string;
@@ -424,6 +440,7 @@ export interface MarketingPartner extends BaseEntity {
     remarks?: string;
     encodedBy: string;
     history?: HistoryEntry[]; // Added for tracking updates/deals
+    marketingLinkages?: MarketLinkage[]; // Added for actual established linkages
 }
 
 export interface Deadline {

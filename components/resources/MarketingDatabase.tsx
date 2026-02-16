@@ -60,7 +60,8 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         linkedIpoNames: [],
         remarks: '',
         encodedBy: currentUser?.fullName || '',
-        history: []
+        history: [],
+        marketingLinkages: []
     });
 
     // Inline Commodity Entry State
@@ -222,14 +223,14 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 return;
             }
         } else {
-            setPartners(prev => [{ ...newPartnerPayload, id: Date.now() }, ...prev]);
+            setPartners(prev => [{ ...newPartnerPayload, id: Date.now() } as MarketingPartner, ...prev]);
         }
         
         setView('list');
         setFormData({
             uid: '', companyName: '', ownerName: '', contactNumber: '', email: '', 
             location: '', region: '', buyerType: 'Private Company', paymentMethods: [],
-            commodityNeeds: [], linkedIpoNames: [], remarks: '', encodedBy: currentUser?.fullName || '', history: []
+            commodityNeeds: [], linkedIpoNames: [], remarks: '', encodedBy: currentUser?.fullName || '', history: [], marketingLinkages: []
         });
     };
 
@@ -271,6 +272,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         paymentMethods: row.paymentMethods ? row.paymentMethods.split(';').map((p:string) => p.trim()) : [],
                         commodityNeeds: row.commodityNeeds ? JSON.parse(row.commodityNeeds) : [],
                         linkedIpoNames: [],
+                        marketingLinkages: [],
                         history: [{ date: new Date().toISOString(), event: 'Imported from Excel', user: currentUser?.fullName || 'System' }],
                         encodedBy: currentUser?.fullName || 'Excel Import',
                         created_at: new Date().toISOString()

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS marketing_partners (
   "commodityNeeds" JSONB DEFAULT '[]'::jsonb,
   "linkedIpoNames" JSONB DEFAULT '[]'::jsonb,
   "history" JSONB DEFAULT '[]'::jsonb,
+  "marketingLinkages" JSONB DEFAULT '[]'::jsonb,
   remarks TEXT,
   "encodedBy" TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
