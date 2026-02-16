@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -20,6 +21,12 @@ import StaffingRequirementDetail from './components/program_management/StaffingR
 import OtherExpenseDetail from './components/program_management/OtherExpenseDetail';
 import FinancialAccomplishment from './components/accomplishment/FinancialAccomplishment'; 
 import PhysicalAccomplishment from './components/accomplishment/PhysicalAccomplishment'; // Import new component
+// Resources Folder Components
+import MarketingDatabase from './components/resources/MarketingDatabase';
+import MarketProfileDetail from './components/resources/MarketProfileDetail';
+import LevelOfDevelopmentPage from './components/resources/LevelOfDevelopmentPage';
+import CommodityMappingPage from './components/resources/CommodityMappingPage';
+
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
@@ -27,7 +34,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -40,6 +47,7 @@ const getPageName = (path: string) => {
     if (path === '/ipo') return 'IPO List';
     if (path === '/activity-detail') return 'Activity Details';
     if (path === '/program-management') return 'Program Management';
+    if (path === '/marketing-database') return 'Marketing Database';
     
     // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
     return path.substring(1)
@@ -60,6 +68,7 @@ const AppContent: React.FC = () => {
     const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', []);
     const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', []);
     const [activities, setActivities] = useSupabaseTable<Activity>('activities', []);
+    const [marketingPartners, setMarketingPartners] = useSupabaseTable<MarketingPartner>('marketing_partners', []);
     
     // Program Management States - Managed manually to support direct CRUD with generated IDs
     const [officeReqs, setOfficeReqs] = useState<OfficeRequirement[]>([]);
@@ -113,6 +122,7 @@ const AppContent: React.FC = () => {
     const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
+    const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
     
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -225,6 +235,12 @@ const AppContent: React.FC = () => {
         setCurrentPage('/program-management/other-expense-detail');
     };
 
+    const handleSelectMarketingPartner = (partner: MarketingPartner) => {
+        setSelectedMarketingPartner(partner);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/marketing-profile-detail');
+    }
+
     const handleBack = () => {
         if (historyStack.length === 0) return;
         
@@ -240,6 +256,7 @@ const AppContent: React.FC = () => {
         if (currentPage === '/program-management/office-detail') setSelectedOfficeReq(null);
         if (currentPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
         if (currentPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
+        if (currentPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
     };
 
     if (!currentUser) {
@@ -505,13 +522,28 @@ const AppContent: React.FC = () => {
                             planningSchedules={planningSchedules}
                             setPlanningSchedules={setPlanningSchedules}
                         />;
-            // New Page Placeholders
+            // NEW RESOURCE ROUTES
             case '/marketing-database':
-                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Marketing Database Module - Coming Soon</div>;
+                return <MarketingDatabase 
+                            partners={marketingPartners}
+                            setPartners={setMarketingPartners}
+                            onSelectPartner={handleSelectMarketingPartner}
+                        />;
+            case '/marketing-profile-detail':
+                if (!selectedMarketingPartner) return <div>Select a partner</div>;
+                return <MarketProfileDetail 
+                            partner={selectedMarketingPartner}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            onUpdatePartner={(updated) => {
+                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                setSelectedMarketingPartner(updated);
+                            }}
+                        />;
             case '/level-of-development':
-                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Level of Development Module - Coming Soon</div>;
+                return <LevelOfDevelopmentPage ipos={ipos} />;
             case '/commodity-mapping':
-                return <div className="p-10 text-center text-gray-500 dark:text-gray-400 italic">Commodity Mapping Module - Coming Soon</div>;
+                return <CommodityMappingPage subprojects={subprojects} ipos={ipos} />;
             default:
                 return <div className="p-6">Page not found</div>;
         }

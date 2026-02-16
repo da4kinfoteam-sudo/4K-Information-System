@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -384,6 +385,21 @@ export interface OtherProgramExpense extends BaseProgramManagementItem {
     actualDisbursementOct?: number;
     actualDisbursementNov?: number;
     actualDisbursementDec?: number;
+}
+
+// NEW: Marketing Partner
+export interface MarketingPartner extends BaseEntity {
+    uid: string;
+    companyName: string;
+    ownerName: string;
+    contactNumber: string;
+    email: string;
+    location: string;
+    region: string;
+    commodityNeeds: string[];
+    linkedIpoNames: string[]; // For logical relationship display
+    remarks?: string;
+    encodedBy: string;
 }
 
 export interface Deadline {

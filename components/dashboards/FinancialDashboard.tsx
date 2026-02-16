@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
@@ -386,7 +387,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                             <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(obligation)}</span>
                         </div>
                         <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                            <div className="bg-green-500 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(obliPercent, 100)}%` }}></div>
+                            <div className="bg-green-50 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(obliPercent, 100)}%` }}></div>
                         </div>
                     </div>
 
@@ -408,8 +409,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         
-        // Use a loop to construct typed array
-        const dataPoints = useMemo(() => {
+        // Fix: Added explicit return type to useMemo for dataPoints
+        const dataPoints = useMemo<MonthlyDataPoint[]>(() => {
              const points: MonthlyDataPoint[] = [];
              // Force cast monthlyData for index access if strict types block it, or map from known keys
              const mData = monthlyData as unknown as Record<number, MonthlyDataPoint>;
@@ -419,8 +420,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
              return points;
         }, [monthlyData]);
 
-        // Calculate maxVal safely with type assertion
-        const values: number[] = dataPoints.map((d) => Math.max(d.target, d.obligation, d.disbursement));
+        // Fix: Added explicit type (MonthlyDataPoint) for 'd' in map to resolve unknown property errors and ensure correct type for Math.max
+        const values: number[] = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
         const maxVal: number = Math.max(...values, 1000);
 
         const height = 300;
@@ -447,7 +448,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     })}
 
                     {/* Data */}
-                    {dataPoints.map((d, i) => {
+                    {/* Fix: Added explicit type (MonthlyDataPoint) for 'd' in dataPoints.map */}
+                    {dataPoints.map((d: MonthlyDataPoint, i) => {
                         const xBase = padding + (i * (chartWidth / 12));
                         // Ensure values are numbers
                         const tVal = Number(d.target || 0);

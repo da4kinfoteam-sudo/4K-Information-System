@@ -1,6 +1,7 @@
+
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier } from '../../constants';
+import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, fundTypes, tiers, FundType, Tier, FinancialItem as FinancialItemType } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
@@ -774,7 +775,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                                                 {/* Expanded Content (Subgroups) */}
                                                 {isExpanded && Object.entries(group.subGroups).map(([subKey, items]) => {
-                                                    if (items.length === 0) return null;
+                                                    // Fix: Explicitly cast items to FinancialItem[] to resolve unknown type errors (length, map, etc.)
+                                                    const subGroupItems = items as FinancialItem[];
+                                                    if (subGroupItems.length === 0) return null;
                                                     const subId = `${group.key}-${subKey}`;
                                                     const isSubExpanded = expandedSubGroups.includes(subId);
 
@@ -786,11 +789,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-200 ${isSubExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                                                         </svg>
-                                                                        {subKey} ({items.length})
+                                                                        {subKey} ({subGroupItems.length})
                                                                     </button>
                                                                 </td>
                                                             </tr>
-                                                            {isSubExpanded && items.map(item => {
+                                                            {isSubExpanded && subGroupItems.map(item => {
                                                                 const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
                                                                 const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
 

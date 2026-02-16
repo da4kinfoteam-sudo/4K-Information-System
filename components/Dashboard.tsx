@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
@@ -488,9 +489,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         const actualIposWithSp = new Set(filteredData.subprojects.filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
 
         // Set of IPOs in any Training (Target)
-        const targetIposWithTr = new Set<string>(filteredData.activities.filter(a => a.type === 'Training').flatMap(t => t.participatingIpos));
+        // Fix: Added explicit type cast to string[] to resolve Set constructor overload issue
+        const targetIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training').flatMap(t => (t as Activity).participatingIpos)) as string[]);
         // Set of IPOs in Completed Training (Actual)
-        const actualIposWithTr = new Set<string>(filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => t.participatingIpos));
+        // Fix: Added explicit type cast to string[] to resolve Set constructor overload issue
+        const actualIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos)) as string[]);
 
         // "IPOs Assisted": Completed SP OR Completed Training
         const actualIposAssisted = new Set<string>([...actualIposWithSp, ...actualIposWithTr]);
