@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
@@ -45,7 +46,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
-                    // Removed 'Trainings' from here
                     'Staff Requirements': { items: [] },
                     'Office Requirements': { items: [] },
                     'Activities': { items: [] }
@@ -61,15 +61,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             total: 0
         });
 
-        // Helper to aggregate items with same name/indicator (used for PM)
         const addItemToGroup = (list: any[], newItem: any) => {
             const existing = list.find(i => i.indicator === newItem.indicator);
             if (existing) {
-                // Sum Target fields
                 for (const key in newItem.target) {
                     existing.target[key] += newItem.target[key];
                 }
-                // Sum Actual fields
                 for (const key in newItem.actual) {
                     existing.actual[key] += newItem.actual[key];
                 }
@@ -84,7 +81,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 const monthKey = `m${monthIdx + 1}`;
                 counter[monthKey] += count;
                 
-                // Update Quarter Totals
                 if (monthIdx < 3) counter.q1 += count;
                 else if (monthIdx < 6) counter.q2 += count;
                 else if (monthIdx < 9) counter.q3 += count;
@@ -94,7 +90,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
         };
 
-        // Standard Item Creation (for simple counting like PM items)
         const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string) => {
             const item: any = {
                 indicator,
@@ -106,11 +101,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             return item;
         };
 
-        // Helper: Calculate First Encounter
-        // Entries: { id: unique_id_to_track, date: event_date }
         const calculateFirstEncounter = (entries: { id: string; date?: string }[]) => {
             const counter = initializeCounter();
-            // Filter valid dates, convert to Date object for sorting
             const validEntries = entries
                 .filter(e => e.date)
                 .map(e => ({ ...e, d: new Date(e.date + 'T00:00:00Z') }))
@@ -127,7 +119,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             return counter;
         };
 
-        // Helper: Calculate Sum over time (e.g. participants)
         const calculateSumOverTime = (entries: { val: number; date?: string }[]) => {
             const counter = initializeCounter();
             entries.forEach(e => {
@@ -138,16 +129,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             return counter;
         }
 
-        // --- Data Preparation ---
-        const ipoAdMap = new Map<string, string>(); // Name -> AD No
+        const ipoAdMap = new Map<string, string>();
         data.ipos.forEach(ipo => {
             if (ipo.ancestralDomainNo) ipoAdMap.set(ipo.name, ipo.ancestralDomainNo);
         });
 
-        // --- Production & Livelihood Packages (Subprojects) ---
-        
-        // 1. Overall Reach (Top Level Indicators)
-        // Calculated based on ALL subprojects in the dataset, applying First Encounter logic
         const allTargetADs = data.subprojects.map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             date: sp.estimatedCompletionDate
@@ -166,7 +152,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             date: sp.actualCompletionDate
         }));
 
-        // Insert as a specific package that sorts to the top
         finalData['Production and Livelihood'].packages['Subproject Reach'] = {
             items: [
                 {
@@ -182,7 +167,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             ]
         };
 
-        // 2. Package Breakdown
         const packages: Record<string, Subproject[]> = {};
         data.subprojects.forEach(sp => {
             const pkg = sp.packageType || 'Other';
@@ -196,7 +180,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
             const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
 
-            // Per Package Indicators
             const targetADs = subprojects.map(sp => ({
                 id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
                 date: sp.estimatedCompletionDate 
@@ -243,23 +226,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             });
         });
 
-        // --- Trainings (Social Prep, Marketing, and Production "Trainings" Package) ---
-        const processTrainings = (
-            componentName: string, 
-            targetContainer: any[], 
-            isPackage: boolean = false
-        ) => {
-            // Filter trainings for this component
+        const processTrainings = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
             const relevantTrainings = data.trainings.filter(t => t.component === componentName);
-            
             const getTargetDate = (t: Training) => t.endDate || t.date;
             const getActualDate = (t: Training) => t.actualDate;
-
-            // 1. Number of Trainings conducted
             const targetTrainings = relevantTrainings.map(t => ({ val: 1, date: getTargetDate(t) }));
             const actualTrainings = relevantTrainings.map(t => ({ val: 1, date: getActualDate(t) }));
-
-            // 2. Number of IPOs trained
             const targetIPOs: { id: string, date?: string }[] = [];
             const actualIPOs: { id: string, date?: string }[] = [];
             
@@ -272,7 +244,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 });
             });
 
-            // 3. Number of Participants
             const targetPax = relevantTrainings.map(t => ({ 
                 val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
                 date: getTargetDate(t) 
@@ -282,7 +253,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 date: getActualDate(t) 
             }));
 
-            // Create a "Training" group item
             const trainingGroup = {
                 indicator: "Trainings",
                 isExpandable: true,
@@ -306,14 +276,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             };
 
             if (isPackage) {
-                // For Production, it's inside packages, so we treat the "Trainings" itself as a package
                 if (!finalData['Production and Livelihood'].packages['Trainings']) {
                     finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
                 }
-                // For PL, we add the inner items directly to the package, as the Package Header "Trainings" acts as the group
                 trainingGroup.items.forEach(i => finalData['Production and Livelihood'].packages['Trainings'].items.push(i));
             } else {
-                // For Social Prep & Marketing, push the Group Object
                 targetContainer.push(trainingGroup);
             }
         };
@@ -322,7 +289,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         processTrainings('Marketing and Enterprise', finalData['Marketing and Enterprise']);
         processTrainings('Production and Livelihood', [], true);
 
-        // --- Other Activities (Program Management) ---
         data.otherActivities.forEach(oa => {
             const item = createBar1Item(oa.name, 1, oa.date, oa.actualDate);
             if (oa.component === 'Program Management') {
@@ -333,11 +299,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
         });
 
-        // --- PM Items ---
         const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
                 if (isOtherExpense) return; 
-
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const count = isStaff ? 1 : (pm.numberOfUnits || 1);
                 const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate);
@@ -370,19 +334,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         };
 
         items.forEach(item => {
-            // Recursive check for expandable items inside the list (like Trainings in Social Prep)
             if (item.isExpandable && item.items) {
-                 // For groups like "Trainings", we usually aggregate the first child (Number of Trainings) 
-                 // or we don't aggregate them into the component total if they are dissimilar units.
-                 // However, Grand Total logic typically sums up physical counts.
-                 // Let's sum up the sub-items.
-                 const subTotal = calculateTotals(item.items);
-                 // Assuming we want to sum up the children. 
-                 // Note: Summing Trainings + IPOs + Pax is meaningless. 
-                 // Usually for BAR1, the parent row (Trainings) takes the value of "Number of Trainings".
                  const primaryMetric = item.items.find((i: any) => i.indicator.includes("Number of Trainings"));
                  if (primaryMetric) {
-                    // Add only the primary metric to the grand total to avoid double counting or mixed units
                      for (let i = 1; i <= 12; i++) {
                         total.target[`m${i}`] += (primaryMetric.target[`m${i}`] || 0);
                         total.actual[`m${i}`] += (primaryMetric.actual[`m${i}`] || 0);
@@ -412,9 +366,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const renderDataCells = (item: any, isTotal: boolean = false) => {
         const cellClass = `${dataCellClass} text-center ${isTotal ? 'font-bold' : ''}`;
         const totalClass = `${dataCellClass} text-center font-bold bg-gray-50 dark:bg-gray-700/50`;
-        const calculatedClass = `${dataCellClass} text-center font-bold bg-blue-50 dark:bg-blue-900/30`;
-        const yearEndClass = `${dataCellClass} text-center font-bold bg-yellow-50 dark:bg-yellow-900/20`;
-        const percentClass = `${dataCellClass} text-center text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800`;
+        const calculatedClass = `${dataCellClass} text-center font-bold bg-emerald-50 dark:bg-emerald-900/30`;
+        const yearEndClass = `${dataCellClass} text-center font-bold bg-teal-50 dark:bg-teal-900/20`;
+        const percentClass = `${dataCellClass} text-center text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800`;
 
         const getVals = (source: any) => {
              const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
@@ -458,7 +412,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={totalClass}>{t.q4 || ''}</td>
 
                 <td className={yearEndClass}>{t.yearEndNov || ''}</td>
-                <td className={`${dataCellClass} text-center font-bold bg-blue-100 dark:bg-blue-900/40`}>{t.total || ''}</td>
+                <td className={`${dataCellClass} text-center font-bold bg-teal-100 dark:bg-teal-900/40`}>{t.total || ''}</td>
             </>
         );
 
@@ -497,7 +451,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={yearEndClass}>{a.yearEndNov || ''}</td>
                 <td className={percentClass}>{getPct(a.yearEndNov, t.yearEndNov)}</td>
 
-                <td className={`${dataCellClass} text-center font-bold bg-blue-100 dark:bg-blue-900/40`}>{a.total || ''}</td>
+                <td className={`${dataCellClass} text-center font-bold bg-emerald-100 dark:bg-emerald-900/40`}>{a.total || ''}</td>
                 <td className={percentClass}>{getPct(a.total, t.total)}</td>
             </>
         );
@@ -505,7 +459,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return (
             <>
                 {renderTargetSection()}
-                {/* Visual separator */}
                 <td className="w-1 bg-gray-400 dark:bg-gray-500"></td> 
                 {renderActualSection()}
             </>
@@ -515,8 +468,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const renderTotalsRow = (items: any[], label: string) => {
         const totals = calculateTotals(items);
         return (
-            <tr className="font-bold bg-gray-200 dark:bg-gray-700 text-xs">
-                <td className={`${dataCellClass} sticky left-0 bg-gray-200 dark:bg-gray-700 z-10`}>{label}</td>
+            <tr className="font-bold bg-emerald-50 dark:bg-emerald-900/20 text-xs">
+                <td className={`${dataCellClass} sticky left-0 bg-emerald-50 dark:bg-emerald-900 z-10`}>{label}</td>
                 {renderDataCells(totals, true)}
             </tr>
         );
@@ -529,11 +482,10 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                      <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={49} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
+                    <td colSpan={53} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
                 </tr>
             )
         }
-        // If items contain nested indicators (like Trainings), calculateTotals handles grabbing the primary metric
         const totals = calculateTotals(items);
         return (
              <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer text-xs">
@@ -562,9 +514,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     });
 
     const handleDownloadBar1Xlsx = () => {
-        // Headers construction
         const header1 = ["Program/Activity/Project"];
-        const header2 = [null]; // Placeholder for P/A/P
+        const header2 = [null]; 
 
         const sectionHeaders1 = [
             "1st Quarter", null, null, null, 
@@ -580,12 +531,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         const sectionHeadersTarget = [
             "Jan", "Feb", "Mar", "Total",
             "Apr", "May", "Jun", "Total",
-            null, // Semestral
+            null, 
             "Jul", "Aug", "Sep", "Total",
-            null, // As of Sept
+            null, 
             "Oct", "Nov", "Dec", "Total",
-            null, // Year End
-            null  // Grand Total
+            null, 
+            null  
         ];
 
         const sectionHeadersActual = [
@@ -610,7 +561,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             "Grand Total", null
         ];
 
-        // Targets Header
         header1.push(...sectionHeaders1, null, ...sectionHeadersActualGroups);
         header2.push(...sectionHeadersTarget, null, ...sectionHeadersActual);
 
@@ -638,7 +588,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
                 aoa.push([
                     prefix + item.indicator,
-                    // Targets
                     t.m1, t.m2, t.m3, t.q1,
                     t.m4, t.m5, t.m6, t.q2,
                     t.semestralTotal,
@@ -647,8 +596,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     t.m10, t.m11, t.m12, t.q4,
                     t.yearEndNov,
                     t.total,
-                    null, // Separator
-                    // Actuals with %
+                    null, 
                     a.m1, a.m2, a.m3, a.q1, getPct(a.q1, t.q1),
                     a.m4, a.m5, a.m6, a.q2, getPct(a.q2, t.q2),
                     a.semestralTotal, getPct(a.semestralTotal, t.semestralTotal),
@@ -659,7 +607,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     a.total, getPct(a.total, t.total)
                 ]);
 
-                // Recursive check for children (Trainings)
                 if (item.isExpandable && item.items && item.items.length > 0) {
                      processItems(item.items, prefix + "    ");
                 }
@@ -684,7 +631,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
             aoa.push([
                 label,
-                // Targets
                 t.m1, t.m2, t.m3, t.q1,
                 t.m4, t.m5, t.m6, t.q2,
                 t.semestralTotal,
@@ -694,7 +640,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 t.yearEndNov,
                 t.total,
                 null,
-                // Actuals
                 a.m1, a.m2, a.m3, a.q1, getPct(a.q1, t.q1),
                 a.m4, a.m5, a.m6, a.q2, getPct(a.q2, t.q2),
                 a.semestralTotal, getPct(a.semestralTotal, t.semestralTotal),
@@ -707,14 +652,14 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         };
 
         Object.entries(bar1Data).forEach(([component, items]) => {
-            aoa.push([component, ...Array(49).fill(null)]);
+            aoa.push([component, ...Array(52).fill(null)]);
             if (Array.isArray(items)) {
                 if (items.length > 0) processItems(items, "  ");
             } else if ((items as any).isExpandable) {
                 if ((items as any).items.length > 0) processItems((items as any).items, "  ");
             } else if ((items as any).isNestedExpandable) {
                 Object.entries((items as any).packages).forEach(([packageName, packageData]: [string, any]) => {
-                    aoa.push([`  ${packageName}`, ...Array(49).fill(null)]);
+                    aoa.push([`  ${packageName}`, ...Array(52).fill(null)]);
                     if ((packageData as any).items.length > 0) processItems((packageData as any).items, "    ");
                 });
             }
@@ -730,11 +675,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         addTotalsRow(grandTotals, "GRAND TOTAL");
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
-        
-        // Basic Merges for Headers
         if(!ws['!merges']) ws['!merges'] = [];
-        ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 20 } }); // Physical Targets
-        ws['!merges'].push({ s: { r: 0, c: 22 }, e: { r: 0, c: 49 } }); // Physical Accomplishments
+        ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 20 } }); 
+        ws['!merges'].push({ s: { r: 0, c: 22 }, e: { r: 0, c: 53 } }); 
 
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "BAR1 Report");
@@ -773,17 +716,14 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
@@ -797,28 +737,30 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-            
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
-
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
             <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
-            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
         </>
     );
 
@@ -826,20 +768,23 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
-                <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 hover:brightness-95 transition-all flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Download Excel
+                </button>
             </div>
             <div id="bar1-report" className="overflow-x-auto shadow-md rounded-lg">
-                <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                <table className="min-w-full border-collapse text-[10px] text-gray-900 dark:text-gray-200 whitespace-nowrap">
                     <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
                         <tr>
                             <th rowSpan={3} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
-                            <th colSpan={20} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-blue-200 dark:bg-blue-900">Physical Targets</th>
-                            <th rowSpan={3} className="w-2 bg-gray-400 dark:bg-gray-600"></th> {/* Separator */}
-                            <th colSpan={28} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-green-200 dark:bg-green-900">Physical Accomplishments</th>
+                            <th colSpan={20} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-200 dark:bg-teal-900">Physical Targets</th>
+                            <th rowSpan={3} className="w-2 bg-gray-400 dark:bg-gray-600"></th> 
+                            <th colSpan={28} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-emerald-200 dark:bg-emerald-900">Physical Accomplishments</th>
                         </tr>
                         <tr>
-                            <SectionHeaderTarget bgColor="bg-blue-50 dark:bg-blue-900/30" />
-                            <SectionHeaderActual bgColor="bg-green-50 dark:bg-green-900/30" />
+                            <SectionHeaderTarget bgColor="bg-teal-50 dark:bg-teal-900/30" />
+                            <SectionHeaderActual bgColor="bg-emerald-50 dark:bg-emerald-900/30" />
                         </tr>
                         <tr>
                             <SubHeadersTarget />
@@ -854,7 +799,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                                  return (
                                     <React.Fragment key={key}>
                                         {renderSummaryRow(componentData, key, key, isComponentExpanded, 0)}
-                                        {/* Handle Nested Expandable Items inside Array (e.g. Trainings) */}
                                         {isComponentExpanded && componentData.map((item: any, index: number) => {
                                             if (item.isExpandable) {
                                                 const nestedKey = `${key}-nested-${index}`;
@@ -873,10 +817,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                             }
                             if (componentData.isNestedExpandable) {
                                 const isComponentExpanded = expandedRows.has(key);
-                                // For Production & Livelihood, we manually handle packages, including the 'Overall Reach' summary package
                                 const sortedPackageKeys = Object.keys(componentData.packages).sort((a,b) => a.localeCompare(b));
-                                
-                                // Calculate total for component summary row from all items in all packages
                                 const allPackageItems = Object.values(componentData.packages).flatMap((pkg: any) => pkg.items);
                                 
                                  return (
@@ -885,7 +826,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                                         {isComponentExpanded && sortedPackageKeys.map((packageName) => {
                                             const packageData = componentData.packages[packageName];
                                             const isPkgExpanded = expandedRows.has(packageName);
-                                            // Handling for special "Trainings" package inside PL which mimics the Social Prep structure
                                             const items = packageData.items;
 
                                             return (
