@@ -539,6 +539,8 @@ const AppContent: React.FC = () => {
                                 setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
                                 setSelectedMarketingPartner(updated);
                             }}
+                            /* Added setPartners prop to fix AuthContext error in child */
+                            setPartners={setMarketingPartners}
                         />;
             case '/level-of-development':
                 return <LevelOfDevelopmentPage ipos={ipos} />;

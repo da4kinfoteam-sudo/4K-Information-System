@@ -1,17 +1,18 @@
--- Update subprojects details JSONB structure to include separated actual financial fields
--- This iterates over the details array in each subproject row and adds 'actualObligationAmount' and 'actualDisbursementAmount' keys to each object.
--- It defaults 'actualObligationAmount' to 0 and 'actualDisbursementAmount' to the old 'actualAmount' value (or 0 if null).
-
-UPDATE subprojects
-SET details = (
-  SELECT jsonb_agg(
-    elem || jsonb_build_object(
-      'actualObligationAmount', COALESCE((elem->>'actualObligationAmount')::numeric, 0),
-      'actualDisbursementAmount', COALESCE((elem->>'actualDisbursementAmount')::numeric, (elem->>'actualAmount')::numeric, 0)
-    )
-  )
-  FROM jsonb_array_elements(details) elem
+CREATE TABLE IF NOT EXISTS marketing_partners (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  uid TEXT UNIQUE NOT NULL,
+  "companyName" TEXT NOT NULL,
+  "ownerName" TEXT,
+  "contactNumber" TEXT,
+  email TEXT,
+  location TEXT,
+  region TEXT,
+  "buyerType" TEXT,
+  "paymentMethods" JSONB DEFAULT '[]'::jsonb,
+  "commodityNeeds" JSONB DEFAULT '[]'::jsonb,
+  "linkedIpoNames" JSONB DEFAULT '[]'::jsonb,
+  remarks TEXT,
+  "encodedBy" TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
-
-test

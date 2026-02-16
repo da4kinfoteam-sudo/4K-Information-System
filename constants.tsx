@@ -388,6 +388,25 @@ export interface OtherProgramExpense extends BaseProgramManagementItem {
 }
 
 // NEW: Marketing Partner
+export interface CommodityNeed {
+    id: number | string;
+    name: string;
+    sourceProvince: string;
+    qualityStandard: string;
+    volumeJan: number;
+    volumeFeb: number;
+    volumeMar: number;
+    volumeApr: number;
+    volumeMay: number;
+    volumeJun: number;
+    volumeJul: number;
+    volumeAug: number;
+    volumeSep: number;
+    volumeOct: number;
+    volumeNov: number;
+    volumeDec: number;
+}
+
 export interface MarketingPartner extends BaseEntity {
     uid: string;
     companyName: string;
@@ -396,7 +415,9 @@ export interface MarketingPartner extends BaseEntity {
     email: string;
     location: string;
     region: string;
-    commodityNeeds: string[];
+    commodityNeeds: CommodityNeed[]; // Updated from string[]
+    buyerType: 'Private Company' | 'Government';
+    paymentMethods: string[]; // ['Bank Transfer', 'Cash', etc.]
     linkedIpoNames: string[]; // For logical relationship display
     remarks?: string;
     encodedBy: string;
