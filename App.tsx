@@ -24,6 +24,8 @@ import PhysicalAccomplishment from './components/accomplishment/PhysicalAccompli
 // Resources Folder Components
 import MarketingDatabase from './components/resources/MarketingDatabase';
 import MarketProfileDetail from './components/resources/MarketProfileDetail';
+import MarketProfileEdit from './components/resources/MarketProfileEdit';
+import MarketLinkageEdit from './components/resources/MarketLinkageEdit';
 import LevelOfDevelopmentPage from './components/resources/LevelOfDevelopmentPage';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
 
@@ -48,6 +50,7 @@ const getPageName = (path: string) => {
     if (path === '/activity-detail') return 'Activity Details';
     if (path === '/program-management') return 'Program Management';
     if (path === '/marketing-database') return 'Marketing Database';
+    if (path === '/marketing-profile-detail') return 'Partner Profile';
     
     // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
     return path.substring(1)
@@ -536,13 +539,37 @@ const AppContent: React.FC = () => {
                             partner={selectedMarketingPartner}
                             ipos={ipos}
                             onBack={handleBack}
+                            onEditDetails={() => {
+                                setHistoryStack(prev => [...prev, currentPage]);
+                                setCurrentPage('/marketing-profile-edit');
+                            }}
+                            onEditLinkages={() => {
+                                setHistoryStack(prev => [...prev, currentPage]);
+                                setCurrentPage('/marketing-linkage-edit');
+                            }}
+                            commodityCategories={derivedCommodityCategories}
+                        />;
+            case '/marketing-profile-edit':
+                if (!selectedMarketingPartner) return <div>Select a partner</div>;
+                return <MarketProfileEdit 
+                            partner={selectedMarketingPartner}
+                            onBack={handleBack}
                             onUpdatePartner={(updated) => {
                                 setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
                                 setSelectedMarketingPartner(updated);
                             }}
-                            /* Added setPartners prop to fix AuthContext error in child */
-                            setPartners={setMarketingPartners}
                             commodityCategories={derivedCommodityCategories}
+                        />;
+            case '/marketing-linkage-edit':
+                if (!selectedMarketingPartner) return <div>Select a partner</div>;
+                return <MarketLinkageEdit 
+                            partner={selectedMarketingPartner}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            onUpdatePartner={(updated) => {
+                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                setSelectedMarketingPartner(updated);
+                            }}
                         />;
             case '/level-of-development':
                 return <LevelOfDevelopmentPage ipos={ipos} />;

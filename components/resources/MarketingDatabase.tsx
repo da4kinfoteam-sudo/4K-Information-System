@@ -14,6 +14,28 @@ const BUYER_TYPES = ['Private Company', 'Government'];
 const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cash on Delivery', 'Voucher'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+// PSGC Region Codes Mapping for Province Fetching
+const REGION_CODE_MAP: Record<string, string> = {
+    'National Capital Region (NCR)': '130000000',
+    'Cordillera Administrative Region (CAR)': '140000000',
+    'Region I (Ilocos Region)': '010000000',
+    'Region II (Cagayan Valley)': '020000000',
+    'Region III (Central Luzon)': '030000000',
+    'Region IV-A (CALABARZON)': '040000000',
+    'MIMAROPA Region': '170000000',
+    'Region V (Bicol Region)': '050000000',
+    'Region VI (Western Visayas)': '060000000',
+    'Region VII (Central Visayas)': '070000000',
+    'Region VIII (Eastern Visayas)': '080000000',
+    'Region IX (Zamboanga Peninsula)': '090000000',
+    'Region X (Northern Mindanao)': '100000000',
+    'Region XI (Davao Region)': '110000000',
+    'Region XII (SOCCSKSARGEN)': '120000000',
+    'Region XIII (Caraga)': '160000000',
+    'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)': '150000000',
+    'Negros Island Region (NIR)': '180000000'
+};
+
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -127,6 +149,9 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             if (name === 'type') {
                 updated.name = '';
             }
+            if (name === 'sourceRegion') {
+                updated.sourceProvince = '';
+            }
             
             return updated;
         });
@@ -134,10 +159,11 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
 
     // Region -> Province dropdown logic
     useEffect(() => {
-        if (tempCommodity.sourceRegion) {
+        const regionCode = REGION_CODE_MAP[tempCommodity.sourceRegion];
+        if (regionCode) {
             const fetchProvinces = async () => {
                 try {
-                    const res = await fetch(`https://psgc.gitlab.io/api/regions/${tempCommodity.sourceRegion.split('|')[0]}/provinces/`);
+                    const res = await fetch(`https://psgc.gitlab.io/api/regions/${regionCode}/provinces/`);
                     const data = await res.json();
                     setProvinceOptions(data.map((p:any) => p.name).sort());
                 } catch {
@@ -155,8 +181,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         
         setFormData(prev => {
             const newList = [...prev.commodityNeeds];
-            const cleanSource = tempCommodity.sourceRegion.includes('|') ? tempCommodity.sourceRegion.split('|')[1] : tempCommodity.sourceRegion;
-            const itemToSave = { ...tempCommodity, sourceRegion: cleanSource };
+            const itemToSave = { ...tempCommodity };
             
             if (editingCommodityIdx !== null) {
                 newList[editingCommodityIdx] = itemToSave;
@@ -340,24 +365,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <div><label className="block text-xs font-bold uppercase text-gray-500">Source Region</label>
                                     <select name="sourceRegion" value={tempCommodity.sourceRegion} onChange={handleTempCommodityChange} className={commonInputClasses}>
                                         <option value="">Select Region</option>
-                                        <option value="130000000|National Capital Region (NCR)">NCR</option>
-                                        <option value="140000000|Cordillera Administrative Region (CAR)">CAR</option>
-                                        <option value="010000000|Region I (Ilocos Region)">Region I</option>
-                                        <option value="020000000|Region II (Cagayan Valley)">Region II</option>
-                                        <option value="030000000|Region III (Central Luzon)">Region III</option>
-                                        <option value="041000000|Region IV-A (CALABARZON)">Region IV-A</option>
-                                        <option value="170000000|MIMAROPA Region">MIMAROPA</option>
-                                        <option value="050000000|Region V (Bicol Region)">Region V</option>
-                                        <option value="060000000|Region VI (Western Visayas)">Region VI</option>
-                                        <option value="070000000|Region VII (Central Visayas)">Region VII</option>
-                                        <option value="080000000|Region VIII (Eastern Visayas)">Region VIII</option>
-                                        <option value="090000000|Region IX (Zamboanga Peninsula)">Region IX</option>
-                                        <option value="100000000|Region X (Northern Mindanao)">Region X</option>
-                                        <option value="110000000|Region XI (Davao Region)">Region XI</option>
-                                        <option value="120000000|Region XII (SOCCSKSARGEN)">Region XII</option>
-                                        <option value="130000000|Region XIII (Caraga)">Region XIII</option>
-                                        <option value="150000000|Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)">BARMM</option>
-                                        <option value="180000000|Negros Island Region (NIR)">NIR</option>
+                                        {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                                     </select>
                                 </div>
                                 <div><label className="block text-xs font-bold uppercase text-gray-500">Source Province</label><select name="sourceProvince" value={tempCommodity.sourceProvince} onChange={handleTempCommodityChange} className={commonInputClasses} disabled={provinceOptions.length === 0}><option value="">Select Province</option>{provinceOptions.map(p => <option key={p} value={p}>{p}</option>)}</select></div>

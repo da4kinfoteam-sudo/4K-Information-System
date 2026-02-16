@@ -1,3 +1,4 @@
+
 CREATE TABLE IF NOT EXISTS marketing_partners (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   uid TEXT UNIQUE NOT NULL,
@@ -18,3 +19,14 @@ CREATE TABLE IF NOT EXISTS marketing_partners (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure columns exist if table was created previously without them
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketing_partners' AND column_name='history') THEN
+    ALTER TABLE marketing_partners ADD COLUMN "history" JSONB DEFAULT '[]'::jsonb;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketing_partners' AND column_name='marketingLinkages') THEN
+    ALTER TABLE marketing_partners ADD COLUMN "marketingLinkages" JSONB DEFAULT '[]'::jsonb;
+  END IF;
+END $$;
