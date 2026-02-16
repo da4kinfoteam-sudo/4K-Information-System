@@ -3,6 +3,9 @@
 import React, { useMemo } from 'react';
 import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
 import { parseLocation } from '../LocationPicker';
+import { useAuth } from '../../contexts/AuthContext';
+
+declare const PptxGenJS: any;
 
 interface FinancialDashboardProps {
     data: {
@@ -112,6 +115,8 @@ const SimplePieChart: React.FC<{ data: { label: string; value: number; color: st
 };
 
 const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
+    const { currentUser } = useAuth();
+    const canViewMatrix = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
     const financialData = useMemo<FinancialData>(() => {
         const components: { [key: string]: { target: number; obligation: number; disbursement: number } } = {
@@ -149,7 +154,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const spBudget = sp.details.reduce((sum, d) => {
                 const amount = d.pricePerUnit * d.numberOfUnits;
                 
-                // Monthly Targets (based on delivery date as proxy for target obligation)
+                // Monthly Targets
                 const targetMonth = getMonth(d.obligationMonth);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += amount;
 
@@ -291,11 +296,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         return { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData };
     }, [data]);
 
-    // Matrix Logic for breakdown table
     const matrixData = useMemo<MatrixData>(() => {
-        // Initialize Matrix
         const matrix: MatrixData = {};
-        
         operatingUnits.forEach(ou => {
             matrix[ou] = {
                 'Social Preparation': { alloc: 0, obli: 0, disb: 0 },
@@ -305,7 +307,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             };
         });
 
-        // Helper to safely add to matrix
         const addToMatrix = (ou: string, component: string, alloc: number, obli: number, disb: number) => {
             if (!matrix[ou]) return; 
             const targetComp = component || 'Program Management';
@@ -316,7 +317,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             }
         };
 
-        // 1. Subprojects (Production and Livelihood)
         data.subprojects.forEach(sp => {
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = sp.details.reduce((s, d) => d.actualObligationDate ? s + (d.actualAmount || 0) : s, 0);
@@ -324,7 +324,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
         });
 
-        // 2. Activities (Various Components)
         const processAct = (act: Training | OtherActivity) => {
             const alloc = act.expenses.reduce((s, e) => s + e.amount, 0);
             const obli = act.expenses.reduce((s, e) => e.actualObligationDate ? s + (e.actualAmount || e.amount) : s, 0);
@@ -334,7 +333,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         data.trainings.forEach(processAct);
         data.otherActivities.forEach(processAct);
 
-        // 3. Program Management Items
         const processPM = (item: any, isStaff = false) => {
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
             const obli = item.actualObligationAmount || 0;
@@ -350,6 +348,59 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 
+    const handleExportPPTX = () => {
+        const pptx = new PptxGenJS();
+        pptx.layout = 'LAYOUT_WIDE';
+        pptx.defineSlideMaster({
+            title: 'MASTER_SLIDE',
+            background: { fill: 'FFFFFF' },
+            objects: [
+                { rect: { x: 0, y: 0, w: '100%', h: 0.8, fill: '38761D' } },
+                { text: { text: 'Financial Performance Dashboard', options: { x: 0.5, y: 0.2, w: 6, h: 0.4, color: 'FFFFFF', fontSize: 24, bold: true } } },
+                { text: { text: `Generated: ${new Date().toLocaleDateString()}`, options: { x: 10, y: 0.2, w: 3, h: 0.4, color: 'FFFFFF', fontSize: 12, align: 'right' } } }
+            ]
+        });
+
+        // Slide 1: Summary
+        const slide1 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+        slide1.addText("Executive Financial Summary", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
+        
+        const summaryTable = [
+            [{ text: "Metric", options: { bold: true, fill: 'EEEEEE' } }, { text: "Amount (PHP)", options: { bold: true, fill: 'EEEEEE' } }],
+            ["Total Target Allocation", formatCurrencyWhole(totalAllocation)],
+            ["Total Actual Obligated", formatCurrencyWhole(totalObligation)],
+            ["Total Actual Disbursed", formatCurrencyWhole(totalDisbursement)]
+        ];
+        slide1.addTable(summaryTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
+
+        // Slide 2: Components
+        const slide2 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+        slide2.addText("Budget Breakdown by Component", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
+        const componentTable = [
+            [{ text: "Component", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }, { text: "Disbursed", options: { bold: true, fill: 'EEEEEE' } }],
+            ...Object.entries(components).map(([k, v]) => [k, formatCurrencyWhole(v.target), formatCurrencyWhole(v.disbursement)])
+        ];
+        slide2.addTable(componentTable, { x: 0.5, y: 2.0, w: 12, border: { type: 'solid', color: 'CCCCCC' } });
+
+        // Slide 3: Provinces
+        const slide3 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+        slide3.addText("Top Allocations by Province", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
+        const sortedProvinces = Object.entries(provinceData)
+            .sort(([nameA, a], [nameB, b]) => {
+                if (nameA === 'Unspecified') return 1;
+                if (nameB === 'Unspecified') return -1;
+                return b - a;
+            })
+            .slice(0, 15);
+        const provTable = [
+            [{ text: "Province", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }],
+            ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole(v)])
+        ];
+        slide3.addTable(provTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
+
+        pptx.writeFile({ fileName: `4K_Financial_Report_${new Date().toISOString().split('T')[0]}.pptx` });
+    };
+
     const getPieData = (type: 'target' | 'obligation' | 'disbursement') => {
         return Object.entries(components)
             .map(([name, stats]) => ({
@@ -361,7 +412,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             .sort((a, b) => b.value - a.value);
     };
 
-    // Comparison Component Card
     const ComponentComparisonCard: React.FC<{ title: string, target: number, obligation: number, disbursement: number }> = ({ title, target, obligation, disbursement }) => {
         const obliPercent = target > 0 ? (obligation / target) * 100 : 0;
         const disbPercent = target > 0 ? (disbursement / target) * 100 : 0;
@@ -405,14 +455,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         );
     };
 
-    // Monthly Chart Component (Green Theme)
     const MonthlyChart = () => {
         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        
-        // Fix: Added explicit return type to useMemo for dataPoints
         const dataPoints = useMemo<MonthlyDataPoint[]>(() => {
              const points: MonthlyDataPoint[] = [];
-             // Force cast monthlyData for index access if strict types block it, or map from known keys
              const mData = monthlyData as unknown as Record<number, MonthlyDataPoint>;
              for(let i=0; i<12; i++) {
                  points.push(mData[i] || { target: 0, obligation: 0, disbursement: 0 });
@@ -420,12 +466,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
              return points;
         }, [monthlyData]);
 
-        // Fix: Added explicit type (MonthlyDataPoint) for 'd' in map to resolve unknown property errors and ensure correct type for Math.max
         const values: number[] = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
         const maxVal: number = Math.max(...values, 1000);
 
         const height = 300;
-        const width = 800; // ViewBox width
+        const width = 800;
         const padding = 40;
         const chartHeight = height - padding * 2;
         const chartWidth = width - padding * 2;
@@ -436,7 +481,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         return (
             <div className="w-full h-full overflow-hidden">
                 <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto font-sans text-xs">
-                    {/* Grid Lines */}
                     {[0, 0.25, 0.5, 0.75, 1].map((t: number) => {
                         const y = height - padding - (t * chartHeight);
                         return (
@@ -447,11 +491,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         );
                     })}
 
-                    {/* Data */}
-                    {/* Fix: Added explicit type (MonthlyDataPoint) for 'd' in dataPoints.map */}
                     {dataPoints.map((d: MonthlyDataPoint, i) => {
                         const xBase = padding + (i * (chartWidth / 12));
-                        // Ensure values are numbers
                         const tVal = Number(d.target || 0);
                         const oVal = Number(d.obligation || 0);
                         const dVal = Number(d.disbursement || 0);
@@ -462,22 +503,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         
                         return (
                             <g key={i}>
-                                {/* Target Bar */}
                                 <rect x={xBase + 5} y={yTarget} width={barWidth} height={Math.max(0, height - padding - yTarget)} fill="#86efac" className="opacity-80 hover:opacity-100 transition-opacity" rx="1">
                                     <title>Target: {formatCurrencyWhole(tVal)}</title>
                                 </rect>
-                                
-                                {/* Obligation Bar */}
                                 <rect x={xBase + 5 + barWidth} y={yOb} width={barWidth} height={Math.max(0, height - padding - yOb)} fill="#22c55e" className="hover:brightness-110 transition-all" rx="1">
                                     <title>Obligation: {formatCurrencyWhole(oVal)}</title>
                                 </rect>
-
-                                {/* Disbursement Bar */}
                                 <rect x={xBase + 5 + barWidth * 2} y={yDisb} width={barWidth} height={Math.max(0, height - padding - yDisb)} fill="#15803d" className="hover:brightness-110 transition-all" rx="1">
                                     <title>Disbursement: {formatCurrencyWhole(dVal)}</title>
                                 </rect>
-
-                                {/* Month Label */}
                                 <text x={xBase + (chartWidth / 12) / 2} y={height - 10} textAnchor="middle" fill="#6b7280" fontWeight="bold">{months[i]}</text>
                             </g>
                         );
@@ -492,16 +526,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         );
     };
 
-    // New Helper Component for Matrix Table
     const MatrixTable = ({ title, metricKey }: { title: string, metricKey: 'alloc' | 'obli' | 'disb' }) => {
         const headers = ['Social Preparation', 'Production and Livelihood', 'Marketing and Enterprise', 'Program Management'];
-        
-        // Calculate Totals
         const columnTotals = headers.reduce((acc, h) => {
             acc[h] = operatingUnits.reduce((sum, ou) => sum + (matrixData[ou]?.[h]?.[metricKey] || 0), 0);
             return acc;
         }, {} as Record<string, number>);
-        
         const grandTotal = Object.values(columnTotals).reduce((a, b) => a + b, 0);
 
         return (
@@ -547,7 +577,19 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     return (
         <div className="space-y-8 animate-fadeIn">
-            {/* Section 1: Budget Utilization (Green Theme) */}
+            {/* Action Bar */}
+            <div className="flex justify-end">
+                <button 
+                    onClick={handleExportPPTX}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 transition-all shadow-sm"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    Download PPTX Report
+                </button>
+            </div>
+
             <section aria-labelledby="budget-utilization">
                 <h3 id="budget-utilization" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Utilization</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -590,7 +632,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 </div>
             </section>
 
-            {/* Section 1.5: Component Distribution Pie Charts */}
             <section aria-labelledby="component-distribution">
                 <h3 id="component-distribution" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Distribution by Component</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -609,7 +650,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 </div>
             </section>
 
-            {/* Section 2: Budget Breakdown by Component (Comparisons) */}
             <section aria-labelledby="budget-breakdown">
                 <h3 id="budget-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Performance by Component</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -625,29 +665,37 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 </div>
             </section>
 
-            {/* Section 3: Allocation by Province */}
             <section aria-labelledby="province-breakdown">
-                <h3 id="province-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Total Allocation by Province</h3>
+                <h3 id="province-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Allocation per Province</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 italic">Provincial allocation highlights investment towards specific regions. Items like program management or multi-region expenses are categorized as Unspecified.</p>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[500px] overflow-y-auto custom-scrollbar">
                     <div className="space-y-4">
                         {Object.entries(provinceData)
-                            .sort(([, a], [, b]) => b - a)
+                            .sort(([nameA, a], [nameB, b]) => {
+                                // Explicitly move 'Unspecified' to the bottom
+                                if (nameA === 'Unspecified') return 1;
+                                if (nameB === 'Unspecified') return -1;
+                                // Normal descending sort for the rest
+                                return b - a;
+                            })
                             .map(([province, amount], index) => {
                                 const maxVal = Math.max(...Object.values(provinceData));
                                 const percent = maxVal > 0 ? (amount / maxVal) * 100 : 0;
+                                const isUnspecified = province === 'Unspecified';
+
                                 return (
-                                    <div key={province} className="flex items-center text-sm group">
-                                        <div className="w-6 text-gray-400 font-mono text-xs">{index + 1}</div>
-                                        <div className="w-40 truncate font-medium text-gray-700 dark:text-gray-300" title={province}>{province}</div>
+                                    <div key={province} className={`flex items-center text-sm group ${isUnspecified ? 'mt-6 pt-4 border-t border-gray-100 dark:border-gray-700' : ''}`}>
+                                        <div className="w-6 text-gray-400 font-mono text-xs">{isUnspecified ? '' : index + 1}</div>
+                                        <div className={`w-40 truncate font-medium ${isUnspecified ? 'text-gray-400' : 'text-gray-700 dark:text-gray-300'}`} title={province}>{province}</div>
                                         <div className="flex-1 mx-4">
                                             <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                                                 <div 
-                                                    className="h-full bg-gradient-to-r from-green-400 to-green-600 group-hover:from-green-500 group-hover:to-green-700 transition-all duration-500" 
+                                                    className={`h-full transition-all duration-500 ${isUnspecified ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gradient-to-r from-green-400 to-green-600 group-hover:from-green-500 group-hover:to-green-700'}`} 
                                                     style={{ width: `${percent}%` }}
                                                 ></div>
                                             </div>
                                         </div>
-                                        <div className="w-32 text-right font-semibold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(amount)}</div>
+                                        <div className={`w-32 text-right font-semibold ${isUnspecified ? 'text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{formatCurrencyWhole(amount)}</div>
                                     </div>
                                 );
                             })}
@@ -656,7 +704,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 </div>
             </section>
 
-            {/* Section 4: Monthly Breakdown Chart */}
             <section aria-labelledby="monthly-breakdown">
                 <h3 id="monthly-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Monthly Financial Performance</h3>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-96">
@@ -664,15 +711,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 </div>
             </section>
 
-            {/* Section 5: Matrix Breakdowns */}
-            <section aria-labelledby="financial-matrices">
-                <h3 id="financial-matrices" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Detailed Financial Matrix by Operating Unit</h3>
-                <div className="space-y-8">
-                    <MatrixTable title="Total Allocation (Target)" metricKey="alloc" />
-                    <MatrixTable title="Actual Obligation" metricKey="obli" />
-                    <MatrixTable title="Actual Disbursement" metricKey="disb" />
-                </div>
-            </section>
+            {canViewMatrix && (
+                <section aria-labelledby="financial-matrices">
+                    <h3 id="financial-matrices" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Detailed Financial Matrix by Operating Unit</h3>
+                    <div className="space-y-8">
+                        <MatrixTable title="Total Allocation (Target)" metricKey="alloc" />
+                        <MatrixTable title="Actual Obligation" metricKey="obli" />
+                        <MatrixTable title="Actual Disbursement" metricKey="disb" />
+                    </div>
+                </section>
+            )}
         </div>
     );
 };

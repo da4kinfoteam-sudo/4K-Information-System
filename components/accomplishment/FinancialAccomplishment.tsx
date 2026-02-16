@@ -1,7 +1,8 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, fundTypes, tiers, FundType, Tier, FinancialItem as FinancialItemType } from '../../constants';
+// Fixed: Removed non-existent FinancialItem and added missing OtherProgramExpense
+import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
