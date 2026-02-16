@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
@@ -477,7 +478,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 const original = subproject.details[index];
                 if (!original) return true; // New item (shouldn't happen in accomplishment mode usually)
                 
-                // Track if actual delivery happened or quantity changed
+                // Track if actual delivery happened or quantity updated
                 const deliveredNow = !!item.actualDeliveryDate;
                 const deliveredBefore = !!original.actualDeliveryDate;
                 
@@ -718,7 +719,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                                 <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                                 <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
+                                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, d]) => <option key={code} value={code}>{code} - {d}</option>)}</select></div>
                                             </div>
 
                                             <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
@@ -1178,18 +1179,54 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Project Outcome</h4>
                                 {subproject.subprojectCommodities && subproject.subprojectCommodities.some(c => c.actualYield || c.income) ? (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {subproject.subprojectCommodities.map((c, i) => (
-                                            (c.actualYield || c.income) && (
-                                                <div key={i} className="p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-100 dark:border-gray-700">
-                                                    <p className="font-bold text-gray-800 dark:text-gray-200">{c.name}</p>
-                                                    <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
-                                                        {c.actualYield && <p>Yield: <span className="font-semibold text-gray-900 dark:text-white">{c.actualYield}</span> {c.typeName === 'Animal Commodity' ? 'Heads' : 'Yield Kg/Ha'}</p>}
-                                                        {c.income && <p>Income: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(c.income)}</span></p>}
-                                                        {c.marketingPercentage && <p>Marketing: {c.marketingPercentage}%</p>}
+                                        {subproject.subprojectCommodities.map((c, i) => {
+                                            const hasData = c.actualYield || c.income;
+                                            if (!hasData) return null;
+
+                                            const unit = c.typeName === 'Animal Commodity' ? 'Heads' : 'Kg/Ha';
+                                            const marketingVal = c.actualYield ? (c.actualYield * (c.marketingPercentage || 0) / 100) : 0;
+                                            const foodSecVal = c.actualYield ? (c.actualYield * (c.foodSecurityPercentage || 0) / 100) : 0;
+
+                                            return (
+                                                <div key={i} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                                                    <div className="flex justify-between items-start mb-3">
+                                                        <p className="font-bold text-gray-900 dark:text-white">{c.name}</p>
+                                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase font-bold">{c.typeName}</span>
+                                                    </div>
+                                                    
+                                                    <div className="space-y-3">
+                                                        <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded-lg shadow-inner">
+                                                            <span className="text-xs text-gray-500 dark:text-gray-400">Total Actual Yield</span>
+                                                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{c.actualYield || 0} <span className="text-[10px] font-normal text-gray-400">{unit}</span></span>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-1 gap-2">
+                                                            {/* Marketing Section */}
+                                                            <div className="p-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                                                                <div className="flex justify-between items-center mb-1">
+                                                                    <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase">Marketing ({c.marketingPercentage || 0}%)</span>
+                                                                    <span className="text-xs font-bold text-blue-900 dark:text-blue-100">{marketingVal.toFixed(2)} {unit}</span>
+                                                                </div>
+                                                                {c.income && (
+                                                                    <div className="flex justify-between items-center border-t border-blue-200 dark:border-blue-800 mt-1 pt-1">
+                                                                        <span className="text-[10px] text-blue-600 dark:text-blue-400">Actual Income</span>
+                                                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(c.income)}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Food Security Section */}
+                                                            <div className="p-2 bg-orange-50 dark:bg-orange-900/10 rounded-lg border border-orange-100 dark:border-orange-900/20">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-[10px] font-bold text-orange-700 dark:text-orange-300 uppercase">Food Security ({c.foodSecurityPercentage || 0}%)</span>
+                                                                    <span className="text-xs font-bold text-orange-900 dark:text-orange-100">{foodSecVal.toFixed(2)} {unit}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            )
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <p className="text-sm text-gray-500 italic">No outcome data recorded yet.</p>

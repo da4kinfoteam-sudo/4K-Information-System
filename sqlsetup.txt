@@ -12,3 +12,6 @@ SET details = (
   )
   FROM jsonb_array_elements(details) elem
 );
+
+
+test
