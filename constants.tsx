@@ -391,6 +391,8 @@ export interface OtherProgramExpense extends BaseProgramManagementItem {
 export interface CommodityNeed {
     id: number | string;
     name: string;
+    type: string; // Add Type
+    sourceRegion: string; // Add Region selection
     sourceProvince: string;
     qualityStandard: string;
     volumeJan: number;
@@ -415,12 +417,13 @@ export interface MarketingPartner extends BaseEntity {
     email: string;
     location: string;
     region: string;
-    commodityNeeds: CommodityNeed[]; // Updated from string[]
+    commodityNeeds: CommodityNeed[]; 
     buyerType: 'Private Company' | 'Government';
-    paymentMethods: string[]; // ['Bank Transfer', 'Cash', etc.]
-    linkedIpoNames: string[]; // For logical relationship display
+    paymentMethods: string[]; 
+    linkedIpoNames: string[]; 
     remarks?: string;
     encodedBy: string;
+    history?: HistoryEntry[]; // Added for tracking updates/deals
 }
 
 export interface Deadline {
