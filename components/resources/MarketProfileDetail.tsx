@@ -12,6 +12,7 @@ interface MarketProfileDetailProps {
     onBack: () => void;
     onUpdatePartner: (partner: MarketingPartner) => void;
     setPartners: React.Dispatch<React.SetStateAction<MarketingPartner[]>>;
+    commodityCategories: { [key: string]: string[] };
 }
 
 const BUYER_TYPES = ['Private Company', 'Government'];
@@ -20,7 +21,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
-const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onUpdatePartner, setPartners }) => {
+const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onUpdatePartner, setPartners, commodityCategories }) => {
     const { currentUser } = useAuth();
     const isAdmin = currentUser?.role === 'Administrator';
     const [isEditing, setIsEditing] = useState(false);
@@ -78,7 +79,13 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
 
     const handleTempCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setTempCommodity(prev => ({ ...prev, [name]: value }));
+        setTempCommodity(prev => {
+            const updated = { ...prev, [name]: value };
+            if (name === 'type') {
+                updated.name = '';
+            }
+            return updated;
+        });
     };
 
     // Region -> Province dropdown logic
@@ -243,7 +250,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                     <div className="bg-gray-50 dark:bg-gray-900/40 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                             <div><label className="block text-xs font-bold uppercase text-gray-500">Type</label><select name="type" value={tempCommodity.type} onChange={handleTempCommodityChange} className={commonInputClasses}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Commodity Name</label><input type="text" name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} className={commonInputClasses} placeholder="Enter name" /></div>
+                                            <div><label className="block text-xs font-bold uppercase text-gray-500">Commodity Name</label><select name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} disabled={!tempCommodity.type} className={commonInputClasses}><option value="">Select Commodity</option>{tempCommodity.type && commodityCategories[tempCommodity.type]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                             <div><label className="block text-xs font-bold uppercase text-gray-500">Source Region</label>
                                                 <select name="sourceRegion" value={tempCommodity.sourceRegion} onChange={handleTempCommodityChange} className={commonInputClasses}>
                                                     <option value="">Select Region</option>
@@ -375,7 +382,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                                 <span className="w-1.5 h-6 bg-teal-500 rounded-full"></span>
-                                Matched IPO Producers (Sorted by Region Proximity)
+                                Matched IPO Producers
                             </h3>
                             <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold">{potentialIpos.length} Matches</span>
                         </div>

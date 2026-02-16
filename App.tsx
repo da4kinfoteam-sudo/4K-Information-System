@@ -528,6 +528,7 @@ const AppContent: React.FC = () => {
                             partners={marketingPartners}
                             setPartners={setMarketingPartners}
                             onSelectPartner={handleSelectMarketingPartner}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/marketing-profile-detail':
                 if (!selectedMarketingPartner) return <div>Select a partner</div>;
@@ -541,6 +542,7 @@ const AppContent: React.FC = () => {
                             }}
                             /* Added setPartners prop to fix AuthContext error in child */
                             setPartners={setMarketingPartners}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/level-of-development':
                 return <LevelOfDevelopmentPage ipos={ipos} />;

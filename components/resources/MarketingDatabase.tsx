@@ -14,15 +14,22 @@ const BUYER_TYPES = ['Private Company', 'Government'];
 const PAYMENT_METHODS = ['Bank Transfer', 'Cash', 'Cash on Delivery', 'Voucher'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    </svg>
+);
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
 interface MarketingDatabaseProps {
     partners: MarketingPartner[];
     setPartners: React.Dispatch<React.SetStateAction<MarketingPartner[]>>;
     onSelectPartner: (partner: MarketingPartner) => void;
+    commodityCategories: { [key: string]: string[] };
 }
 
-const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPartners, onSelectPartner }) => {
+const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPartners, onSelectPartner, commodityCategories }) => {
     const { currentUser } = useAuth();
     const isAdmin = currentUser?.role === 'Administrator';
     
@@ -70,7 +77,6 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
     });
 
     // Commodity Selection Cascading State
-    const [commodityOptions, setCommodityOptions] = useState<string[]>([]);
     const [provinceOptions, setProvinceOptions] = useState<string[]>([]);
 
     const filteredPartners = useMemo(() => {
@@ -111,24 +117,14 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         });
     };
 
-    // Cascaded Dropdowns logic for Commodity Add
-    useEffect(() => {
-        if (tempCommodity.type) {
-            // Need to import commodityCategories context or similar?
-            // For now, let's assume we need to fetch them or access from props
-            // Re-using common pattern or simplified reference lookup
-        }
-    }, [tempCommodity.type]);
-
     const handleTempCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setTempCommodity(prev => {
             const updated = { ...prev, [name]: value };
             
-            // Cascaded Commodity Logic (Mocking reference categories)
+            // Cascaded Commodity Logic
             if (name === 'type') {
                 updated.name = '';
-                // Here you would filter options based on type
             }
             
             return updated;
@@ -181,7 +177,6 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         setEditingCommodityIdx(null);
     };
 
-    /* Fix: Added handleEditCommodity to fix "Cannot find name" error */
     const handleEditCommodity = (idx: number) => {
         const c = formData.commodityNeeds[idx];
         setTempCommodity({ ...c });
@@ -275,7 +270,6 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         buyerType: row.buyerType || 'Private Company',
                         paymentMethods: row.paymentMethods ? row.paymentMethods.split(';').map((p:string) => p.trim()) : [],
                         commodityNeeds: row.commodityNeeds ? JSON.parse(row.commodityNeeds) : [],
-                        /* Fix: Added missing linkedIpoNames to newPartners mapping to resolve type error on setPartners */
                         linkedIpoNames: [],
                         history: [{ date: new Date().toISOString(), event: 'Imported from Excel', user: currentUser?.fullName || 'System' }],
                         encodedBy: currentUser?.fullName || 'Excel Import',
@@ -340,7 +334,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         <div className="bg-gray-50 dark:bg-gray-900/40 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                 <div><label className="block text-xs font-bold uppercase text-gray-500">Type</label><select name="type" value={tempCommodity.type} onChange={handleTempCommodityChange} className={commonInputClasses}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-xs font-bold uppercase text-gray-500">Commodity Name</label><input type="text" name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} className={commonInputClasses} placeholder="Enter name" /></div>
+                                <div><label className="block text-xs font-bold uppercase text-gray-500">Commodity Name</label><select name="name" value={tempCommodity.name} onChange={handleTempCommodityChange} disabled={!tempCommodity.type} className={commonInputClasses}><option value="">Select Commodity</option>{tempCommodity.type && commodityCategories[tempCommodity.type]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                 <div><label className="block text-xs font-bold uppercase text-gray-500">Source Region</label>
                                     <select name="sourceRegion" value={tempCommodity.sourceRegion} onChange={handleTempCommodityChange} className={commonInputClasses}>
                                         <option value="">Select Region</option>
@@ -426,33 +420,71 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
 
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Marketing Database</h2>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2">
                     {isAdmin && (
-                        <>
-                            <button onClick={() => setView('add')} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm">Add Market Partner</button>
-                            <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm font-bold hover:bg-gray-300">Template</button>
-                            <label className={`px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                {isUploading ? 'Uploading...' : 'Upload XLSX'}
-                                <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
-                            </label>
-                            <button onClick={toggleSelectionMode} className={`px-4 py-2 rounded-md font-bold shadow-sm transition-all ${isSelectionMode ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'}`}>{isSelectionMode ? 'Cancel Selection' : 'Select Multiple'}</button>
-                            {isSelectionMode && selectedIds.length > 0 && <button onClick={() => setIsMultiDeleteModalOpen(true)} className="px-4 py-2 bg-red-600 text-white rounded-md font-bold shadow-sm">Delete Selected ({selectedIds.length})</button>}
-                        </>
+                        <button onClick={() => setView('add')} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm">
+                            + Add Market Partner
+                        </button>
                     )}
                 </div>
             </div>
 
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
-                <div className="flex flex-wrap gap-4 mb-6">
-                    <div className="flex-1 min-w-[200px]"><input type="text" placeholder="Search by company, owner, or commodity..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={commonInputClasses} /></div>
-                    <div className="w-full md:w-64"><select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={commonInputClasses}><option value="All">All Regions</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <div className="flex flex-wrap gap-4 items-center flex-1 w-full">
+                        <div className="flex-1 min-w-[200px]">
+                            <input 
+                                type="text" 
+                                placeholder="Search by company, owner, or commodity..." 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={commonInputClasses}
+                            />
+                        </div>
+                        <div className="w-full md:w-64">
+                            <select 
+                                value={regionFilter} 
+                                onChange={(e) => setRegionFilter(e.target.value)} 
+                                className={commonInputClasses}
+                            >
+                                <option value="All">All Regions</option>
+                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                        {isSelectionMode && selectedIds.length > 0 && (
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                                Delete Selected ({selectedIds.length})
+                            </button>
+                        )}
+                        {isAdmin && (
+                            <>
+                                <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm font-bold hover:bg-gray-300">
+                                    Template
+                                </button>
+                                <label className={`px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                    {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
+                                </label>
+                                <button 
+                                    onClick={toggleSelectionMode} 
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    title="Toggle Multi-Delete Mode"
+                                >
+                                    <TrashIcon />
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                {isSelectionMode && <th className="px-6 py-3 text-left w-10"><input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(p => selectedIds.includes(p.id))} /></th>}
+                                {isSelectionMode && <th className="px-6 py-3 text-left w-10"><input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(p => selectedIds.includes(p.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></th>}
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Company Name</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
@@ -463,7 +495,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedData.map((partner) => (
                                 <tr key={partner.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.includes(partner.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
-                                    {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} /></td>}
+                                    {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></td>}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-medium">{partner.region || 'N/A'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="text-emerald-600 hover:text-emerald-700 hover:underline dark:text-emerald-400">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-0.5 rounded-full font-bold ${partner.buyerType === 'Government' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{partner.buyerType || 'Private'}</span></td>
