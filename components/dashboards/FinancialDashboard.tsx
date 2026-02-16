@@ -373,18 +373,50 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         ];
         slide1.addTable(summaryTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
 
-        // Slide 2: Components
+        // Slide 2: Budget Distribution (Pies)
         const slide2 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
-        slide2.addText("Budget Breakdown by Component", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
-        const componentTable = [
-            [{ text: "Component", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }, { text: "Disbursed", options: { bold: true, fill: 'EEEEEE' } }],
-            ...Object.entries(components).map(([k, v]) => [k, formatCurrencyWhole(v.target), formatCurrencyWhole(v.disbursement)])
+        slide2.addText("Budget Distribution by Component", { x: 0.5, y: 1.0, fontSize: 24, color: '38761D', bold: true });
+        
+        const chartDataPie = [
+            {
+                name: "Allocation",
+                labels: Object.keys(components),
+                values: Object.values(components).map(v => v.target)
+            }
         ];
-        slide2.addTable(componentTable, { x: 0.5, y: 2.0, w: 12, border: { type: 'solid', color: 'CCCCCC' } });
+        slide2.addChart(pptx.ChartType.pie, chartDataPie, { x: 0.5, y: 1.8, w: 6, h: 4, showLegend: true, legendPos: 'b' });
+        slide2.addText("Target Allocation %", { x: 0.5, y: 1.5, fontSize: 14, bold: true });
 
-        // Slide 3: Provinces
+        const chartDataDisb = [
+            {
+                name: "Disbursement",
+                labels: Object.keys(components),
+                values: Object.values(components).map(v => v.disbursement)
+            }
+        ];
+        slide2.addChart(pptx.ChartType.pie, chartDataDisb, { x: 6.8, y: 1.8, w: 6, h: 4, showLegend: true, legendPos: 'b' });
+        slide2.addText("Actual Disbursement %", { x: 6.8, y: 1.5, fontSize: 14, bold: true });
+
+        // Slide 3: Monthly Performance (Graph)
         const slide3 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
-        slide3.addText("Top Allocations by Province", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
+        slide3.addText("Monthly Financial Performance", { x: 0.5, y: 1.0, fontSize: 24, color: '38761D', bold: true });
+        
+        const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const chartDataMonthly = [
+            { name: "Target", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.target) },
+            { name: "Obligation", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.obligation) },
+            { name: "Disbursement", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.disbursement) }
+        ];
+        slide3.addChart(pptx.ChartType.bar, chartDataMonthly, { 
+            x: 0.5, y: 1.5, w: 12, h: 5, 
+            showLegend: true, legendPos: 't',
+            barGapWidthPct: 20,
+            chartColors: ['86efac', '22c55e', '15803d']
+        });
+
+        // Slide 4: Provinces
+        const slide4 = pptx.addSlide({ masterName: 'MASTER_SLIDE' });
+        slide4.addText("Top Allocations by Province", { x: 0.5, y: 1.2, fontSize: 28, color: '38761D', bold: true });
         const sortedProvinces = Object.entries(provinceData)
             .sort(([nameA, a], [nameB, b]) => {
                 if (nameA === 'Unspecified') return 1;
@@ -396,7 +428,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             [{ text: "Province", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }],
             ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole(v)])
         ];
-        slide3.addTable(provTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
+        slide4.addTable(provTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
 
         pptx.writeFile({ fileName: `4K_Financial_Report_${new Date().toISOString().split('T')[0]}.pptx` });
     };
@@ -456,7 +488,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     };
 
     const MonthlyChart = () => {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const dataPoints = useMemo<MonthlyDataPoint[]>(() => {
              const points: MonthlyDataPoint[] = [];
              const mData = monthlyData as unknown as Record<number, MonthlyDataPoint>;
@@ -469,58 +501,64 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         const values: number[] = dataPoints.map((d: MonthlyDataPoint) => Math.max(d.target, d.obligation, d.disbursement));
         const maxVal: number = Math.max(...values, 1000);
 
-        const height = 300;
-        const width = 800;
-        const padding = 40;
+        const height = 400;
+        const width = 1000;
+        const padding = 50;
         const chartHeight = height - padding * 2;
         const chartWidth = width - padding * 2;
-        const barWidth = (chartWidth / 12) / 4; 
+        const columnWidth = chartWidth / 12;
+        const barWidth = columnWidth / 4; 
 
         const getY = (val: number) => height - padding - (val / maxVal) * chartHeight;
 
         return (
             <div className="w-full h-full overflow-hidden">
-                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto font-sans text-xs">
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full font-sans text-xs" preserveAspectRatio="xMidYMid meet">
+                    {/* Grid Lines */}
                     {[0, 0.25, 0.5, 0.75, 1].map((t: number) => {
                         const y = height - padding - (t * chartHeight);
                         return (
                             <g key={t}>
                                 <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#e5e7eb" strokeDasharray="4" />
-                                <text x={padding - 5} y={y + 4} textAnchor="end" fill="#9ca3af">{formatCurrencyWhole(maxVal * t).replace('₱', '')}</text>
+                                <text x={padding - 5} y={y + 4} textAnchor="end" fill="#9ca3af" className="text-[10px]">{formatCurrencyWhole(maxVal * t).replace('₱', '')}</text>
                             </g>
                         );
                     })}
 
+                    {/* Data */}
                     {dataPoints.map((d: MonthlyDataPoint, i) => {
-                        const xBase = padding + (i * (chartWidth / 12));
-                        const tVal = Number(d.target || 0);
-                        const oVal = Number(d.obligation || 0);
-                        const dVal = Number(d.disbursement || 0);
-
-                        const yTarget = getY(tVal);
-                        const yOb = getY(oVal);
-                        const yDisb = getY(dVal);
+                        const xBase = padding + (i * columnWidth);
+                        const yTarget = getY(d.target);
+                        const yOb = getY(d.obligation);
+                        const yDisb = getY(d.disbursement);
                         
                         return (
                             <g key={i}>
-                                <rect x={xBase + 5} y={yTarget} width={barWidth} height={Math.max(0, height - padding - yTarget)} fill="#86efac" className="opacity-80 hover:opacity-100 transition-opacity" rx="1">
-                                    <title>Target: {formatCurrencyWhole(tVal)}</title>
+                                {/* Target Bar */}
+                                <rect x={xBase + barWidth * 0.5} y={yTarget} width={barWidth} height={Math.max(0, height - padding - yTarget)} fill="#86efac" className="opacity-80 hover:opacity-100 transition-opacity" rx="1">
+                                    <title>Target: {formatCurrencyWhole(d.target)}</title>
                                 </rect>
-                                <rect x={xBase + 5 + barWidth} y={yOb} width={barWidth} height={Math.max(0, height - padding - yOb)} fill="#22c55e" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Obligation: {formatCurrencyWhole(oVal)}</title>
+                                
+                                {/* Obligation Bar */}
+                                <rect x={xBase + barWidth * 1.5} y={yOb} width={barWidth} height={Math.max(0, height - padding - yOb)} fill="#22c55e" className="hover:brightness-110 transition-all" rx="1">
+                                    <title>Obligation: {formatCurrencyWhole(d.obligation)}</title>
                                 </rect>
-                                <rect x={xBase + 5 + barWidth * 2} y={yDisb} width={barWidth} height={Math.max(0, height - padding - yDisb)} fill="#15803d" className="hover:brightness-110 transition-all" rx="1">
-                                    <title>Disbursement: {formatCurrencyWhole(dVal)}</title>
+
+                                {/* Disbursement Bar */}
+                                <rect x={xBase + barWidth * 2.5} y={yDisb} width={barWidth} height={Math.max(0, height - padding - yDisb)} fill="#15803d" className="hover:brightness-110 transition-all" rx="1">
+                                    <title>Disbursement: {formatCurrencyWhole(d.disbursement)}</title>
                                 </rect>
-                                <text x={xBase + (chartWidth / 12) / 2} y={height - 10} textAnchor="middle" fill="#6b7280" fontWeight="bold">{months[i]}</text>
+
+                                {/* Month Label */}
+                                <text x={xBase + columnWidth / 2} y={height - padding + 20} textAnchor="middle" fill="#6b7280" className="font-bold text-[11px]">{monthsLabels[i]}</text>
                             </g>
                         );
                     })}
                 </svg>
-                <div className="flex justify-center gap-4 mt-2 text-xs text-gray-600 dark:text-gray-400">
-                    <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-300 rounded-sm"></span> Target</div>
-                    <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Obligation</div>
-                    <div className="flex items-center gap-1"><span className="w-3 h-3 bg-green-700 rounded-sm"></span> Disbursement</div>
+                <div className="flex justify-center gap-6 mt-2 text-[11px] text-gray-600 dark:text-gray-400">
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-300 rounded-sm"></span> Target</div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Obligation</div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-700 rounded-sm"></span> Disbursement</div>
                 </div>
             </div>
         );
@@ -528,10 +566,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     const MatrixTable = ({ title, metricKey }: { title: string, metricKey: 'alloc' | 'obli' | 'disb' }) => {
         const headers = ['Social Preparation', 'Production and Livelihood', 'Marketing and Enterprise', 'Program Management'];
+        
+        // Calculate Totals
         const columnTotals = headers.reduce((acc, h) => {
             acc[h] = operatingUnits.reduce((sum, ou) => sum + (matrixData[ou]?.[h]?.[metricKey] || 0), 0);
             return acc;
         }, {} as Record<string, number>);
+        
         const grandTotal = Object.values(columnTotals).reduce((a, b) => a + b, 0);
 
         return (
@@ -578,15 +619,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     return (
         <div className="space-y-8 animate-fadeIn">
             {/* Action Bar */}
-            <div className="flex justify-end">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Financial Dashboard</h1>
                 <button 
                     onClick={handleExportPPTX}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 transition-all shadow-sm"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                     </svg>
-                    Download PPTX Report
+                    Download Financial Report
                 </button>
             </div>
 
