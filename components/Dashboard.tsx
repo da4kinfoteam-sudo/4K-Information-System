@@ -780,7 +780,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <div 
                                     key={`${event.id}-${index}`} 
                                     onClick={() => handleCalendarEventClick(event)}
-                                    className={`p-3 rounded-lg border-l-4 ${event.color.replace('bg-', 'border-')} bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${event.originalData ? 'cursor-pointer' : ''}`}
+                                    className={`p-3 rounded-lg border-l-4 ${event.borderColor} bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${event.originalData ? 'cursor-pointer' : ''}`}
                                 >
                                     <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{event.title}</p>
                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">{event.type}</p>
