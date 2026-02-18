@@ -2,7 +2,7 @@
 // Author: 4K
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
+import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions } from '../constants';
 
 interface AIChatbotProps {
     subprojects: Subproject[];
@@ -38,22 +38,12 @@ const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information
 Your goal is to help users navigate the app and understand the data.
 
 **Response Style:**
-1. **Be Concise**: Do NOT provide long lists unless specifically asked. If asked "How many IPOs?", answer "There are 25 IPOs." do not list them all.
-2. **Data Driven**: Use the provided JSON context to answer questions about budgets, counts, and specific items.
+1. **Be Concise**: Summarize data. Do not list more than 5 items unless asked.
+2. **Data Driven**: Use the provided context to answer. If the context is empty or insufficient, say so politely.
 3. **Navigation**: You can guide the user to specific pages or items. 
-   - To link to a page, use Markdown format: [Page Name](/route).
-     Available Routes: /dashboards, /subprojects, /activities, /ipo, /marketing-database, /program-management, /reports.
-   - To link to a specific item detail, use: [Item Name](/type/identifier).
-     - Subprojects: [Project Name](/subproject/UID)  (Use the 'uid' field)
-     - IPOs: [IPO Name](/ipo/Name) (Use the 'name' field)
-     - Activities: [Activity Name](/activity/UID) (Use the 'uid' field)
-     - Marketing Partners: [Partner Name](/marketing/UID) (Use the 'uid' field)
-
-**Data Definitions:**
-- **Subprojects**: Livelihood interventions.
-- **IPOs**: Indigenous Peoples Organizations.
-- **Marketing**: Buyers and partners.
-- **Program Management**: Office/Staffing requirements.
+   - To link to a page, use Markdown: [Page Name](/route).
+   - Routes: /dashboards, /subprojects, /activities, /ipo, /marketing-database, /program-management, /reports.
+   - To link items: [Item Name](/type/identifier) (e.g. [My Project](/subproject/SP-001)).
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -63,7 +53,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I can help you find data or navigate the system. Try asking 'Show me the dashboard' or 'How many subprojects are completed?'" }
+        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me about subprojects, IPOs, or reports." }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -77,26 +67,24 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         if (isOpen) scrollToBottom();
     }, [messages, isOpen]);
 
-    // Handle Link Clicks from AI Responses
+    // Handle Link Clicks
     const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
         e.preventDefault();
         
-        // Handle generic page navigation
         if (href.startsWith('/') && !href.split('/')[2]) {
             onNavigate(href);
             return;
         }
 
-        // Handle Item Detail Navigation
         const parts = href.split('/');
         const type = parts[1];
-        const id = parts[2]; // UID or Name
+        const id = decodeURIComponent(parts[2]);
 
         if (type === 'subproject') {
             const item = subprojects.find(s => s.uid === id || s.name === id);
             if (item) onSelectSubproject(item);
         } else if (type === 'ipo') {
-            const item = ipos.find(i => i.name === decodeURIComponent(id));
+            const item = ipos.find(i => i.name === id);
             if (item) onSelectIpo(item);
         } else if (type === 'activity') {
             const item = activities.find(a => a.uid === id || a.name === id);
@@ -105,14 +93,12 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const item = marketingPartners.find(m => m.uid === id || m.companyName === id);
             if (item) onSelectMarketingPartner(item);
         } else {
-            // Fallback for simple routes
             onNavigate(href);
         }
     };
 
-    // Render text with clickable markdown links
+    // Render markdown links
     const renderMessage = (text: string) => {
-        // Regex to match [Text](url)
         const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
         const parts = [];
         let lastIndex = 0;
@@ -142,6 +128,84 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         return <>{parts}</>;
     };
 
+    /**
+     * DYNAMIC CONTEXT BUILDER
+     * To avoid Token Quota Limits (429), we only inject data relevant to the user's query.
+     */
+    const getDynamicContext = (query: string) => {
+        const q = query.toLowerCase();
+        
+        // 1. Always include High-Level Stats (Low token cost)
+        const stats = {
+            counts: {
+                subprojects: subprojects.length,
+                ipos: ipos.length,
+                trainings: activities.filter(a => a.type === 'Training').length,
+                marketing_partners: marketingPartners.length
+            },
+            budget: {
+                subprojects: subprojects.reduce((s, i) => s + (i.details?.reduce((d, x) => d + (x.pricePerUnit * x.numberOfUnits), 0) || 0), 0)
+            }
+        };
+
+        const context: any = { system_stats: stats };
+
+        // 2. Identify Intent & Filter
+        const maxItems = 15; // Strict limit to keep payload small
+
+        // Check for specific Region filters in the query
+        // E.g. "Region 3" or "CAR"
+        const regionMatch = philippineRegions.find(r => q.includes(r.toLowerCase()) || q.includes(r.split(' ')[0].toLowerCase()));
+        
+        const filterByRegion = (items: any[]) => {
+            if (!regionMatch) return items;
+            // Fuzzy match region
+            return items.filter(i => {
+                const r = (i.region || i.location || i.operatingUnit || '').toLowerCase();
+                return r.includes(regionMatch.toLowerCase());
+            });
+        };
+
+        // If asking about IPOs
+        if (q.includes('ipo') || q.includes('organization') || q.includes('farmer') || q.includes('group')) {
+            let filtered = filterByRegion(ipos);
+            // Additional filters
+            if (q.includes('women')) filtered = filtered.filter(i => i.isWomenLed);
+            
+            context.ipos = filtered.slice(0, maxItems).map(i => ({
+                name: i.name, region: i.region, members: i.totalMembers, isWomenLed: i.isWomenLed
+            }));
+        }
+
+        // If asking about Subprojects / Projects
+        if (q.includes('subproject') || q.includes('project') || q.includes('livelihood')) {
+            let filtered = filterByRegion(subprojects);
+            if (q.includes('completed')) filtered = filtered.filter(s => s.status === 'Completed');
+            if (q.includes('ongoing')) filtered = filtered.filter(s => s.status === 'Ongoing');
+
+            context.subprojects = filtered.slice(0, maxItems).map(s => ({
+                uid: s.uid, name: s.name, status: s.status, location: s.location, ipo: s.indigenousPeopleOrganization
+            }));
+        }
+
+        // If asking about Activities / Trainings
+        if (q.includes('training') || q.includes('activity') || q.includes('seminar')) {
+            let filtered = filterByRegion(activities);
+            context.activities = filtered.slice(0, maxItems).map(a => ({
+                uid: a.uid, name: a.name, type: a.type, date: a.date, participants: (a.participantsMale + a.participantsFemale)
+            }));
+        }
+
+        // If asking about Marketing
+        if (q.includes('market') || q.includes('buyer') || q.includes('commodity')) {
+            context.marketing = marketingPartners.slice(0, maxItems).map(m => ({
+                name: m.companyName, needs: m.commodityNeeds.map(c => c.name).join(', ')
+            }));
+        }
+
+        return JSON.stringify(context);
+    };
+
     const handleSend = async (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!inputText.trim() || isLoading) return;
@@ -159,41 +223,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         }
 
         try {
-            // Prepare Data Context (Optimized)
-            const MAX_ITEMS = 50; // Strict limit to avoid token overflow
-            
-            const dataContext = {
-                metrics: {
-                    subprojects_total: subprojects.length,
-                    subprojects_completed: subprojects.filter(s => s.status === 'Completed').length,
-                    subprojects_budget: subprojects.reduce((sum, s) => sum + s.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0), 0),
-                    ipos_total: ipos.length,
-                    ipos_women_led: ipos.filter(i => i.isWomenLed).length,
-                    trainings_total: activities.filter(a => a.type === 'Training').length,
-                    marketing_partners: marketingPartners.length,
-                },
-                recent_subprojects: subprojects.slice(0, MAX_ITEMS).map(s => ({
-                    uid: s.uid, name: s.name, status: s.status, location: s.location, ipo: s.indigenousPeopleOrganization
-                })),
-                recent_activities: activities.slice(0, MAX_ITEMS).map(a => ({
-                    uid: a.uid, name: a.name, type: a.type, date: a.date
-                })),
-                recent_ipos: ipos.slice(0, MAX_ITEMS).map(i => ({
-                    name: i.name, region: i.region, level: i.levelOfDevelopment
-                })),
-                marketing_partners: marketingPartners.slice(0, 30).map(m => ({
-                    uid: m.uid, name: m.companyName, needs: m.commodityNeeds.map(c => c.name).join(', ')
-                }))
-            };
-
-            const fullSystemInstruction = `${BASE_SYSTEM_INSTRUCTION}\n\n[SYSTEM DATA CONTEXT]\n${JSON.stringify(dataContext)}`;
+            // Build minimized context based on query
+            const dynamicContext = getDynamicContext(userMessage);
+            const systemPrompt = `${BASE_SYSTEM_INSTRUCTION}\n\n[RELEVANT DATA CONTEXT]\n${dynamicContext}`;
 
             const ai = new GoogleGenAI({ apiKey });
             
+            // Use 'gemini-flash-lite-latest' for speed and cost efficiency as requested
             const chat = ai.chats.create({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-flash-lite-latest',
                 config: {
-                    systemInstruction: fullSystemInstruction,
+                    systemInstruction: systemPrompt,
                 },
                 history: messages.map(m => ({
                     role: m.role,
@@ -207,18 +247,24 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             if (responseText) {
                 setMessages(prev => [...prev, { role: 'model', text: responseText }]);
             } else {
-                 setMessages(prev => [...prev, { role: 'model', text: "I couldn't generate a response at the moment." }]);
+                 setMessages(prev => [...prev, { role: 'model', text: "I couldn't generate a response." }]);
             }
         } catch (error: any) {
             console.error("AI Chat Error:", error);
-            let errMsg = "I'm currently experiencing high traffic. Please try again in a moment.";
             
-            // Handle specific API key errors distinctly if needed, but generic "busy" is better for UX as requested
-            if (error.message && error.message.includes('API key')) {
-                errMsg = "Configuration Error: Unable to access AI service.";
+            // Improved Friendly Error Handling
+            let friendlyMessage = "I'm currently overwhelmed with requests. Please try asking again in a few seconds.";
+            
+            // Check for specific error codes if available in error message string
+            if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
+                friendlyMessage = "I'm receiving too many requests right now. Please wait a moment before trying again.";
+            } else if (error.message && error.message.includes('API key')) {
+                friendlyMessage = "My connection key seems to be invalid. Please tell the administrator.";
+            } else if (error.message && error.message.includes('503')) {
+                friendlyMessage = "My brain is currently offline for maintenance. Please try later.";
             }
 
-            setMessages(prev => [...prev, { role: 'model', text: errMsg }]);
+            setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${friendlyMessage}` }]);
         } finally {
             setIsLoading(false);
         }
