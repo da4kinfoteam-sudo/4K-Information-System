@@ -19,7 +19,18 @@ const MONTH_NAMES = [
     "July", "August", "September", "October", "November", "December"
 ];
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
+
+const getStatusBadge = (status: OfficeRequirement['status']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+}
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
@@ -31,6 +42,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
+    const isAdmin = currentUser?.role === 'Administrator';
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OfficeRequirement>(item);
@@ -84,6 +96,32 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
         setFormData(prev => ({ ...prev, [field]: dateStr }));
     };
+
+    // Locking Logic check
+    // Locked if field HAD a value initially (saved in DB) unless Admin
+    const isFieldLocked = (fieldName: keyof OfficeRequirement) => {
+        if (isAdmin) return false;
+        const val = item[fieldName];
+        // If value exists and is not null/undefined/empty string/0, it is locked
+        return val !== null && val !== undefined && val !== '' && val !== 0;
+    };
+
+    // Status Automation Effect
+    useEffect(() => {
+        if (editMode === 'accomplishment') {
+             if (formData.actualDate) {
+                 if (formData.status !== 'Completed') {
+                     setFormData(prev => ({ ...prev, status: 'Completed' }));
+                 }
+             } else {
+                 if (formData.status === 'Completed') {
+                     // Revert to Ongoing if date removed, or Proposed if it was proposed before edit
+                     // Safe default is Ongoing if user is editing accomplishment
+                     setFormData(prev => ({ ...prev, status: 'Ongoing' }));
+                 }
+             }
+        }
+    }, [formData.actualDate, editMode]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -158,6 +196,16 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Basic Info</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                                    <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses} disabled={formData.status === 'Completed'}>
+                                        <option value="Proposed">Proposed</option>
+                                        <option value="Ongoing">Ongoing</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                        {formData.status === 'Completed' && <option value="Completed">Completed</option>}
+                                    </select>
+                                    {formData.status === 'Completed' && <p className="text-xs text-green-600 mt-1">Status set to Completed automatically based on actual delivery date.</p>}
+                                </div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
@@ -226,8 +274,14 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date (Misc)</label><input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label><input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Date (Delivery)</label>
+                                    <input type="date" name="actualDate" value={formData.actualDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualDate')} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label>
+                                    <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" disabled={isFieldLocked('actualAmount')} />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Month</label>
@@ -235,12 +289,16 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                         value={getMonthFromDateStr(formData.actualObligationDate)} 
                                         onChange={(e) => updateDateFromMonth('actualObligationDate', e.target.value)} 
                                         className={commonInputClasses}
+                                        disabled={isFieldLocked('actualObligationDate')}
                                     >
                                         <option value="">Select Month</option>
                                         {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
                                 </div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
+                                    <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Month</label>
@@ -248,12 +306,16 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                         value={getMonthFromDateStr(formData.actualDisbursementDate)} 
                                         onChange={(e) => updateDateFromMonth('actualDisbursementDate', e.target.value)} 
                                         className={commonInputClasses}
+                                        disabled={isFieldLocked('actualDisbursementDate')}
                                     >
                                         <option value="">Select Month</option>
                                         {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
                                 </div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label><input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label>
+                                    <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualDisbursementAmount')} />
+                                </div>
                             </div>
                         </fieldset>
 
@@ -305,6 +367,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                         <DetailItem label="Equipment" value={item.equipment} />
+                        <DetailItem label="Status" value={<span className={getStatusBadge(item.status)}>{item.status}</span>} />
                         <DetailItem label="Units" value={item.numberOfUnits} />
                         <div className="col-span-2">
                             <DetailItem label="Specs" value={item.specs} />
@@ -330,7 +393,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Accomplishment Report</h3>
                     <div className="space-y-6">
                         <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
-                            <DetailItem label="Actual Date" value={item.actualDate} />
+                            <DetailItem label="Actual Delivery Date" value={item.actualDate} />
                             <DetailItem label="Actual Amount (Misc)" value={formatCurrency(item.actualAmount || 0)} />
                         </div>
                         

@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React from 'react';
 
@@ -280,6 +281,7 @@ export interface OfficeRequirement extends BaseProgramManagementItem {
     purpose: string;
     numberOfUnits: number;
     pricePerUnit: number;
+    status: 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
 }
 
 export interface StaffingExpense {

@@ -29,7 +29,18 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+
+const getStatusBadge = (status: OfficeRequirement['status']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+}
 
 export const parseOfficeRequirementRow = (row: any, commonData: any): OfficeRequirement => {
     return {
@@ -39,6 +50,7 @@ export const parseOfficeRequirementRow = (row: any, commonData: any): OfficeRequ
         purpose: row.purpose || '',
         numberOfUnits: Number(row.numberOfUnits) || 0,
         pricePerUnit: Number(row.pricePerUnit) || 0,
+        status: row.status || 'Proposed'
     };
 };
 
@@ -88,6 +100,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         purpose: '',
         numberOfUnits: 0,
         pricePerUnit: 0,
+        status: 'Proposed' as 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled',
         actualDate: '',
         actualAmount: 0,
         actualObligationDate: '',
@@ -205,6 +218,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             actualObligationAmount: 0,
             actualDisbursementAmount: 0,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System',
+            status: formData.status || 'Proposed',
             updated_at: new Date().toISOString()
         };
 
@@ -271,7 +285,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 actualObligationDate: '',
                 actualDisbursementDate: '',
                 actualObligationAmount: 0,
-                actualDisbursementAmount: 0
+                actualDisbursementAmount: 0,
+                status: 'Proposed'
             };
 
             return {
@@ -320,6 +335,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             Equipment: item.equipment,
             Specs: item.specs,
             Purpose: item.purpose,
+            Status: item.status,
             'No. of Units': item.numberOfUnits,
             'Price/Unit': item.pricePerUnit,
             'Total Amount': item.numberOfUnits * item.pricePerUnit,
@@ -336,9 +352,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     };
 
     const handleDownloadTemplate = () => {
-        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
+        const headers = ['operatingUnit', 'fundYear', 'fundType', 'tier', 'status', 'obligationDate', 'disbursementDate', 'uacsCode', 'equipment', 'specs', 'purpose', 'numberOfUnits', 'pricePerUnit'];
         const exampleData = [{
-            operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50203010-00',
+            operatingUnit: 'NPMO', fundYear: 2024, fundType: 'Current', tier: 'Tier 1', status: 'Proposed', obligationDate: '2024-01-15', disbursementDate: '2024-02-15', uacsCode: '50203010-00',
             equipment: 'Laptop', specs: 'i7, 16GB RAM', purpose: 'For administrative use', numberOfUnits: 1, pricePerUnit: 50000
         }];
         const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
@@ -375,6 +391,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         disbursementDate: row.disbursementDate || '',
                         uacsCode: row.uacsCode || '',
                         encodedBy: currentUser?.fullName || 'Upload',
+                        status: row.status || 'Proposed',
                         created_at: currentTimestamp,
                         updated_at: currentTimestamp
                     });
@@ -529,6 +546,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Equipment</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Specs/Purpose</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Units</th>
@@ -542,6 +560,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(item.status)}>{item.status}</span></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                     <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
                                         {item.equipment}

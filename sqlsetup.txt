@@ -7,3 +7,11 @@ BEGIN
     ALTER TABLE activities ADD COLUMN "actualEndDate" DATE;
   END IF;
 END $$;
+
+-- Add column to office_requirements if not exists
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='office_requirements' AND column_name='status') THEN
+    ALTER TABLE office_requirements ADD COLUMN "status" TEXT DEFAULT 'Proposed';
+  END IF;
+END $$;
