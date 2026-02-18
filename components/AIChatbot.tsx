@@ -37,13 +37,20 @@ const getApiKey = () => {
 const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System.
 Your goal is to help users navigate the app and understand the data.
 
+**CRITICAL: Hyperlink Formatting**
+You MUST use Markdown format for all links: \`[Link Text](URL)\`.
+- **CORRECT:** "You can view the [IPO List](/ipo)."
+- **INCORRECT:** "You can view the list at [/ipo]." or "Go to /ipo".
+
 **Response Style:**
 1. **Be Concise**: Summarize data. Do not list more than 5 items unless asked.
-2. **Data Driven**: Use the provided context to answer. If the context is empty or insufficient, say so politely.
-3. **Navigation**: You can guide the user to specific pages or items. 
-   - To link to a page, use Markdown: [Page Name](/route).
-   - Routes: /dashboards, /subprojects, /activities, /ipo, /marketing-database, /program-management, /reports.
-   - To link items: [Item Name](/type/identifier) (e.g. [My Project](/subproject/SP-001)).
+2. **Data Driven**: Use the provided context.
+3. **Navigation Routes**:
+   - Lists: \`/dashboards\`, \`/subprojects\`, \`/activities\`, \`/ipo\`, \`/marketing-database\`, \`/program-management\`, \`/reports\`
+   - Details: \`/subproject/UID\`, \`/ipo/Name\`, \`/activity/UID\`
+
+**Context Handling:**
+If the user asks about a specific year (e.g., 2026) or region (e.g., Region 7), verify the data in the context matches that criteria before answering. If no data matches, explicitly state: "I found no records for [Region/Year] in the current database."
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -130,76 +137,97 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
     /**
      * DYNAMIC CONTEXT BUILDER
-     * To avoid Token Quota Limits (429), we only inject data relevant to the user's query.
+     * Intelligent filtering to handle "Region 7" -> "Region VII" and specific years.
      */
     const getDynamicContext = (query: string) => {
         const q = query.toLowerCase();
         
-        // 1. Always include High-Level Stats (Low token cost)
+        // 1. Identify Year
+        const yearMatch = q.match(/\b(20\d{2})\b/);
+        const targetYear = yearMatch ? yearMatch[1] : null;
+
+        // 2. Identify Region (Arabic to Roman normalization)
+        const arabicToRoman: {[key: string]: string} = {
+            '1': 'I', '2': 'II', '3': 'III', '4a': 'IV-A', '4b': 'IV-B',
+            '5': 'V', '6': 'VI', '7': 'VII', '8': 'VIII', '9': 'IX', '10': 'X',
+            '11': 'XI', '12': 'XII', '13': 'XIII'
+        };
+        
+        // Detect "Region X" or just "Region"
+        let targetRegion: string | null = null;
+        
+        // Check for "Region <number/letter>" pattern
+        const regionPattern = /region\s*(\d+[ab]?)/i;
+        const regionMatch = q.match(regionPattern);
+        
+        if (regionMatch) {
+            const num = regionMatch[1].toLowerCase();
+            const roman = arabicToRoman[num];
+            if (roman) targetRegion = `Region ${roman}`;
+        } else {
+            // Fallback: check exact strings in philippineRegions
+            const found = philippineRegions.find(r => q.includes(r.toLowerCase()) || q.includes(r.split(' ')[0].toLowerCase()));
+            if (found) targetRegion = found;
+        }
+
+        // Helper: Generic Filter
+        const filterItem = (item: any) => {
+            let match = true;
+            
+            // Year Filter
+            if (targetYear) {
+                const y = item.fundingYear || item.fundYear || (item.date ? new Date(item.date).getFullYear() : null) || (item.registrationDate ? new Date(item.registrationDate).getFullYear() : null);
+                if (y && y.toString() !== targetYear) match = false;
+            }
+
+            // Region Filter
+            if (targetRegion) {
+                const r = (item.region || item.location || item.operatingUnit || '').toLowerCase();
+                // Simple fuzzy check
+                if (!r.includes(targetRegion.toLowerCase()) && !r.includes(targetRegion.split(' ')[1]?.toLowerCase())) {
+                    match = false;
+                }
+            }
+
+            return match;
+        };
+
+        // 3. Build Stats (Always Included)
         const stats = {
             counts: {
                 subprojects: subprojects.length,
                 ipos: ipos.length,
                 trainings: activities.filter(a => a.type === 'Training').length,
-                marketing_partners: marketingPartners.length
             },
-            budget: {
-                subprojects: subprojects.reduce((s, i) => s + (i.details?.reduce((d, x) => d + (x.pricePerUnit * x.numberOfUnits), 0) || 0), 0)
-            }
+            filters_applied: { year: targetYear, region: targetRegion }
         };
 
         const context: any = { system_stats: stats };
 
-        // 2. Identify Intent & Filter
-        const maxItems = 15; // Strict limit to keep payload small
-
-        // Check for specific Region filters in the query
-        // E.g. "Region 3" or "CAR"
-        const regionMatch = philippineRegions.find(r => q.includes(r.toLowerCase()) || q.includes(r.split(' ')[0].toLowerCase()));
-        
-        const filterByRegion = (items: any[]) => {
-            if (!regionMatch) return items;
-            // Fuzzy match region
-            return items.filter(i => {
-                const r = (i.region || i.location || i.operatingUnit || '').toLowerCase();
-                return r.includes(regionMatch.toLowerCase());
-            });
-        };
+        // 4. Filter & Slice Data
+        const maxItems = 20;
 
         // If asking about IPOs
-        if (q.includes('ipo') || q.includes('organization') || q.includes('farmer') || q.includes('group')) {
-            let filtered = filterByRegion(ipos);
-            // Additional filters
-            if (q.includes('women')) filtered = filtered.filter(i => i.isWomenLed);
-            
+        if (q.includes('ipo') || q.includes('organization') || q.includes('farmer')) {
+            let filtered = ipos.filter(filterItem);
             context.ipos = filtered.slice(0, maxItems).map(i => ({
-                name: i.name, region: i.region, members: i.totalMembers, isWomenLed: i.isWomenLed
+                name: i.name, region: i.region, members: i.totalMembers, regDate: i.registrationDate
             }));
         }
 
-        // If asking about Subprojects / Projects
+        // If asking about Subprojects
         if (q.includes('subproject') || q.includes('project') || q.includes('livelihood')) {
-            let filtered = filterByRegion(subprojects);
-            if (q.includes('completed')) filtered = filtered.filter(s => s.status === 'Completed');
-            if (q.includes('ongoing')) filtered = filtered.filter(s => s.status === 'Ongoing');
-
+            let filtered = subprojects.filter(filterItem);
             context.subprojects = filtered.slice(0, maxItems).map(s => ({
-                uid: s.uid, name: s.name, status: s.status, location: s.location, ipo: s.indigenousPeopleOrganization
+                uid: s.uid, name: s.name, status: s.status, location: s.location, year: s.fundingYear, ipo: s.indigenousPeopleOrganization
             }));
         }
 
         // If asking about Activities / Trainings
-        if (q.includes('training') || q.includes('activity') || q.includes('seminar')) {
-            let filtered = filterByRegion(activities);
+        if (q.includes('training') || q.includes('activity')) {
+            let filtered = activities.filter(filterItem);
             context.activities = filtered.slice(0, maxItems).map(a => ({
-                uid: a.uid, name: a.name, type: a.type, date: a.date, participants: (a.participantsMale + a.participantsFemale)
-            }));
-        }
-
-        // If asking about Marketing
-        if (q.includes('market') || q.includes('buyer') || q.includes('commodity')) {
-            context.marketing = marketingPartners.slice(0, maxItems).map(m => ({
-                name: m.companyName, needs: m.commodityNeeds.map(c => c.name).join(', ')
+                uid: a.uid, name: a.name, type: a.type, date: a.date, location: a.location, participants: (a.participantsMale + a.participantsFemale)
             }));
         }
 
@@ -229,7 +257,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             const ai = new GoogleGenAI({ apiKey });
             
-            // Use 'gemini-flash-lite-latest' for speed and cost efficiency as requested
+            // Use 'gemini-flash-lite-latest' for speed and cost efficiency
             const chat = ai.chats.create({
                 model: 'gemini-flash-lite-latest',
                 config: {
@@ -252,16 +280,11 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         } catch (error: any) {
             console.error("AI Chat Error:", error);
             
-            // Improved Friendly Error Handling
-            let friendlyMessage = "I'm currently overwhelmed with requests. Please try asking again in a few seconds.";
-            
-            // Check for specific error codes if available in error message string
+            let friendlyMessage = "I'm currently overwhelmed. Please try asking again in a moment.";
             if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
-                friendlyMessage = "I'm receiving too many requests right now. Please wait a moment before trying again.";
+                friendlyMessage = "I'm receiving too many requests right now. Please wait a few seconds.";
             } else if (error.message && error.message.includes('API key')) {
-                friendlyMessage = "My connection key seems to be invalid. Please tell the administrator.";
-            } else if (error.message && error.message.includes('503')) {
-                friendlyMessage = "My brain is currently offline for maintenance. Please try later.";
+                friendlyMessage = "Configuration Error: Invalid AI Key.";
             }
 
             setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${friendlyMessage}` }]);
