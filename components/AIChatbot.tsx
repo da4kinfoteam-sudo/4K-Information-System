@@ -2,6 +2,13 @@
 // Author: 4K
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
+import { Subproject, IPO, Activity } from '../constants';
+
+interface AIChatbotProps {
+    subprojects: Subproject[];
+    ipos: IPO[];
+    activities: Activity[];
+}
 
 // Helper to retrieve API Key from various environment configurations
 const getApiKey = () => {
@@ -20,44 +27,38 @@ const getApiKey = () => {
     return '';
 };
 
-const SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System (Kabuhayan at Kaunlaran ng Kababayang Katutubo). 
-Your role is to help users navigate and understand the features of this web application.
+const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System (Kabuhayan at Kaunlaran ng Kababayang Katutubo). 
+Your role is to help users navigate features AND answer questions about the specific data currently in the system.
 
 The 4K Information System is designed to monitor and manage projects for Indigenous Peoples Organizations (IPOs). 
-Here is a summary of the system's capabilities to help you answer questions:
 
-1. **Dashboard**: Provides an executive overview of financial performance (Allocation vs Obligation vs Disbursement), physical accomplishments (Subprojects/Trainings completed), and maps showing IPO locations. It also includes a Calendar of activities and deadlines.
+**Capabilities:**
+1. **Navigate & Explain**: You can explain features (Dashboard, Subprojects, Activities, Reports, etc.).
+2. **Data Analysis**: You have access to the current dataset of Subprojects, IPOs, and Activities (Trainings). You can answer questions like:
+   - "How many IPOs are in Region III?"
+   - "What is the total budget for subprojects in 2024?"
+   - "List the trainings conducted by RPMO 4A."
+   - "Which IPOs are women-led?"
 
-2. **Data Collection Forms (DCF)**:
-   - **Subprojects**: Manage livelihood interventions (e.g., farming inputs, equipment). Tracks budget details, timeline, and commodities (yield/income).
-   - **Activities**: Track trainings and other activities including participant attendance (male/female) and expenses.
-   - **Program Management**: Track internal requirements like Office Equipment, Staffing positions, and Other Expenses.
+**Guidelines for Data Queries:**
+- When answering counts or sums, be precise based on the provided JSON context.
+- If the user asks for "this year" or "current year", assume they mean the most recent funding year visible in the data unless specified.
+- If asked about "OU" (Operating Unit), filter by the 'operatingUnit' field.
+- If asked about "Region", filter IPOs by 'region' or Activities/Subprojects by their location/OU mapping.
+- Be concise. Do not dump the entire JSON back to the user. Summarize the answer.
 
-3. **IPO Registry**: 
-   - Maintains profiles of IPOs including location, members (IP/Non-IP, Gender), Level of Development (1-5), and commodities produced.
-   - Tracks whether IPOs are Women-led, in GIDA areas, or ELCAC areas.
+If a user asks navigation questions (e.g., "How do I add a subproject?"), guide them to the sidebar menu.
 
-4. **Reports**:
-   - Generates standard government reports: Work and Financial Plan (WFP), Budget Proposal (BP) Forms, Budget Execution Documents (BED 1, 2, 3), Physical Report of Operations (BAR 1), and PICS.
-   - Reports can be filtered by Year, Operating Unit (OU), Fund Type, and Tier.
+**Important Data Definitions:**
+- **Subprojects**: Livelihood interventions. Key fields: name, status, budget (calculated from details), operatingUnit, indigenousPeopleOrganization (IPO).
+- **IPOs**: The organizations. Key fields: name, region, levelOfDevelopment, isWomenLed.
+- **Activities**: Trainings and other events. Key fields: name, type (Training/Activity), operatingUnit, participatingIpos.
+`;
 
-5. **Resources**:
-   - **Marketing Database**: Connects IPOs with potential buyers/partners. Tracks commodity needs and established market linkages.
-   - **Commodity Mapping**: Visualizes where specific commodities are produced.
-   - **Level of Development**: Tracks the maturity progress of IPOs.
-
-6. **Settings**: 
-   - User profile management.
-   - Admin-only features: User Management, DCF Management (locking/unlocking status), System Management (Deadlines/Schedules).
-
-If a user asks "How do I add a subproject?", explain that they should navigate to the 'Subprojects' page via the sidebar and click the '+ Add New Subproject' button.
-If a user asks about "WFP", explain it stands for Work and Financial Plan and can be found in the 'Reports' section.
-Keep answers concise, professional, and friendly. Do not hallucinate features not mentioned here.`;
-
-const AIChatbot: React.FC = () => {
+const AIChatbot: React.FC<AIChatbotProps> = ({ subprojects, ipos, activities }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I'm the 4K System Assistant. How can I help you navigate the system today?" }
+        { role: 'model', text: "Hello! I'm the 4K System Assistant. I can help you navigate the app or answer questions about your data (e.g., 'How many IPOs are there in CAR?')." }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -88,12 +89,48 @@ const AIChatbot: React.FC = () => {
         }
 
         try {
+            // Prepare Data Context
+            // We strip unnecessary fields to save context tokens, keeping only what's needed for analysis.
+            const dataContext = {
+                summary: {
+                    total_subprojects: subprojects.length,
+                    total_ipos: ipos.length,
+                    total_activities: activities.length
+                },
+                subprojects: subprojects.map(s => ({
+                    name: s.name,
+                    status: s.status,
+                    operatingUnit: s.operatingUnit,
+                    fundYear: s.fundingYear,
+                    fundType: s.fundType,
+                    ipo: s.indigenousPeopleOrganization,
+                    totalBudget: s.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0)
+                })),
+                ipos: ipos.map(i => ({
+                    name: i.name,
+                    region: i.region,
+                    level: i.levelOfDevelopment,
+                    isWomenLed: i.isWomenLed,
+                    isGida: i.isWithinGida
+                })),
+                activities: activities.map(a => ({
+                    name: a.name,
+                    type: a.type, // Training or Activity
+                    component: a.component,
+                    operatingUnit: a.operatingUnit,
+                    fundYear: a.fundingYear,
+                    participatingIPOs: a.participatingIpos
+                }))
+            };
+
+            const fullSystemInstruction = `${BASE_SYSTEM_INSTRUCTION}\n\n[CURRENT SYSTEM DATA JSON]\n${JSON.stringify(dataContext)}`;
+
             const ai = new GoogleGenAI({ apiKey });
             
             const chat = ai.chats.create({
                 model: 'gemini-3-flash-preview',
                 config: {
-                    systemInstruction: SYSTEM_INSTRUCTION,
+                    systemInstruction: fullSystemInstruction,
                 },
                 history: messages.map(m => ({
                     role: m.role,

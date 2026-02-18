@@ -655,7 +655,11 @@ const AppContent: React.FC = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
                     {renderPage()}
                 </main>
-                <AIChatbot />
+                <AIChatbot 
+                    subprojects={subprojects}
+                    ipos={ipos}
+                    activities={activities}
+                />
             </div>
         </div>
     );
