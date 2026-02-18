@@ -1,5 +1,6 @@
+
 // Author: 4K 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
 
@@ -19,8 +20,19 @@ interface BEDSReportProps {
     selectedTier: string;
 }
 
+// Helper to round UP to whole number and format
+const formatCurrencyWhole = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
+};
+
+// Helper for physical counts (just formatting, but ensuring whole numbers)
+const formatNumberWhole = (num: number) => {
+    return Math.ceil(num).toLocaleString('en-US');
+};
+
 const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedFundType, selectedTier }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
+    const [printTarget, setPrintTarget] = useState<string | null>(null);
     
     const toggleRow = (key: string) => {
         setExpandedRows(prev => {
@@ -370,12 +382,12 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={`${dataCellClass} text-right`}></td>
                 <td className={`${dataCellClass} text-right`}></td>
                 <td className={`${dataCellClass} text-right`}></td>
-                <td className={`${dataCellClass} text-right bg-blue-50 dark:bg-blue-900/20`}>{totals.currTotal > 0 ? formatCurrency(totals.currTotal) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{totals.compQ1 > 0 ? formatCurrency(totals.compQ1) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{totals.compQ2 > 0 ? formatCurrency(totals.compQ2) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{totals.compQ3 > 0 ? formatCurrency(totals.compQ3) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{totals.compQ4 > 0 ? formatCurrency(totals.compQ4) : ''}</td>
-                <td className={`${dataCellClass} text-right font-semibold`}>{totals.compSubtotal > 0 ? formatCurrency(totals.compSubtotal) : ''}</td>
+                <td className={`${dataCellClass} text-right bg-emerald-50 dark:bg-emerald-900/20`}>{totals.currTotal > 0 ? formatCurrencyWhole(totals.currTotal) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{totals.compQ1 > 0 ? formatCurrencyWhole(totals.compQ1) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{totals.compQ2 > 0 ? formatCurrencyWhole(totals.compQ2) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{totals.compQ3 > 0 ? formatCurrencyWhole(totals.compQ3) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{totals.compQ4 > 0 ? formatCurrencyWhole(totals.compQ4) : ''}</td>
+                <td className={`${dataCellClass} text-right font-semibold`}>{totals.compSubtotal > 0 ? formatCurrencyWhole(totals.compSubtotal) : ''}</td>
                 <td colSpan={5} className={`${dataCellClass}`}></td>
             </tr>
         );
@@ -390,7 +402,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             return acc;
         }, { m1:0, m2:0, m3:0, q1:0, m4:0, m5:0, m6:0, q2:0, m7:0, m8:0, m9:0, q3:0, m10:0, m11:0, m12:0, q4:0, total:0 });
 
-        const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? val : '') : (val > 0 ? formatCurrency(val) : '');
+        const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? formatNumberWhole(val) : '') : (val > 0 ? formatCurrencyWhole(val) : '');
 
         return (
             <tr className="font-bold bg-gray-200 dark:bg-gray-700 text-xs">
@@ -411,7 +423,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={`${dataCellClass} text-right`}>{fmt(totals.m11)}</td>
                 <td className={`${dataCellClass} text-right`}>{fmt(totals.m12)}</td>
                 <td className={`${dataCellClass} text-right bg-gray-300 dark:bg-gray-600`}>{fmt(totals.q4)}</td>
-                <td className={`${dataCellClass} text-right bg-blue-100 dark:bg-blue-900`}>{fmt(totals.total)}</td>
+                <td className={`${dataCellClass} text-right bg-emerald-100 dark:bg-emerald-900`}>{fmt(totals.total)}</td>
             </tr>
         );
     };
@@ -422,16 +434,16 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={`${dataCellClass} ${indentClasses[level]} sticky left-0 bg-white dark:bg-gray-800 z-10`}>{item.indicator}</td>
                 <td className={`${dataCellClass} text-center`}></td>
                 <td colSpan={3} className={dataCellClass}></td>
-                <td className={`${dataCellClass} text-right bg-blue-50 dark:bg-blue-900/20`}>{item.currTotal > 0 ? formatCurrency(item.currTotal) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{item.compQ1 > 0 ? formatCurrency(item.compQ1) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{item.compQ2 > 0 ? formatCurrency(item.compQ2) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{item.compQ3 > 0 ? formatCurrency(item.compQ3) : ''}</td>
-                <td className={`${dataCellClass} text-right`}>{item.compQ4 > 0 ? formatCurrency(item.compQ4) : ''}</td>
-                <td className={`${dataCellClass} text-right font-semibold`}>{item.compSubtotal > 0 ? formatCurrency(item.compSubtotal) : ''}</td>
+                <td className={`${dataCellClass} text-right bg-emerald-50 dark:bg-emerald-900/20`}>{item.currTotal > 0 ? formatCurrencyWhole(item.currTotal) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{item.compQ1 > 0 ? formatCurrencyWhole(item.compQ1) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{item.compQ2 > 0 ? formatCurrencyWhole(item.compQ2) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{item.compQ3 > 0 ? formatCurrencyWhole(item.compQ3) : ''}</td>
+                <td className={`${dataCellClass} text-right`}>{item.compQ4 > 0 ? formatCurrencyWhole(item.compQ4) : ''}</td>
+                <td className={`${dataCellClass} text-right font-semibold`}>{item.compSubtotal > 0 ? formatCurrencyWhole(item.compSubtotal) : ''}</td>
                 <td colSpan={5} className={dataCellClass}></td>
             </tr>
         ) : (item: any, key: string, level: number) => {
-            const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? val : '') : (val > 0 ? formatCurrency(val) : '');
+            const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? formatNumberWhole(val) : '') : (val > 0 ? formatCurrencyWhole(val) : '');
             return (
                 <tr key={key}>
                     <td className={`${dataCellClass} ${indentClasses[level]} sticky left-0 bg-white dark:bg-gray-800 z-10`}>{item.indicator}</td>
@@ -477,12 +489,12 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                         </td>
                         <td className={`${dataCellClass}`}></td>
                         <td colSpan={3} className={dataCellClass}></td>
-                        <td className={`${dataCellClass} text-right bg-blue-50 dark:bg-blue-900/20`}>{totals.currTotal > 0 ? formatCurrency(totals.currTotal) : ''}</td>
-                        <td className={`${dataCellClass} text-right`}>{totals.compQ1 > 0 ? formatCurrency(totals.compQ1) : ''}</td>
-                        <td className={`${dataCellClass} text-right`}>{totals.compQ2 > 0 ? formatCurrency(totals.compQ2) : ''}</td>
-                        <td className={`${dataCellClass} text-right`}>{totals.compQ3 > 0 ? formatCurrency(totals.compQ3) : ''}</td>
-                        <td className={`${dataCellClass} text-right`}>{totals.compQ4 > 0 ? formatCurrency(totals.compQ4) : ''}</td>
-                        <td className={`${dataCellClass} text-right`}>{totals.compSubtotal > 0 ? formatCurrency(totals.compSubtotal) : ''}</td>
+                        <td className={`${dataCellClass} text-right bg-emerald-50 dark:bg-emerald-900/20`}>{totals.currTotal > 0 ? formatCurrencyWhole(totals.currTotal) : ''}</td>
+                        <td className={`${dataCellClass} text-right`}>{totals.compQ1 > 0 ? formatCurrencyWhole(totals.compQ1) : ''}</td>
+                        <td className={`${dataCellClass} text-right`}>{totals.compQ2 > 0 ? formatCurrencyWhole(totals.compQ2) : ''}</td>
+                        <td className={`${dataCellClass} text-right`}>{totals.compQ3 > 0 ? formatCurrencyWhole(totals.compQ3) : ''}</td>
+                        <td className={`${dataCellClass} text-right`}>{totals.compQ4 > 0 ? formatCurrencyWhole(totals.compQ4) : ''}</td>
+                        <td className={`${dataCellClass} text-right`}>{totals.compSubtotal > 0 ? formatCurrencyWhole(totals.compSubtotal) : ''}</td>
                         <td colSpan={5} className={dataCellClass}></td>
                     </tr>
                 )
@@ -494,7 +506,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                     return acc;
                 }, { m1:0, m2:0, m3:0, q1:0, m4:0, m5:0, m6:0, q2:0, m7:0, m8:0, m9:0, q3:0, m10:0, m11:0, m12:0, q4:0, total:0 });
                 const isExpanded = expandedRows.has(rowKey);
-                const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? val : '') : (val > 0 ? formatCurrency(val) : '');
+                const fmt = (val: number) => bedType === 'BED2' ? (val > 0 ? formatNumberWhole(val) : '') : (val > 0 ? formatCurrencyWhole(val) : '');
 
                 return (
                     <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer text-xs">
@@ -561,9 +573,27 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
         });
     }
 
-    const handlePrint = () => {
-        window.print();
+    const handlePrintSpecificTable = (id: string) => {
+        // Trigger style injection for this specific table
+        setPrintTarget(id);
+        
+        // Timeout to allow state update and DOM to render the style block, then print
+        setTimeout(() => {
+            window.print();
+            // Reset after print dialog closes (or immediately, as print pauses execution in most browsers)
+            // Note: In Chrome/Safari, execution pauses. In Firefox, it might not.
+            // A small delay or checking `onafterprint` is safer, but basic reset works for now.
+        }, 100);
     };
+
+    // Listen for print completion to clear state
+    React.useEffect(() => {
+        const handleAfterPrint = () => {
+            setPrintTarget(null);
+        };
+        window.addEventListener('afterprint', handleAfterPrint);
+        return () => window.removeEventListener('afterprint', handleAfterPrint);
+    }, []);
 
     const handleDownloadBEDSXlsx = () => {
         const wb = XLSX.utils.book_new();
@@ -590,11 +620,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 bed1Rows.push([
                     indent + item.indicator,
                     "", // Indicator column usually empty for P/A/P or reused
-                    item.janSeptActual || 0,
-                    item.octDecEstimate || 0,
-                    item.currTotal || 0,
-                    item.compQ1 || 0, item.compQ2 || 0, item.compQ3 || 0, item.compQ4 || 0, item.compSubtotal || 0,
-                    item.laterQ1 || 0, item.laterQ2 || 0, item.laterQ3 || 0, item.laterQ4 || 0, item.laterSubtotal || 0
+                    Math.ceil(item.janSeptActual || 0),
+                    Math.ceil(item.octDecEstimate || 0),
+                    Math.ceil(item.currTotal || 0),
+                    Math.ceil(item.compQ1 || 0), Math.ceil(item.compQ2 || 0), Math.ceil(item.compQ3 || 0), Math.ceil(item.compQ4 || 0), Math.ceil(item.compSubtotal || 0),
+                    Math.ceil(item.laterQ1 || 0), Math.ceil(item.laterQ2 || 0), Math.ceil(item.laterQ3 || 0), Math.ceil(item.laterQ4 || 0), Math.ceil(item.laterSubtotal || 0)
                 ]);
             });
         };
@@ -618,9 +648,9 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
 
             bed1Rows.push([
                 label, "Total",
-                totals.janSeptActual, totals.octDecEstimate, totals.currTotal,
-                totals.compQ1, totals.compQ2, totals.compQ3, totals.compQ4, totals.compSubtotal,
-                totals.laterQ1, totals.laterQ2, totals.laterQ3, totals.laterQ4, totals.laterSubtotal
+                Math.ceil(totals.janSeptActual), Math.ceil(totals.octDecEstimate), Math.ceil(totals.currTotal),
+                Math.ceil(totals.compQ1), Math.ceil(totals.compQ2), Math.ceil(totals.compQ3), Math.ceil(totals.compQ4), Math.ceil(totals.compSubtotal),
+                Math.ceil(totals.laterQ1), Math.ceil(totals.laterQ2), Math.ceil(totals.laterQ3), Math.ceil(totals.laterQ4), Math.ceil(totals.laterSubtotal)
             ]);
         }
 
@@ -689,11 +719,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 items.forEach(item => {
                     rows.push([
                         indent + item.indicator,
-                        item.m1, item.m2, item.m3, item.q1,
-                        item.m4, item.m5, item.m6, item.q2,
-                        item.m7, item.m8, item.m9, item.q3,
-                        item.m10, item.m11, item.m12, item.q4,
-                        item.total
+                        Math.ceil(item.m1), Math.ceil(item.m2), Math.ceil(item.m3), Math.ceil(item.q1),
+                        Math.ceil(item.m4), Math.ceil(item.m5), Math.ceil(item.m6), Math.ceil(item.q2),
+                        Math.ceil(item.m7), Math.ceil(item.m8), Math.ceil(item.m9), Math.ceil(item.q3),
+                        Math.ceil(item.m10), Math.ceil(item.m11), Math.ceil(item.m12), Math.ceil(item.q4),
+                        Math.ceil(item.total)
                     ]);
                 });
             };
@@ -708,11 +738,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
 
                 rows.push([
                     label,
-                    t.m1, t.m2, t.m3, t.q1,
-                    t.m4, t.m5, t.m6, t.q2,
-                    t.m7, t.m8, t.m9, t.q3,
-                    t.m10, t.m11, t.m12, t.q4,
-                    t.total
+                    Math.ceil(t.m1), Math.ceil(t.m2), Math.ceil(t.m3), Math.ceil(t.q1),
+                    Math.ceil(t.m4), Math.ceil(t.m5), Math.ceil(t.m6), Math.ceil(t.q2),
+                    Math.ceil(t.m7), Math.ceil(t.m8), Math.ceil(t.m9), Math.ceil(t.q3),
+                    Math.ceil(t.m10), Math.ceil(t.m11), Math.ceil(t.m12), Math.ceil(t.q4),
+                    Math.ceil(t.total)
                 ]);
             };
 
@@ -762,13 +792,122 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
         XLSX.writeFile(wb, `BEDS_Report_${selectedYear}_${selectedOu}.xlsx`);
     };
 
+    const SectionHeaderTarget = ({ bgColor }: { bgColor: string }) => (
+        <>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>1st Quarter</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>2nd Quarter</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>3rd Quarter</th>
+            <th colSpan={4} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>4th Quarter</th>
+            <th rowSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold ${bgColor} opacity-90`}>Grand Total</th>
+        </>
+    );
+
+    const SectionHeaderActual = ({ bgColor }: { bgColor: string }) => (
+        <>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>1st Quarter</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>2nd Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Semestral Total</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>3rd Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>As of September</th>
+            <th colSpan={5} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>4th Quarter</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Year End (As of Nov)</th>
+            <th colSpan={2} className={`p-2 border border-gray-300 dark:border-gray-600 text-center font-bold ${bgColor}`}>Grand Total</th>
+        </>
+    );
+
+    const SubHeadersTarget = () => (
+        <>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jan</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+        </>
+    );
+
+    const SubHeadersActual = () => (
+        <>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jan</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Feb</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Mar</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Apr</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">May</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jun</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Jul</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Aug</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Sep</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Oct</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Nov</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[50px]">Dec</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px] bg-gray-300 dark:bg-gray-600">Total</th>
+            <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[40px] italic text-[9px]">%</th>
+        </>
+    );
+
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            {/* Print Styles Injection */}
+            {printTarget && (
+                <style>{`
+                    @media print {
+                        body * {
+                            visibility: hidden;
+                        }
+                        #${printTarget}, #${printTarget} * {
+                            visibility: visible;
+                        }
+                        #${printTarget} {
+                            position: absolute;
+                            left: 0;
+                            top: 0;
+                            width: 100%;
+                            padding: 0;
+                            margin: 0;
+                        }
+                        @page {
+                            size: landscape;
+                            margin: 0.5cm;
+                        }
+                        button {
+                            display: none !important;
+                        }
+                        /* Ensure text colors are dark for print */
+                        .text-gray-500, .text-gray-400, .dark .text-gray-400 {
+                            color: #333 !important;
+                        }
+                    }
+                `}</style>
+            )}
+
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Execution Documents (BEDS)</h3>
                 <div className="flex gap-2">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadBEDSXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                    <button onClick={handleDownloadBEDSXlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:brightness-95 transition-all">Download XLSX</button>
                 </div>
             </div>
             
@@ -780,20 +919,21 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 )}
                 
                 {/* BED 1 Section */}
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                        <h4 className="font-bold text-lg text-gray-800 dark:text-white">BED 1: Financial Plan (Obligation)</h4>
+                <div id="bed1-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 1: Financial Plan (Obligation)</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed1-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                            <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
+                            <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle min-w-[150px]">Performance Indicator</th>
-                                    <th colSpan={3} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Current Year Obligation</th>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle bg-blue-100 dark:bg-blue-900/40 font-bold min-w-[100px]">Total Target</th>
-                                    <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Comprehensive Release</th>
-                                    <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">For Later Release</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle min-w-[150px] text-teal-900 dark:text-white">Performance Indicator</th>
+                                    <th colSpan={3} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800 text-teal-900 dark:text-white">Current Year Obligation</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle bg-emerald-100 dark:bg-emerald-900/40 font-bold min-w-[100px] text-emerald-900 dark:text-emerald-100">Total Target</th>
+                                    <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Comprehensive Release</th>
+                                    <th colSpan={5} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">For Later Release</th>
                                 </tr>
                                 <tr>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[100px]">Actual (Jan-Sept)</th>
@@ -822,42 +962,43 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 </div>
 
                 {/* BED 2 Section */}
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                        <h4 className="font-bold text-lg text-gray-800 dark:text-white">BED 2: Physical Plan</h4>
+                <div id="bed2-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 2: Physical Plan</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed2-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                            <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
+                            <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 1</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 2</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 3</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 4</th>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-blue-100 dark:bg-blue-900/40">Grand Total</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 1</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 2</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 3</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 4</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-900 dark:text-emerald-100">Grand Total</th>
                                 </tr>
                                 <tr>
                                     {/* Q1 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jan</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Feb</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Mar</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q2 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Apr</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">May</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jun</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q3 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jul</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Aug</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Sep</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q4 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Oct</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Nov</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Dec</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -871,42 +1012,43 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 </div>
 
                 {/* BED 3 Section */}
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                        <h4 className="font-bold text-lg text-gray-800 dark:text-white">BED 3: Monthly Disbursement Program</h4>
+                <div id="bed3-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
+                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 3: Monthly Disbursement Program</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed3-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                            <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
+                            <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 1</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 2</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 3</th>
-                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold">Quarter 4</th>
-                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-blue-100 dark:bg-blue-900/40">Grand Total</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 1</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 2</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 3</th>
+                                    <th colSpan={4} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold text-teal-900 dark:text-white">Quarter 4</th>
+                                    <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 text-center align-middle font-bold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-900 dark:text-emerald-100">Grand Total</th>
                                 </tr>
                                 <tr>
                                     {/* Q1 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jan</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Feb</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Mar</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q2 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Apr</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">May</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jun</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q3 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Jul</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Aug</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Sep</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                     {/* Q4 */}
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Oct</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Nov</th>
                                     <th className="p-2 border border-gray-300 dark:border-gray-600 text-center min-w-[60px]">Dec</th>
-                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-gray-300 dark:bg-gray-600">Total</th>
+                                    <th className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-300 dark:bg-teal-800">Total</th>
                                 </tr>
                             </thead>
                             <tbody>
