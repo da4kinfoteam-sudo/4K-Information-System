@@ -3,6 +3,23 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 
+// Helper to retrieve API Key from various environment configurations
+const getApiKey = () => {
+    // Check Vite / Modern Browsers
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+        if ((import.meta as any).env.API_KEY) return (import.meta as any).env.API_KEY;
+        if ((import.meta as any).env.VITE_API_KEY) return (import.meta as any).env.VITE_API_KEY;
+        if ((import.meta as any).env.VITE_GEMINI_API_KEY) return (import.meta as any).env.VITE_GEMINI_API_KEY;
+    }
+    // Check Legacy / Webpack / Node
+    if (typeof process !== 'undefined' && process.env) {
+        if (process.env.API_KEY) return process.env.API_KEY;
+        if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
+        if (process.env.REACT_APP_API_KEY) return process.env.REACT_APP_API_KEY;
+    }
+    return '';
+};
+
 const SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System (Kabuhayan at Kaunlaran ng Kababayang Katutubo). 
 Your role is to help users navigate and understand the features of this web application.
 
@@ -63,8 +80,15 @@ const AIChatbot: React.FC = () => {
         setInputText('');
         setIsLoading(true);
 
+        const apiKey = getApiKey();
+        if (!apiKey) {
+             setMessages(prev => [...prev, { role: 'model', text: "Error: API Key is missing. Please configure the environment variable (VITE_API_KEY, API_KEY, etc.)." }]);
+             setIsLoading(false);
+             return;
+        }
+
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey });
             
             const chat = ai.chats.create({
                 model: 'gemini-3-flash-preview',
@@ -85,9 +109,15 @@ const AIChatbot: React.FC = () => {
             } else {
                  setMessages(prev => [...prev, { role: 'model', text: "I'm sorry, I couldn't generate a response." }]);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("AI Chat Error:", error);
-            setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error connecting to the AI service." }]);
+            let errMsg = "Sorry, I encountered an error connecting to the AI service.";
+            if (error.message && error.message.includes('API key')) {
+                errMsg = "The AI service refused the connection. Please check if the API Key is valid and has proper permissions.";
+            } else if (error.message) {
+                errMsg += ` (${error.message})`;
+            }
+            setMessages(prev => [...prev, { role: 'model', text: errMsg }]);
         } finally {
             setIsLoading(false);
         }
