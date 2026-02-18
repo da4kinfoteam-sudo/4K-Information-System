@@ -25,13 +25,13 @@ const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-70
 const STATUS_OPTIONS_STANDARD = ['Proposed', 'Ongoing', 'Completed', 'Cancelled'];
 const STATUS_OPTIONS_STAFFING = ['Proposed', 'Filled', 'Unfilled'];
 
-// Type for tracking pending changes
+// Type for tracking pending changes including original value for rollback
 type PendingChange = {
     table: string;
     id: number;
     field: string;
     value: string;
-    itemRef?: any; // Reference to item for easier logging
+    originalValue: string;
 };
 
 const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
@@ -43,17 +43,17 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     
-    // Filters
-    const [filterYear, setFilterYear] = useState<string>('All');
+    // Filters - Updated Defaults
+    const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
     const [filterOu, setFilterOu] = useState<string>('All');
-    const [filterFundType, setFilterFundType] = useState<string>('All');
-    const [filterTier, setFilterTier] = useState<string>('All');
+    const [filterFundType, setFilterFundType] = useState<string>('Current');
+    const [filterTier, setFilterTier] = useState<string>('Tier 1');
 
     // UI State
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Subprojects', 'Activities', 'Staffing', 'Office']));
     const [isSaving, setIsSaving] = useState(false);
 
-    // Pending Changes State: Map key "table-id" to change object
+    // Pending Changes State
     const [pendingChanges, setPendingChanges] = useState<Record<string, PendingChange>>({});
 
     // Derived Years
@@ -96,17 +96,26 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         id: number, 
         newValue: string, 
         field: string,
-        setter: React.Dispatch<React.SetStateAction<any[]>>
+        setter: React.Dispatch<React.SetStateAction<any[]>>,
+        items: any[]
     ) => {
-        // 1. Optimistic Update
-        setter(prev => prev.map(item => item.id === id ? { ...item, [field]: newValue } : item));
+        const currentItem = items.find(i => i.id === id);
+        if (!currentItem) return;
 
-        // 2. Track Change
         const key = `${table}-${id}`;
-        setPendingChanges(prev => ({
-            ...prev,
-            [key]: { table, id, field, value: newValue }
-        }));
+
+        // Store original value if not already stored
+        setPendingChanges(prev => {
+            const existing = prev[key];
+            const originalValue = existing ? existing.originalValue : currentItem[field];
+            return {
+                ...prev,
+                [key]: { table, id, field, value: newValue, originalValue }
+            };
+        });
+
+        // Optimistic Update
+        setter(prev => prev.map(item => item.id === id ? { ...item, [field]: newValue } : item));
     };
 
     // Handler: Bulk Update (Local)
@@ -118,21 +127,23 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         setter: React.Dispatch<React.SetStateAction<any[]>>
     ) => {
         if (!items.length) return;
-        if (!window.confirm(`Apply "${newValue}" status to ${items.length} items locally? (Click Save to finalize)`)) return;
+        if (!window.confirm(`Are you sure you want to update ${items.length} items to "${newValue}"?`)) return;
 
         const idsToUpdate = items.map(i => i.id);
         
-        // 1. Optimistic Update
-        setter(prev => prev.map(item => idsToUpdate.includes(item.id) ? { ...item, [field]: newValue } : item));
-
-        // 2. Track Changes
         setPendingChanges(prev => {
             const updates = { ...prev };
-            idsToUpdate.forEach(id => {
-                updates[`${table}-${id}`] = { table, id, field, value: newValue };
+            items.forEach(item => {
+                const key = `${table}-${item.id}`;
+                const existing = updates[key];
+                const originalValue = existing ? existing.originalValue : item[field];
+                updates[key] = { table, id: item.id, field, value: newValue, originalValue };
             });
             return updates;
         });
+
+        // Optimistic Update
+        setter(prev => prev.map(item => idsToUpdate.includes(item.id) ? { ...item, [field]: newValue } : item));
     };
 
     // Handler: Save to Supabase
@@ -145,9 +156,6 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         setIsSaving(true);
         try {
             if (supabase) {
-                // Group updates by table to allow potential batching (though updates are row-specific usually)
-                // For now, simpler to loop promises.
-                
                 const updatePromises = changes.map(change => 
                     supabase
                         .from(change.table)
@@ -171,6 +179,42 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         }
     };
 
+    const cancelChanges = () => {
+        if (!window.confirm("Undo all unsaved changes?")) return;
+
+        const setters: Record<string, React.Dispatch<React.SetStateAction<any[]>>> = {
+            'subprojects': setSubprojects as any,
+            'activities': setActivities as any,
+            'staffing_requirements': setStaffingReqs as any,
+            'office_requirements': setOfficeReqs as any
+        };
+
+        const changes = Object.values(pendingChanges);
+        
+        // Group changes by table to minimize setter calls
+        const changesByTable: Record<string, PendingChange[]> = {};
+        changes.forEach(c => {
+            if (!changesByTable[c.table]) changesByTable[c.table] = [];
+            changesByTable[c.table].push(c);
+        });
+
+        // Revert state
+        Object.entries(changesByTable).forEach(([table, list]) => {
+            const setter = setters[table];
+            if (setter) {
+                setter(prev => prev.map(item => {
+                    const change = list.find(c => c.id === item.id);
+                    if (change) {
+                        return { ...item, [change.field]: change.originalValue };
+                    }
+                    return item;
+                }));
+            }
+        });
+
+        setPendingChanges({});
+    };
+
     const hasChanges = Object.keys(pendingChanges).length > 0;
 
     const RenderGroup = ({ 
@@ -180,8 +224,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         setter,
         displayField,
         statusField = 'status',
-        options = STATUS_OPTIONS_STANDARD,
-        iconPath
+        options = STATUS_OPTIONS_STANDARD
     }: { 
         title: string, 
         items: any[], 
@@ -189,8 +232,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         setter: React.Dispatch<React.SetStateAction<any[]>>,
         displayField: string,
         statusField?: string,
-        options?: string[],
-        iconPath: React.ReactNode
+        options?: string[]
     }) => {
         const isExpanded = expandedGroups.has(title);
         
@@ -204,20 +246,17 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
         return (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
                 <div 
-                    className={`p-4 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors ${
+                    className={`p-3 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors ${
                         isExpanded ? 'bg-emerald-50 dark:bg-emerald-900/10' : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                 >
                     <button 
                         onClick={() => toggleGroup(title)}
-                        className="flex items-center gap-3 font-bold text-gray-800 dark:text-white text-lg focus:outline-none w-full md:w-auto"
+                        className="flex items-center gap-2 font-bold text-gray-800 dark:text-white text-lg focus:outline-none w-full md:w-auto"
                     >
-                         <div className={`p-2 rounded-full ${isExpanded ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-800 dark:text-emerald-200' : 'bg-white dark:bg-gray-600 text-gray-500 dark:text-gray-300'}`}>
-                            {iconPath}
-                        </div>
                         <span>{title}</span>
                         <span className="bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 text-xs px-2 py-0.5 rounded-full">{items.length}</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                     </button>
@@ -228,7 +267,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
                             <select 
                                 onChange={handleBulkDropdown} 
                                 disabled={items.length === 0}
-                                className="bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded px-3 py-1.5 text-sm focus:ring-emerald-500 focus:border-emerald-500 w-full md:w-48"
+                                className="bg-white dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded px-2 py-1 text-sm focus:ring-emerald-500 focus:border-emerald-500 w-full md:w-40"
                                 defaultValue=""
                             >
                                 <option value="" disabled>Select Status</option>
@@ -243,33 +282,40 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
                         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                             <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-sm">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Item Description</th>
-                                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Details</th>
-                                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Current Status</th>
+                                    <th className="px-6 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider w-1/3">Item Description</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund Year</th>
+                                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Tier</th>
+                                    <th className="px-6 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Current Status</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                 {items.length === 0 ? (
-                                    <tr><td colSpan={3} className="px-6 py-8 text-center text-sm text-gray-500 italic">No records found matching filters.</td></tr>
+                                    <tr><td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500 italic">No records found matching filters.</td></tr>
                                 ) : (
                                     items.map(item => {
                                         const isModified = !!pendingChanges[`${table}-${item.id}`];
                                         return (
                                             <tr key={item.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${isModified ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
-                                                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white font-medium">
+                                                <td className="px-6 py-2 text-sm text-gray-900 dark:text-white font-medium">
                                                     {item[displayField]}
-                                                    {isModified && <span className="ml-2 text-[10px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-bold">Modified</span>}
+                                                    {isModified && <span className="ml-2 text-[9px] bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-bold uppercase">Modified</span>}
                                                 </td>
-                                                <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
-                                                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">{item.operatingUnit}</div>
-                                                    <div>{item.fundType} {item.fundingYear || item.fundYear} - {item.tier}</div>
+                                                <td className="px-4 py-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                                                    {item.operatingUnit}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                                                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+                                                    {item.fundingYear || item.fundYear} ({item.fundType})
+                                                </td>
+                                                <td className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
+                                                    {item.tier}
+                                                </td>
+                                                <td className="px-6 py-2 whitespace-nowrap text-right text-sm">
                                                     <select 
                                                         value={item[statusField]} 
-                                                        onChange={(e) => handleStatusChange(table, item.id, e.target.value, statusField, setter)}
+                                                        onChange={(e) => handleStatusChange(table, item.id, e.target.value, statusField, setter, items)}
                                                         className={`
-                                                            border-0 rounded-full px-3 py-1 text-xs font-bold ring-1 ring-inset cursor-pointer focus:ring-2 focus:ring-emerald-500
+                                                            border-0 rounded-full px-3 py-0.5 text-xs font-bold ring-1 ring-inset cursor-pointer focus:ring-2 focus:ring-emerald-500
                                                             ${item[statusField] === 'Completed' || item[statusField] === 'Filled' ? 'bg-green-50 text-green-700 ring-green-600/20' : 
                                                             item[statusField] === 'Ongoing' ? 'bg-blue-50 text-blue-700 ring-blue-600/20' :
                                                             item[statusField] === 'Cancelled' || item[statusField] === 'Unfilled' ? 'bg-red-50 text-red-700 ring-red-600/20' :
@@ -334,14 +380,13 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
             </div>
 
             {/* Management Groups */}
-            <div className="space-y-6">
+            <div className="space-y-4">
                 <RenderGroup 
                     title="Subprojects" 
                     items={filteredSubprojects} 
                     table="subprojects" 
                     setter={setSubprojects as any} 
                     displayField="name" 
-                    iconPath={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
                 />
                 <RenderGroup 
                     title="Activities & Trainings" 
@@ -349,7 +394,6 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
                     table="activities" 
                     setter={setActivities as any} 
                     displayField="name" 
-                    iconPath={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>}
                 />
                 <RenderGroup 
                     title="Staffing Requirements" 
@@ -359,7 +403,6 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
                     displayField="personnelPosition"
                     statusField="hiringStatus"
                     options={STATUS_OPTIONS_STAFFING}
-                    iconPath={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.184-1.268-.5-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.184-1.268.5-1.857m0 0a5.002 5.002 0 019 0m-4.5 5.002v-10a4.5 4.5 0 00-9 0v10m9 0a4.5 4.5 0 00-9 0" /></svg>}
                 />
                 <RenderGroup 
                     title="Office Requirements" 
@@ -367,23 +410,31 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
                     table="office_requirements" 
                     setter={setOfficeReqs as any} 
                     displayField="equipment" 
-                    iconPath={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>}
                 />
             </div>
 
             {/* Action Bar */}
-            <div className={`fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-lg transform transition-transform duration-300 z-50 flex items-center justify-between md:justify-end gap-4 ${hasChanges ? 'translate-y-0' : 'translate-y-full'}`}>
+            <div className={`fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] transform transition-transform duration-300 z-50 flex items-center justify-between md:justify-end gap-4 ${hasChanges ? 'translate-y-0' : 'translate-y-full'}`}>
                 <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse"></span>
-                    <span className="font-bold text-gray-700 dark:text-gray-200">{Object.keys(pendingChanges).length} unsaved change(s)</span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+                    <span className="font-bold text-gray-700 dark:text-gray-200 text-sm">{Object.keys(pendingChanges).length} unsaved change(s)</span>
                 </div>
-                <button 
-                    onClick={saveChanges} 
-                    disabled={isSaving}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-md shadow-md flex items-center gap-2 disabled:opacity-50"
-                >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                </button>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={cancelChanges} 
+                        disabled={isSaving}
+                        className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-semibold rounded-md text-sm transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        onClick={saveChanges} 
+                        disabled={isSaving}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded-md shadow-md flex items-center gap-2 disabled:opacity-50 text-sm transition-colors"
+                    >
+                        {isSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                </div>
             </div>
         </div>
     );

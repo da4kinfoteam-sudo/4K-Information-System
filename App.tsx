@@ -29,6 +29,7 @@ import MarketProfileEdit from './components/resources/MarketProfileEdit';
 import MarketLinkageEdit from './components/resources/MarketLinkageEdit';
 import LevelOfDevelopmentPage from './components/resources/LevelOfDevelopmentPage';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
+import AIChatbot from './components/AIChatbot'; // Import Chatbot
 
 import useLocalStorageState from './hooks/useLocalStorageState';
 import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
@@ -641,7 +642,7 @@ const AppContent: React.FC = () => {
                     setCurrentPage(page);
                 }} 
             />
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden relative">
                 <Header 
                     toggleSidebar={toggleSidebar} 
                     toggleDarkMode={toggleDarkMode} 
@@ -654,6 +655,7 @@ const AppContent: React.FC = () => {
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
                     {renderPage()}
                 </main>
+                <AIChatbot />
             </div>
         </div>
     );
