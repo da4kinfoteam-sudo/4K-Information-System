@@ -568,6 +568,11 @@ const AppContent: React.FC = () => {
                             setDeadlines={setDeadlines}
                             planningSchedules={planningSchedules}
                             setPlanningSchedules={setPlanningSchedules}
+                            // Pass data for DCF Management
+                            subprojects={subprojects} setSubprojects={setSubprojects}
+                            activities={activities} setActivities={setActivities}
+                            officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
+                            staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
                         />;
             // NEW RESOURCE ROUTES
             case '/marketing-database':
