@@ -13,6 +13,7 @@ import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
+import ActivityEdit from './components/ActivityEdit'; // New Import
 import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
@@ -127,6 +128,9 @@ const AppContent: React.FC = () => {
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
     
+    // Edit mode state for activity
+    const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
+
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
     const previousPage = historyStack.length > 0 ? historyStack[historyStack.length - 1] : '/';
@@ -220,6 +224,20 @@ const AppContent: React.FC = () => {
         setCurrentPage('/activity-detail');
     };
 
+    const handleCreateActivity = () => {
+        setSelectedActivity(null);
+        setActivityEditMode('create');
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/activity-edit');
+    };
+
+    const handleEditActivity = (activity: Activity, mode: 'details' | 'expenses' | 'accomplishment') => {
+        setSelectedActivity(activity);
+        setActivityEditMode(mode);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/activity-edit');
+    }
+
     const handleSelectOfficeReq = (req: OfficeRequirement) => {
         setSelectedOfficeReq(req);
         setHistoryStack(prev => [...prev, currentPage]);
@@ -307,6 +325,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Training"
@@ -318,6 +337,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
@@ -329,6 +349,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                         />;
@@ -507,6 +528,7 @@ const AppContent: React.FC = () => {
                             activity={selectedActivity}
                             ipos={ipos}
                             onBack={handleBack} 
+                            onEdit={(mode) => handleEditActivity(selectedActivity, mode)}
                             previousPageName={getPageName(previousPage)}
                             onUpdateActivity={(updated) => {
                                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
@@ -515,6 +537,25 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             onSelectIpo={handleSelectIpo}
+                        />;
+            case '/activity-edit':
+                return <ActivityEdit
+                            mode={activityEditMode}
+                            activity={selectedActivity || undefined}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            onUpdateActivity={(updated) => {
+                                setActivities(prev => {
+                                    if (prev.find(a => a.id === updated.id)) {
+                                        return prev.map(a => a.id === updated.id ? updated : a);
+                                    }
+                                    return [updated, ...prev];
+                                });
+                                setSelectedActivity(updated);
+                            }}
+                            uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
+                            forcedType={activityEditMode === 'create' ? undefined : selectedActivity?.type}
                         />;
             case '/settings':
                 return <Settings 

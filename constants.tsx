@@ -240,7 +240,8 @@ export interface Activity extends BaseEntity {
     catchUpPlanRemarks?: string;
     newTargetDate?: string;
     // Accomplishment Fields
-    actualDate?: string;
+    actualDate?: string; // Actual Start Date
+    actualEndDate?: string; // Actual End Date
     actualParticipantsMale?: number;
     actualParticipantsFemale?: number;
     // Status

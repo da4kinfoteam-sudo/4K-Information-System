@@ -1,32 +1,10 @@
 
-CREATE TABLE IF NOT EXISTS marketing_partners (
-  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  uid TEXT UNIQUE NOT NULL,
-  "companyName" TEXT NOT NULL,
-  "ownerName" TEXT,
-  "contactNumber" TEXT,
-  email TEXT,
-  location TEXT,
-  region TEXT,
-  "buyerType" TEXT,
-  "paymentMethods" JSONB DEFAULT '[]'::jsonb,
-  "commodityNeeds" JSONB DEFAULT '[]'::jsonb,
-  "linkedIpoNames" JSONB DEFAULT '[]'::jsonb,
-  "history" JSONB DEFAULT '[]'::jsonb,
-  "marketingLinkages" JSONB DEFAULT '[]'::jsonb,
-  remarks TEXT,
-  "encodedBy" TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- ... (Previous content)
 
--- Ensure columns exist if table was created previously without them
+-- Add column to activities if not exists
 DO $$ 
 BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketing_partners' AND column_name='history') THEN
-    ALTER TABLE marketing_partners ADD COLUMN "history" JSONB DEFAULT '[]'::jsonb;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='marketing_partners' AND column_name='marketingLinkages') THEN
-    ALTER TABLE marketing_partners ADD COLUMN "marketingLinkages" JSONB DEFAULT '[]'::jsonb;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='activities' AND column_name='actualEndDate') THEN
+    ALTER TABLE activities ADD COLUMN "actualEndDate" DATE;
   END IF;
 END $$;
