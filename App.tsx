@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -288,6 +289,8 @@ const AppContent: React.FC = () => {
                             officeReqs={officeReqs}
                             staffingReqs={staffingReqs}
                             otherProgramExpenses={otherProgramExpenses}
+                            onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
                         />;
             case '/dashboards':
                  return <DashboardsPage 

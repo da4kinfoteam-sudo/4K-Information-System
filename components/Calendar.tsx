@@ -1,15 +1,15 @@
 
 // Author: 4K
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Subproject, Activity, SystemSettings } from '../constants';
 
 export interface CalendarEvent {
     id: string;
     title: string;
-    type: 'Training' | 'Subproject Start' | 'Subproject End' | 'Deadline' | 'Planning' | 'Activity';
-    borderColor: string; // Used for the border indicator
-    bgColor: string; // Used for the card background
-    textColor: string; // Used for text color
+    type: 'Training' | 'Subproject Start' | 'Subproject End' | 'Deadline' | 'Planning' | 'Activity' | 'Holiday';
+    borderColor: string;
+    bgColor: string;
+    textColor: string;
     originalData?: any;
     dataId?: number;
     dataType?: 'Subproject' | 'Training' | 'Activity';
@@ -17,23 +17,38 @@ export interface CalendarEvent {
 
 interface CalendarProps {
     subprojects: Subproject[];
-    activities: Activity[]; // Includes Trainings
+    activities: Activity[];
     systemSettings: SystemSettings;
     onDateClick: (date: Date, events: CalendarEvent[]) => void;
+    onEventClick: (event: CalendarEvent) => void;
 }
 
-const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSettings, onDateClick }) => {
+interface Holiday {
+    date: string;
+    localName: string;
+    name: string;
+    countryCode: string;
+    fixed: boolean;
+    global: boolean;
+    counties: string[] | null;
+    launchYear: number | null;
+    types: string[];
+}
+
+const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSettings, onDateClick, onEventClick }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [holidays, setHolidays] = useState<Holiday[]>([]);
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
     const getDaysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+    
+    // Sunday is 0, Monday is 1, etc. No adjustment needed for Sunday start.
     const getFirstDayOfMonth = (y: number, m: number) => {
-        const day = new Date(y, m, 1).getDay();
-        return day === 0 ? 6 : day - 1; // Adjust so 0 = Mon, 6 = Sun
+        return new Date(y, m, 1).getDay();
     };
 
     const daysInMonth = getDaysInMonth(year, month);
@@ -43,12 +58,25 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
     const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
     const goToToday = () => setCurrentDate(new Date());
 
-    // --- Helper to determine status styles ---
+    useEffect(() => {
+        const fetchHolidays = async () => {
+            try {
+                const response = await fetch(`https://date.nager.at/api/v3/publicholidays/${year}/PH`);
+                if (response.ok) {
+                    const data = await response.json();
+                    setHolidays(data);
+                }
+            } catch (error) {
+                console.error("Failed to fetch holidays", error);
+            }
+        };
+        fetchHolidays();
+    }, [year]);
+
     const getStatusStyles = (isCompleted: boolean, dateToCheck: string, defaultBorder: string) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        // Parse dateToCheck (YYYY-MM-DD) to local time for comparison
         const [y, m, d] = dateToCheck.split('-').map(Number);
         const targetDate = new Date(y, m - 1, d);
 
@@ -59,14 +87,12 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                 textColor: 'text-emerald-900 dark:text-emerald-100'
             };
         } else if (targetDate < today) {
-            // Past Due / Uncompleted
             return {
                 bgColor: 'bg-red-100 dark:bg-red-900/60',
                 borderColor: 'border-red-600',
                 textColor: 'text-red-900 dark:text-red-100'
             };
         } else {
-            // Future / Planned
             return {
                 bgColor: 'bg-white dark:bg-gray-700/50',
                 borderColor: defaultBorder,
@@ -75,22 +101,18 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
         }
     };
 
-    // --- Event Aggregation ---
     const eventsByDate = useMemo(() => {
         const events: Record<string, CalendarEvent[]> = {};
 
         const addEvent = (dateStr: string, event: CalendarEvent) => {
             if (!dateStr) return;
-            // Parse YYYY-MM-DD
             const [y, m, d] = dateStr.split('-').map(Number);
-            // Create key as YYYY-M-D (no leading zeros to match grid logic easily)
             const key = `${y}-${m - 1}-${d}`;
             
             if (!events[key]) events[key] = [];
             events[key].push(event);
         };
 
-        // 1. Subprojects (Start and End markers only, as requested)
         subprojects.forEach(sp => {
             const isCompleted = sp.status === 'Completed';
             
@@ -120,28 +142,22 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
             }
         });
 
-        // 2. Activities (Trainings & Others) - Multi-day logic
         activities.forEach(act => {
             if (act.date) {
                 const isCompleted = act.status === 'Completed' || !!act.actualDate;
                 
-                // Determine start date components
                 const [startY, startM, startD] = act.date.split('-').map(Number);
                 let currentLoopDate = new Date(startY, startM - 1, startD);
                 
-                // Determine end date components (fallback to start date if no end date)
                 let endLoopDate = new Date(startY, startM - 1, startD);
                 if (act.endDate && act.endDate !== act.date) {
                      const [endY, endM, endD] = act.endDate.split('-').map(Number);
                      endLoopDate = new Date(endY, endM - 1, endD);
                 }
 
-                // Check against End Date for Overdue status usually, but we apply style to all blocks
-                // We use the 'endDate' (or date) to determine if the whole activity is past due
                 const effectiveEndDateStr = act.endDate || act.date;
                 const styles = getStatusStyles(isCompleted, effectiveEndDateStr, 'border-green-500');
 
-                // Loop through all days
                 while (currentLoopDate <= endLoopDate) {
                     const yearStr = currentLoopDate.getFullYear();
                     const monthStr = currentLoopDate.getMonth() + 1;
@@ -158,13 +174,11 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                         dataType: act.type === 'Training' ? 'Training' : 'Activity'
                     });
 
-                    // Next day
                     currentLoopDate.setDate(currentLoopDate.getDate() + 1);
                 }
             }
         });
 
-        // 3. Deadlines (System Settings) - Treat as Planned always (White)
         systemSettings.deadlines.forEach(dl => {
             if (dl.date) {
                 addEvent(dl.date, {
@@ -178,7 +192,6 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
             }
         });
 
-        // 4. Planning Schedules (Mark each day in range) - Treat as Planned (White/Purple)
         systemSettings.planningSchedules.forEach(ps => {
             if (ps.startDate && ps.endDate) {
                 let current = new Date(ps.startDate);
@@ -199,13 +212,22 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
             }
         });
 
-        return events;
-    }, [subprojects, activities, systemSettings]);
+        holidays.forEach(h => {
+            addEvent(h.date, {
+                id: `hol-${h.date}`,
+                title: h.localName,
+                type: 'Holiday',
+                borderColor: 'border-pink-500',
+                bgColor: 'bg-pink-50 dark:bg-pink-900/30',
+                textColor: 'text-pink-800 dark:text-pink-200'
+            });
+        });
 
-    // --- Render Grid ---
+        return events;
+    }, [subprojects, activities, systemSettings, holidays]);
+
     const renderCells = () => {
         const cells = [];
-        // Empty cells for previous month
         for (let i = 0; i < firstDay; i++) {
             cells.push(<div key={`empty-${i}`} className="h-24 md:h-32 bg-gray-50 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700"></div>);
         }
@@ -218,12 +240,10 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
             const dayEvents = eventsByDate[key] || [];
             const isToday = isCurrentMonth && today.getDate() === day;
 
-            // Updated styling for Today's box
             const boxClass = isToday 
                 ? 'bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-500 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.5)]' 
                 : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50';
 
-            // Updated styling for Today's number
             const numberClass = isToday
                 ? 'text-emerald-700 dark:text-emerald-300 font-bold text-lg'
                 : 'text-gray-700 dark:text-gray-300 font-semibold';
@@ -242,7 +262,8 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                         {dayEvents.map((evt, idx) => (
                             <div 
                                 key={idx} 
-                                className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] md:text-xs border-l-4 truncate shadow-sm ${evt.bgColor} ${evt.borderColor} ${evt.textColor}`}
+                                onClick={(e) => { e.stopPropagation(); onEventClick(evt); }}
+                                className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[10px] md:text-xs border-l-4 truncate shadow-sm cursor-pointer hover:brightness-95 ${evt.bgColor} ${evt.borderColor} ${evt.textColor}`}
                                 title={evt.title}
                             >
                                 <span className="truncate font-medium">{evt.title}</span>
@@ -257,7 +278,6 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
 
     return (
         <div className="flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-            {/* Header */}
             <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
                 <button onClick={prevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
                     <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -273,7 +293,6 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                 </button>
             </div>
 
-            {/* Days Header */}
             <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
                 {daysOfWeek.map(day => (
                     <div key={day} className="py-2 text-center text-sm font-semibold text-gray-500 dark:text-gray-400">
@@ -282,13 +301,15 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                 ))}
             </div>
 
-            {/* Grid */}
             <div className="grid grid-cols-7 flex-1">
                 {renderCells()}
             </div>
             
-            {/* Legend */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-x-6 gap-y-2 text-xs text-gray-600 dark:text-gray-400 justify-center">
+                <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 bg-pink-100 border-l-4 border-pink-500 rounded-sm"></span>
+                    <span>Holiday</span>
+                </div>
                 <div className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-emerald-100 border-l-4 border-emerald-600 rounded-sm"></span>
                     <span>Completed</span>
@@ -299,15 +320,11 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-white border border-gray-200 border-l-4 border-blue-500 rounded-sm"></span>
-                    <span>Planned SP Start</span>
+                    <span>Subproject</span>
                 </div>
                  <div className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-white border border-gray-200 border-l-4 border-green-500 rounded-sm"></span>
-                    <span>Planned Activity</span>
-                </div>
-                 <div className="flex items-center gap-2">
-                    <span className="w-4 h-4 bg-emerald-100 border border-emerald-500 rounded-sm"></span>
-                    <span>Current Date</span>
+                    <span>Activity</span>
                 </div>
             </div>
         </div>
