@@ -325,11 +325,12 @@ export interface StaffingExpense {
 
 export interface StaffingRequirement extends BaseProgramManagementItem {
     personnelPosition: string;
-    status: string;
+    status: string; // Employment Status (Permanent, Contractual, etc.)
     salaryGrade: number;
     annualSalary: number;
     personnelType: 'Technical' | 'Administrative' | 'Support';
     expenses?: StaffingExpense[]; // Nested structure for multiple object codes
+    hiringStatus: 'Proposed' | 'Filled' | 'Unfilled'; // Workflow Status
     // Target Disbursement (Legacy/Aggregate)
     disbursementJan?: number;
     disbursementFeb?: number;

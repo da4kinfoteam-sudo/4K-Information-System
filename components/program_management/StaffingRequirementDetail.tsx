@@ -1,6 +1,7 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
-import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
+import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
@@ -30,6 +31,16 @@ const formatDate = (dateString?: string) => {
     if (isNaN(date.getTime())) return dateString; // Return original if parse fails
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Filled': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Unfilled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+}
 
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
@@ -125,8 +136,21 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     actualDisbursementAmount: totalActualDisbursement
                 }));
             }
+            
+            // Automation Logic: Hiring Status
+            if (formData.actualObligationDate) {
+                 if (formData.hiringStatus !== 'Filled') {
+                     setFormData(prev => ({ ...prev, hiringStatus: 'Filled' }));
+                 }
+            } else {
+                 if (formData.hiringStatus === 'Filled') {
+                     // Revert to Proposed if date removed
+                     setFormData(prev => ({ ...prev, hiringStatus: 'Proposed' }));
+                 }
+            }
+
         }
-    }, [expensesList, editMode]);
+    }, [expensesList, editMode, formData.actualObligationDate]); // Watch date for status automation
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -223,10 +247,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     };
 
     // Locking Logic
-    const isLocked = (value: any) => {
+    const isFieldLocked = (fieldName: string) => {
         // If user is admin, never locked
         if (isAdmin) return false;
-        // If user is 'User' role, check if value exists
+        // If user is 'User' role, check if value exists in DB
+        const value = (item as any)[fieldName];
         if (value !== undefined && value !== null && value !== '' && value !== 0) {
             return true;
         }
@@ -322,10 +347,19 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hiring Status</label>
+                                    <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={commonInputClasses}>
+                                        <option value="Proposed">Proposed</option>
+                                        <option value="Filled">Filled</option>
+                                        <option value="Unfilled">Unfilled</option>
+                                    </select>
+                                    {formData.hiringStatus === 'Filled' && <p className="text-xs text-green-600 mt-1">Status set to Filled automatically based on Date Hired.</p>}
+                                </div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
-                                <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
+                                <div className="md:col-span-1"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
                             </div>
                         </fieldset>
 
@@ -440,8 +474,8 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date (Date Hired)</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} /></div>
                             </div>
                         </fieldset>
 
@@ -451,7 +485,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 {months.map(month => (
                                     <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
                                     // @ts-ignore
-                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed" disabled={isFieldLocked(`actualDisbursement${month}`)} /></div>
                                 ))}
                             </div>
                             <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
@@ -462,7 +496,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -471,9 +505,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     }
 
     // --- Read Only View ---
+    const totalTargetDisbursement = months.reduce((sum, m) => sum + (Number((item as any)[`disbursement${m}`]) || 0), 0);
 
     return (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="space-y-8">
             {/* Header */}
             <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
@@ -482,13 +517,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>
@@ -508,7 +543,8 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                         <DetailItem label="Position" value={item.personnelPosition} />
-                        <DetailItem label="Status" value={item.status} />
+                        <DetailItem label="Status" value={<span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span>} />
+                        <DetailItem label="Employment" value={item.status} />
                         <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
                         <DetailItem label="Type" value={item.personnelType} />
                         <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
@@ -577,6 +613,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                     <p className="text-xs font-bold uppercase text-gray-400">Total Disbursement</p>
                                     <DetailItem label="Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
                                 </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Employment Details</h4>
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                                <DetailItem label="Date Hired" value={formatDate(item.actualObligationDate)} />
                             </div>
                         </div>
 

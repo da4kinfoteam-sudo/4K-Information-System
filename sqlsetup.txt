@@ -15,3 +15,11 @@ BEGIN
     ALTER TABLE office_requirements ADD COLUMN "status" TEXT DEFAULT 'Proposed';
   END IF;
 END $$;
+
+-- Add column to staffing_requirements if not exists
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staffing_requirements' AND column_name='hiringStatus') THEN
+    ALTER TABLE staffing_requirements ADD COLUMN "hiringStatus" TEXT DEFAULT 'Proposed';
+  END IF;
+END $$;
