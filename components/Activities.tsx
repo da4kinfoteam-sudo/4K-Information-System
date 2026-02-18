@@ -621,6 +621,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     </div>
                 </div>
             </div>
-        </>
+        </div>
     );
 };

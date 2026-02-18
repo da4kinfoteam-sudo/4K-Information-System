@@ -209,8 +209,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     };
 
     const handleAddRepeatingEntry = () => {
-        if (!currentRepeatingEntry.date || currentRepeatingEntry.participatingIpos.length === 0) {
-            alert("Date and at least one IPO are required.");
+        if (!currentRepeatingEntry.date) {
+            alert("Date is required.");
             return;
         }
         const newEntry = { ...currentRepeatingEntry, id: Date.now() };
@@ -445,9 +445,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     </div>
                                     <div><label className="block text-xs font-medium">Start Date</label><input type="date" name="date" value={currentRepeatingEntry.date} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
                                     {currentRepeatingEntry.isMultiDay && <div><label className="block text-xs font-medium">End Date</label><input type="date" name="endDate" value={currentRepeatingEntry.endDate} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>}
-                                    <div><label className="block text-xs font-medium">Male</label><input type="number" name="participantsMale" value={currentRepeatingEntry.participantsMale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
-                                    <div><label className="block text-xs font-medium">Female</label><input type="number" name="participantsFemale" value={currentRepeatingEntry.participantsFemale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
-                                    <div className="md:col-span-4"><label className="block text-xs font-medium">IPOs</label><select multiple value={currentRepeatingEntry.participatingIpos} onChange={handleRepeatingIpoSelect} className={`${commonInputClasses} h-20`}>{ipos.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}</select></div>
+                                    <div><label className="block text-xs font-medium">Male (Optional)</label><input type="number" name="participantsMale" value={currentRepeatingEntry.participantsMale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
+                                    <div><label className="block text-xs font-medium">Female (Optional)</label><input type="number" name="participantsFemale" value={currentRepeatingEntry.participantsFemale} onChange={handleRepeatingEntryChange} className={commonInputClasses} /></div>
+                                    <div className="md:col-span-4"><label className="block text-xs font-medium">IPOs (Optional)</label><select multiple value={currentRepeatingEntry.participatingIpos} onChange={handleRepeatingIpoSelect} className={`${commonInputClasses} h-20`}>{ipos.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}</select></div>
                                     <div className="md:col-span-4"><button type="button" onClick={handleAddRepeatingEntry} className="w-full py-2 bg-blue-600 text-white rounded text-sm">Add to Schedule</button></div>
                                 </div>
                                 {/* List of entries to be created */}
