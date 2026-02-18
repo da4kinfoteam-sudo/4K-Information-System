@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React from 'react';
 
@@ -241,6 +240,7 @@ export interface Activity extends BaseEntity {
     newTargetDate?: string;
     // Accomplishment Fields
     actualDate?: string;
+    actualEndDate?: string;
     actualParticipantsMale?: number;
     actualParticipantsFemale?: number;
     // Status

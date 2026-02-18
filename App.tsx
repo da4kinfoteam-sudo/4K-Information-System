@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -13,6 +12,7 @@ import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
+import ActivityEdit from './components/ActivityEdit';
 import Settings from './components/Settings';
 import Login from './components/Login';
 import ProgramManagement from './components/ProgramManagement';
@@ -126,6 +126,9 @@ const AppContent: React.FC = () => {
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
+    
+    // Activity Edit Mode State
+    const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
     
     // Navigation History Stack
     const [historyStack, setHistoryStack] = useState<string[]>([]);
@@ -243,6 +246,14 @@ const AppContent: React.FC = () => {
         setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage('/marketing-profile-detail');
     }
+    
+    // New handler for activity creation
+    const handleCreateActivity = () => {
+        setActivityEditMode('create');
+        setSelectedActivity(null);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/activity-edit');
+    };
 
     const handleBack = () => {
         if (historyStack.length === 0) return;
@@ -307,6 +318,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Training"
@@ -318,6 +330,7 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
@@ -329,8 +342,31 @@ const AppContent: React.FC = () => {
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
+                            onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                        />;
+            case '/activity-edit':
+                return <ActivityEdit 
+                            mode={activityEditMode}
+                            activity={selectedActivity || undefined}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            onUpdateActivity={(updated) => {
+                                if (activityEditMode === 'create') {
+                                     setActivities(prev => [...prev, updated]);
+                                } else {
+                                     setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
+                                     setSelectedActivity(updated);
+                                }
+                            }}
+                            uacsCodes={derivedUacsCodes}
+                            referenceActivities={referenceActivities}
+                            forcedType={
+                                previousPage === '/trainings' ? 'Training' : 
+                                previousPage === '/other-activities' ? 'Activity' : 
+                                undefined
+                            }
                         />;
             case '/program-management':
                 return <ProgramManagement
@@ -511,6 +547,11 @@ const AppContent: React.FC = () => {
                             onUpdateActivity={(updated) => {
                                 setActivities(prev => prev.map(a => a.id === updated.id ? updated : a));
                                 setSelectedActivity(updated);
+                            }}
+                            onEdit={(mode) => {
+                                setActivityEditMode(mode);
+                                setHistoryStack(prev => [...prev, currentPage]);
+                                setCurrentPage('/activity-edit');
                             }}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
