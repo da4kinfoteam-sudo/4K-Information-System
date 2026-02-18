@@ -275,6 +275,12 @@ const AppContent: React.FC = () => {
         if (currentPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
     };
 
+    // Generic navigation handler for Chatbot
+    const handleNavigate = (path: string) => {
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage(path);
+    };
+
     if (!currentUser) {
         return <Login />;
     }
@@ -659,6 +665,15 @@ const AppContent: React.FC = () => {
                     subprojects={subprojects}
                     ipos={ipos}
                     activities={activities}
+                    marketingPartners={marketingPartners}
+                    officeReqs={officeReqs}
+                    staffingReqs={staffingReqs}
+                    otherProgramExpenses={otherProgramExpenses}
+                    onNavigate={handleNavigate}
+                    onSelectSubproject={handleSelectSubproject}
+                    onSelectIpo={handleSelectIpo}
+                    onSelectActivity={handleSelectActivity}
+                    onSelectMarketingPartner={handleSelectMarketingPartner}
                 />
             </div>
         </div>
