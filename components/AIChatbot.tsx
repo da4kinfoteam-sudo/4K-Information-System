@@ -46,6 +46,7 @@ The 4K Information System is designed to monitor and manage projects for Indigen
 - If asked about "OU" (Operating Unit), filter by the 'operatingUnit' field.
 - If asked about "Region", filter IPOs by 'region' or Activities/Subprojects by their location/OU mapping.
 - Be concise. Do not dump the entire JSON back to the user. Summarize the answer.
+- **Note on Data Limit**: The data context provided to you may be truncated to the most recent 100 items per category to preserve system resources. If a user asks about data that might be missing, mention this limitation.
 
 If a user asks navigation questions (e.g., "How do I add a subproject?"), guide them to the sidebar menu.
 
@@ -91,13 +92,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({ subprojects, ipos, activities }) 
         try {
             // Prepare Data Context
             // We strip unnecessary fields to save context tokens, keeping only what's needed for analysis.
+            // LIMIT DATA: Truncate to the most recent 100 items to avoid 429 RESOURCE_EXHAUSTED errors on free tier (250k token limit).
+            const MAX_ITEMS = 100;
+            
             const dataContext = {
                 summary: {
                     total_subprojects: subprojects.length,
                     total_ipos: ipos.length,
-                    total_activities: activities.length
+                    total_activities: activities.length,
+                    data_truncated: subprojects.length > MAX_ITEMS || ipos.length > MAX_ITEMS || activities.length > MAX_ITEMS
                 },
-                subprojects: subprojects.map(s => ({
+                subprojects: subprojects.slice(0, MAX_ITEMS).map(s => ({
                     name: s.name,
                     status: s.status,
                     operatingUnit: s.operatingUnit,
@@ -107,14 +112,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({ subprojects, ipos, activities }) 
                     // FIX: Safely handle null/undefined details with (s.details || [])
                     totalBudget: (s.details || []).reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0)
                 })),
-                ipos: ipos.map(i => ({
+                ipos: ipos.slice(0, MAX_ITEMS).map(i => ({
                     name: i.name,
                     region: i.region,
                     level: i.levelOfDevelopment,
                     isWomenLed: i.isWomenLed,
                     isGida: i.isWithinGida
                 })),
-                activities: activities.map(a => ({
+                activities: activities.slice(0, MAX_ITEMS).map(a => ({
                     name: a.name,
                     type: a.type, // Training or Activity
                     component: a.component,
@@ -150,10 +155,26 @@ const AIChatbot: React.FC<AIChatbotProps> = ({ subprojects, ipos, activities }) 
         } catch (error: any) {
             console.error("AI Chat Error:", error);
             let errMsg = "Sorry, I encountered an error connecting to the AI service.";
-            if (error.message && error.message.includes('API key')) {
+            
+            if (error.message && error.message.includes('429')) {
+                 errMsg = "Quota Limit Reached. The amount of system data is currently too large for the free AI service. Please try again later or reduce the data set.";
+            } else if (error.message && error.message.includes('API key')) {
                 errMsg = "The AI service refused the connection. Please check if the API Key is valid and has proper permissions.";
             } else if (error.message) {
-                errMsg += ` (${error.message})`;
+                 // Try to parse JSON error if embedded
+                 try {
+                     const jsonMatch = error.message.match(/({.*})/);
+                     if (jsonMatch) {
+                         const parsed = JSON.parse(jsonMatch[1]);
+                         if (parsed.error && parsed.error.message) {
+                             errMsg += ` (${parsed.error.message})`;
+                         }
+                     } else {
+                        errMsg += ` (${error.message})`;
+                     }
+                 } catch (e) {
+                     errMsg += ` (${error.message})`;
+                 }
             }
             setMessages(prev => [...prev, { role: 'model', text: errMsg }]);
         } finally {
