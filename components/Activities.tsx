@@ -1,7 +1,6 @@
-
 // Author: 4K 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Activity, IPO, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
+import React, { useState, FormEvent, useMemo, useEffect } from 'react';
+import { Activity, IPO, philippineRegions, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
@@ -20,12 +19,16 @@ interface ActivitiesProps {
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
-    onSelectActivity: (activity: Activity) => void; 
-    onCreateActivity: () => void;
+    onSelectActivity: (activity: Activity) => void; // New prop for selecting activity
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
-    referenceActivities?: ReferenceActivity[]; 
+    referenceActivities?: ReferenceActivity[]; // New prop for activity lookup
     forcedType?: 'Training' | 'Activity';
 }
+
+const MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+];
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -52,14 +55,67 @@ const getStatusBadge = (status: Activity['status']) => {
     }
 }
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, onCreateActivity, uacsCodes, referenceActivities = [], forcedType }) => {
+const defaultFormData: Activity = {
+    id: 0,
+    uid: '',
+    type: 'Activity', // Default type
+    name: '',
+    date: '',
+    endDate: '',
+    description: '',
+    location: '',
+    facilitator: '',
+    participatingIpos: [] as string[],
+    participantsMale: 0,
+    participantsFemale: 0,
+    component: 'Social Preparation' as ActivityComponentType,
+    expenses: [] as ActivityExpense[],
+    fundingYear: new Date().getFullYear(),
+    fundType: fundTypes[0] as FundType,
+    tier: tiers[0] as Tier,
+    operatingUnit: '',
+    encodedBy: '',
+    catchUpPlanRemarks: '',
+    newTargetDate: '',
+    actualDate: '',
+    actualParticipantsMale: 0,
+    actualParticipantsFemale: 0,
+    status: 'Proposed'
+};
+
+// Interface for Repeating Activity Entries
+interface RepeatingEntry {
+    id: number;
+    date: string;
+    participantsMale: number;
+    participantsFemale: number;
+    participatingIpos: string[];
+}
+
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
+    const [formData, setFormData] = useState<Activity>(defaultFormData);
+    
+    // New Conduct Type State
+    const [conductType, setConductType] = useState<'Single' | 'Multi-day' | 'Repeating'>('Single');
+    
+    // Repeating Activity States
+    const [repeatingEntries, setRepeatingEntries] = useState<RepeatingEntry[]>([]);
+    const [currentRepeatingEntry, setCurrentRepeatingEntry] = useState<RepeatingEntry>({
+        id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: []
+    });
+    const [editingRepeatingId, setEditingRepeatingId] = useState<number | null>(null);
+
+    const [editingItem, setEditingItem] = useState<Activity | null>(null); 
     
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
+    const [ipoRegionFilter, setIpoRegionFilter] = useState('All');
+    const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'accomplishments'>('details');
     const [isUploading, setIsUploading] = useState(false);
+    const [selectedActivityType, setSelectedActivityType] = useState(''); // Stores the specific activity name from dropdown
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Shared Hooks
@@ -82,6 +138,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const [view, setView] = useState<'list' | 'add' >('list');
+
+    // Expenses State
+    const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+    const [currentExpense, setCurrentExpense] = useState({
+        objectType: 'MOOE' as ObjectType,
+        expenseParticular: '',
+        uacsCode: '',
+        obligationMonth: '',
+        disbursementMonth: '',
+        amount: ''
+    });
 
     // Helper to refresh data from Supabase
     const refreshData = async () => {
@@ -104,11 +172,52 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         }
     }, [currentUser]);
 
+    // Initialize form data
+    useEffect(() => {
+        setFormData({
+            ...defaultFormData,
+            type: forcedType || 'Activity', // Use forced type initially if available
+            operatingUnit: currentUser?.operatingUnit || '',
+            encodedBy: currentUser?.fullName || '',
+            status: 'Proposed' // Default status for new items
+        });
+        setSelectedActivityType('');
+        setConductType('Single');
+        setRepeatingEntries([]);
+    }, [currentUser, forcedType, referenceActivities, view]);
+
+    // When component changes in form, reset types
+    useEffect(() => {
+        if (view === 'add') {
+            setFormData(prev => ({...prev, name: ''}));
+            setSelectedActivityType('');
+        }
+    }, [formData.component, view]);
+
     const availableFundYears = useMemo(() => {
         const years = new Set<string>();
         activities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
         return Array.from(years).sort().reverse();
     }, [activities]);
+
+    const filteredIposForSelection = useMemo(() => {
+        const filtered = ipoRegionFilter === 'All' ? ipos : ipos.filter(ipo => ipo.region === ipoRegionFilter);
+        return filtered.sort((a,b) => a.name.localeCompare(b.name));
+    }, [ipoRegionFilter, ipos]);
+
+    const activityOptions = useMemo(() => {
+        // Filter available activities based on selected Component and optionally Forced Type (if in filtered route)
+        return referenceActivities
+            .filter(ra => ra.component === formData.component)
+            .filter(ra => forcedType ? ra.type === forcedType : true) // Filter by forcedType if present
+            .map(ra => ra.activity_name);
+    }, [formData.component, referenceActivities, forcedType]);
+
+    // Get unique regions from actual IPO data for filtering
+    const availableRegions = useMemo(() => {
+        const regions = new Set(ipos.map(i => i.region).filter(Boolean));
+        return Array.from(regions).sort();
+    }, [ipos]);
 
     // Process list data
     const processedActivities = useMemo(() => {
@@ -245,7 +354,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 uid: newUid,
                 status: 'Proposed', // Reset status
                 actualDate: '',
-                actualEndDate: '',
                 actualParticipantsMale: 0,
                 actualParticipantsFemale: 0,
                 catchUpPlanRemarks: '',
@@ -288,6 +396,366 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             setSelectionIntent(intent);
             toggleSelectionMode(); // Toggle on
         }
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const target = e.currentTarget as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+        const { name, value } = target;
+        const isNumberInput = 'type' in target && target.type === 'number';
+
+        setFormData(prev => {
+            const updated = { 
+                ...prev, 
+                [name]: isNumberInput ? (value === '' ? '' : parseFloat(value)) : value 
+            };
+            
+            // Sync dates if not multi-day and not repeating (since date is irrelevant in Repeating main form)
+            if (name === 'date' && conductType === 'Single') {
+                updated.endDate = value;
+            }
+
+            // Sync expenses if fundingYear changes
+            if (name === 'fundingYear') {
+                const newYear = parseInt(value as string) || new Date().getFullYear();
+                updated.expenses = prev.expenses.map(exp => {
+                    const updateDate = (d: string) => {
+                         if (!d) return d;
+                         const parts = d.split('-');
+                         if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
+                         return d;
+                    };
+                    return {
+                        ...exp,
+                        obligationMonth: updateDate(exp.obligationMonth),
+                        disbursementMonth: updateDate(exp.disbursementMonth)
+                    };
+                });
+            }
+
+            return updated;
+        });
+        if (name === 'component') setSelectedActivityType('');
+    };
+
+    const handleConductTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value as 'Single' | 'Multi-day' | 'Repeating';
+        setConductType(val);
+        
+        setFormData(prev => {
+            if (val === 'Single') return { ...prev, endDate: prev.date };
+            if (val === 'Repeating') return { ...prev, date: '', endDate: '' };
+            return prev;
+        });
+    };
+
+    const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedName = e.target.value;
+        setSelectedActivityType(selectedName);
+        
+        // Find the reference activity to determine Type (Activity vs Training)
+        const ref = referenceActivities.find(ra => ra.activity_name === selectedName && ra.component === formData.component);
+        const type = ref?.type || 'Activity'; 
+        
+        if (type === 'Training') {
+             setFormData(prev => ({ ...prev, name: '', type: 'Training' })); 
+        } else {
+            setFormData(prev => ({ ...prev, name: selectedName, type: 'Activity' }));
+        }
+    };
+    
+    // --- Handlers for Single/Multi-day Mode Ipo Selection ---
+    const handleIpoSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
+        setFormData(prev => ({ ...prev, participatingIpos: selectedOptions }));
+    };
+
+    // --- Handlers for Repeating Mode ---
+    const handleRepeatingEntryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        const isNumber = e.target.type === 'number';
+        setCurrentRepeatingEntry(prev => ({ ...prev, [name]: isNumber ? (value === '' ? '' : parseFloat(value)) : value }));
+    };
+
+    const handleRepeatingIpoSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const selectedOptions = Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value);
+        setCurrentRepeatingEntry(prev => ({ ...prev, participatingIpos: selectedOptions }));
+    };
+
+    const handleAddRepeatingEntry = () => {
+        if (!currentRepeatingEntry.date || currentRepeatingEntry.participatingIpos.length === 0) {
+            alert("Date and at least one IPO are required.");
+            return;
+        }
+
+        const newEntry = { ...currentRepeatingEntry, id: Date.now() + Math.random() };
+
+        if (editingRepeatingId !== null) {
+            setRepeatingEntries(prev => prev.map(e => e.id === editingRepeatingId ? { ...newEntry, id: editingRepeatingId } : e));
+            setEditingRepeatingId(null);
+        } else {
+            setRepeatingEntries(prev => [...prev, newEntry]);
+        }
+
+        setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+    };
+
+    const handleEditRepeatingEntry = (entry: RepeatingEntry) => {
+        setCurrentRepeatingEntry(entry);
+        setEditingRepeatingId(entry.id);
+    };
+
+    const handleDeleteRepeatingEntry = (id: number) => {
+        setRepeatingEntries(prev => prev.filter(e => e.id !== id));
+        if (editingRepeatingId === id) {
+            setEditingRepeatingId(null);
+            setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+        }
+    };
+
+    const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        if (name === 'objectType') {
+            setCurrentExpense(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
+        } else if (name === 'expenseParticular') {
+            setCurrentExpense(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
+        } else {
+            setCurrentExpense(prev => ({...prev, [name]: value}));
+        }
+    };
+
+    // Helper to get month index from YYYY-MM-DD string
+    const getMonthFromDateStr = (dateStr: string) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    // Helper inside component to use state
+    const updateExpenseDateFromMonth = (field: string, monthIndex: string) => {
+        if (monthIndex === '') {
+            setCurrentExpense(prev => ({ ...prev, [field]: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = formData.fundingYear || new Date().getFullYear();
+        // Construct date as YYYY-MM-01
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setCurrentExpense(prev => ({ ...prev, [field]: dateStr }));
+    }
+    
+    const handleAddExpense = () => {
+        if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
+            alert('Please fill out all expense fields, including UACS classification.');
+            return;
+        }
+
+        if (editingExpenseId !== null) {
+            // Update existing
+            setFormData(prev => ({
+                ...prev,
+                expenses: prev.expenses.map(e => e.id === editingExpenseId ? {
+                    ...e,
+                    objectType: currentExpense.objectType,
+                    expenseParticular: currentExpense.expenseParticular,
+                    uacsCode: currentExpense.uacsCode,
+                    obligationMonth: currentExpense.obligationMonth,
+                    disbursementMonth: currentExpense.disbursementMonth,
+                    amount: parseFloat(currentExpense.amount)
+                } : e)
+            }));
+            setEditingExpenseId(null);
+        } else {
+            // Add new
+            const newExpense: ActivityExpense = {
+                id: Date.now(),
+                objectType: currentExpense.objectType,
+                expenseParticular: currentExpense.expenseParticular,
+                uacsCode: currentExpense.uacsCode,
+                obligationMonth: currentExpense.obligationMonth,
+                disbursementMonth: currentExpense.disbursementMonth,
+                amount: parseFloat(currentExpense.amount)
+            };
+            setFormData(prev => ({...prev, expenses: [...prev.expenses, newExpense]}));
+        }
+
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+    };
+
+    const handleEditExpense = (id: number) => {
+        const expenseToEdit = formData.expenses.find(e => e.id === id);
+        if (expenseToEdit) {
+            setCurrentExpense({
+                objectType: expenseToEdit.objectType,
+                expenseParticular: expenseToEdit.expenseParticular,
+                uacsCode: expenseToEdit.uacsCode,
+                obligationMonth: expenseToEdit.obligationMonth,
+                disbursementMonth: expenseToEdit.disbursementMonth,
+                amount: String(expenseToEdit.amount)
+            });
+            setEditingExpenseId(id);
+        }
+    };
+
+    const handleCancelExpenseEdit = () => {
+        setEditingExpenseId(null);
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+    };
+
+    const handleRemoveExpense = (id: number) => {
+        setFormData(prev => ({ ...prev, expenses: prev.expenses.filter(exp => exp.id !== id) }));
+        if (editingExpenseId === id) {
+            handleCancelExpenseEdit();
+        }
+    };
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        
+        if (!formData.name) {
+            alert('Please fill out Activity Name/Title.');
+            return;
+        }
+
+        // Validate dates based on mode
+        if (conductType !== 'Repeating' && !formData.date) {
+             alert('Start Date is required.');
+             return;
+        }
+        if (conductType === 'Repeating' && repeatingEntries.length === 0) {
+             alert('Please add at least one activity to the schedule list for Repeating Activity.');
+             return;
+        }
+
+        // New Item logic
+        let newId = activities.length > 0 ? Math.max(...activities.map(a => a.id), 0) + 1 : 1;
+        const currentYear = new Date().getFullYear();
+        const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
+
+        // Prepare Base Data (Common fields)
+        const baseData = {
+            ...formData,
+            status: formData.status || 'Proposed',
+            updated_at: new Date().toISOString()
+        };
+
+        const activitiesToSave: Activity[] = [];
+
+        if (conductType === 'Repeating') {
+            repeatingEntries.forEach((entry, idx) => {
+                const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+                const uniqueUid = `${prefix}-${currentYear}-${sequence}-${idx}`;
+                
+                // Clone expenses for each activity with unique IDs
+                const clonedExpenses = formData.expenses.map((exp, eIdx) => ({
+                    ...exp,
+                    id: Date.now() + Math.random() + eIdx
+                }));
+
+                activitiesToSave.push({
+                    ...baseData,
+                    uid: uniqueUid,
+                    date: entry.date,
+                    endDate: entry.date, // Repeating are usually single instances repeated
+                    participantsMale: entry.participantsMale,
+                    participantsFemale: entry.participantsFemale,
+                    participatingIpos: entry.participatingIpos,
+                    expenses: clonedExpenses,
+                    // ID will be handled by DB or generated for offline below
+                    id: 0, 
+                    created_at: new Date().toISOString()
+                });
+            });
+        } else {
+            // Single or Multi-day
+            const sequence = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+            const uid = `${prefix}-${currentYear}-${sequence}`;
+            const finalEndDate = conductType === 'Multi-day' ? formData.endDate : formData.date;
+
+            activitiesToSave.push({
+                ...baseData,
+                uid: uid,
+                endDate: finalEndDate,
+                id: 0,
+                created_at: new Date().toISOString()
+            });
+        }
+
+        if (supabase) {
+            try {
+                // Log Create
+                logAction(`Created ${activitiesToSave.length} ${formData.type}(s)`, formData.name);
+
+                for (const act of activitiesToSave) {
+                     // Add to IPO History for EACH participating IPO
+                     for (const ipoName of act.participatingIpos) {
+                        const ipo = ipos.find(i => i.name === ipoName);
+                        if (ipo) {
+                            await addIpoHistory(ipo.id, `${act.type} Created: ${act.name} (${act.date})`);
+                        }
+                    }
+                    
+                    // Remove ID for insert to let DB auto-generate
+                    const { id, ...insertData } = act;
+                    const { error } = await supabase.from('activities').insert([insertData]);
+                    if (error) throw error;
+                }
+                
+                refreshData();
+                alert(`Successfully saved ${activitiesToSave.length} activities.`);
+
+            } catch (error: any) {
+                console.error("Error saving activity:", error);
+                alert("Failed to save activity. " + error.message);
+                return;
+            }
+        } else {
+            // Offline fallback
+            const newActivitiesWithIds = activitiesToSave.map((act, i) => ({ ...act, id: newId + i }));
+            setActivities(prev => [...newActivitiesWithIds, ...prev]);
+             alert(`Successfully saved ${activitiesToSave.length} activities (Local).`);
+        }
+        
+        handleCancelEdit();
+    };
+    
+    const handleAddNewClick = () => {
+        setEditingItem(null);
+        setView('add');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingItem(null);
+        setFormData(defaultFormData);
+        setSelectedActivityType('');
+        setConductType('Single');
+        setRepeatingEntries([]);
+        setCurrentRepeatingEntry({ id: 0, date: '', participantsMale: 0, participantsFemale: 0, participatingIpos: [] });
+        setActiveTab('details');
+        setEditingExpenseId(null);
+        setCurrentExpense({
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            amount: ''
+        });
+        setView('list');
     };
 
     const handleDeleteClick = (activity: Activity) => {
@@ -354,41 +822,34 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
       )
     }
 
-    return (
-        <div>
-            {isDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
-                        <p className="my-4">Are you sure you want to delete this activity?</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {isMultiDeleteModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected activities? 
-                            This action cannot be undone.
-                        </p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
+    // Re-declare totalBudget inside component for use in renderFormView
+    const totalBudget = useMemo(() => {
+        return formData.expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    }, [formData.expenses]);
+    
+    const TabButton: React.FC<{ tabName: typeof activeTab; label: string; }> = ({ tabName, label }) => {
+        const isActive = activeTab === tabName;
+        return (
+            <button
+                type="button"
+                onClick={() => setActiveTab(tabName)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
+                    ${isActive
+                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    }
+    
+    const renderListView = () => (
+        <>
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Activities Management</h2>
                 {canEdit && (
-                    <button onClick={onCreateActivity} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                         + Add New Activity
                     </button>
                 )}
@@ -621,6 +1082,352 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     </div>
                 </div>
             </div>
+        </>
+    );
+
+    const renderFormView = () => (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">Add New Activity</h3>
+                 <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
+            </div>
+            <form onSubmit={handleSubmit}>
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                    <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
+                        <TabButton tabName="details" label="Details" />
+                        <TabButton tabName="budget" label="Expenses" />
+                    </nav>
+                </div>
+                
+                {activeTab === 'details' && (
+                    <div className="space-y-6">
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Basic Information</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium">Status</label>
+                                    <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
+                                        <option value="Proposed">Proposed</option>
+                                        <option value="Ongoing">Ongoing</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Component</label>
+                                    <select name="component" value={formData.component} onChange={handleInputChange} className={commonInputClasses}>
+                                        {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Activity Name</label>
+                                    <select value={selectedActivityType} onChange={handleActivityTypeChange} className={commonInputClasses}>
+                                        <option value="">Select Activity</option>
+                                        {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                </div>
+                                {formData.type === 'Training' && (
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium">Specific Training Title</label>
+                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} required className={commonInputClasses} placeholder="Enter specific training title" />
+                                    </div>
+                                )}
+                                {formData.type === 'Training' && (
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium">Facilitator</label>
+                                        <input type="text" name="facilitator" value={formData.facilitator} onChange={handleInputChange} className={commonInputClasses} />
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium">Conduct Type</label>
+                                    <select 
+                                        value={conductType} 
+                                        onChange={handleConductTypeChange}
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="Single">Single Day Activity</option>
+                                        <option value="Multi-day">Multi Day Activity</option>
+                                        <option value="Repeating">Repeating Activity</option>
+                                    </select>
+                                </div>
+                                
+                                {conductType === 'Single' && (
+                                    <div>
+                                        <label className="block text-sm font-medium">Date of Conduct</label>
+                                        <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                    </div>
+                                )}
+                                {conductType === 'Multi-day' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium">Start Date</label>
+                                            <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium">End Date</label>
+                                            <input type="date" name="endDate" value={formData.endDate || formData.date} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    </>
+                                )}
+                                {conductType === 'Repeating' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-400 dark:text-gray-500">Date of Conduct</label>
+                                        <input type="text" disabled value="Multiple Dates (See Below)" className={`${commonInputClasses} bg-gray-100 dark:bg-gray-800 cursor-not-allowed`} />
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="block text-sm font-medium">Location</label>
+                                    <LocationPicker value={formData.location} onChange={(val) => setFormData(prev => ({...prev, location: val}))} />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium">Description</label>
+                                    <textarea name="description" value={formData.description} onChange={handleInputChange} rows={3} className={commonInputClasses} />
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        {conductType !== 'Repeating' ? (
+                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Participants & IPOs</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium">Male Participants (Target)</label>
+                                        <input type="number" name="participantsMale" value={formData.participantsMale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Female Participants (Target)</label>
+                                        <input type="number" name="participantsFemale" value={formData.participantsFemale} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium">Total Target</label>
+                                        <input type="number" value={(formData.participantsMale || 0) + (formData.participantsFemale || 0)} readOnly className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="block text-sm font-medium">Participating IPOs</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-xs">Filter by Region:</label>
+                                            <select value={ipoRegionFilter} onChange={e => setIpoRegionFilter(e.target.value)} className="text-xs border rounded p-1 dark:bg-gray-700 dark:border-gray-600">
+                                                <option value="All">All</option>
+                                                {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <select multiple name="participatingIpos" value={formData.participatingIpos} onChange={handleIpoSelectChange} className={`${commonInputClasses} h-40`}>
+                                        {filteredIposForSelection.map(ipo => (
+                                            <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
+                                </div>
+                            </fieldset>
+                        ) : (
+                            <fieldset className="border border-blue-300 dark:border-blue-700 p-4 rounded-md bg-blue-50 dark:bg-blue-900/10">
+                                <legend className="px-2 font-semibold text-blue-700 dark:text-blue-300">Repeating Activity Schedule</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 p-4 bg-white dark:bg-gray-800 rounded shadow-sm">
+                                     <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Date of Conduct</label>
+                                        <input type="date" name="date" value={currentRepeatingEntry.date} onChange={handleRepeatingEntryChange} className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Male Target</label>
+                                        <input type="number" name="participantsMale" value={currentRepeatingEntry.participantsMale} onChange={handleRepeatingEntryChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1">
+                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Female Target</label>
+                                        <input type="number" name="participantsFemale" value={currentRepeatingEntry.participantsFemale} onChange={handleRepeatingEntryChange} min="0" className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-1 flex items-end">
+                                        <button 
+                                            type="button" 
+                                            onClick={handleAddRepeatingEntry}
+                                            className="w-full py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700"
+                                        >
+                                            {editingRepeatingId ? 'Update Entry' : 'Add to Schedule'}
+                                        </button>
+                                    </div>
+                                    <div className="md:col-span-4">
+                                         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Participating IPOs</label>
+                                         <select multiple value={currentRepeatingEntry.participatingIpos} onChange={handleRepeatingIpoSelect} className={`${commonInputClasses} h-20 text-xs`}>
+                                            {filteredIposForSelection.map(ipo => (
+                                                <option key={ipo.id} value={ipo.name}>{ipo.name}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[10px] text-gray-400 mt-0.5">Hold Ctrl/Cmd to select multiple IPOs for this specific date.</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-xs text-left text-gray-700 dark:text-gray-300">
+                                        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-400">
+                                            <tr>
+                                                <th scope="col" className="px-3 py-2">Date</th>
+                                                <th scope="col" className="px-3 py-2">Participants</th>
+                                                <th scope="col" className="px-3 py-2">IPOs</th>
+                                                <th scope="col" className="px-3 py-2 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {repeatingEntries.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={4} className="px-3 py-4 text-center italic text-gray-500">No schedule entries added yet.</td>
+                                                </tr>
+                                            ) : (
+                                                repeatingEntries.map((entry, idx) => (
+                                                    <tr key={entry.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                                        <td className="px-3 py-2">{formatDate(entry.date)}</td>
+                                                        <td className="px-3 py-2">M: {entry.participantsMale}, F: {entry.participantsFemale}</td>
+                                                        <td className="px-3 py-2 truncate max-w-xs" title={entry.participatingIpos.join(', ')}>{entry.participatingIpos.length} IPOs</td>
+                                                        <td className="px-3 py-2 text-right space-x-2">
+                                                            <button type="button" onClick={() => handleEditRepeatingEntry(entry)} className="text-blue-600 hover:underline">Edit</button>
+                                                            <button type="button" onClick={() => handleDeleteRepeatingEntry(entry.id)} className="text-red-600 hover:underline">Delete</button>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </fieldset>
+                        )}
+
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><label className="block text-sm font-medium">Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div>
+                                    <label className="block text-sm font-medium">Type</label>
+                                    <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
+                                        {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Tier</label>
+                                    <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                        {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                )}
+
+                {activeTab === 'budget' && (
+                    <div className="space-y-6">
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Expenses</legend>
+                            <div className="mb-2 text-sm text-gray-500 italic">Note: These expenses will apply to {conductType === 'Repeating' ? 'EACH activity entry created' : 'this activity'}.</div>
+                            <div className="space-y-2 mb-4">
+                                {formData.expenses.map((exp) => (
+                                    <div key={exp.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingExpenseId === exp.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                        <div>
+                                            <span className="font-semibold">{exp.expenseParticular}</span>
+                                            <div className="text-xs text-gray-500">{exp.uacsCode} | Obl: {formatMonthYear(exp.obligationMonth)} | Disb: {formatMonthYear(exp.disbursementMonth)}</div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className="font-bold">{formatCurrency(exp.amount)}</span>
+                                            <div className="flex items-center gap-2">
+                                                <button type="button" onClick={() => handleEditExpense(exp.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                </button>
+                                                <button type="button" onClick={() => handleRemoveExpense(exp.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="text-right font-bold pt-2">Total: {formatCurrency(totalBudget)}</div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
+                                <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium">Expense Class</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} disabled={!currentExpense.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentExpense.expenseParticular && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
+                                
+                                <div>
+                                    <label className="block text-xs font-medium">Obligation Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(currentExpense.obligationMonth)} 
+                                        onChange={(e) => updateExpenseDateFromMonth('obligationMonth', e.target.value)} 
+                                        className={commonInputClasses + " py-1.5 text-sm"}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium">Disbursement Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(currentExpense.disbursementMonth)} 
+                                        onChange={(e) => updateExpenseDateFromMonth('disbursementMonth', e.target.value)} 
+                                        className={commonInputClasses + " py-1.5 text-sm"}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
+                                
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-grow">
+                                        <label className="block text-xs font-medium">Amount</label>
+                                        <input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} min="0" step="0.01" className={commonInputClasses + " py-1.5"} />
+                                    </div>
+                                    {editingExpenseId !== null ? (
+                                        <div className="flex gap-1 h-9 items-end">
+                                            <button type="button" onClick={handleAddExpense} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
+                                            <button type="button" onClick={handleCancelExpenseEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                        </div>
+                                    ) : (
+                                        <button type="button" onClick={handleAddExpense} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
+                                    )}
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                )}
+
+                <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
+                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save {conductType === 'Repeating' ? 'Activities' : 'Activity'}</button>
+                </div>
+            </form>
+        </div>
+    );
+
+    return (
+        <div>
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold">Confirm Deletion</h3>
+                        <p className="my-4">Are you sure you want to delete this activity?</p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {isMultiDeleteModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
+                        <p className="my-4 text-gray-700 dark:text-gray-300">
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected activities? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {view === 'list' ? renderListView() : renderFormView()}
         </div>
     );
 };
