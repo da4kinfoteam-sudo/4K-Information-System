@@ -2,7 +2,7 @@
 // Author: 4K
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions } from '../constants';
+import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, ouToRegionMap } from '../constants';
 
 interface AIChatbotProps {
     subprojects: Subproject[];
@@ -44,7 +44,7 @@ You MUST use Markdown format for all links: \`[Link Text](URL)\`.
 
 **Response Style:**
 1. **Be Concise**: Summarize data. Do not list more than 5 items unless asked.
-2. **Data Driven**: Use the provided context.
+2. **Data Driven**: Use the provided context 'system_stats' and 'filtered_results' to answer specific counting questions.
 3. **Navigation Routes**:
    - Lists: \`/dashboards\`, \`/subprojects\`, \`/activities\`, \`/ipo\`, \`/marketing-database\`, \`/program-management\`, \`/reports\`
    - Details: \`/subproject/UID\`, \`/ipo/Name\`, \`/activity/UID\`
@@ -182,9 +182,19 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             // Region Filter
             if (targetRegion) {
-                const r = (item.region || item.location || item.operatingUnit || '').toLowerCase();
-                // Simple fuzzy check
-                if (!r.includes(targetRegion.toLowerCase()) && !r.includes(targetRegion.split(' ')[1]?.toLowerCase())) {
+                // Build a searchable string that includes direct location AND mapped OU region
+                let locationStr = (item.region || item.location || item.operatingUnit || '').toLowerCase();
+                
+                // Map OU to Region if available (e.g. RPMO 7 -> Region VII)
+                if (item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
+                    locationStr += ' ' + ouToRegionMap[item.operatingUnit].toLowerCase();
+                }
+
+                // Simple fuzzy check against targetRegion (e.g. "region vii") or its numeral part "vii"
+                const tr = targetRegion.toLowerCase();
+                const trShort = targetRegion.split(' ')[1]?.toLowerCase();
+                
+                if (!locationStr.includes(tr) && (!trShort || !locationStr.includes(trShort))) {
                     match = false;
                 }
             }
@@ -192,19 +202,33 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             return match;
         };
 
-        // 3. Build Stats (Always Included)
+        // 3. Pre-calculate Intersections (Fix for "how many IPOs with subprojects...")
+        const filteredSubprojects = subprojects.filter(filterItem);
+        const filteredTrainings = activities.filter(a => a.type === 'Training').filter(filterItem);
+        
+        const iposWithFilteredSP = new Set(filteredSubprojects.map(s => s.indigenousPeopleOrganization));
+        const iposWithFilteredTrainings = new Set(filteredTrainings.flatMap(t => t.participatingIpos));
+
+        // 4. Build Stats (Always Included)
         const stats = {
             counts: {
-                subprojects: subprojects.length,
-                ipos: ipos.length,
-                trainings: activities.filter(a => a.type === 'Training').length,
+                total_subprojects: subprojects.length,
+                total_ipos: ipos.length,
+                total_trainings: activities.filter(a => a.type === 'Training').length,
             },
-            filters_applied: { year: targetYear, region: targetRegion }
+            filters_applied: { year: targetYear, region: targetRegion },
+            filtered_results: {
+                subprojects_count: filteredSubprojects.length,
+                trainings_count: filteredTrainings.length,
+                // These are critical for the user's specific questions
+                unique_ipos_with_matching_subprojects: iposWithFilteredSP.size,
+                unique_ipos_with_matching_trainings: iposWithFilteredTrainings.size
+            }
         };
 
         const context: any = { system_stats: stats };
 
-        // 4. Filter & Slice Data
+        // 5. Filter & Slice Data Lists for detailed view
         const maxItems = 20;
 
         // If asking about IPOs
@@ -217,8 +241,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
         // If asking about Subprojects
         if (q.includes('subproject') || q.includes('project') || q.includes('livelihood')) {
-            let filtered = subprojects.filter(filterItem);
-            context.subprojects = filtered.slice(0, maxItems).map(s => ({
+            context.subprojects = filteredSubprojects.slice(0, maxItems).map(s => ({
                 uid: s.uid, name: s.name, status: s.status, location: s.location, year: s.fundingYear, ipo: s.indigenousPeopleOrganization
             }));
         }
