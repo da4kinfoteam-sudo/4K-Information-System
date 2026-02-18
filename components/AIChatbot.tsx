@@ -104,7 +104,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({ subprojects, ipos, activities }) 
                     fundYear: s.fundingYear,
                     fundType: s.fundType,
                     ipo: s.indigenousPeopleOrganization,
-                    totalBudget: s.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0)
+                    // FIX: Safely handle null/undefined details with (s.details || [])
+                    totalBudget: (s.details || []).reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0)
                 })),
                 ipos: ipos.map(i => ({
                     name: i.name,
