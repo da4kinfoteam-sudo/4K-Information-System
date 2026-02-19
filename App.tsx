@@ -69,7 +69,12 @@ const AppContent: React.FC = () => {
     const [currentPage, setCurrentPage] = useState('/');
 
     // Global Filter State (Triggered by AI or External links)
-    const [externalFilters, setExternalFilters] = useState<{ region?: string; year?: string; search?: string } | null>(null);
+    const [externalFilters, setExternalFilters] = useState<{ 
+        region?: string; 
+        year?: string; 
+        search?: string;
+        status?: string;
+    } | null>(null);
 
     // --- DATA STATE MANAGEMENT ---
     
@@ -292,7 +297,7 @@ const AppContent: React.FC = () => {
     };
     
     // Handler for Chatbot-driven filters
-    const handleApplyFilter = (filters: { region?: string; year?: string; search?: string }) => {
+    const handleApplyFilter = (filters: { region?: string; year?: string; search?: string; status?: string }) => {
         setExternalFilters(filters);
     };
 
@@ -313,6 +318,7 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={otherProgramExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            // @ts-ignore
                             externalFilters={externalFilters}
                         />;
             case '/dashboards':
@@ -350,7 +356,6 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Training"
-                            // @ts-ignore
                             externalFilters={externalFilters}
                         />;
             case '/other-activities':
@@ -364,7 +369,6 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
-                            // @ts-ignore
                             externalFilters={externalFilters}
                         />;
             case '/activities': 
@@ -377,7 +381,6 @@ const AppContent: React.FC = () => {
                             onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
-                            // @ts-ignore
                             externalFilters={externalFilters}
                         />;
             case '/activity-edit':

@@ -23,7 +23,7 @@ interface SubprojectsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
-    externalFilters?: { region?: string; year?: string; search?: string } | null;
+    externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -214,7 +214,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
-    // Listen to External Filters
+    // Listen to External Filters (Chatbot)
     useEffect(() => {
         if (externalFilters) {
             const newFilters: Record<string, string[]> = {};
@@ -228,6 +228,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 if (targetOUs.length > 0) {
                     newFilters['operatingUnit'] = targetOUs;
                 }
+            }
+            if (externalFilters.status) {
+                newFilters['status'] = [externalFilters.status];
             }
             if (externalFilters.search) {
                 setSearchTerm(externalFilters.search);

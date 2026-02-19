@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity, otherActivityComponents, ActivityComponentType } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity, otherActivityComponents, ActivityComponentType, ouToRegionMap } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -24,6 +24,7 @@ interface ActivitiesProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[]; 
     forcedType?: 'Training' | 'Activity';
+    externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -188,7 +189,11 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
 };
 
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, onCreateActivity, uacsCodes, referenceActivities = [], forcedType }) => {
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ 
+    ipos, activities, setActivities, onSelectIpo, onSelectActivity, 
+    onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
+    externalFilters 
+}) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
@@ -216,6 +221,34 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+
+    // Listen to External Filters (Chatbot)
+    useEffect(() => {
+        if (externalFilters) {
+            const newFilters: Record<string, string[]> = {};
+            
+            if (externalFilters.year) {
+                newFilters['fundingYear'] = [externalFilters.year];
+            }
+            if (externalFilters.region) {
+                // Map Region to OUs
+                const targetOUs = operatingUnits.filter(ou => ouToRegionMap[ou] === externalFilters.region);
+                if (targetOUs.length > 0) {
+                    newFilters['operatingUnit'] = targetOUs;
+                }
+            }
+            if (externalFilters.status) {
+                newFilters['status'] = [externalFilters.status];
+            }
+            if (externalFilters.search) {
+                setSearchTerm(externalFilters.search);
+            }
+            
+            if (Object.keys(newFilters).length > 0) {
+                setColumnFilters(prev => ({ ...prev, ...newFilters }));
+            }
+        }
+    }, [externalFilters]);
 
     // 1. Initial Filtering (Search + Permissions + ForcedType)
     const initiallyFilteredActivities = useMemo(() => {
@@ -756,8 +789,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
-                        </select>
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select>
                         <span className="text-gray-700 dark:text-gray-300">entries</span>
                     </div>
                      <div className="flex items-center gap-4 text-sm">

@@ -17,7 +17,7 @@ interface AIChatbotProps {
     onSelectIpo: (ipo: IPO) => void;
     onSelectActivity: (act: Activity) => void;
     onSelectMarketingPartner: (mp: MarketingPartner) => void;
-    onApplyFilter?: (filters: { region?: string; year?: string; search?: string }) => void;
+    onApplyFilter?: (filters: { region?: string; year?: string; search?: string; status?: string }) => void;
 }
 
 const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System.
@@ -39,6 +39,8 @@ const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information
 **Smart Navigation**
 - To show MIMAROPA IPOs: \`[View MIMAROPA IPOs](/ipo?region=MIMAROPA Region)\`
 - To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
+- To show Completed Subprojects: \`[View Completed Subprojects](/subprojects?status=Completed)\`
+- To show Ongoing Trainings: \`[View Ongoing Trainings](/trainings?status=Ongoing)\`
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -49,7 +51,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I'm ready to help. Ask me 'How many IPOs in Region 2?' or 'How much is the budget for 2024?'" }
+        { role: 'model', text: "Hello! I'm ready to help. Ask me 'How many Completed Subprojects in Region 2?' or 'How much is the budget for 2024?'" }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -74,9 +76,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const region = params.get('region') || undefined;
             const year = params.get('year') || undefined;
             const search = params.get('search') || undefined;
+            const status = params.get('status') || undefined;
             
             // Apply filter globally
-            onApplyFilter({ region, year, search });
+            onApplyFilter({ region, year, search, status });
         }
 
         // 2. Normal Navigation Logic
@@ -156,7 +159,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const yearMatch = q.match(/\b(20\d{2})\b/);
         const targetYear = yearMatch ? yearMatch[1] : null;
 
-        // 2. Identify Region Aliases (More Robust Mapping)
+        // 2a. Identify Region Aliases
         const regionAliases: {[key: string]: string} = {
             'ilocos': 'Region I (Ilocos Region)', 'region 1': 'Region I (Ilocos Region)', 'region I': 'Region I (Ilocos Region)',
             'cagayan': 'Region II (Cagayan Valley)', 'region 2': 'Region II (Cagayan Valley)', 'region II': 'Region II (Cagayan Valley)',
@@ -179,18 +182,21 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         };
         
         let targetRegion: string | null = null;
-        // Check for longest matches first to avoid "Region 1" matching inside "Region 10" incorrectly if basic string search used
         const sortedAliases = Object.keys(regionAliases).sort((a,b) => b.length - a.length);
         
-        // Split query into words to safely match "Region 2" without matching "Region 20"
-        const queryWords = q.split(/[^a-z0-9]/); // Split by non-alphanumeric
-
         for (const alias of sortedAliases) {
-            // Check if alias exists in query
             if (q.includes(alias)) {
-                // Verify it's a discrete mention if it's a short number alias like "2" (harder with string includes)
-                // For now, rely on specific keys like "region 2" which are safer
                 targetRegion = regionAliases[alias];
+                break;
+            }
+        }
+
+        // 2b. Identify Status
+        const statusKeywords = ['proposed', 'ongoing', 'completed', 'cancelled'];
+        let targetStatus: string | null = null;
+        for (const s of statusKeywords) {
+            if (q.includes(s)) {
+                targetStatus = s.charAt(0).toUpperCase() + s.slice(1);
                 break;
             }
         }
@@ -205,15 +211,11 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
             // Region Filter
             if (targetRegion) {
-                // Determine item region
                 let itemRegion = item.region || '';
-                
-                // If item has no direct region, try mapping from OU or location text
                 if (!itemRegion && item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
                     itemRegion = ouToRegionMap[item.operatingUnit];
                 }
                 if (!itemRegion && item.location) {
-                    // Rudimentary text check
                     if (item.location.toLowerCase().includes(targetRegion.toLowerCase())) itemRegion = targetRegion;
                 }
 
@@ -221,16 +223,32 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     match = false;
                 }
             }
+            // Status Filter
+            if (targetStatus) {
+                if (item.status && item.status !== targetStatus) match = false;
+                // If item has no status property (like IPOs typically, though we might infer it from subprojects later), exclude it if status is strictly requested
+                // Exception: IPOs typically don't have 'Completed' status themselves, but have 'levels'. 
+                // We'll skip status check if item doesn't have status field to avoid filtering out everything unless user specifically asked for an entity with status.
+                // However, for counts like "Completed Subprojects", we must filter.
+                if (!item.status && (q.includes('subproject') || q.includes('training') || q.includes('activity'))) match = false;
+            }
+
             return match;
         };
 
         const filteredSubprojects = subprojects.filter(filterItem);
         const filteredTrainings = activities.filter(a => a.type === 'Training').filter(filterItem);
         const filteredActivities = activities.filter(a => a.type === 'Activity').filter(filterItem);
-        const filteredIPOs = ipos.filter(filterItem);
+        // Note: IPOs don't usually have 'status' like subprojects, so filtering IPOs by 'Completed' might return 0 if strict.
+        // We relax IPO filtering if status is present but IPO doesn't have it, UNLESS user asked for IPOs specifically with a status (which is rare/invalid).
+        const filteredIPOs = ipos.filter(i => {
+            // Apply year/region filters
+            if (targetYear && new Date(i.registrationDate).getFullYear().toString() !== targetYear) return false;
+            if (targetRegion && i.region !== targetRegion) return false;
+            return true;
+        });
         
         // 4. PRE-CALCULATE FINANCIALS (The "Formula")
-        // We do the math here so the AI just reads the result.
         const calculateBudget = (items: any[], type: 'sp' | 'act') => {
             if (type === 'sp') {
                 return items.reduce((sum, sp) => 
@@ -250,7 +268,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const stats = {
             filters_applied: { 
                 year: targetYear || "All Years", 
-                region: targetRegion || "All Regions (National)" 
+                region: targetRegion || "All Regions (National)",
+                status: targetStatus || "All Statuses"
             },
             filtered_results: {
                 subprojects_count: filteredSubprojects.length,
@@ -270,19 +289,18 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const context: any = { system_stats: stats };
 
         // 6. Conditionally add list data only if NOT an aggregate question
-        // If user asks "how many" or "how much", we send ONLY the stats to save tokens.
         const isAggregateQuestion = q.includes('how much') || q.includes('how many') || q.includes('total') || q.includes('count') || q.includes('sum') || q.includes('budget');
 
         if (!isAggregateQuestion) {
-            const maxItems = 5; // Restrict list to 5 items to keep payload light
+            const maxItems = 5; 
             if (q.includes('ipo') || q.includes('organization')) {
                 context.ipos_list = filteredIPOs.slice(0, maxItems).map(i => ({ name: i.name, location: i.location }));
             }
             if (q.includes('subproject')) {
-                context.subprojects_list = filteredSubprojects.slice(0, maxItems).map(s => ({ name: s.name, budget: calculateBudget([s], 'sp') }));
+                context.subprojects_list = filteredSubprojects.slice(0, maxItems).map(s => ({ name: s.name, budget: calculateBudget([s], 'sp'), status: s.status }));
             }
             if (q.includes('training')) {
-                context.trainings_list = filteredTrainings.slice(0, maxItems).map(t => ({ name: t.name, budget: calculateBudget([t], 'act') }));
+                context.trainings_list = filteredTrainings.slice(0, maxItems).map(t => ({ name: t.name, budget: calculateBudget([t], 'act'), status: t.status }));
             }
         }
 
@@ -315,7 +333,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const ai = new GoogleGenAI({ apiKey });
             
             const chat = ai.chats.create({
-                model: 'gemini-3-flash-preview', // Switch to a stable text model
+                model: 'gemini-3-flash-preview', 
                 config: {
                     systemInstruction: systemPrompt,
                 },
@@ -335,7 +353,6 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         } catch (error: any) {
             console.error("AI Chat Error:", error);
-            // More descriptive error for user if it's a quota issue
             let errorMsg = "I'm having trouble connecting right now.";
             if (error.message?.includes('429')) {
                 errorMsg = "I've reached my usage limit for now. Please try again later.";
