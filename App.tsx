@@ -306,6 +306,7 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={otherProgramExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            externalFilters={externalFilters}
                         />;
             case '/dashboards':
                  return <DashboardsPage 

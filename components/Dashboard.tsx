@@ -8,8 +8,6 @@ import Calendar, { CalendarEvent } from './Calendar'; // Updated Import
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 
-// ... (previous imports and declarations)
-
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
 
@@ -246,12 +244,13 @@ interface DashboardProps {
     otherProgramExpenses: OtherProgramExpense[];
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
+    externalFilters?: { region?: string; year?: string; search?: string } | null;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses,
-    onSelectSubproject, onSelectActivity
+    onSelectSubproject, onSelectActivity, externalFilters
 }) => {
     const { currentUser } = useAuth();
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
@@ -274,6 +273,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
     const [activitiesPage, setActivitiesPage] = useState(1);
     const itemsPerPageActivities = 9;
+
+    // React to external filters
+    useEffect(() => {
+        if (externalFilters?.year) {
+            setSelectedYear(externalFilters.year);
+        }
+    }, [externalFilters]);
 
     // ... (Filter Effects and Calculations remain same) ...
 
@@ -581,7 +587,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             )}
 
-            {/* ... (Header with filters code - same as before) ... */}
             <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">4K Information System Overview</h2>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -600,7 +605,34 @@ const Dashboard: React.FC<DashboardProps> = ({
                             ))}
                         </select>
                     </div>
-                    {/* ... other filters (Tier, Fund, Year) ... */}
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                        <select 
+                            id="tier-filter"
+                            value={selectedTier}
+                            onChange={(e) => setSelectedTier(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                        <select 
+                            id="fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(f => (
+                                <option key={f} value={f}>{f}</option>
+                            ))}
+                        </select>
+                    </div>
                     <div className="flex items-center gap-2">
                         <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
                         <select 
