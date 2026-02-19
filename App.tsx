@@ -67,6 +67,9 @@ const AppContent: React.FC = () => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [currentPage, setCurrentPage] = useState('/');
 
+    // Global Filter State (Triggered by AI or External links)
+    const [externalFilters, setExternalFilters] = useState<{ region?: string; year?: string; search?: string } | null>(null);
+
     // --- DATA STATE MANAGEMENT ---
     
     // Subprojects, IPOs, Activities use the sync hook
@@ -280,6 +283,11 @@ const AppContent: React.FC = () => {
         setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage(path);
     };
+    
+    // Handler for Chatbot-driven filters
+    const handleApplyFilter = (filters: { region?: string; year?: string; search?: string }) => {
+        setExternalFilters(filters);
+    };
 
     if (!currentUser) {
         return <Login />;
@@ -320,6 +328,8 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
+                            // @ts-ignore
+                            externalFilters={externalFilters}
                         />;
             case '/trainings':
                 return <ActivitiesComponent 
@@ -332,6 +342,8 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Training"
+                            // @ts-ignore
+                            externalFilters={externalFilters}
                         />;
             case '/other-activities':
                 return <ActivitiesComponent 
@@ -344,6 +356,8 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
+                            // @ts-ignore
+                            externalFilters={externalFilters}
                         />;
             case '/activities': 
                 return <ActivitiesComponent 
@@ -355,6 +369,8 @@ const AppContent: React.FC = () => {
                             onCreateActivity={handleCreateActivity}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            // @ts-ignore
+                            externalFilters={externalFilters}
                         />;
             case '/activity-edit':
                 return <ActivityEdit 
@@ -390,6 +406,8 @@ const AppContent: React.FC = () => {
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
+                            // @ts-ignore
+                            externalFilters={externalFilters}
                         />;
             // NEW ACCOMPLISHMENT ROUTES
             case '/accomplishment/financial':
@@ -470,6 +488,7 @@ const AppContent: React.FC = () => {
                             onSelectSubproject={handleSelectSubproject}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
+                            externalFilters={externalFilters}
                         />;
             case '/references':
                 return <References 
@@ -674,6 +693,7 @@ const AppContent: React.FC = () => {
                     onSelectIpo={handleSelectIpo}
                     onSelectActivity={handleSelectActivity}
                     onSelectMarketingPartner={handleSelectMarketingPartner}
+                    onApplyFilter={handleApplyFilter}
                 />
             </div>
         </div>
