@@ -20,38 +20,25 @@ interface AIChatbotProps {
     onApplyFilter?: (filters: { region?: string; year?: string; search?: string }) => void;
 }
 
-// Helper to retrieve API Key
-const getApiKey = () => {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-        if ((import.meta as any).env.API_KEY) return (import.meta as any).env.API_KEY;
-        if ((import.meta as any).env.VITE_API_KEY) return (import.meta as any).env.VITE_API_KEY;
-        if ((import.meta as any).env.VITE_GEMINI_API_KEY) return (import.meta as any).env.VITE_GEMINI_API_KEY;
-    }
-    if (typeof process !== 'undefined' && process.env) {
-        if (process.env.API_KEY) return process.env.API_KEY;
-        if (process.env.VITE_API_KEY) return process.env.VITE_API_KEY;
-        if (process.env.REACT_APP_API_KEY) return process.env.REACT_APP_API_KEY;
-    }
-    return '';
-};
-
 const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System.
 
-**CRITICAL: Financial & Data Queries**
-- The system has **ALREADY calculated** the totals for you. Look at the \`financial_summary\` and \`filtered_results\` objects in the context.
-- If asked "How much", return the exact value from \`financial_summary\`. Do NOT attempt to sum items yourself.
-- If asked "How many", return the exact count from \`filtered_results\`.
-- All monetary values are in PHP. Format them nicely (e.g., PHP 1,500,000.00).
-
-**Smart Navigation**
-You can control the app view by adding query parameters to links.
-- To show MIMAROPA IPOs: \`[View MIMAROPA IPOs](/ipo?region=MIMAROPA Region)\`
-- To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
+**CRITICAL: Data Usage Rule**
+- The system has **ALREADY computed** the answers for you.
+- DO NOT calculate anything yourself.
+- DO NOT assume data is missing if you don't see a list.
+- Look specifically at the \`system_stats\` object in the context.
+- If the user asks "How many", use \`filtered_results.<category>_count\`.
+- If the user asks "How much" (budget/financial), use \`financial_summary.<category>_allocation\`.
 
 **Response Style:**
-1. **Be Concise**: Give the answer directly.
-2. **Context Aware**: If the user asks about a region, verify the data in \`filters_applied\` matches.
-3. **Hyperlinks**: ALWAYS use Markdown links \`[Text](URL)\`.
+1. **Direct Answer**: Start with the number or amount. "There are 163 IPOs in Region 2."
+2. **Context**: Mention the filter applied (e.g., "in Region II").
+3. **No Fluff**: Do not say "Based on the provided data". Just give the answer.
+4. **Currency**: Format PHP (e.g., ₱1.5M or PHP 1,500,000).
+
+**Smart Navigation**
+- To show MIMAROPA IPOs: \`[View MIMAROPA IPOs](/ipo?region=MIMAROPA Region)\`
+- To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -62,7 +49,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me 'How much is the budget for Region 2?' or 'Show me subprojects in 2024'." }
+        { role: 'model', text: "Hello! I'm ready to help. Ask me 'How many IPOs in Region 2?' or 'How much is the budget for 2024?'" }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -159,8 +146,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
     };
 
     /**
-     * DYNAMIC CONTEXT BUILDER (The "Query Engine")
-     * Filters data first, then computes totals, then sends ONLY the summary to AI.
+     * DYNAMIC QUERY ENGINE
+     * Pre-calculates the exact answer locally to save AI tokens and quota.
      */
     const getDynamicContext = (query: string) => {
         const q = query.toLowerCase();
@@ -169,42 +156,46 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const yearMatch = q.match(/\b(20\d{2})\b/);
         const targetYear = yearMatch ? yearMatch[1] : null;
 
-        // 2. Identify Region Aliases
+        // 2. Identify Region Aliases (More Robust Mapping)
         const regionAliases: {[key: string]: string} = {
-            'ilocos': 'Region I', 'region 1': 'Region I',
-            'cagayan': 'Region II', 'region 2': 'Region II',
-            'central luzon': 'Region III', 'region 3': 'Region III',
-            'calabarzon': 'Region IV-A', '4a': 'Region IV-A',
-            'mimaropa': 'MIMAROPA Region', '4b': 'MIMAROPA Region',
-            'bicol': 'Region V', 'region 5': 'Region V',
-            'western visayas': 'Region VI', 'region 6': 'Region VI',
-            'central visayas': 'Region VII', 'region 7': 'Region VII',
-            'eastern visayas': 'Region VIII', 'region 8': 'Region VIII',
-            'zamboanga': 'Region IX', 'region 9': 'Region IX',
-            'northern mindanao': 'Region X', 'region 10': 'Region X',
-            'davao': 'Region XI', 'region 11': 'Region XI',
-            'soccsksargen': 'Region XII', 'region 12': 'Region XII',
-            'caraga': 'Region XIII', 'region 13': 'Region XIII',
-            'ncr': 'National Capital Region', 'metro manila': 'National Capital Region',
-            'car': 'Cordillera Administrative Region', 'cordillera': 'Cordillera Administrative Region',
-            'barmm': 'Bangsamoro', 'muslim mindanao': 'Bangsamoro',
-            'nir': 'Negros Island Region', 'negros': 'Negros Island Region'
+            'ilocos': 'Region I (Ilocos Region)', 'region 1': 'Region I (Ilocos Region)', 'region I': 'Region I (Ilocos Region)',
+            'cagayan': 'Region II (Cagayan Valley)', 'region 2': 'Region II (Cagayan Valley)', 'region II': 'Region II (Cagayan Valley)',
+            'central luzon': 'Region III (Central Luzon)', 'region 3': 'Region III (Central Luzon)', 'region III': 'Region III (Central Luzon)',
+            'calabarzon': 'Region IV-A (CALABARZON)', '4a': 'Region IV-A (CALABARZON)', 'region 4a': 'Region IV-A (CALABARZON)',
+            'mimaropa': 'MIMAROPA Region', '4b': 'MIMAROPA Region', 'region 4b': 'MIMAROPA Region',
+            'bicol': 'Region V (Bicol Region)', 'region 5': 'Region V (Bicol Region)', 'region V': 'Region V (Bicol Region)',
+            'western visayas': 'Region VI (Western Visayas)', 'region 6': 'Region VI (Western Visayas)', 'region VI': 'Region VI (Western Visayas)',
+            'central visayas': 'Region VII (Central Visayas)', 'region 7': 'Region VII (Central Visayas)', 'region VII': 'Region VII (Central Visayas)',
+            'eastern visayas': 'Region VIII (Eastern Visayas)', 'region 8': 'Region VIII (Eastern Visayas)', 'region VIII': 'Region VIII (Eastern Visayas)',
+            'zamboanga': 'Region IX (Zamboanga Peninsula)', 'region 9': 'Region IX (Zamboanga Peninsula)', 'region IX': 'Region IX (Zamboanga Peninsula)',
+            'northern mindanao': 'Region X (Northern Mindanao)', 'region 10': 'Region X (Northern Mindanao)', 'region X': 'Region X (Northern Mindanao)',
+            'davao': 'Region XI (Davao Region)', 'region 11': 'Region XI (Davao Region)', 'region XI': 'Region XI (Davao Region)',
+            'soccsksargen': 'Region XII (SOCCSKSARGEN)', 'region 12': 'Region XII (SOCCSKSARGEN)', 'region XII': 'Region XII (SOCCSKSARGEN)',
+            'caraga': 'Region XIII (Caraga)', 'region 13': 'Region XIII (Caraga)', 'region XIII': 'Region XIII (Caraga)',
+            'ncr': 'National Capital Region (NCR)', 'metro manila': 'National Capital Region (NCR)',
+            'car': 'Cordillera Administrative Region (CAR)', 'cordillera': 'Cordillera Administrative Region (CAR)',
+            'barmm': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)', 'bangsamoro': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
+            'nir': 'Negros Island Region (NIR)', 'negros': 'Negros Island Region (NIR)'
         };
         
         let targetRegion: string | null = null;
+        // Check for longest matches first to avoid "Region 1" matching inside "Region 10" incorrectly if basic string search used
         const sortedAliases = Object.keys(regionAliases).sort((a,b) => b.length - a.length);
+        
+        // Split query into words to safely match "Region 2" without matching "Region 20"
+        const queryWords = q.split(/[^a-z0-9]/); // Split by non-alphanumeric
+
         for (const alias of sortedAliases) {
+            // Check if alias exists in query
             if (q.includes(alias)) {
-                const official = philippineRegions.find(r => 
-                    r.toLowerCase().includes(regionAliases[alias].toLowerCase()) || 
-                    regionAliases[alias].toLowerCase().includes(r.toLowerCase())
-                );
-                targetRegion = official || regionAliases[alias];
+                // Verify it's a discrete mention if it's a short number alias like "2" (harder with string includes)
+                // For now, rely on specific keys like "region 2" which are safer
+                targetRegion = regionAliases[alias];
                 break;
             }
         }
 
-        // 3. Filter Data based on detected Intent
+        // 3. Filter Data based on detected Intent (Backend Query Logic)
         const filterItem = (item: any) => {
             let match = true;
             // Year Filter
@@ -214,20 +205,20 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
             // Region Filter
             if (targetRegion) {
-                let locationStr = (item.region || item.location || item.operatingUnit || '').toLowerCase();
-                // Map OUs to Regions for filtering
-                if (item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
-                    locationStr += ' ' + ouToRegionMap[item.operatingUnit].toLowerCase();
-                }
-                const tr = targetRegion.toLowerCase();
-                const trShort = targetRegion.split(' ')[1]?.toLowerCase();
+                // Determine item region
+                let itemRegion = item.region || '';
                 
-                if (tr.includes('mimaropa')) {
-                     if (!locationStr.includes('mimaropa') && !locationStr.includes('4b')) match = false;
-                } else {
-                    if (!locationStr.includes(tr) && (!trShort || !locationStr.includes(trShort))) {
-                        match = false;
-                    }
+                // If item has no direct region, try mapping from OU or location text
+                if (!itemRegion && item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
+                    itemRegion = ouToRegionMap[item.operatingUnit];
+                }
+                if (!itemRegion && item.location) {
+                    // Rudimentary text check
+                    if (item.location.toLowerCase().includes(targetRegion.toLowerCase())) itemRegion = targetRegion;
+                }
+
+                if (itemRegion !== targetRegion) {
+                    match = false;
                 }
             }
             return match;
@@ -238,7 +229,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const filteredActivities = activities.filter(a => a.type === 'Activity').filter(filterItem);
         const filteredIPOs = ipos.filter(filterItem);
         
-        // 4. PRE-CALCULATE FINANCIALS (The Logic Optimization)
+        // 4. PRE-CALCULATE FINANCIALS (The "Formula")
+        // We do the math here so the AI just reads the result.
         const calculateBudget = (items: any[], type: 'sp' | 'act') => {
             if (type === 'sp') {
                 return items.reduce((sum, sp) => 
@@ -254,11 +246,11 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const activityBudget = calculateBudget(filteredActivities, 'act');
         const totalAllocation = subprojectBudget + trainingBudget + activityBudget;
 
-        // 5. Build Compact Context
+        // 5. Build Minimized Context (Payload Optimization)
         const stats = {
             filters_applied: { 
                 year: targetYear || "All Years", 
-                region: targetRegion || "All Regions" 
+                region: targetRegion || "All Regions (National)" 
             },
             filtered_results: {
                 subprojects_count: filteredSubprojects.length,
@@ -272,21 +264,19 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                 training_allocation: trainingBudget,
                 other_activity_allocation: activityBudget,
                 total_allocation: totalAllocation,
-                note: "Use these exact values for 'how much' questions."
             }
         };
 
         const context: any = { system_stats: stats };
 
         // 6. Conditionally add list data only if NOT an aggregate question
-        // If user asks "how many" or "how much", they don't need the list, just the stats above.
-        // This saves massive amounts of tokens.
-        const isAggregateQuestion = q.includes('how much') || q.includes('how many') || q.includes('total') || q.includes('count') || q.includes('sum');
+        // If user asks "how many" or "how much", we send ONLY the stats to save tokens.
+        const isAggregateQuestion = q.includes('how much') || q.includes('how many') || q.includes('total') || q.includes('count') || q.includes('sum') || q.includes('budget');
 
         if (!isAggregateQuestion) {
-            const maxItems = 10;
+            const maxItems = 5; // Restrict list to 5 items to keep payload light
             if (q.includes('ipo') || q.includes('organization')) {
-                context.ipos_list = filteredIPOs.slice(0, maxItems).map(i => ({ name: i.name, region: i.region }));
+                context.ipos_list = filteredIPOs.slice(0, maxItems).map(i => ({ name: i.name, location: i.location }));
             }
             if (q.includes('subproject')) {
                 context.subprojects_list = filteredSubprojects.slice(0, maxItems).map(s => ({ name: s.name, budget: calculateBudget([s], 'sp') }));
@@ -308,9 +298,11 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         setInputText('');
         setIsLoading(true);
 
-        const apiKey = getApiKey();
+        // Strict API Key Retrieval
+        const apiKey = process.env.API_KEY || (import.meta as any).env.VITE_API_KEY;
+        
         if (!apiKey) {
-             setMessages(prev => [...prev, { role: 'model', text: "Error: API Key is missing." }]);
+             setMessages(prev => [...prev, { role: 'model', text: "Error: API Key is missing. Please check your configuration." }]);
              setIsLoading(false);
              return;
         }
@@ -323,7 +315,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const ai = new GoogleGenAI({ apiKey });
             
             const chat = ai.chats.create({
-                model: 'gemini-flash-lite-latest',
+                model: 'gemini-3-flash-preview', // Switch to a stable text model
                 config: {
                     systemInstruction: systemPrompt,
                 },
@@ -343,7 +335,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         } catch (error: any) {
             console.error("AI Chat Error:", error);
-            setMessages(prev => [...prev, { role: 'model', text: "I'm having trouble connecting right now. Please try again." }]);
+            // More descriptive error for user if it's a quota issue
+            let errorMsg = "I'm having trouble connecting right now.";
+            if (error.message?.includes('429')) {
+                errorMsg = "I've reached my usage limit for now. Please try again later.";
+            } else if (error.message?.includes('400')) {
+                errorMsg = "I couldn't process that request. Please try rephrasing.";
+            }
+            setMessages(prev => [...prev, { role: 'model', text: errorMsg }]);
         } finally {
             setIsLoading(false);
         }
