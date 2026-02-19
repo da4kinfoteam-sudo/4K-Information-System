@@ -1,4 +1,3 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -11,6 +10,7 @@ import IPOs from './components/IPO';
 import References, { ReferenceUacs, ReferenceParticular, ReferenceCommodity } from './components/References';
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
+import SubprojectEdit from './components/SubprojectEdit';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
 import ActivityEdit from './components/ActivityEdit';
@@ -259,6 +259,12 @@ const AppContent: React.FC = () => {
         setHistoryStack(prev => [...prev, currentPage]);
         setCurrentPage('/activity-edit');
     };
+    
+    const handleCreateSubproject = () => {
+        setSelectedSubproject(null);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/subproject-edit');
+    };
 
     const handleBack = () => {
         if (historyStack.length === 0) return;
@@ -326,10 +332,10 @@ const AppContent: React.FC = () => {
                             setIpos={setIpos} 
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
+                            onCreateSubproject={handleCreateSubproject}
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
-                            // @ts-ignore
                             externalFilters={externalFilters}
                         />;
             case '/trainings':
@@ -394,6 +400,48 @@ const AppContent: React.FC = () => {
                                 previousPage === '/other-activities' ? 'Activity' : 
                                 undefined
                             }
+                        />;
+            case '/subproject-edit':
+                return <SubprojectEdit 
+                            subproject={selectedSubproject || undefined}
+                            ipos={ipos}
+                            setIpos={setIpos}
+                            onBack={handleBack}
+                            onUpdateSubproject={(updated) => {
+                                if (selectedSubproject) {
+                                     setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                     setSelectedSubproject(updated);
+                                } else {
+                                     setSubprojects(prev => [updated, ...prev]);
+                                }
+                                
+                                // Sync commodities to IPO
+                                if (updated.subprojectCommodities && updated.subprojectCommodities.length > 0) {
+                                    setIpos(prev => prev.map(ipo => {
+                                        if (ipo.name === updated.indigenousPeopleOrganization) {
+                                            const newCommodities = [...ipo.commodities];
+                                            let changed = false;
+                                            updated.subprojectCommodities?.forEach(sc => {
+                                                const exists = newCommodities.some(c => c.particular === sc.name && c.type === sc.typeName);
+                                                if (!exists) {
+                                                    newCommodities.push({
+                                                        type: sc.typeName,
+                                                        particular: sc.name,
+                                                        value: sc.area,
+                                                        isScad: false
+                                                    });
+                                                    changed = true;
+                                                }
+                                            });
+                                            if (changed) return { ...ipo, commodities: newCommodities };
+                                        }
+                                        return ipo;
+                                    }));
+                                }
+                            }}
+                            uacsCodes={derivedUacsCodes}
+                            particularTypes={derivedParticularTypes}
+                            commodityCategories={derivedCommodityCategories}
                         />;
             case '/program-management':
                 return <ProgramManagement

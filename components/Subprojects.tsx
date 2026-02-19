@@ -1,12 +1,11 @@
+
 // Author: 4K 
-import React, { useState, FormEvent, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, SubprojectCommodity, referenceCommodityTypes, philippineRegions } from '../constants';
-import LocationPicker, { parseLocation } from './LocationPicker';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
-import { useIpoHistory } from '../hooks/useIpoHistory';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
 
@@ -20,15 +19,12 @@ interface SubprojectsProps {
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     onSelectIpo: (ipo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
+    onCreateSubproject: () => void; // New prop for triggering Add Mode
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
+    externalFilters?: { region?: string; year?: string; search?: string } | null;
 }
-
-const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-];
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -42,49 +38,161 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+    </svg>
+);
+
 const calculateTotalBudget = (details: SubprojectDetail[]) => {
     return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
 };
 
-const defaultFormData: Subproject = {
-    id: 0,
-    uid: '',
-    name: '',
-    location: '',
-    indigenousPeopleOrganization: '',
-    status: 'Proposed',
-    details: [],
-    subprojectCommodities: [],
-    packageType: 'Package 1',
-    startDate: `${new Date().getFullYear()}-01-01`, // Default to Jan 1 of current year
-    estimatedCompletionDate: '',
-    lat: 0,
-    lng: 0,
-    fundingYear: new Date().getFullYear(),
-    fundType: 'Current',
-    tier: 'Tier 1',
-    operatingUnit: '',
-    encodedBy: ''
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+
+// --- COLUMN HEADER COMPONENT WITH FILTER ---
+interface SubprojectColumnHeaderProps {
+    label: string;
+    columnKey: keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
+    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
+    onSort: (key: any, direction: 'ascending' | 'descending') => void;
+    filters: string[];
+    onFilterChange: (values: string[]) => void;
+    uniqueValues: string[];
+    isNumeric?: boolean;
+}
+
+const SubprojectColumnHeader: React.FC<SubprojectColumnHeaderProps> = ({ 
+    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredValues = uniqueValues.filter(v => v.toLowerCase().includes(searchTerm.toLowerCase()));
+    const isSorted = sortConfig?.key === columnKey;
+    const isFiltered = filters.length > 0;
+
+    const toggleFilter = (value: string) => {
+        if (filters.includes(value)) {
+            onFilterChange(filters.filter(f => f !== value));
+        } else {
+            onFilterChange([...filters, value]);
+        }
+    };
+
+    return (
+        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap">
+            <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+                <div className="flex items-center gap-1">
+                    {label}
+                    {isSorted && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
+                        </span>
+                    )}
+                </div>
+                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+                    <FilterIcon />
+                </div>
+            </div>
+
+            {isOpen && (
+                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
+                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
+                        <button 
+                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▲</span> Sort Ascending
+                        </button>
+                        <button 
+                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▼</span> Sort Descending
+                        </button>
+                    </div>
+
+                    {!isNumeric && (
+                        <>
+                            <div className="p-2">
+                                <input 
+                                    type="text" 
+                                    placeholder={`Search ${label}...`}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
+                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filters.length === 0} 
+                                        onChange={() => onFilterChange([])} 
+                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="truncate italic text-gray-500">(Select All)</span>
+                                </label>
+                                {filteredValues.map(val => (
+                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filters.includes(val)} 
+                                            onChange={() => toggleFilter(val)}
+                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <span className="truncate" title={val}>{val}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+                                <button 
+                                    onClick={() => onFilterChange([])}
+                                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
+                                >
+                                    Clear
+                                </button>
+                                <button 
+                                    onClick={() => setIsOpen(false)}
+                                    className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </th>
+    );
 };
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
-const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, uacsCodes, particularTypes, commodityCategories }) => {
+const Subprojects: React.FC<SubprojectsProps> = ({ 
+    ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, 
+    onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters 
+}) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
-    const { addIpoHistory } = useIpoHistory();
-    const [formData, setFormData] = useState<Subproject>(defaultFormData);
-    // editingSubproject state kept for internal form logic, though external "Edit" click is removed from list view.
-    // It's still used if we were to support "Add" via this component.
-    const [editingSubproject, setEditingSubproject] = useState<Subproject | null>(null);
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-    const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
-    const [selectedRegion, setSelectedRegion] = useState('');
-    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
-    
-    // Use Shared Permissions Hook
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
 
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);
+    const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
+    
     // Use Shared Selection Hook
     const { 
         isSelectionMode, setIsSelectionMode, selectedIds, setSelectedIds, 
@@ -92,171 +200,53 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
         handleSelectAll, handleSelectRow, resetSelection 
     } = useSelection<Subproject>();
 
-    // Error Modal State
-    const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
-    const [errorMessage, setErrorMessage] = useState('');
-
-    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [isUploading, setIsUploading] = useState(false);
 
     // Filters - Persistent State
     const [searchTerm, setSearchTerm] = useLocalStorageState('subprojects_searchTerm', '');
-    const [ouFilter, setOuFilter] = useLocalStorageState('subprojects_ouFilter', 'All');
-    const [packageFilter, setPackageFilter] = useLocalStorageState('subprojects_packageFilter', 'All');
-    const [statusFilter, setStatusFilter] = useLocalStorageState('subprojects_statusFilter', 'All');
-    const [yearImplementedFilter, setYearImplementedFilter] = useLocalStorageState('subprojects_yearImplementedFilter', 'All');
+    
+    // Column Filters
+    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
     // Sorting - Persistent State
     type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
     const [sortConfig, setSortConfig] = useLocalStorageState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>('subprojects_sortConfig', { key: 'startDate', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
-    const [view, setView] = useState<'list' | 'add' | 'edit'>('list');
 
-    // Scroll persistence
-    const tableContainerRef = useRef<HTMLDivElement>(null);
-    const scrollPositionRef = useRef(0);
-
-    useLayoutEffect(() => {
-        if (tableContainerRef.current) {
-            tableContainerRef.current.scrollLeft = scrollPositionRef.current;
-        }
-    }, [sortConfig]);
-
-    // Budget Form State
-    const [currentDetail, setCurrentDetail] = useState<Omit<SubprojectDetail, 'id'>>({
-        type: '',
-        particulars: '',
-        deliveryDate: '',
-        unitOfMeasure: 'pcs',
-        pricePerUnit: 0,
-        numberOfUnits: 0,
-        objectType: 'MOOE',
-        expenseParticular: '',
-        uacsCode: '',
-        obligationMonth: '',
-        disbursementMonth: ''
-    });
-    const [editingDetailId, setEditingDetailId] = useState<number | null>(null);
-    const [dateError, setDateError] = useState('');
-
-    // Commodity Form State
-    const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
-        typeName: '',
-        name: '',
-        area: 0,
-        averageYield: 0
-    });
-    const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
-
-    // Enforce User OU restriction on mount
+    // Listen to External Filters
     useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
-            setOuFilter(currentUser.operatingUnit);
-        }
-    }, [currentUser]);
-
-    useEffect(() => {
-        if (editingSubproject) {
-            setFormData(editingSubproject);
-            setActiveTab('details');
-            // Set initial region based on the existing IPO
-            const linkedIpo = ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization);
-            if (linkedIpo) setSelectedRegion(linkedIpo.region);
-        } else {
-            setFormData({
-                ...defaultFormData,
-                operatingUnit: currentUser?.operatingUnit || '',
-                encodedBy: currentUser?.fullName || ''
-            });
-            setSelectedRegion('');
-        }
-    }, [editingSubproject, currentUser, ipos]);
-
-    // Filter IPOs based on selected region
-    const filteredIpos = useMemo(() => {
-        if (!selectedRegion) return [];
-        return ipos.filter(ipo => ipo.region === selectedRegion).sort((a, b) => a.name.localeCompare(b.name));
-    }, [ipos, selectedRegion]);
-
-    // Check completion status whenever details change
-    useEffect(() => {
-        if (editingSubproject && formData.details.length > 0) {
-            const allItemsDelivered = formData.details.every(d => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '');
-            if (allItemsDelivered) {
-                // Find latest actual delivery date
-                const latestDate = formData.details.reduce((latest, current) => {
-                    const d = new Date(current.actualDeliveryDate!);
-                    return d > latest ? d : latest;
-                }, new Date(0));
-                
-                // Only update if status is not already completed to avoid infinite loops or unnecessary updates
-                if (formData.status !== 'Completed') {
-                    setFormData(prev => ({
-                        ...prev,
-                        status: 'Completed',
-                        actualCompletionDate: latestDate.toISOString().split('T')[0]
-                    }));
-                }
-            } else {
-                // Revert status if not all items are delivered and it was automatically marked completed
-                if (formData.status === 'Completed') {
-                     setFormData(prev => ({
-                        ...prev,
-                        status: 'Ongoing', // Or revert to previous status if tracked
-                        actualCompletionDate: undefined
-                    }));
+        if (externalFilters) {
+            const newFilters: Record<string, string[]> = {};
+            
+            if (externalFilters.year) {
+                newFilters['fundingYear'] = [externalFilters.year];
+            }
+            if (externalFilters.region) {
+                // Map Region to OUs
+                const targetOUs = operatingUnits.filter(ou => ouToRegionMap[ou] === externalFilters.region);
+                if (targetOUs.length > 0) {
+                    newFilters['operatingUnit'] = targetOUs;
                 }
             }
-        }
-    }, [formData.details, editingSubproject]);
-
-    const availableImplementedYears = useMemo(() => {
-        const years = new Set<string>();
-        subprojects.forEach(s => {
-            if (s.estimatedCompletionDate) {
-                const year = new Date(s.estimatedCompletionDate).getFullYear();
-                if (!isNaN(year)) {
-                    years.add(year.toString());
-                }
+            if (externalFilters.search) {
+                setSearchTerm(externalFilters.search);
             }
-        });
-        return Array.from(years).sort().reverse();
-    }, [subprojects]);
-
-    // Helper for Funding Year selection range
-    const yearOptions = useMemo(() => {
-        const currentYear = new Date().getFullYear();
-        const years = [];
-        for (let i = currentYear - 5; i <= currentYear + 5; i++) {
-            years.push(i);
+            
+            // Only update if there are changes to avoid loop
+            if (Object.keys(newFilters).length > 0) {
+                setColumnFilters(prev => ({ ...prev, ...newFilters }));
+            }
         }
-        return years;
-    }, []);
+    }, [externalFilters]);
 
-    const processedSubprojects = useMemo(() => {
+    // 1. Initial Filtering (Search + Permissions)
+    const initiallyFilteredSubprojects = useMemo(() => {
         let filtered = [...subprojects];
 
+        // OU Permissions
         if (currentUser?.role === 'User') {
             filtered = filtered.filter(s => s.operatingUnit === currentUser.operatingUnit);
-        } else if (canViewAll && ouFilter !== 'All') {
-            filtered = filtered.filter(s => s.operatingUnit === ouFilter);
-        }
-
-        if (yearImplementedFilter !== 'All') {
-            filtered = filtered.filter(s => {
-                if (!s.estimatedCompletionDate) return false;
-                const year = new Date(s.estimatedCompletionDate).getFullYear();
-                return year.toString() === yearImplementedFilter;
-            });
-        }
-
-        if (packageFilter !== 'All') {
-            filtered = filtered.filter(s => s.packageType === packageFilter);
-        }
-
-        if (statusFilter !== 'All') {
-            filtered = filtered.filter(s => s.status === statusFilter);
         }
 
         if (searchTerm) {
@@ -267,20 +257,50 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 s.location.toLowerCase().includes(lower) ||
                 s.operatingUnit.toLowerCase().includes(lower) ||
                 s.uid.toLowerCase().includes(lower) ||
-                // Search in budget details (item type and particulars)
                 (s.details && s.details.some(d => 
                     (d.type && d.type.toLowerCase().includes(lower)) || 
                     (d.particulars && d.particulars.toLowerCase().includes(lower))
                 ))
             );
         }
+        return filtered;
+    }, [subprojects, searchTerm, currentUser]);
+
+    // 2. Extract Unique Values
+    const uniqueValues = useMemo(() => {
+        const getUnique = (key: keyof Subproject) => Array.from(new Set(initiallyFilteredSubprojects.map(s => String(s[key] || '')))).filter(Boolean).sort();
+        return {
+            name: getUnique('name'),
+            status: getUnique('status'),
+            operatingUnit: getUnique('operatingUnit'),
+            indigenousPeopleOrganization: getUnique('indigenousPeopleOrganization'),
+            packageType: getUnique('packageType'),
+            fundingYear: getUnique('fundingYear'),
+            estimatedCompletionDate: getUnique('estimatedCompletionDate'),
+            actualCompletionDate: getUnique('actualCompletionDate')
+        };
+    }, [initiallyFilteredSubprojects]);
+
+    // 3. Apply Column Filters & Sorting
+    const processedSubprojects = useMemo(() => {
+        let filtered = [...initiallyFilteredSubprojects];
+
+        // Apply Column Filters
+        Object.keys(columnFilters).forEach(key => {
+            const selectedValues = columnFilters[key];
+            if (selectedValues.length > 0) {
+                filtered = filtered.filter(item => {
+                    const itemValue = String((item as any)[key] || '');
+                    return selectedValues.includes(itemValue);
+                });
+            }
+        });
 
         if (sortConfig !== null) {
             filtered.sort((a, b) => {
                 let aValue: any = '';
                 let bValue: any = '';
 
-                // Helper calculations for sorting
                 const getBudget = (s: Subproject) => calculateTotalBudget(s.details);
                 const getObligated = (s: Subproject) => s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
                 const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
@@ -323,27 +343,33 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             });
         }
         return filtered;
-    }, [subprojects, searchTerm, yearImplementedFilter, ouFilter, packageFilter, statusFilter, sortConfig, ipos, currentUser, canViewAll]);
+    }, [initiallyFilteredSubprojects, columnFilters, sortConfig]);
 
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedSubprojects 
-    } = usePagination(processedSubprojects, [searchTerm, yearImplementedFilter, ouFilter, packageFilter, statusFilter, sortConfig]);
+    } = usePagination(processedSubprojects, [searchTerm, columnFilters, sortConfig]);
 
-    const requestSort = (key: SortKeys) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
+    const handleSort = (key: SortKeys, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
     };
+
+    const handleColumnFilterChange = (columnKey: string, values: string[]) => {
+        setColumnFilters(prev => ({
+            ...prev,
+            [columnKey]: values
+        }));
+    };
+    
+    const clearColumnFilters = () => {
+        setColumnFilters({});
+    }
 
     const handleToggleRow = (id: number) => {
         setExpandedRowId(prev => (prev === id ? null : id));
     };
 
     const confirmMultiDelete = () => {
-        // Logging for bulk delete
         const deletedNames = subprojects.filter(s => selectedIds.includes(s.id)).map(s => s.name).join(', ');
         logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
 
@@ -375,7 +401,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             const newUid = `SP-${currentYear}-${sequence}${index}`;
 
-            // Reset details actuals
             const clonedDetails = item.details.map(d => ({
                 ...d,
                 id: Date.now() + Math.random(),
@@ -389,7 +414,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                 isCompleted: false
             }));
 
-            // Reset commodities actuals
             const clonedCommodities = item.subprojectCommodities?.map(c => ({
                 ...c,
                 actualYield: 0,
@@ -435,410 +459,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
 
     const handleToggleMode = (intent: 'delete' | 'clone') => {
         if (isSelectionMode && selectionIntent === intent) {
-            toggleSelectionMode(); // Toggle off
+            toggleSelectionMode();
         } else if (isSelectionMode && selectionIntent !== intent) {
-            setSelectionIntent(intent); // Switch intent
+            setSelectionIntent(intent);
         } else {
             setSelectionIntent(intent);
-            toggleSelectionMode(); // Toggle on
+            toggleSelectionMode();
         }
-    };
-
-    // --- Form Handlers ---
-
-    // Helper to get month index from YYYY-MM-DD string
-    const getMonthFromDateStr = (dateStr: string) => {
-        if (!dateStr) return '';
-        const parts = dateStr.split('-');
-        if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
-        return '';
-    };
-
-    // Helper inside component to use state
-    const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
-        if (monthIndex === '') {
-            setCurrentDetail(prev => ({ ...prev, [field]: '' }));
-            return;
-        }
-        const mIndex = parseInt(monthIndex);
-        const year = formData.fundingYear || new Date().getFullYear();
-        // Construct date as YYYY-MM-01
-        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
-        setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
-    }
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        
-        setFormData(prev => {
-            const newData = { ...prev, [name]: value };
-
-            if (name === 'indigenousPeopleOrganization') {
-                const selectedIpo = ipos.find(ipo => ipo.name === value);
-                if (selectedIpo) {
-                    newData.location = selectedIpo.location;
-                    newData.ipo_id = selectedIpo.id; // Link FK
-                } else {
-                    newData.location = '';
-                    newData.ipo_id = undefined;
-                }
-            }
-            
-            // Sync details if fundingYear changes
-            if (name === 'fundingYear') {
-                const newYear = parseInt(value as string) || new Date().getFullYear();
-                const updatedDetails = prev.details.map(d => {
-                    const updateDate = (dateStr: string) => {
-                        if (!dateStr) return dateStr;
-                        const parts = dateStr.split('-');
-                        if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
-                        return dateStr;
-                    };
-                    return {
-                        ...d,
-                        obligationMonth: updateDate(d.obligationMonth),
-                        disbursementMonth: updateDate(d.disbursementMonth)
-                    };
-                });
-                newData.details = updatedDetails;
-            }
-
-            return newData;
-        });
-    };
-
-    const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        if (name === 'type') {
-            setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
-        } else if (name === 'objectType') {
-            setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
-        } else if (name === 'expenseParticular') {
-            setCurrentDetail(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
-        } else {
-            setCurrentDetail(prev => ({ ...prev, [name]: value }));
-        }
-    };
-
-    const handleAddDetail = () => {
-        setDateError('');
-        if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
-            alert("Please fill in required detail fields (Particulars, UACS, Price, Qty).");
-            return;
-        }
-
-        if (currentDetail.deliveryDate && formData.startDate) {
-            if (new Date(currentDetail.deliveryDate) < new Date(formData.startDate)) {
-                setDateError('Delivery date cannot be before start date.');
-                return;
-            }
-        }
-
-        let updatedDetails: SubprojectDetail[] = [];
-
-        if (editingDetailId !== null) {
-            updatedDetails = formData.details.map(d => d.id === editingDetailId ? { 
-                ...d, 
-                ...currentDetail,
-                pricePerUnit: Number(currentDetail.pricePerUnit),
-                numberOfUnits: Number(currentDetail.numberOfUnits)
-            } : d);
-            setEditingDetailId(null);
-        } else {
-            const newDetail: SubprojectDetail = {
-                id: Date.now(),
-                ...currentDetail,
-                pricePerUnit: Number(currentDetail.pricePerUnit),
-                numberOfUnits: Number(currentDetail.numberOfUnits)
-            };
-            updatedDetails = [...formData.details, newDetail];
-        }
-
-        // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
-        let newEstimatedCompletionDate = formData.estimatedCompletionDate;
-        const deliveryDates = updatedDetails
-            .map(d => d.deliveryDate)
-            .filter(d => d && d.trim() !== '')
-            .map(d => new Date(d).getTime())
-            .filter(t => !isNaN(t));
-
-        if (deliveryDates.length > 0) {
-            const maxDateTimestamp = Math.max(...deliveryDates);
-            const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
-            newEstimatedCompletionDate = farthestDate;
-        }
-
-        setFormData(prev => ({ 
-            ...prev, 
-            details: updatedDetails,
-            estimatedCompletionDate: newEstimatedCompletionDate
-        }));
-
-        setCurrentDetail(prev => ({
-            ...prev,
-            particulars: '',
-            pricePerUnit: 0,
-            numberOfUnits: 0,
-            uacsCode: '',
-            expenseParticular: '',
-            obligationMonth: '',
-            disbursementMonth: ''
-        }));
-    };
-
-    const handleEditDetail = (id: number) => {
-        const detailToEdit = formData.details.find(d => d.id === id);
-        if (detailToEdit) {
-            setCurrentDetail({
-                type: detailToEdit.type,
-                particulars: detailToEdit.particulars,
-                deliveryDate: detailToEdit.deliveryDate,
-                unitOfMeasure: detailToEdit.unitOfMeasure,
-                pricePerUnit: detailToEdit.pricePerUnit,
-                numberOfUnits: detailToEdit.numberOfUnits,
-                objectType: detailToEdit.objectType,
-                expenseParticular: detailToEdit.expenseParticular,
-                uacsCode: detailToEdit.uacsCode,
-                obligationMonth: detailToEdit.obligationMonth,
-                disbursementMonth: detailToEdit.disbursementMonth
-            });
-            setEditingDetailId(id);
-        }
-    };
-
-    const handleCancelDetailEdit = () => {
-        setEditingDetailId(null);
-        setDateError('');
-        setCurrentDetail({
-            type: '',
-            particulars: '',
-            deliveryDate: '',
-            unitOfMeasure: 'pcs',
-            pricePerUnit: 0,
-            numberOfUnits: 0,
-            objectType: 'MOOE',
-            expenseParticular: '',
-            uacsCode: '',
-            obligationMonth: '',
-            disbursementMonth: ''
-        });
-    };
-
-    const handleRemoveDetail = (id: number) => {
-        setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
-        if (editingDetailId === id) {
-            handleCancelDetailEdit();
-        }
-    };
-
-    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        if (name === 'typeName') {
-            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
-        } else {
-            setCurrentCommodity(prev => ({ ...prev, [name]: value }));
-        }
-    };
-
-    const handleAddCommodity = () => {
-        const isAnimal = currentCommodity.typeName === 'Animal Commodity';
-        if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area || (!isAnimal && !currentCommodity.averageYield)) {
-            alert(`Please fill in all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
-            return;
-        }
-        const newCommodity: SubprojectCommodity = {
-            ...currentCommodity,
-            area: Number(currentCommodity.area),
-            averageYield: isAnimal ? undefined : Number(currentCommodity.averageYield)
-        };
-        if (editingCommodityIndex !== null) {
-            setFormData(prev => ({
-                ...prev,
-                subprojectCommodities: (prev.subprojectCommodities || []).map((c, i) => i === editingCommodityIndex ? newCommodity : c)
-            }));
-            setEditingCommodityIndex(null);
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                subprojectCommodities: [...(prev.subprojectCommodities || []), newCommodity]
-            }));
-        }
-        setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
-    };
-
-    const handleEditCommodity = (index: number) => {
-        const commodityToEdit = formData.subprojectCommodities?.[index];
-        if (commodityToEdit) {
-            setCurrentCommodity({
-                typeName: commodityToEdit.typeName || '',
-                name: commodityToEdit.name,
-                area: commodityToEdit.area,
-                averageYield: commodityToEdit.averageYield || 0
-            });
-            setEditingCommodityIndex(index);
-        }
-    };
-
-    const handleCancelCommodityEdit = () => {
-        setEditingCommodityIndex(null);
-        setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
-    };
-
-    const handleRemoveCommodity = (index: number) => {
-        setFormData(prev => ({
-            ...prev,
-            subprojectCommodities: (prev.subprojectCommodities || []).filter((_, i) => i !== index)
-        }));
-        if (editingCommodityIndex === index) {
-            handleCancelCommodityEdit();
-        }
-    };
-
-    const handleSubmit = (e: FormEvent) => {
-        e.preventDefault();
-        
-        const missingFields: string[] = [];
-        if (!formData.name) missingFields.push('Subproject Name');
-        if (!formData.indigenousPeopleOrganization) missingFields.push('IPO');
-        if (!formData.location) missingFields.push('Location');
-        if (!formData.startDate) missingFields.push('Start Date');
-        if (!formData.estimatedCompletionDate) missingFields.push('Estimated Completion Date');
-
-        if (missingFields.length > 0) {
-            setErrorMessage(`Please fill in the following required fields: ${missingFields.join(', ')}.`);
-            setIsErrorModalOpen(true);
-            return;
-        }
-
-        const currentTimestamp = new Date().toISOString();
-
-        const historyEntry = {
-            date: currentTimestamp,
-            event: editingSubproject ? "Subproject Updated" : "Subproject Created",
-            user: currentUser?.fullName || "System"
-        };
-        
-        // Resolve IPO ID if missing in formData but name is present (legacy data support)
-        let resolvedIpoId = formData.ipo_id;
-        if (!resolvedIpoId && formData.indigenousPeopleOrganization) {
-            const matchedIpo = ipos.find(i => i.name === formData.indigenousPeopleOrganization);
-            if (matchedIpo) resolvedIpoId = matchedIpo.id;
-        }
-
-        let newSubproject: Subproject;
-        const updatedFormData = { ...formData, ipo_id: resolvedIpoId };
-
-        if (editingSubproject) {
-            // Log Update in main logs
-            logAction('Updated Subproject', formData.name, formData.indigenousPeopleOrganization);
-
-            // Log to IPO History
-            if (resolvedIpoId) {
-                const prevIpoId = editingSubproject.ipo_id || ipos.find(i => i.name === editingSubproject.indigenousPeopleOrganization)?.id;
-
-                if (prevIpoId !== resolvedIpoId) {
-                     // Linked changed
-                     addIpoHistory(resolvedIpoId, `Subproject linked: ${formData.name}`);
-                } else {
-                     if (formData.status === 'Completed' && editingSubproject.status !== 'Completed') {
-                          addIpoHistory(resolvedIpoId, `Subproject Completed: ${formData.name}`);
-                     } else {
-                          addIpoHistory(resolvedIpoId, `Subproject Updated: ${formData.name}`);
-                     }
-                }
-            }
-
-            const updated = { 
-                ...updatedFormData, 
-                id: editingSubproject.id,
-                history: [...(editingSubproject.history || []), historyEntry],
-                updated_at: currentTimestamp
-            };
-            setSubprojects(prev => prev.map(p => p.id === updated.id ? updated : p));
-            newSubproject = updated;
-        } else {
-            // Log Create in main logs
-            logAction('Created Subproject', formData.name, formData.indigenousPeopleOrganization);
-
-            const newId = Math.max(...subprojects.map(s => s.id), 0) + 1;
-            const uid = formData.uid || `SP-${new Date().getFullYear()}-${String(newId).padStart(3, '0')}`;
-            const created = { 
-                ...updatedFormData, 
-                id: newId, 
-                uid,
-                history: [historyEntry],
-                created_at: currentTimestamp,
-                updated_at: currentTimestamp
-            };
-            setSubprojects(prev => [...prev, created]);
-            newSubproject = created;
-
-            // Log to IPO History
-            if (resolvedIpoId) {
-                addIpoHistory(resolvedIpoId, `Subproject Created: ${formData.name}`);
-            }
-        }
-
-        // Sync commodities to IPO
-        if (formData.subprojectCommodities && formData.subprojectCommodities.length > 0) {
-            setIpos(prev => prev.map(ipo => {
-                if (ipo.name === formData.indigenousPeopleOrganization) {
-                    const newCommodities = [...ipo.commodities];
-                    let changed = false;
-                    formData.subprojectCommodities?.forEach(sc => {
-                        const exists = newCommodities.some(c => c.particular === sc.name && c.type === sc.typeName);
-                        if (!exists) {
-                            newCommodities.push({
-                                type: sc.typeName,
-                                particular: sc.name,
-                                value: sc.area,
-                                isScad: false
-                            });
-                            changed = true;
-                        }
-                    });
-                    if (changed) return { ...ipo, commodities: newCommodities };
-                }
-                return ipo;
-            }));
-        }
-
-        handleCancelEdit();
-    };
-
-    // Removed handleEditClick logic for list view button, keeping function internally if needed for safety
-    
-    const handleAddNewClick = () => {
-        setEditingSubproject(null);
-        setView('add');
-    };
-
-    const handleCancelEdit = () => {
-        setEditingSubproject(null);
-        setFormData(defaultFormData);
-        setEditingDetailId(null);
-        setEditingCommodityIndex(null);
-        setDateError('');
-        setCurrentDetail({
-            type: '',
-            particulars: '',
-            deliveryDate: '',
-            unitOfMeasure: 'pcs',
-            pricePerUnit: 0,
-            numberOfUnits: 0,
-            objectType: 'MOOE',
-            expenseParticular: '',
-            uacsCode: '',
-            obligationMonth: '',
-            disbursementMonth: ''
-        });
-        setCurrentCommodity({
-            typeName: '',
-            name: '',
-            area: 0,
-            averageYield: 0
-        });
-        setView('list');
     };
 
     const handleDeleteClick = (subproject: Subproject) => {
@@ -856,7 +483,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
     };
 
     // --- Render Helpers ---
-
     const formatDate = (dateString?: string) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -883,601 +509,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
             default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
         }
     };
-
-    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string }> = ({ sortKey, label, className }) => {
-        const isSorted = sortConfig?.key === sortKey;
-        const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
-        return (
-            <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
-                <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
-                    <span>{label}</span>
-                    <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
-                </button>
-            </th>
-        );
-    };
-
-    const TabButton: React.FC<{ tabName: typeof activeTab; label: string }> = ({ tabName, label }) => {
-        const isActive = activeTab === tabName;
-        return (
-            <button
-                type="button"
-                onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-            >
-                {label}
-            </button>
-        );
-    };
-
-    const renderListView = () => (
-        <>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Subprojects Management</h2>
-                {canEdit && (
-                    <button onClick={handleAddNewClick} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                        + Add New Subproject
-                    </button>
-                )}
-            </div>
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <div className="mb-4 flex flex-col md:flex-row gap-4">
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                        <input
-                            type="text"
-                            placeholder="Search by name, IPO, location, items or OU..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`w-full md:w-auto ${commonInputClasses} mt-0`}
-                        />
-                        {canViewAll && (
-                            <div className="flex items-center gap-2">
-                                <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
-                                <select 
-                                    id="ouFilter" 
-                                    value={ouFilter} 
-                                    onChange={(e) => setOuFilter(e.target.value)} 
-                                    disabled={currentUser?.role === 'User'}
-                                    className={`${commonInputClasses} mt-0 disabled:opacity-70 disabled:cursor-not-allowed`}
-                                >
-                                    <option value="All">All OUs</option>
-                                    {operatingUnits.map(ou => (
-                                        <option key={ou} value={ou}>{ou}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
-                         <div className="flex items-center gap-2">
-                            <label htmlFor="yearImplementedFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Year Impl.:</label>
-                            <select id="yearImplementedFilter" value={yearImplementedFilter} onChange={(e) => setYearImplementedFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All Years</option>
-                                {availableImplementedYears.map(y => (
-                                    <option key={y} value={y}>{y}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="packageFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Package:</label>
-                            <select id="packageFilter" value={packageFilter} onChange={(e) => setPackageFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All</option>
-                                {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(pkg => (
-                                    <option key={pkg} value={pkg}>{pkg}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label htmlFor="statusFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Status:</label>
-                            <select id="statusFilter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All</option>
-                                <option value="Proposed">Proposed</option>
-                                <option value="Ongoing">Ongoing</option>
-                                <option value="Completed">Completed</option>
-                                <option value="Cancelled">Cancelled</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="flex-grow"></div>
-                    <div className="flex items-center gap-2">
-                        {isSelectionMode && selectedIds.length > 0 && (
-                            <button 
-                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
-                            >
-                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
-                            </button>
-                        )}
-                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">Download Report</button>
-                        {canEdit && (
-                            <>
-                                <button onClick={downloadSubprojectsTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
-                                <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                                <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
-                                <button 
-                                    onClick={() => handleToggleMode('clone')} 
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
-                                    title="Toggle Clone Mode"
-                                >
-                                    <DuplicateIcon />
-                                </button>
-                                <button
-                                    onClick={() => handleToggleMode('delete')}
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                                    title="Toggle Multi-Delete Mode"
-                                >
-                                    <TrashIcon />
-                                </button>
-                            </>
-                        )}
-                    </div>
-                </div>
-
-                <div 
-                    className="overflow-x-auto" 
-                    ref={tableContainerRef}
-                    onScroll={(e) => scrollPositionRef.current = e.currentTarget.scrollLeft}
-                >
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
-                            <tr>
-                                <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
-                                <SortableHeader sortKey="name" label="Name" className="min-w-[200px]" />
-                                <SortableHeader sortKey="operatingUnit" label="OU" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="indigenousPeopleOrganization" label="IPO" className="min-w-[150px]" />
-                                <SortableHeader sortKey="commodityTarget" label="Commodity Target" className="min-w-[200px] whitespace-nowrap" />
-                                <SortableHeader sortKey="estimatedCompletionDate" label="Target Completion Date" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="actualCompletionDate" label="Actual Completion Date" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="totalBudget" label="Budget" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="actualObligated" label="Actual Obligated Amount" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="actualDisbursed" label="Actual Disbursed Amount" className="whitespace-nowrap" />
-                                <SortableHeader sortKey="completionRate" label="Completion Rate" className="whitespace-nowrap" />
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
-                                    {isSelectionMode ? (
-                                        <div className="flex items-center justify-end gap-2">
-                                            <span className="text-xs">Select All</span>
-                                            <input 
-                                                type="checkbox" 
-                                                onChange={(e) => handleSelectAll(e, paginatedSubprojects)} 
-                                                checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(s => selectedIds.includes(s.id))}
-                                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                            />
-                                        </div>
-                                    ) : (
-                                        "Actions"
-                                    )}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedSubprojects.map((s) => {
-                                const budget = calculateTotalBudget(s.details);
-                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualObligationAmount || 0) : sum, 0);
-                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualDisbursementAmount || d.actualAmount || 0) : sum, 0);
-                                const totalItems = s.details.length;
-                                const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
-                                const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 
-                                    ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Animal Commodity' ? 'heads' : 'ha'})`).join(', ')
-                                    : 'N/A';
-
-                                return (
-                                <React.Fragment key={s.id}>
-                                    <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
-                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
-                                            <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-emerald-600 hover:underline">
-                                                {s.name}
-                                            </button>
-                                            <div className="text-xs text-gray-400">{s.uid}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit}</td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.estimatedCompletionDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.actualCompletionDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualObligated)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualDisbursed)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div className="flex items-center">
-                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
-                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
-                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
-                                            {canEdit && (
-                                                <div className="flex items-center justify-end">
-                                                    {isSelectionMode && (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.includes(s.id)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(s.id); }} 
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-                                                        />
-                                                    )}
-                                                    {/* Edit Button Removed */}
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="text-red-600 hover:text-red-900">Delete</button>
-                                                </div>
-                                            )}
-                                        </td>
-                                    </tr>
-                                    {expandedRowId === s.id && (
-                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={12} className="p-4">
-                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                                    {/* Column 1: Project Details */}
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
-                                                            <div className="space-y-2 text-sm">
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
-                                                            </div>
-                                                        </div>
-                                                        {s.remarks && (
-                                                            <div>
-                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
-                                                                <p className="text-sm text-gray-600 dark:text-gray-300 italic">{s.remarks}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    
-                                                    {/* Column 2: Budget & Particulars */}
-                                                    <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
-                                                        {s.details.length > 0 ? (
-                                                            <ul className="space-y-1">
-                                                                {s.details.map(detail => (
-                                                                    <li key={detail.id} className="flex justify-between items-start p-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                                                        <div>
-                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars}</span>
-                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode} | {detail.numberOfUnits} {detail.unitOfMeasure}</span>
-                                                                            {/* Display Month Year for Obligation/Disbursement */}
-                                                                            <span className="text-xs text-gray-400 block">
-                                                                                Obl: {formatMonthYear(detail.obligationMonth)} | Disb: {formatMonthYear(detail.disbursementMonth)}
-                                                                            </span>
-                                                                        </div>
-                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</span>
-                                                                    </li>
-                                                                ))}
-                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white">
-                                                                    <span>Total</span>
-                                                                    <span>{formatCurrency(calculateTotalBudget(s.details))}</span>
-                                                                </li>
-                                                            </ul>
-                                                        ) : (
-                                                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>
-                                                        )}
-                                                        
-                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundingYear ?? 'N/A'}</span></p>
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundType ?? 'N/A'}</span></p>
-                                                            <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> <span className="text-gray-900 dark:text-gray-100">{s.tier ?? 'N/A'}</span></p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Column 3: Brief Accomplishment Details */}
-                                                    <div className="space-y-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Accomplishment Brief</h4>
-                                                        <div className="space-y-3 text-sm">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-gray-600 dark:text-gray-400">Physical Completion</span>
-                                                                <span className={`font-bold ${completionRate === 100 ? 'text-green-600' : 'text-blue-600'}`}>{completionRate}%</span>
-                                                            </div>
-                                                            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-                                                                <div className={`h-2 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
-                                                            </div>
-                                                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                                                <div className="flex justify-between">
-                                                                    <span className="text-gray-500 dark:text-gray-400">Obligated</span>
-                                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span>
-                                                                </div>
-                                                                <div className="flex justify-between mt-1">
-                                                                    <span className="text-gray-500 dark:text-gray-400">Disbursed</span>
-                                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span>
-                                                                </div>
-                                                            </div>
-                                                            {s.subprojectCommodities && s.subprojectCommodities.length > 0 && (
-                                                                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
-                                                                    {s.subprojectCommodities.map((c, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs">
-                                                                            <span>{c.name}</span>
-                                                                            <span className="font-medium">
-                                                                                {c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)
-                                                                            </span>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );})}
-                        </tbody>
-                    </table>
-                </div>
-                 {/* Pagination - same as previous */}
-                 <div className="py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Show</span>
-                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
-                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
-                        </select>
-                        <span className="text-gray-700 dark:text-gray-300">entries</span>
-                    </div>
-                     <div className="flex items-center gap-4 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedSubprojects.length)} to {Math.min(currentPage * itemsPerPage, processedSubprojects.length)} of {processedSubprojects.length} entries</span>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
-                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </>
-    );
-
-    const renderFormView = () => (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{view === 'edit' ? 'Edit Subproject' : 'Add New Subproject'}</h3>
-                 <button onClick={handleCancelEdit} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
-            </div>
-            <form onSubmit={handleSubmit}>
-                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-4 overflow-x-auto" aria-label="Tabs">
-                        <TabButton tabName="details" label="Subproject Details" />
-                        <TabButton tabName="commodity" label="Subproject Commodity" />
-                        <TabButton tabName="budget" label="Budget Items" />
-                    </nav>
-                </div>
-                <div className="min-h-[400px]">
-                    {activeTab === 'details' && (
-                         <div className="space-y-6">
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Project Details</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                    <div>
-                                        <label className="block text-sm font-medium">Region</label>
-                                        <select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={commonInputClasses}>
-                                            <option value="">Select Region</option>
-                                            {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium">IPO</label>
-                                        <select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedRegion}>
-                                            <option value="">Select IPO</option>
-                                            {filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium">Status</label>
-                                        <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
-                                            <option value="Proposed">Proposed</option>
-                                            <option value="Ongoing">Ongoing</option>
-                                            <option value="Cancelled">Cancelled</option>
-                                            {formData.status === 'Completed' && <option value="Completed">Completed</option>}
-                                        </select>
-                                        {formData.status === 'Completed' && <p className="text-xs text-green-600 mt-1">Status set to Completed automatically based on actual delivery dates.</p>}
-                                    </div>
-                                    <div>
-                                         <label className="block text-sm font-medium">Package</label>
-                                         <select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>
-                                            {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}
-                                         </select>
-                                    </div>
-                                </div>
-                            </fieldset>
-                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Location & Timeline</legend>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium">Location</label>
-                                        <input 
-                                            type="text" 
-                                            name="location"
-                                            value={formData.location} 
-                                            readOnly 
-                                            className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} 
-                                            placeholder="Auto-filled based on IPO selection"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                        <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                    </div>
-                                </div>
-                            </fieldset>
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Funding</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium">Year</label>
-                                        <select 
-                                            name="fundingYear" 
-                                            value={formData.fundingYear} 
-                                            onChange={handleInputChange} 
-                                            className={commonInputClasses}
-                                        >
-                                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium">Type</label>
-                                        <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
-                                            {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium">Tier</label>
-                                        <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
-                                            {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                            </fieldset>
-                         </div>
-                    )}
-                     {activeTab === 'commodity' && (
-                        <div className="space-y-6">
-                            <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Subproject Commodities</legend>
-                                <div className="space-y-2 mb-4">
-                                    {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
-                                        formData.subprojectCommodities.map((c, index) => (
-                                            <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                                <div>
-                                                    <span className="font-semibold">{c.name}</span>
-                                                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                        {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && `| Yield: ${c.averageYield}`}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                                    </button>
-                                                    <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-red-500 hover:text-red-700">&times;</button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added.</p>
-                                    )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
-                                    <div>
-                                        <label className="block text-xs font-medium">Type</label>
-                                        <select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}>
-                                            <option value="">Select Type</option>
-                                            {referenceCommodityTypes.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium">Commodity</label>
-                                        <select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}>
-                                            <option value="">Select Commodity</option>
-                                            {currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'No. of Heads' : 'Area (ha)'}</label>
-                                        <input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
-                                    </div>
-                                    <div className="flex gap-2 items-end">
-                                        {currentCommodity.typeName !== 'Animal Commodity' && (
-                                            <div className="flex-grow">
-                                                <label className="block text-xs font-medium">Average Yield/Ha</label>
-                                                <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
-                                            </div>
-                                        )}
-                                        {editingCommodityIndex !== null ? (
-                                            <div className="flex gap-1">
-                                                <button type="button" onClick={handleAddCommodity} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
-                                                <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
-                                        )}
-                                    </div>
-                                </div>
-                            </fieldset>
-                        </div>
-                    )}
-                    {activeTab === 'budget' && (
-                        <div className="space-y-6">
-                             <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Budget Items</legend>
-                                <div className="space-y-2 mb-4">
-                                    {formData.details.map((d) => (
-                                        <div key={d.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailId === d.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                            <div>
-                                                <span className="font-semibold">{d.particulars}</span>
-                                                <div className="text-xs text-gray-500">
-                                                    {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(d.pricePerUnit)}
-                                                    <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="font-bold">{formatCurrency(d.numberOfUnits * d.pricePerUnit)}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
-                                                    </button>
-                                                    <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <div className="text-right font-bold pt-2">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
-                                </div>
-                                {/* Budget Detail Form Fields */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
-                                    <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                    <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
-                                    <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                        <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([c, d]) => <option key={c} value={c}>{c} - {d}</option>)}</select></div>
-                                    </div>
-                                    <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
-                                    
-                                    <div>
-                                        <label className="block text-xs font-medium">Obligation Month</label>
-                                        <select 
-                                            value={getMonthFromDateStr(currentDetail.obligationMonth)} 
-                                            onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} 
-                                            className={commonInputClasses + " py-1.5 text-sm"}
-                                        >
-                                            <option value="">Select Month</option>
-                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium">Disbursement Month</label>
-                                        <select 
-                                            value={getMonthFromDateStr(currentDetail.disbursementMonth)} 
-                                            onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} 
-                                            className={commonInputClasses + " py-1.5 text-sm"}
-                                        >
-                                            <option value="">Select Month</option>
-                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                        </select>
-                                    </div>
-
-                                    <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option><option>bag</option><option>roll</option><option>gram</option><option>liter</option><option>meter</option></select></div>
-                                    <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                    <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                    {editingDetailId !== null ? (<div className="flex gap-1 h-9 items-end"><button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button><button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button></div>) : (<button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>)}
-                                </div>
-                             </fieldset>
-                        </div>
-                    )}
-                </div>
-                <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" onClick={handleCancelEdit} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Subproject</button>
-                </div>
-            </form>
-        </div>
-    );
 
     return (
         <div>
@@ -1509,22 +540,265 @@ const Subprojects: React.FC<SubprojectsProps> = ({ ipos, subprojects, setSubproj
                     </div>
                 </div>
             )}
-            
-            {isErrorModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">Validation Error</h3>
-                        <p className="my-4 text-gray-700 dark:text-gray-300">{errorMessage}</p>
-                        <div className="flex justify-end gap-4">
-                            <button onClick={() => setIsErrorModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
+
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Subprojects Management</h2>
+                {canEdit && (
+                    <button onClick={onCreateSubproject} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                        + Add New Subproject
+                    </button>
+                )}
+            </div>
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                <div className="mb-4 flex flex-col md:flex-row gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                        <input
+                            type="text"
+                            placeholder="Search Subproject..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className={`w-full md:w-64 ${commonInputClasses} mt-0`}
+                        />
+                        {Object.keys(columnFilters).length > 0 && (
+                            <button onClick={clearColumnFilters} className="text-sm text-red-500 hover:text-red-700 underline">
+                                Reset Filters
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex-grow"></div>
+                    <div className="flex items-center gap-2">
+                        {isSelectionMode && selectedIds.length > 0 && (
+                            <button 
+                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                            >
+                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
+                            </button>
+                        )}
+                        <button onClick={() => downloadSubprojectsReport(processedSubprojects)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
+                        {canEdit && (
+                            <>
+                                <button onClick={downloadSubprojectsTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                                <label htmlFor="subproject-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
+                                <input id="subproject-upload" type="file" className="hidden" onChange={(e) => handleSubprojectsUpload(e, subprojects, setSubprojects, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                                <button 
+                                    onClick={() => handleToggleMode('clone')} 
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                    title="Toggle Clone Mode"
+                                >
+                                    <DuplicateIcon />
+                                </button>
+                                <button
+                                    onClick={() => handleToggleMode('delete')}
+                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    title="Toggle Multi-Delete Mode"
+                                >
+                                    <TrashIcon />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto pb-24">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
+                                <SubprojectColumnHeader label="Name" columnKey="name" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['name'] || []} onFilterChange={(v) => handleColumnFilterChange('name', v)} uniqueValues={uniqueValues.name} />
+                                <SubprojectColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['operatingUnit'] || []} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues.operatingUnit} />
+                                <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
+                                <SubprojectColumnHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
+                                <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <SubprojectColumnHeader label="Target completion date" columnKey="estimatedCompletionDate" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['estimatedCompletionDate'] || []} onFilterChange={(v) => handleColumnFilterChange('estimatedCompletionDate', v)} uniqueValues={uniqueValues.estimatedCompletionDate} />
+                                <SubprojectColumnHeader label="Actual completion date" columnKey="actualCompletionDate" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['actualCompletionDate'] || []} onFilterChange={(v) => handleColumnFilterChange('actualCompletionDate', v)} uniqueValues={uniqueValues.actualCompletionDate} />
+                                <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <SubprojectColumnHeader label="Actual obligated" columnKey="actualObligated" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <SubprojectColumnHeader label="Actual disbursed" columnKey="actualDisbursed" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <SubprojectColumnHeader label="Completion rate" columnKey="completionRate" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
+                                    {isSelectionMode ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-xs">Select All</span>
+                                            <input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedSubprojects)} checked={paginatedSubprojects.length > 0 && paginatedSubprojects.every(s => selectedIds.includes(s.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                        </div>
+                                    ) : ("Actions")}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {paginatedSubprojects.map((s) => {
+                                const budget = calculateTotalBudget(s.details);
+                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualObligationAmount || 0) : sum, 0);
+                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualDisbursementAmount || d.actualAmount || 0) : sum, 0);
+                                const totalItems = s.details.length;
+                                const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
+                                const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Animal Commodity' ? 'heads' : 'ha'})`).join(', ') : 'N/A';
+
+                                return (
+                                <React.Fragment key={s.id}>
+                                    <tr onClick={() => handleToggleRow(s.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
+                                        <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
+                                            <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-emerald-600 hover:underline">
+                                                {s.name}
+                                            </button>
+                                            <div className="text-xs text-gray-400">{s.uid}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit}</td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status}</span></td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.estimatedCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.actualCompletionDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualObligated)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualDisbursed)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div className="flex items-center">
+                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
+                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
+                                            {canEdit && (
+                                                <div className="flex items-center justify-end">
+                                                    {isSelectionMode && (
+                                                        <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(s.id); }} onClick={(e) => e.stopPropagation()} className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                                    )}
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                    {expandedRowId === s.id && (
+                                        <tr className="bg-gray-50 dark:bg-gray-900/50">
+                                            <td colSpan={13} className="p-4">
+                                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
+                                                            <div className="space-y-2 text-sm">
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        {s.remarks && (
+                                                            <div>
+                                                                <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Remarks</h4>
+                                                                <p className="text-sm text-gray-600 dark:text-gray-300 italic">{s.remarks}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
+                                                        {s.details.length > 0 ? (
+                                                            <ul className="space-y-1">
+                                                                {s.details.map(detail => (
+                                                                    <li key={detail.id} className="flex justify-between items-start p-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
+                                                                        <div>
+                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars}</span>
+                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode} | {detail.numberOfUnits} {detail.unitOfMeasure}</span>
+                                                                            <span className="text-xs text-gray-400 block">Obl: {formatMonthYear(detail.obligationMonth)} | Disb: {formatMonthYear(detail.disbursementMonth)}</span>
+                                                                        </div>
+                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</span>
+                                                                    </li>
+                                                                ))}
+                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white"><span>Total</span><span>{formatCurrency(calculateTotalBudget(s.details))}</span></li>
+                                                            </ul>
+                                                        ) : ( <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p> )}
+                                                        
+                                                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundingYear ?? 'N/A'}</span></p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> <span className="text-gray-900 dark:text-gray-100">{s.fundType ?? 'N/A'}</span></p>
+                                                            <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> <span className="text-gray-900 dark:text-gray-100">{s.tier ?? 'N/A'}</span></p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+                                                        <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Accomplishment Brief</h4>
+                                                        <div className="space-y-3 text-sm">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-gray-600 dark:text-gray-400">Physical Completion</span>
+                                                                <span className={`font-bold ${completionRate === 100 ? 'text-green-600' : 'text-blue-600'}`}>{completionRate}%</span>
+                                                            </div>
+                                                            <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                                                                <div className={`h-2 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
+                                                            </div>
+                                                            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                                                                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Obligated</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span></div>
+                                                                <div className="flex justify-between mt-1"><span className="text-gray-500 dark:text-gray-400">Disbursed</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span></div>
+                                                            </div>
+                                                            {s.subprojectCommodities && s.subprojectCommodities.length > 0 && (
+                                                                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
+                                                                    {s.subprojectCommodities.map((c, i) => (
+                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)</span></div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            );})}
+                        </tbody>
+                    </table>
+                </div>
+                 
+                 <div className="py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
+                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                    </div>
+                     <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedSubprojects.length)} to {Math.min(currentPage * itemsPerPage, processedSubprojects.length)} of {processedSubprojects.length} entries</span>
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
                         </div>
                     </div>
                 </div>
-            )}
-
-            {view === 'list' ? renderListView() : renderFormView()}
+            </div>
         </div>
     );
 };
 
 export default Subprojects;
+
+const formatDate = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+const formatMonthYear = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+};
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+};
+const getStatusBadge = (status: Subproject['status']) => {
+    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
+};
