@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity, otherActivityComponents, ActivityComponentType, ouToRegionMap } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -149,7 +149,7 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
                                     <input 
                                         type="checkbox" 
                                         checked={filters.length === 0} 
-                                        onChange={() => onFilterChange([])} // Clear filters means "Select All" conceptually in this context
+                                        onChange={() => onFilterChange([])} 
                                         className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                     />
                                     <span className="truncate italic text-gray-500">(Select All)</span>
@@ -231,8 +231,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 newFilters['fundingYear'] = [externalFilters.year];
             }
             if (externalFilters.region) {
-                // Map Region to OUs
-                const targetOUs = operatingUnits.filter(ou => ouToRegionMap[ou] === externalFilters.region);
+                // Improved logic: Filter OUs where the mapped region name includes the filter text
+                // This handles "Region 3" vs "Region III" loose matching
+                const filterRegionLower = externalFilters.region.toLowerCase();
+                const targetOUs = operatingUnits.filter(ou => {
+                    const mappedRegion = ouToRegionMap[ou];
+                    if (!mappedRegion) return false;
+                    return mappedRegion.toLowerCase().includes(filterRegionLower);
+                });
+                
                 if (targetOUs.length > 0) {
                     newFilters['operatingUnit'] = targetOUs;
                 }
@@ -360,7 +367,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
     };
 
-    // ... (Deletion and Cloning Handlers remain the same) ...
+    // ... (Deletion, Cloning, formatDate handlers remain the same)
     const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
             const deletedItems = activities.filter(a => selectedIds.includes(a.id)).map(a => a.name).join(', ');
@@ -596,6 +603,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     uniqueValues={uniqueValues.name} 
                                 />
                                 <ActivityColumnHeader 
+                                    label="OU" 
+                                    columnKey="operatingUnit" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['operatingUnit'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} 
+                                    uniqueValues={uniqueValues.operatingUnit} 
+                                />
+                                <ActivityColumnHeader 
                                     label="Component" 
                                     columnKey="component" 
                                     sortConfig={sortConfig} 
@@ -650,15 +666,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     uniqueValues={[]}
                                     isNumeric={true}
                                 />
-                                <ActivityColumnHeader 
-                                    label="OU" 
-                                    columnKey="operatingUnit" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['operatingUnit'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} 
-                                    uniqueValues={uniqueValues.operatingUnit} 
-                                />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
@@ -691,6 +698,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                             </button>
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal mt-1">{activity.uid}</div>}
                                         </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.operatingUnit}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
@@ -700,7 +708,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         </td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate" title={activity.description}>{activity.description}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(totalActivityBudget)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.operatingUnit}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                             {canEdit && (
                                                 <div className="flex items-center justify-end">
@@ -771,7 +778,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                             </ul>
                                                         ) : (<p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p>)}
                                                         <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                             <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {activity.fundingYear ?? 'N/A'}</p>
+                                                             <p><strong className="text-gray-500 dark:text-gray-400">Funding Year:</strong> {activity.fundingYear ?? 'N/A'} </p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Fund Type:</strong> {activity.fundType ?? 'N/A'}</p>
                                                             <p><strong className="text-gray-500 dark:text-gray-400">Tier:</strong> {activity.tier ?? 'N/A'}</p>
                                                         </div>
