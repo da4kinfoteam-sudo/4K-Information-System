@@ -36,23 +36,22 @@ const getApiKey = () => {
 };
 
 const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System.
-Your goal is to help users navigate the app and understand the data.
 
-**CRITICAL: Smart Navigation**
+**CRITICAL: Financial & Data Queries**
+- The system has **ALREADY calculated** the totals for you. Look at the \`financial_summary\` and \`filtered_results\` objects in the context.
+- If asked "How much", return the exact value from \`financial_summary\`. Do NOT attempt to sum items yourself.
+- If asked "How many", return the exact count from \`filtered_results\`.
+- All monetary values are in PHP. Format them nicely (e.g., PHP 1,500,000.00).
+
+**Smart Navigation**
 You can control the app view by adding query parameters to links.
 - To show MIMAROPA IPOs: \`[View MIMAROPA IPOs](/ipo?region=MIMAROPA Region)\`
 - To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
-- To show specific search: \`[Search Coffee](/subprojects?search=Coffee)\`
 
 **Response Style:**
-1. **Be Concise**: Summarize data. Do not list more than 5 items unless asked.
-2. **Data Driven**: Use the provided context 'system_stats' and 'filtered_results' to answer specific counting questions.
+1. **Be Concise**: Give the answer directly.
+2. **Context Aware**: If the user asks about a region, verify the data in \`filters_applied\` matches.
 3. **Hyperlinks**: ALWAYS use Markdown links \`[Text](URL)\`.
-   - Lists: \`/dashboards\`, \`/subprojects\`, \`/activities\`, \`/ipo\`, \`/marketing-database\`, \`/program-management\`, \`/reports\`
-   - Details: \`/subproject/UID\`, \`/ipo/Name\`, \`/activity/UID\`
-
-**Context Handling:**
-If the user asks about a specific year (e.g., 2026) or region (e.g., Region 7), verify the data in the context matches that criteria before answering. If no data matches, explicitly state: "I found no records for [Region/Year] in the current database."
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -63,7 +62,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me to 'Show IPOs in Region 7' or 'Count subprojects in 2024'." }
+        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me 'How much is the budget for Region 2?' or 'Show me subprojects in 2024'." }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -122,16 +121,13 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
     // Render markdown links and bold text
     const renderMessage = (text: string) => {
-        // First, split by bold markers (**text**)
         const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
         
         return boldParts.map((part, index) => {
             if (part.startsWith('**') && part.endsWith('**')) {
-                // Render bold text
                 return <strong key={index} className="font-bold text-gray-900 dark:text-white">{part.slice(2, -2)}</strong>;
             }
             
-            // For non-bold parts, process links
             const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
             const linkParts = [];
             let lastIndex = 0;
@@ -163,8 +159,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
     };
 
     /**
-     * DYNAMIC CONTEXT BUILDER
-     * Intelligent filtering to handle "Region 7" -> "Region VII" and specific years.
+     * DYNAMIC CONTEXT BUILDER (The "Query Engine")
+     * Filters data first, then computes totals, then sends ONLY the summary to AI.
      */
     const getDynamicContext = (query: string) => {
         const q = query.toLowerCase();
@@ -177,9 +173,9 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const regionAliases: {[key: string]: string} = {
             'ilocos': 'Region I', 'region 1': 'Region I',
             'cagayan': 'Region II', 'region 2': 'Region II',
-            'central luzon': 'Region III', 'region 3': 'Region III', 'bulacan': 'Region III', // Bulacan often associated, though location check handles specific
+            'central luzon': 'Region III', 'region 3': 'Region III',
             'calabarzon': 'Region IV-A', '4a': 'Region IV-A',
-            'mimaropa': 'MIMAROPA Region', '4b': 'MIMAROPA Region', 'region 4b': 'MIMAROPA Region',
+            'mimaropa': 'MIMAROPA Region', '4b': 'MIMAROPA Region',
             'bicol': 'Region V', 'region 5': 'Region V',
             'western visayas': 'Region VI', 'region 6': 'Region VI',
             'central visayas': 'Region VII', 'region 7': 'Region VII',
@@ -196,13 +192,9 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         };
         
         let targetRegion: string | null = null;
-        
-        // Check for aliases in query
         const sortedAliases = Object.keys(regionAliases).sort((a,b) => b.length - a.length);
         for (const alias of sortedAliases) {
-            // Ensure full word match or containment
             if (q.includes(alias)) {
-                // Find matching official region string
                 const official = philippineRegions.find(r => 
                     r.toLowerCase().includes(regionAliases[alias].toLowerCase()) || 
                     regionAliases[alias].toLowerCase().includes(r.toLowerCase())
@@ -212,43 +204,24 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
-        // 3. Identify Target Location (Province/City) if no Region found
-        let targetLocation: string | null = null;
-        if (!targetRegion) {
-             // Look for indicators: "in [text]", "province of [text]", "city of [text]"
-             const locMatch = q.match(/(?:in|from|province of|city of|municipality of)\s+([a-z0-9\s]+)/i);
-             if (locMatch) {
-                 const captured = locMatch[1].trim();
-                 // Ignore if it's likely a year or keyword
-                 if (!/^\d{4}$/.test(captured) && !['region', 'the', 'list', 'show', 'all'].includes(captured)) {
-                     // Extract just the name, e.g., "Bulacan" from "Bulacan in 2024"
-                     const clean = captured.split(/\s+(?:in|for|at|on|and|with|is|are)\s+/)[0];
-                     targetLocation = clean.replace(/[?.,]$/, '');
-                 }
-             }
-        }
-
-        // Helper: Generic Filter
+        // 3. Filter Data based on detected Intent
         const filterItem = (item: any) => {
             let match = true;
-            
             // Year Filter
             if (targetYear) {
-                const y = item.fundingYear || item.fundYear || (item.date ? new Date(item.date).getFullYear() : null) || (item.registrationDate ? new Date(item.registrationDate).getFullYear() : null);
+                const y = item.fundingYear || item.fundYear || (item.date ? new Date(item.date).getFullYear() : null);
                 if (y && y.toString() !== targetYear) match = false;
             }
-
             // Region Filter
             if (targetRegion) {
                 let locationStr = (item.region || item.location || item.operatingUnit || '').toLowerCase();
+                // Map OUs to Regions for filtering
                 if (item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
                     locationStr += ' ' + ouToRegionMap[item.operatingUnit].toLowerCase();
                 }
-
                 const tr = targetRegion.toLowerCase();
-                const trShort = targetRegion.split(' ')[1]?.toLowerCase(); // Roman numeral part
+                const trShort = targetRegion.split(' ')[1]?.toLowerCase();
                 
-                // Special handle for MIMAROPA as it's often misformatted in data
                 if (tr.includes('mimaropa')) {
                      if (!locationStr.includes('mimaropa') && !locationStr.includes('4b')) match = false;
                 } else {
@@ -257,67 +230,70 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     }
                 }
             }
-
-            // Specific Location Filter (Province/City) - Only if Region not strictly set
-            if (targetLocation && !targetRegion) {
-                 const loc = (item.location || item.address || '').toLowerCase();
-                 const reg = (item.region || '').toLowerCase();
-                 const search = targetLocation.toLowerCase();
-                 // If location or region field doesn't contain the specific word (e.g. "bulacan")
-                 if (!loc.includes(search) && !reg.includes(search)) {
-                     match = false;
-                 }
-            }
-
             return match;
         };
 
-        // 4. Pre-calculate Intersections
         const filteredSubprojects = subprojects.filter(filterItem);
         const filteredTrainings = activities.filter(a => a.type === 'Training').filter(filterItem);
+        const filteredActivities = activities.filter(a => a.type === 'Activity').filter(filterItem);
         const filteredIPOs = ipos.filter(filterItem);
         
-        const iposWithFilteredSP = new Set(filteredSubprojects.map(s => s.indigenousPeopleOrganization));
-        const iposWithFilteredTrainings = new Set(filteredTrainings.flatMap(t => t.participatingIpos));
+        // 4. PRE-CALCULATE FINANCIALS (The Logic Optimization)
+        const calculateBudget = (items: any[], type: 'sp' | 'act') => {
+            if (type === 'sp') {
+                return items.reduce((sum, sp) => 
+                    sum + (sp.details?.reduce((dSum: number, d: any) => dSum + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
+            } else {
+                return items.reduce((sum, act) => 
+                    sum + (act.expenses?.reduce((eSum: number, e: any) => eSum + e.amount, 0) || 0), 0);
+            }
+        };
 
-        // 5. Build Stats (Always Included)
+        const subprojectBudget = calculateBudget(filteredSubprojects, 'sp');
+        const trainingBudget = calculateBudget(filteredTrainings, 'act');
+        const activityBudget = calculateBudget(filteredActivities, 'act');
+        const totalAllocation = subprojectBudget + trainingBudget + activityBudget;
+
+        // 5. Build Compact Context
         const stats = {
-            counts: {
-                total_subprojects: subprojects.length,
-                total_ipos: ipos.length,
-                total_trainings: activities.filter(a => a.type === 'Training').length,
+            filters_applied: { 
+                year: targetYear || "All Years", 
+                region: targetRegion || "All Regions" 
             },
-            filters_applied: { year: targetYear, region: targetRegion, location: targetLocation },
             filtered_results: {
                 subprojects_count: filteredSubprojects.length,
                 trainings_count: filteredTrainings.length,
-                ipos_count: filteredIPOs.length,
-                unique_ipos_with_matching_subprojects: iposWithFilteredSP.size,
-                unique_ipos_with_matching_trainings: iposWithFilteredTrainings.size
+                other_activities_count: filteredActivities.length,
+                ipos_count: filteredIPOs.length
+            },
+            financial_summary: {
+                currency: "PHP",
+                subproject_allocation: subprojectBudget,
+                training_allocation: trainingBudget,
+                other_activity_allocation: activityBudget,
+                total_allocation: totalAllocation,
+                note: "Use these exact values for 'how much' questions."
             }
         };
 
         const context: any = { system_stats: stats };
 
-        // 6. Filter & Slice Data Lists for detailed view
-        const maxItems = 20;
+        // 6. Conditionally add list data only if NOT an aggregate question
+        // If user asks "how many" or "how much", they don't need the list, just the stats above.
+        // This saves massive amounts of tokens.
+        const isAggregateQuestion = q.includes('how much') || q.includes('how many') || q.includes('total') || q.includes('count') || q.includes('sum');
 
-        if (q.includes('ipo') || q.includes('organization') || q.includes('farmer')) {
-            context.ipos = filteredIPOs.slice(0, maxItems).map(i => ({
-                name: i.name, region: i.region, location: i.location, members: i.totalMembers, regDate: i.registrationDate
-            }));
-        }
-
-        if (q.includes('subproject') || q.includes('project') || q.includes('livelihood')) {
-            context.subprojects = filteredSubprojects.slice(0, maxItems).map(s => ({
-                uid: s.uid, name: s.name, status: s.status, location: s.location, year: s.fundingYear, ipo: s.indigenousPeopleOrganization
-            }));
-        }
-
-        if (q.includes('training') || q.includes('activity')) {
-            context.activities = filteredTrainings.slice(0, maxItems).map(a => ({
-                uid: a.uid, name: a.name, type: a.type, date: a.date, location: a.location, participants: (a.participantsMale + a.participantsFemale)
-            }));
+        if (!isAggregateQuestion) {
+            const maxItems = 10;
+            if (q.includes('ipo') || q.includes('organization')) {
+                context.ipos_list = filteredIPOs.slice(0, maxItems).map(i => ({ name: i.name, region: i.region }));
+            }
+            if (q.includes('subproject')) {
+                context.subprojects_list = filteredSubprojects.slice(0, maxItems).map(s => ({ name: s.name, budget: calculateBudget([s], 'sp') }));
+            }
+            if (q.includes('training')) {
+                context.trainings_list = filteredTrainings.slice(0, maxItems).map(t => ({ name: t.name, budget: calculateBudget([t], 'act') }));
+            }
         }
 
         return JSON.stringify(context);
@@ -334,7 +310,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
         const apiKey = getApiKey();
         if (!apiKey) {
-             setMessages(prev => [...prev, { role: 'model', text: "Error: API Key is missing. Please check system configuration." }]);
+             setMessages(prev => [...prev, { role: 'model', text: "Error: API Key is missing." }]);
              setIsLoading(false);
              return;
         }
@@ -342,11 +318,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         try {
             // Build minimized context based on query
             const dynamicContext = getDynamicContext(userMessage);
-            const systemPrompt = `${BASE_SYSTEM_INSTRUCTION}\n\n[RELEVANT DATA CONTEXT]\n${dynamicContext}`;
+            const systemPrompt = `${BASE_SYSTEM_INSTRUCTION}\n\n[REAL-TIME DATA CONTEXT]\n${dynamicContext}`;
 
             const ai = new GoogleGenAI({ apiKey });
             
-            // Use 'gemini-flash-lite-latest' for speed and cost efficiency
             const chat = ai.chats.create({
                 model: 'gemini-flash-lite-latest',
                 config: {
@@ -368,15 +343,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         } catch (error: any) {
             console.error("AI Chat Error:", error);
-            
-            let friendlyMessage = "I'm currently overwhelmed. Please try asking again in a moment.";
-            if (error.message && (error.message.includes('429') || error.message.includes('Quota'))) {
-                friendlyMessage = "I'm receiving too many requests right now. Please wait a few seconds.";
-            } else if (error.message && error.message.includes('API key')) {
-                friendlyMessage = "Configuration Error: Invalid AI Key.";
-            }
-
-            setMessages(prev => [...prev, { role: 'model', text: `⚠️ ${friendlyMessage}` }]);
+            setMessages(prev => [...prev, { role: 'model', text: "I'm having trouble connecting right now. Please try again." }]);
         } finally {
             setIsLoading(false);
         }
@@ -443,7 +410,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             type="text"
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
-                            placeholder="Ask about Subprojects, Reports..."
+                            placeholder="Ask about Budget, Subprojects..."
                             className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-gray-700 dark:text-white"
                         />
                         <button 
