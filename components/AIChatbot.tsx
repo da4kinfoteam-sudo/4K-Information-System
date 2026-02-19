@@ -1,6 +1,6 @@
 
 // Author: 4K
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, ouToRegionMap } from '../constants';
 
@@ -32,7 +32,7 @@ const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information
 
 **Response Style:**
 1. **Direct Answer**: Start with the number or amount. "There are 163 IPOs in Region 2."
-2. **Context**: Mention the filter applied (e.g., "in Region II").
+2. **Context**: Mention the filter applied (e.g., "in Region II" or "in Pampanga").
 3. **No Fluff**: Do not say "Based on the provided data". Just give the answer.
 4. **Currency**: Format PHP (e.g., ₱1.5M or PHP 1,500,000).
 
@@ -41,6 +41,7 @@ const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information
 - To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
 - To show Completed Subprojects: \`[View Completed Subprojects](/subprojects?status=Completed)\`
 - To show Ongoing Trainings: \`[View Ongoing Trainings](/trainings?status=Ongoing)\`
+- To show items in a location (e.g. Pampanga): \`[View Pampanga Items](/subprojects?search=Pampanga)\`
 `;
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
@@ -148,6 +149,27 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         });
     };
 
+    // Extract all unique locations from data for dynamic filtering
+    const uniqueLocations = useMemo(() => {
+        const locs = new Set<string>();
+        const collect = (items: any[]) => {
+            items.forEach(item => {
+                if (item.location) {
+                    const parts = item.location.split(',').map((p:string) => p.trim().toLowerCase());
+                    parts.forEach((p: string) => {
+                        if (p.length > 2 && !['region', 'province', 'city', 'municipality'].includes(p)) {
+                            locs.add(p);
+                        }
+                    });
+                }
+            });
+        };
+        collect(subprojects);
+        collect(ipos);
+        collect(activities);
+        return Array.from(locs).sort((a, b) => b.length - a.length); // Longest match first
+    }, [subprojects, ipos, activities]);
+
     /**
      * DYNAMIC QUERY ENGINE
      * Pre-calculates the exact answer locally to save AI tokens and quota.
@@ -201,6 +223,15 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
+        // 2c. Identify Location (Province/Municipality) from data
+        let targetLocation: string | null = null;
+        for (const loc of uniqueLocations) {
+            if (q.includes(loc)) {
+                targetLocation = loc;
+                break;
+            }
+        }
+
         // 3. Filter Data based on detected Intent (Backend Query Logic)
         const filterItem = (item: any) => {
             let match = true;
@@ -223,6 +254,13 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     match = false;
                 }
             }
+            // Location Filter (Province/City)
+            if (targetLocation) {
+                const loc = (item.location || '').toLowerCase();
+                if (!loc.includes(targetLocation)) {
+                    match = false;
+                }
+            }
             // Status Filter
             if (targetStatus) {
                 if (item.status && item.status !== targetStatus) match = false;
@@ -239,12 +277,15 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const filteredSubprojects = subprojects.filter(filterItem);
         const filteredTrainings = activities.filter(a => a.type === 'Training').filter(filterItem);
         const filteredActivities = activities.filter(a => a.type === 'Activity').filter(filterItem);
-        // Note: IPOs don't usually have 'status' like subprojects, so filtering IPOs by 'Completed' might return 0 if strict.
-        // We relax IPO filtering if status is present but IPO doesn't have it, UNLESS user asked for IPOs specifically with a status (which is rare/invalid).
+        
         const filteredIPOs = ipos.filter(i => {
-            // Apply year/region filters
+            // Apply year filter for IPOs (based on registration)
             if (targetYear && new Date(i.registrationDate).getFullYear().toString() !== targetYear) return false;
             if (targetRegion && i.region !== targetRegion) return false;
+            if (targetLocation) {
+                const loc = (i.location || '').toLowerCase();
+                if (!loc.includes(targetLocation)) return false;
+            }
             return true;
         });
         
@@ -269,6 +310,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             filters_applied: { 
                 year: targetYear || "All Years", 
                 region: targetRegion || "All Regions (National)",
+                location: targetLocation || "None",
                 status: targetStatus || "All Statuses"
             },
             filtered_results: {
