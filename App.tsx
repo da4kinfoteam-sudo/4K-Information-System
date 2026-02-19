@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Sidebar from './components/Sidebar';
@@ -604,6 +605,7 @@ const AppContent: React.FC = () => {
                             ipo={selectedIpo} 
                             subprojects={subprojects.filter(s => s.indigenousPeopleOrganization === selectedIpo.name)}
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
+                            marketingPartners={marketingPartners}
                             onBack={handleBack}
                             previousPageName={getPageName(previousPage)}
                             onUpdateIpo={(updated) => {

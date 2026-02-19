@@ -1,10 +1,10 @@
 
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo } from 'react';
-import { IPO, Subproject, Training, Commodity, referenceCommodityTypes } from '../constants';
+import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPermissions } from './mainfunctions/TableHooks';
+import { getUserPermissions, usePagination } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 
@@ -13,6 +13,7 @@ interface IPODetailProps {
     ipo: IPO;
     subprojects: Subproject[];
     trainings: Training[];
+    marketingPartners: MarketingPartner[];
     onBack: () => void;
     previousPageName: string;
     onUpdateIpo: (updatedIpo: IPO) => void;
@@ -44,7 +45,7 @@ const formatCurrency = (amount: number) => {
 const getStatusBadge = (status: Subproject['status']) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
         case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
         case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
         case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
@@ -52,12 +53,15 @@ const getStatusBadge = (status: Subproject['status']) => {
     }
 }
 
-const getTrainingStatusBadge = (training: Training) => {
-    const isCompleted = !!training.actualDate;
+const getTrainingStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
-    return isCompleted 
-        ? `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`
-        : `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+    switch (status) {
+        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
+        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
+        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
+        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
+        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+    }
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; half?: boolean }> = ({ label, value, half }) => (
@@ -97,7 +101,54 @@ const normalizeRegionName = (inputRegion: string) => {
     return map[inputRegion] || inputRegion;
 };
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
+// Pagination Controls Component
+const PaginationControls: React.FC<{
+    currentPage: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    itemsPerPage: number;
+    onItemsPerPageChange: (val: number) => void;
+    totalItems: number;
+}> = ({ currentPage, totalPages, onPageChange, itemsPerPage, onItemsPerPageChange, totalItems }) => (
+    <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4 text-xs">
+        <div className="flex items-center gap-2">
+            <span className="text-gray-600 dark:text-gray-400">Show</span>
+            <select
+                value={itemsPerPage}
+                onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-gray-700 dark:text-gray-200"
+            >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+            </select>
+            <span className="text-gray-600 dark:text-gray-400">entries</span>
+        </div>
+        <div className="flex items-center gap-4">
+            <span className="text-gray-600 dark:text-gray-400">
+                {totalItems === 0 ? 'No entries' : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, totalItems)} of ${totalItems}`}
+            </span>
+            <div className="flex gap-1">
+                <button
+                    onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
+                >
+                    Prev
+                </button>
+                <button
+                    onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages || totalPages === 0}
+                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
+                >
+                    Next
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const [isEditing, setIsEditing] = useState(false);
@@ -121,6 +172,73 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         averageIncome: ''
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
+
+    // --- Subproject Filters & Pagination ---
+    const [spYearFilter, setSpYearFilter] = useState('All');
+    const [spStatusFilter, setSpStatusFilter] = useState('All');
+    
+    const filteredSubprojects = useMemo(() => {
+        return subprojects.filter(sp => {
+            if (spYearFilter !== 'All' && sp.fundingYear?.toString() !== spYearFilter) return false;
+            if (spStatusFilter !== 'All' && sp.status !== spStatusFilter) return false;
+            return true;
+        }).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    }, [subprojects, spYearFilter, spStatusFilter]);
+
+    const spPagination = usePagination(filteredSubprojects, [spYearFilter, spStatusFilter]);
+    
+    // Set default items per page to 5 for Subprojects
+    useEffect(() => {
+        spPagination.setItemsPerPage(5);
+    }, []);
+
+    // --- Training Filters & Pagination ---
+    const [trYearFilter, setTrYearFilter] = useState('All');
+    const [trStatusFilter, setTrStatusFilter] = useState('All');
+
+    const filteredTrainings = useMemo(() => {
+        return trainings.filter(t => {
+            if (trYearFilter !== 'All' && t.fundingYear?.toString() !== trYearFilter) return false;
+            if (trStatusFilter !== 'All' && t.status !== trStatusFilter) return false;
+            return true;
+        }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [trainings, trYearFilter, trStatusFilter]);
+
+    const trPagination = usePagination(filteredTrainings, [trYearFilter, trStatusFilter]);
+
+    // Set default items per page to 5 for Trainings
+    useEffect(() => {
+        trPagination.setItemsPerPage(5);
+    }, []);
+
+    // --- Market Linkages Logic ---
+    const ipoLinkages = useMemo(() => {
+        const links: { partner: MarketingPartner; link: MarketLinkage }[] = [];
+        marketingPartners.forEach(partner => {
+            partner.marketingLinkages?.forEach(link => {
+                if (link.ipoName === ipo.name) {
+                    links.push({ partner, link });
+                }
+            });
+        });
+        return links.sort((a, b) => new Date(b.link.agreementDate || '').getTime() - new Date(a.link.agreementDate || '').getTime());
+    }, [marketingPartners, ipo.name]);
+
+    const mlPagination = usePagination(ipoLinkages);
+    // Set default items per page to 5 for Linkages
+    useEffect(() => {
+        mlPagination.setItemsPerPage(5);
+    }, []);
+
+    // --- History Pagination ---
+    const histPagination = usePagination(history);
+     useEffect(() => {
+        histPagination.setItemsPerPage(5);
+    }, []);
+
+    // Unique Years for Filters
+    const spYears = useMemo(() => Array.from(new Set(subprojects.map(s => s.fundingYear))).filter(Boolean).sort().reverse(), [subprojects]);
+    const trYears = useMemo(() => Array.from(new Set(trainings.map(t => t.fundingYear))).filter(Boolean).sort().reverse(), [trainings]);
 
     // Calculate Statistics for Overview
     const overviewStats = useMemo(() => {
@@ -400,7 +518,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     }
     
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+    const filterSelectClasses = "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500";
 
 
     if (isEditing) {
@@ -412,8 +531,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Changes</h3>
                             <p className="my-4 text-gray-600 dark:text-gray-300">Are you sure you want to save these changes?</p>
                             <div className="flex justify-end gap-4 mt-6">
-                                <button onClick={() => setIsConfirmModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                                <button onClick={handleConfirmSave} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Confirm</button>
+                                <button onClick={() => setIsConfirmModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">Cancel</button>
+                                <button onClick={handleConfirmSave} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Confirm</button>
                             </div>
                         </div>
                     </div>
@@ -475,19 +594,19 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
 
                             <div className="md:col-span-3 flex items-center flex-wrap gap-x-8 gap-y-2 pt-2">
                                  <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={editedIpo.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={editedIpo.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                     <span>Women-led</span>
                                 </label>
                                 <label htmlFor="isWithinGida" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={editedIpo.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={editedIpo.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                     <span>Within GIDA area</span>
                                 </label>
                                 <label htmlFor="isWithinElcac" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={editedIpo.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={editedIpo.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                     <span>Within ELCAC area</span>
                                 </label>
                                 <label className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
-                                    <input type="checkbox" name="isWithScad" checked={editedIpo.isWithScad} disabled className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                    <input type="checkbox" name="isWithScad" checked={editedIpo.isWithScad} disabled className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                     <span>With SCAD</span>
                                 </label>
                             </div>
@@ -516,7 +635,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-accent dark:hover:text-accent">
+                                        <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                         </button>
                                         <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
@@ -578,13 +697,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                                         <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                     </div>
                                 ) : (
-                                    <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-green-100 dark:bg-green-900/50 text-accent dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900">+</button>
+                                    <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900">+</button>
                                 )}
                             </div>
                         </div>
                         <div className="mt-2">
                             <label className="flex items-center gap-2 text-sm font-medium">
-                                <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent" />
+                                <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                 <span>SCAD commodity</span>
                             </label>
                         </div>
@@ -642,7 +761,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                         <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                             Cancel
                         </button>
-                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
+                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
                             Save Changes
                         </button>
                     </div>
@@ -663,7 +782,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                      {canEdit && (
                          <button
                             onClick={() => setIsEditing(true)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95"
+                            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm"
                         >
                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit IPO
@@ -684,7 +803,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                 <div className="lg:col-span-2 space-y-8">
 
                     {/* NEW: Overview Card (formerly Commodities + Stats) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Overview</h3>
                         
                         {/* New Stats Grid */}
@@ -711,7 +830,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
 
                         <div className="mb-4">
                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
-                            <p className="text-sm font-semibold text-accent dark:text-green-400 bg-gray-100 dark:bg-gray-900/50 px-3 py-1 rounded-full inline-block">Level {ipo.levelOfDevelopment}</p>
+                            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full inline-block border border-emerald-100 dark:border-emerald-800">Level {ipo.levelOfDevelopment}</p>
                         </div>
                          <div>
                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
@@ -742,89 +861,205 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                     </div>
 
                     {/* Subprojects Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Subprojects</h3>
-                        {subprojects.length > 0 ? (
-                            <ul className="space-y-4">
-                                {subprojects.map(p => (
-                                    <li key={p.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <button 
-                                                    onClick={() => onSelectSubproject(p)}
-                                                    className="font-bold text-gray-800 dark:text-gray-100 hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline text-left"
-                                                >
-                                                    {p.name}
-                                                </button>
-                                                <p className="text-sm text-gray-500 dark:text-gray-400">{p.location}</p>
-                                            </div>
-                                            <span className={getStatusBadge(p.status)}>{p.status}</span>
-                                        </div>
-                                        <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-                                            <span className="font-semibold">Budget:</span> {formatCurrency(calculateTotalBudget(p.details))}
-                                            <span className="mx-2">|</span>
-                                            <span className="font-semibold">Timeline:</span> {formatDate(p.startDate)} to {formatDate(p.estimatedCompletionDate)}
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No subprojects linked to this IPO.</p>
-                        )}
-                    </div>
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Subprojects</h3>
+                            <div className="flex gap-2">
+                                <select 
+                                    value={spYearFilter} 
+                                    onChange={(e) => setSpYearFilter(e.target.value)} 
+                                    className={filterSelectClasses}
+                                >
+                                    <option value="All">All Years</option>
+                                    {spYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <select 
+                                    value={spStatusFilter} 
+                                    onChange={(e) => setSpStatusFilter(e.target.value)} 
+                                    className={filterSelectClasses}
+                                >
+                                    <option value="All">All Status</option>
+                                    <option value="Proposed">Proposed</option>
+                                    <option value="Ongoing">Ongoing</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                        </div>
 
-                    {/* Trainings Card - Renamed Title */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Trainings</h3>
-                        {trainings.length > 0 ? (
-                             <ul className="space-y-4">
-                                {trainings.map(t => (
-                                    <li key={t.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <button 
-                                                    onClick={() => onSelectActivity(t)}
-                                                    className="font-bold text-gray-800 dark:text-gray-100 hover:text-accent dark:hover:text-green-400 focus:outline-none focus:underline text-left"
-                                                >
-                                                    {t.name}
-                                                </button>
-                                                <p className="text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
+                        {spPagination.paginatedData.length > 0 ? (
+                            <>
+                                <ul className="space-y-4">
+                                    {spPagination.paginatedData.map(p => (
+                                        <li key={p.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <button 
+                                                        onClick={() => onSelectSubproject(p)}
+                                                        className="font-bold text-gray-800 dark:text-gray-100 hover:text-emerald-600 dark:hover:text-emerald-400 focus:outline-none focus:underline text-left"
+                                                    >
+                                                        {p.name}
+                                                    </button>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">{p.location}</p>
+                                                </div>
+                                                <span className={getStatusBadge(p.status)}>{p.status}</span>
                                             </div>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <span className={getTrainingStatusBadge(t)}>{t.actualDate ? 'Completed' : 'Planned'}</span>
-                                                <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
+                                            <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                                                <span className="font-semibold text-emerald-700 dark:text-emerald-400">Budget:</span> {formatCurrency(calculateTotalBudget(p.details))}
+                                                <span className="mx-2">|</span>
+                                                <span className="font-semibold text-emerald-700 dark:text-emerald-400">Timeline:</span> {formatDate(p.startDate)} to {formatDate(p.estimatedCompletionDate)}
                                             </div>
-                                        </div>
-                                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">{t.description}</p>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">This IPO has not attended any recorded trainings.</p>
-                        )}
-                    </div>
-                    
-                    {/* History Card (From ipo_history table) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
-                        {history && history.length > 0 ? (
-                            <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
-                                <ul className="space-y-8">
-                                    {history.map((entry, index) => (
-                                        <li key={index} className="ml-8 relative">
-                                            <span className="absolute flex items-center justify-center w-4 h-4 bg-accent rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800">
-                                                <svg className="w-1.5 h-1.5 text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4Z"/>
-                                                    <path d="M0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
-                                                </svg>
-                                            </span>
-                                            <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
-                                            <p className="font-semibold text-gray-900 dark:text-white">{entry.event}</p>
-                                            <p className="text-sm font-normal text-gray-500 dark:text-gray-400">by {entry.user}</p>
                                         </li>
                                     ))}
                                 </ul>
+                                <PaginationControls 
+                                    currentPage={spPagination.currentPage}
+                                    totalPages={spPagination.totalPages}
+                                    onPageChange={spPagination.setCurrentPage}
+                                    itemsPerPage={spPagination.itemsPerPage}
+                                    onItemsPerPageChange={spPagination.setItemsPerPage}
+                                    totalItems={filteredSubprojects.length}
+                                />
+                            </>
+                        ) : (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No subprojects match the current filters.</p>
+                        )}
+                    </div>
+
+                    {/* Trainings Card */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Trainings</h3>
+                             <div className="flex gap-2">
+                                <select 
+                                    value={trYearFilter} 
+                                    onChange={(e) => setTrYearFilter(e.target.value)} 
+                                    className={filterSelectClasses}
+                                >
+                                    <option value="All">All Years</option>
+                                    {trYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <select 
+                                    value={trStatusFilter} 
+                                    onChange={(e) => setTrStatusFilter(e.target.value)} 
+                                    className={filterSelectClasses}
+                                >
+                                    <option value="All">All Status</option>
+                                    <option value="Proposed">Proposed</option>
+                                    <option value="Ongoing">Ongoing</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
                             </div>
+                        </div>
+
+                        {trPagination.paginatedData.length > 0 ? (
+                            <>
+                                <ul className="space-y-4">
+                                    {trPagination.paginatedData.map(t => (
+                                        <li key={t.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <button 
+                                                        onClick={() => onSelectActivity(t)}
+                                                        className="font-bold text-gray-800 dark:text-gray-100 hover:text-emerald-600 dark:hover:text-emerald-400 focus:outline-none focus:underline text-left"
+                                                    >
+                                                        {t.name}
+                                                    </button>
+                                                    <p className="text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <span className={getTrainingStatusBadge(t.status)}>{t.status}</span>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-2">{t.description}</p>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <PaginationControls 
+                                    currentPage={trPagination.currentPage}
+                                    totalPages={trPagination.totalPages}
+                                    onPageChange={trPagination.setCurrentPage}
+                                    itemsPerPage={trPagination.itemsPerPage}
+                                    onItemsPerPageChange={trPagination.setItemsPerPage}
+                                    totalItems={filteredTrainings.length}
+                                />
+                            </>
+                        ) : (
+                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No trainings match the current filters.</p>
+                        )}
+                    </div>
+                    
+                    {/* Market Linkages Card (New) */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Market Linkages</h3>
+                        {mlPagination.paginatedData.length > 0 ? (
+                            <>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {mlPagination.paginatedData.map((item, idx) => (
+                                        <div key={idx} className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-800 hover:shadow-md transition-shadow">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h4 className="font-bold text-teal-800 dark:text-teal-200">{item.partner.companyName}</h4>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${item.link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                    {item.link.negotiationStatus}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                                                <p><span className="font-semibold">Agreement:</span> {item.link.agreedQuantityValue} Kg ({item.link.agreedQuantityTimeframe}) @ ₱{item.link.agreedPricePerKg}/Kg</p>
+                                                <p><span className="font-semibold">Type:</span> {item.link.agreementType}</p>
+                                                <p><span className="font-semibold">Date:</span> {item.link.agreementDate ? new Date(item.link.agreementDate).toLocaleDateString() : 'N/A'}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <PaginationControls 
+                                    currentPage={mlPagination.currentPage}
+                                    totalPages={mlPagination.totalPages}
+                                    onPageChange={mlPagination.setCurrentPage}
+                                    itemsPerPage={mlPagination.itemsPerPage}
+                                    onItemsPerPageChange={mlPagination.setItemsPerPage}
+                                    totalItems={ipoLinkages.length}
+                                />
+                            </>
+                        ) : (
+                            <div className="text-center py-6 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-dashed border-gray-200 dark:border-gray-600">
+                                <p className="text-sm text-gray-500 italic">No marketing linkages established yet.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* History Card */}
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
+                        {histPagination.paginatedData.length > 0 ? (
+                            <>
+                                <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
+                                    <ul className="space-y-8">
+                                        {histPagination.paginatedData.map((entry, index) => (
+                                            <li key={index} className="ml-8 relative">
+                                                <span className="absolute flex items-center justify-center w-4 h-4 bg-emerald-500 rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800 shadow-sm">
+                                                    <svg className="w-1.5 h-1.5 text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path d="M20 4a2 2 0 0 0-2-2h-2V1a1 1 0 0 0-2 0v1h-3V1a1 1 0 0 0-2 0v1H6V1a1 1 0 0 0-2 0v1H2a2 2 0 0 0-2 2v2h20V4Z"/>
+                                                        <path d="M0 18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8H0v10Zm5-8h10a1 1 0 0 1 0 2H5a1 1 0 0 1 0-2Z"/>
+                                                    </svg>
+                                                </span>
+                                                <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
+                                                <p className="font-semibold text-gray-900 dark:text-white">{entry.event}</p>
+                                                <p className="text-sm font-normal text-gray-500 dark:text-gray-400">by {entry.user}</p>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <PaginationControls 
+                                    currentPage={histPagination.currentPage}
+                                    totalPages={histPagination.totalPages}
+                                    onPageChange={histPagination.setCurrentPage}
+                                    itemsPerPage={histPagination.itemsPerPage}
+                                    onItemsPerPageChange={histPagination.setItemsPerPage}
+                                    totalItems={history.length}
+                                />
+                            </>
                         ) : (
                             <p className="text-sm text-gray-500 dark:text-gray-400 italic">No historical data available for this IPO.</p>
                         )}
@@ -834,7 +1069,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                 {/* Right Column */}
                 <div className="space-y-8">
                     {/* Profile Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">IPO Profile</h3>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-6">
                             <DetailItem label="Indigenous Cultural Community" value={ipo.indigenousCulturalCommunity} />
@@ -845,17 +1080,17 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, onBa
                             <DetailItem label="Contact Number" value={ipo.contactNumber} half />
                             <DetailItem label="Flags" value={
                                 <div className="flex flex-wrap gap-2 mt-1">
-                                    {ipo.isWomenLed && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300">Women-Led</span>}
-                                    {ipo.isWithinGida && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300">Within GIDA</span>}
-                                    {ipo.isWithinElcac && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300">Within ELCAC</span>}
-                                    {ipo.isWithScad && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">With SCAD</span>}
+                                    {ipo.isWomenLed && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300 border border-pink-200 dark:border-pink-800">Women-Led</span>}
+                                    {ipo.isWithinGida && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300 border border-purple-200 dark:border-purple-800">Within GIDA</span>}
+                                    {ipo.isWithinElcac && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 border border-orange-200 dark:border-orange-800">Within ELCAC</span>}
+                                    {ipo.isWithScad && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">With SCAD</span>}
                                 </div>
                             } />
                         </dl>
                     </div>
 
                     {/* Membership Information Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Membership Information</h3>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 text-sm">
                             <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">

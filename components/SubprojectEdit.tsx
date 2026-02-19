@@ -196,6 +196,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
+    const handleCancelEditDetail = () => {
+        setEditingDetailId(null);
+        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: 0, numberOfUnits: 0, objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
+    };
+
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'typeName') setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
@@ -313,7 +318,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8 animate-fadeIn">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{subproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
-                <button onClick={onBack} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300">Cancel</button>
+                <button onClick={onBack} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
@@ -363,7 +368,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     {activeTab === 'budget' && (
                         <div className="space-y-4">
                              {formData.details.map((d) => (
-                                <div key={d.id} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                                <div key={d.id} className={`flex justify-between items-center p-2 rounded ${d.id === editingDetailId ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
                                     <span className="text-sm">{d.particulars} - {formatCurrency(d.pricePerUnit * d.numberOfUnits)}</span>
                                     <div className="flex gap-2">
                                         <button type="button" onClick={() => { setCurrentDetail(d); setEditingDetailId(d.id); }} className="text-blue-500 text-xs">Edit</button>
@@ -373,10 +378,18 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                              ))}
                              <div className="text-right font-bold text-gray-900 dark:text-white">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
                              
-                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end border-t pt-4">
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end border-t pt-4">
                                 <div><label className="text-xs">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="text-xs">Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentDetail.objectType] && Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="text-xs">UACS</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} className={commonInputClasses} disabled={!currentDetail.expenseParticular}><option value="">Select</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.keys(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                <div>
+                                    <label className="text-xs">UACS</label>
+                                    <select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} className={commonInputClasses} disabled={!currentDetail.expenseParticular}>
+                                        <option value="">Select</option>
+                                        {currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, desc]) => (
+                                            <option key={code} value={code}>{code} - {desc}</option>
+                                        ))}
+                                    </select>
+                                </div>
                                 
                                 <div><label className="text-xs">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses}><option value="">Select</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="text-xs">Item Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} className={commonInputClasses} disabled={!currentDetail.type}><option value="">Select</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
@@ -388,7 +401,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="text-xs">Price</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses} /></div>
                                 <div><label className="text-xs">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses} /></div>
                                 
-                                <button type="button" onClick={handleAddDetail} className="px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">{editingDetailId !== null ? 'Update' : 'Add'}</button>
+                                <div className="md:col-span-2 flex gap-2 justify-end">
+                                     {editingDetailId !== null && (
+                                         <button type="button" onClick={handleCancelEditDetail} className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                                     )}
+                                     <button type="button" onClick={handleAddDetail} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">{editingDetailId !== null ? 'Update Item' : 'Add Item'}</button>
+                                </div>
                              </div>
                         </div>
                     )}
