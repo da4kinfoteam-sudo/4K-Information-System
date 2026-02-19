@@ -223,8 +223,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 newFilters['fundingYear'] = [externalFilters.year];
             }
             if (externalFilters.region) {
-                // Map Region to OUs
-                const targetOUs = operatingUnits.filter(ou => ouToRegionMap[ou] === externalFilters.region);
+                // Improved logic: Filter OUs where the mapped region name includes the filter text
+                // This handles "Region 3" vs "Region III" loose matching
+                const filterRegionLower = externalFilters.region.toLowerCase();
+                const targetOUs = operatingUnits.filter(ou => {
+                    const mappedRegion = ouToRegionMap[ou];
+                    if (!mappedRegion) return false;
+                    return mappedRegion.toLowerCase().includes(filterRegionLower);
+                });
+
                 if (targetOUs.length > 0) {
                     newFilters['operatingUnit'] = targetOUs;
                 }
@@ -611,13 +618,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                 <SubprojectColumnHeader label="Name" columnKey="name" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['name'] || []} onFilterChange={(v) => handleColumnFilterChange('name', v)} uniqueValues={uniqueValues.name} />
                                 <SubprojectColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['operatingUnit'] || []} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues.operatingUnit} />
                                 <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
+                                <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundingYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
                                 <SubprojectColumnHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
                                 <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <SubprojectColumnHeader label="Target completion date" columnKey="estimatedCompletionDate" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['estimatedCompletionDate'] || []} onFilterChange={(v) => handleColumnFilterChange('estimatedCompletionDate', v)} uniqueValues={uniqueValues.estimatedCompletionDate} />
-                                <SubprojectColumnHeader label="Actual completion date" columnKey="actualCompletionDate" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['actualCompletionDate'] || []} onFilterChange={(v) => handleColumnFilterChange('actualCompletionDate', v)} uniqueValues={uniqueValues.actualCompletionDate} />
                                 <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <SubprojectColumnHeader label="Actual obligated" columnKey="actualObligated" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
-                                <SubprojectColumnHeader label="Actual disbursed" columnKey="actualDisbursed" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <SubprojectColumnHeader label="Completion rate" columnKey="completionRate" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
@@ -651,13 +655,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit}</td>
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status}</span></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.estimatedCompletionDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(s.actualCompletionDate)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualObligated)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(actualDisbursed)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             <div className="flex items-center">
                                                 <span className="mr-2 text-xs font-medium">{completionRate}%</span>
@@ -679,7 +680,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                     </tr>
                                     {expandedRowId === s.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={13} className="p-4">
+                                            <td colSpan={10} className="p-4">
                                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                                     <div className="space-y-4">
                                                         <div>
@@ -689,6 +690,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status}</span></p>
                                                                 <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                                                            <h4 className="font-semibold text-md mb-2 text-blue-700 dark:text-blue-300">Timeline</h4>
+                                                            <div className="space-y-1 text-sm">
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Start Date:</strong> {formatDate(s.startDate)}</p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Target Completion:</strong> {formatDate(s.estimatedCompletionDate)}</p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Actual Completion:</strong> {formatDate(s.actualCompletionDate)}</p>
                                                             </div>
                                                         </div>
                                                         {s.remarks && (
@@ -735,8 +744,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                                 <div className={`h-2 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
                                                             </div>
                                                             <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-                                                                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Obligated</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span></div>
-                                                                <div className="flex justify-between mt-1"><span className="text-gray-500 dark:text-gray-400">Disbursed</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span></div>
+                                                                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Actual Obligated</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualObligated)}</span></div>
+                                                                <div className="flex justify-between mt-1"><span className="text-gray-500 dark:text-gray-400">Actual Disbursed</span><span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(actualDisbursed)}</span></div>
                                                             </div>
                                                             {s.subprojectCommodities && s.subprojectCommodities.length > 0 && (
                                                                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
