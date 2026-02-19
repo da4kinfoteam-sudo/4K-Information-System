@@ -58,42 +58,63 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
     // --- TABLE 1: Physical Accomplishment ---
     const physicalData = useMemo(() => {
-        // Date check helper
-        const reportDate = new Date(targetYearInt, selectedMonth + 1, 0);
+        const reportDate = new Date(targetYearInt, selectedMonth + 1, 0); // End of selected month
 
-        const isTargetDue = (dateStr?: string) => {
+        // Logic for Cumulative (Up to selected Month)
+        const isTargetDueCumulative = (dateStr?: string) => {
             if (!dateStr || !isYearSelected) return false; 
             const d = new Date(dateStr);
-            // Check if date is within the selected year AND on/before selected month
             return d.getFullYear() === targetYearInt && d.getMonth() <= selectedMonth;
         };
 
-        const createRow = (indicator: string, unit: string, targetQty: number, actualQty: number) => {
-            const variance = targetQty - actualQty;
-            const percentage = targetQty > 0 ? (actualQty / targetQty) * 100 : 0;
-            return { indicator, unit, target: targetQty, actual: actualQty, variance, percentage };
+        // Logic for Specific Month
+        const isTargetDueMonthly = (dateStr?: string) => {
+            if (!dateStr || !isYearSelected) return false;
+            const d = new Date(dateStr);
+            return d.getFullYear() === targetYearInt && d.getMonth() === selectedMonth;
+        };
+
+        const createRow = (indicator: string, unit: string, tMonth: number, aMonth: number, tCum: number, aCum: number) => {
+            const vMonth = tMonth - aMonth;
+            const pMonth = tMonth > 0 ? (aMonth / tMonth) * 100 : 0;
+            
+            const vCum = tCum - aCum;
+            const pCum = tCum > 0 ? (aCum / tCum) * 100 : 0;
+
+            return { 
+                indicator, unit, 
+                targetMonth: tMonth, actualMonth: aMonth, varianceMonth: vMonth, percentageMonth: pMonth,
+                targetCum: tCum, actualCum: aCum, varianceCum: vCum, percentageCum: pCum
+            };
         };
 
         const structure: { [key: string]: any } = {
-            'Social Preparation': [],
-            'Production and Livelihood': { isNested: true, packages: {} },
-            'Marketing and Enterprise': [],
-            'Program Management': { isNested: true, packages: { 'Staffing': [], 'Office': [], 'Activities': [] } }
+            'Social Preparation': { items: [], cost: 0 },
+            'Production and Livelihood': { isNested: true, packages: {}, cost: 0 },
+            'Marketing and Enterprise': { items: [], cost: 0 },
+            'Program Management': { isNested: true, packages: { 'Staffing': [], 'Office': [], 'Activities': [] }, cost: 0 }
         };
 
         const addItem = (list: any[], item: any) => {
             const existing = list.find((i: any) => i.indicator === item.indicator);
             if (existing) {
-                existing.target += item.target;
-                existing.actual += item.actual;
-                existing.variance = existing.target - existing.actual;
-                existing.percentage = existing.target > 0 ? (existing.actual / existing.target) * 100 : 0;
+                // Aggregate Monthly
+                existing.targetMonth += item.targetMonth;
+                existing.actualMonth += item.actualMonth;
+                existing.varianceMonth = existing.targetMonth - existing.actualMonth;
+                existing.percentageMonth = existing.targetMonth > 0 ? (existing.actualMonth / existing.targetMonth) * 100 : 0;
+
+                // Aggregate Cumulative
+                existing.targetCum += item.targetCum;
+                existing.actualCum += item.actualCum;
+                existing.varianceCum = existing.targetCum - existing.actualCum;
+                existing.percentageCum = existing.targetCum > 0 ? (existing.actualCum / existing.targetCum) * 100 : 0;
             } else {
                 list.push(item);
             }
         };
 
-        // 1. Subprojects Logic
+        // --- 1. Subprojects Logic ---
         const packages: Record<string, Subproject[]> = {};
         const ipoAdMap = new Map<string, string>();
         data.ipos.forEach(i => ipoAdMap.set(i.name, i.ancestralDomainNo));
@@ -102,6 +123,10 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const pkg = sp.packageType || 'Other';
             if (!packages[pkg]) packages[pkg] = [];
             packages[pkg].push(sp);
+            
+            // Cost Aggregation
+            const cost = sp.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
+            structure['Production and Livelihood'].cost += cost;
         });
 
         if (!structure['Production and Livelihood'].packages['Subproject Provisions']) {
@@ -109,77 +134,118 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }
         const spProvisions = structure['Production and Livelihood'].packages['Subproject Provisions'];
 
-        const targetIpoSet = new Set<string>();
-        const actualIpoSet = new Set<string>();
-        const targetAdSet = new Set<string>();
-        const actualAdSet = new Set<string>();
+        const targetIpoSetCum = new Set<string>();
+        const actualIpoSetCum = new Set<string>();
+        const targetAdSetCum = new Set<string>();
+        const actualAdSetCum = new Set<string>();
+        
+        const targetIpoSetMonth = new Set<string>();
+        const actualIpoSetMonth = new Set<string>();
+        const targetAdSetMonth = new Set<string>();
+        const actualAdSetMonth = new Set<string>();
 
         Object.keys(packages).sort().forEach(pkg => {
             const subList = packages[pkg];
-            const targetCount = subList.filter(sp => isTargetDue(sp.estimatedCompletionDate)).length;
-            const actualCount = subList.filter(sp => {
-                 if (sp.status !== 'Completed') return false;
-                 if (!sp.actualCompletionDate) return false;
-                 const d = new Date(sp.actualCompletionDate);
-                 return d <= reportDate;
-            }).length;
+            
+            // Counts
+            const targetCountMonth = subList.filter(sp => isTargetDueMonthly(sp.estimatedCompletionDate)).length;
+            const targetCountCum = subList.filter(sp => isTargetDueCumulative(sp.estimatedCompletionDate)).length;
+            
+            const actualCountMonth = subList.filter(sp => sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)).length;
+            const actualCountCum = subList.filter(sp => sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)).length;
 
             subList.forEach(sp => {
                 const ad = ipoAdMap.get(sp.indigenousPeopleOrganization);
-                if (isTargetDue(sp.estimatedCompletionDate)) {
-                    targetIpoSet.add(sp.indigenousPeopleOrganization);
-                    if (ad) targetAdSet.add(ad);
+                
+                // Cumulative Sets
+                if (isTargetDueCumulative(sp.estimatedCompletionDate)) {
+                    targetIpoSetCum.add(sp.indigenousPeopleOrganization);
+                    if (ad) targetAdSetCum.add(ad);
                 }
-                if (sp.status === 'Completed' && sp.actualCompletionDate && new Date(sp.actualCompletionDate) <= reportDate) {
-                    actualIpoSet.add(sp.indigenousPeopleOrganization);
-                    if (ad) actualAdSet.add(ad);
+                if (sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)) {
+                    actualIpoSetCum.add(sp.indigenousPeopleOrganization);
+                    if (ad) actualAdSetCum.add(ad);
+                }
+
+                // Monthly Sets
+                if (isTargetDueMonthly(sp.estimatedCompletionDate)) {
+                    targetIpoSetMonth.add(sp.indigenousPeopleOrganization);
+                    if (ad) targetAdSetMonth.add(ad);
+                }
+                if (sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)) {
+                    actualIpoSetMonth.add(sp.indigenousPeopleOrganization);
+                    if (ad) actualAdSetMonth.add(ad);
                 }
             });
 
-            spProvisions.push(createRow(pkg, "Project", targetCount, actualCount));
+            spProvisions.push(createRow(pkg, "Project", targetCountMonth, actualCountMonth, targetCountCum, actualCountCum));
         });
 
-        spProvisions.unshift(createRow("Number of IPOs", "Number", targetIpoSet.size, actualIpoSet.size));
-        spProvisions.unshift(createRow("Number of Ancestral Domains", "Number", targetAdSet.size, actualAdSet.size));
+        // Add Aggregate Rows for Subprojects
+        spProvisions.unshift(createRow("Number of IPOs", "Number", targetIpoSetMonth.size, actualIpoSetMonth.size, targetIpoSetCum.size, actualIpoSetCum.size));
+        spProvisions.unshift(createRow("Number of Ancestral Domains", "Number", targetAdSetMonth.size, actualAdSetMonth.size, targetAdSetCum.size, actualAdSetCum.size));
 
-        // 2. Trainings/Activities
+        // --- 2. Trainings/Activities ---
         const processActivity = (act: any) => {
-            const targetQty = isTargetDue(act.date) ? 1 : 0;
-            const actualQty = (act.actualDate && new Date(act.actualDate) <= reportDate) ? 1 : 0;
-            const item = createRow(act.name, 'Number', targetQty, actualQty);
+            const tMonth = isTargetDueMonthly(act.date) ? 1 : 0;
+            const tCum = isTargetDueCumulative(act.date) ? 1 : 0;
+            const aMonth = (act.actualDate && isTargetDueMonthly(act.actualDate)) ? 1 : 0;
+            const aCum = (act.actualDate && isTargetDueCumulative(act.actualDate)) ? 1 : 0;
             
+            const item = createRow(act.name, 'Number', tMonth, aMonth, tCum, aCum);
+            
+            // Cost Aggregation
+            const cost = act.expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+
             if (act.component === 'Production and Livelihood') {
                 if (!structure['Production and Livelihood'].packages['Trainings']) structure['Production and Livelihood'].packages['Trainings'] = [];
                 addItem(structure['Production and Livelihood'].packages['Trainings'], item);
+                structure['Production and Livelihood'].cost += cost;
             } else if (act.component === 'Program Management') {
                 addItem(structure['Program Management'].packages['Activities'], item);
+                structure['Program Management'].cost += cost;
             } else if (structure[act.component]) {
-                addItem(structure[act.component], item);
+                addItem(structure[act.component].items || structure[act.component], item); // Handle generic list
+                structure[act.component].cost += cost;
             }
         };
         data.trainings.forEach(processActivity);
         data.otherActivities.forEach(processActivity);
 
-        // 3. PM Items
+        // --- 3. PM Items ---
         const processPM = (items: any[], typeKey: string, isStaff = false) => {
             items.forEach(pm => {
-                const targetQty = isTargetDue(pm.obligationDate) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
+                const targetQty = isStaff ? 1 : (pm.numberOfUnits || 1);
+                const tMonth = isTargetDueMonthly(pm.obligationDate) ? targetQty : 0;
+                const tCum = isTargetDueCumulative(pm.obligationDate) ? targetQty : 0;
+                
                 const actDate = pm.actualDate || pm.actualObligationDate;
-                const actualQty = (actDate && new Date(actDate) <= reportDate) ? (isStaff ? 1 : pm.numberOfUnits) : 0;
+                const aMonth = (actDate && isTargetDueMonthly(actDate)) ? targetQty : 0;
+                const aCum = (actDate && isTargetDueCumulative(actDate)) ? targetQty : 0;
+                
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const unit = isStaff ? 'Pax' : 'Unit';
-                const item = createRow(indicator, unit, targetQty, actualQty);
+                const item = createRow(indicator, unit, tMonth, aMonth, tCum, aCum);
+                
                 addItem(structure['Program Management'].packages[typeKey], item);
+
+                // Cost
+                const cost = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                structure['Program Management'].cost += cost;
             });
         };
         processPM(data.staffingReqs, 'Staffing', true);
         processPM(data.officeReqs, 'Office');
+        // Other Expenses - Add to cost but maybe not physical count unless defined
+        data.otherProgramExpenses.forEach(ope => {
+             structure['Program Management'].cost += ope.amount;
+        });
 
         return structure;
     }, [data, selectedYear, selectedMonth]);
 
 
-    // --- TABLE 2: Financial History ---
+    // --- TABLE 2: Financial History (unchanged logic) ---
     const financialHistoryData = useMemo(() => {
         if (!isYearSelected) return [];
 
@@ -197,21 +263,18 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const prevYear = targetYearInt - 1;
 
         // Initialize Template Rows to ensure they appear
-        // 1. Current Year (Bottom)
         rowMap.set('current', {
             label: `Current Year (${targetYearInt})`,
             sortOrder: targetYearInt,
             alloc: 0, obli: 0, disb: 0
         });
 
-        // 2. Previous Year - Continuing (Above Current)
         rowMap.set('prev_continuing', {
             label: `Continuing (${prevYear})`,
             sortOrder: prevYear + 0.5,
             alloc: 0, obli: 0, disb: 0
         });
 
-        // 3. Previous Year - Other (Above Continuing)
         rowMap.set('prev_other', {
             label: `${prevYear}`,
             sortOrder: prevYear,
@@ -219,31 +282,23 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
 
         const getRowInfo = (year: number, fundType: string): { key: string, label: string, sortOrder: number } | null => {
-            // Filter out future years
             if (year > targetYearInt) return null; 
-
             if (year === targetYearInt) {
-                // Only "Current" fund type for the "Current Year" row as per instructions
                 if (fundType === 'Current') {
                     return { key: 'current', label: `Current Year (${year})`, sortOrder: year };
                 }
-                return null; // Ignore other fund types for current year in this matrix
+                return null; 
             } 
-            
             if (year === prevYear) {
-                // Previous Year
                 if (fundType === 'Continuing') {
                     return { key: 'prev_continuing', label: `Continuing (${year})`, sortOrder: year + 0.5 };
                 } else {
                     return { key: 'prev_other', label: `${year}`, sortOrder: year };
                 }
             } 
-            
             if (year < prevYear) {
-                // Historical Years - Aggregate all fund types
                 return { key: `hist_${year}`, label: `${year}`, sortOrder: year };
             }
-
             return null;
         };
 
@@ -273,67 +328,44 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             entry.disb += disb;
         };
 
-        // 1. Subprojects
         financialData.subprojects.forEach(sp => {
             const y = sp.fundingYear || 0;
             const ft = sp.fundType || 'Current';
-            
-            // Allocation: Full Budget
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            
-            // Obligation: Check actualObligationDate
             const obli = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
-            
-            // Disbursement: Check actualDisbursementDate
             const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || d.actualAmount || 0) : 0), 0);
-            
             aggregate(y, ft, alloc, obli, disb);
         });
 
-        // 2. Activities
         const processAct = (act: any) => {
             const y = act.fundingYear || 0;
             const ft = act.fundType || 'Current';
-            
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
             const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || e.amount) : 0), 0);
             const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || e.amount) : 0), 0);
-            
             aggregate(y, ft, alloc, obli, disb);
         };
         financialData.trainings.forEach(processAct);
         financialData.otherActivities.forEach(processAct);
 
-        // 3. PM Items
         const processPM = (item: any, isStaff = false) => {
             const y = item.fundYear || 0;
             const ft = item.fundType || 'Current';
-            
-            // Allocation: Full Amount
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
-            
-            // Obligation: Check date
             const obli = isDateInReportWindow(item.actualObligationDate) ? (item.actualObligationAmount || 0) : 0;
-            
-            // Disbursement
             let disb = 0;
-            
             if (isStaff || item.particulars) {
-                 // It has monthly columns
                  if (y === targetYearInt) {
                      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                      months.forEach((m, idx) => {
                          if (idx <= selectedMonth) disb += (Number(item[`actualDisbursement${m}`]) || 0);
                      });
                  } else if (y < targetYearInt) {
-                     // For past years, take total actuals as they are fully "realized" relative to current report year context
                      disb = item.actualDisbursementAmount || 0;
                  }
             } else {
-                // Subproject/Activity/Office style (flat date)
                 disb = isDateInReportWindow(item.actualDisbursementDate) ? (item.actualDisbursementAmount || 0) : 0;
             }
-            
             aggregate(y, ft, alloc, obli, disb);
         };
         
@@ -341,7 +373,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         financialData.officeReqs.forEach(s => processPM(s));
         financialData.otherProgramExpenses.forEach(s => processPM(s));
 
-        // Transform to array
         const rows = Array.from(rowMap.entries()).map(([key, row]) => {
             const alloc = Math.ceil(row.alloc);
             const obli = Math.ceil(row.obli);
@@ -358,9 +389,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             };
         });
 
-        // Sort by order: Historical (asc), Prev Other, Prev Continuing, Current
         return rows.sort((a, b) => a.sortOrder - b.sortOrder);
-
     }, [financialData, selectedYear, selectedMonth, targetYearInt]);
 
     const financialGrandTotal = useMemo(() => {
@@ -373,34 +402,49 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }), { alloc: 0, obli: 0, disb: 0, unutilized: 0, unpaid: 0 });
     }, [financialHistoryData]);
 
-
     const handlePrint = () => window.print();
 
     const handleDownload = () => {
         const wb = XLSX.utils.book_new();
 
-        // 1. Physical Sheet
-        const physRows: any[][] = [["Indicator", "Unit", "Target (Cumulative)", "Actual (Cumulative)", "Variance", "Percentage"]];
+        // 1. Physical Sheet with new Columns
+        const physRows: any[][] = [
+            ["Indicator", "Cost", "Unit", 
+             "Month Target", "Month Actual", "Month Var", "Month %", 
+             "Cumulative Target", "Cumulative Actual", "Cumulative Var", "Cumulative %"]
+        ];
+        
         const processPhysItems = (items: any[], indent: string) => {
             items.forEach(item => {
                 physRows.push([
-                    indent + item.indicator, item.unit, item.target, item.actual, item.variance, item.percentage/100
+                    indent + item.indicator, 
+                    null, // No cost for items, only components
+                    item.unit, 
+                    item.targetMonth, item.actualMonth, item.varianceMonth, item.percentageMonth/100,
+                    item.targetCum, item.actualCum, item.varianceCum, item.percentageCum/100
                 ]);
             });
         };
+
         Object.entries(physicalData).forEach(([key, val]: [string, any]) => {
-            physRows.push([key, null, null, null, null, null]);
+            // Add Component Row with Cost
+            physRows.push([key, val.cost, null, null, null, null, null, null, null, null, null]);
+            
             if (Array.isArray(val)) {
-                processPhysItems(val, "  ");
+                 // Should be array of items if not nested
+                 processPhysItems(val, "  ");
             } else if (val.isNested) {
                 Object.entries(val.packages).forEach(([pkg, items]: [string, any]) => {
                     if (items.length > 0) {
-                        physRows.push([`  ${pkg}`, null, null, null, null, null]);
+                        physRows.push([`  ${pkg}`, null, null, null, null, null, null, null, null, null, null]);
                         processPhysItems(items, "    ");
                     }
                 });
+            } else if (val.items) {
+                 processPhysItems(val.items, "  ");
             }
         });
+        
         const wsPhys = XLSX.utils.aoa_to_sheet(physRows);
         XLSX.utils.book_append_sheet(wb, wsPhys, "Physical");
 
@@ -415,7 +459,6 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         if (financialHistoryData.length > 0) {
             const obliRateTotal = financialGrandTotal.alloc > 0 ? (financialGrandTotal.obli / financialGrandTotal.alloc) : 0;
             const disbRateTotal = financialGrandTotal.obli > 0 ? (financialGrandTotal.disb / financialGrandTotal.obli) : 0;
-            
             finRows.push([
                 "Grand Total", financialGrandTotal.alloc, financialGrandTotal.obli, financialGrandTotal.disb, 
                 obliRateTotal, disbRateTotal, financialGrandTotal.unutilized, financialGrandTotal.unpaid
@@ -433,11 +476,20 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         return (
             <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <td className={`${textCellClass} ${indent} font-medium`}>{item.indicator}</td>
+                <td className={`${dataCellClass} text-center`}></td>
                 <td className={`${dataCellClass} text-center`}>{item.unit}</td>
-                <td className={`${dataCellClass} text-center`}>{item.target}</td>
-                <td className={`${dataCellClass} text-center`}>{item.actual}</td>
-                <td className={`${dataCellClass} text-center ${item.variance > 0 ? 'text-red-500' : 'text-green-500'}`}>{item.variance}</td>
-                <td className={`${dataCellClass} text-center`}>{item.percentage.toFixed(1)}%</td>
+                
+                {/* Monthly */}
+                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.targetMonth}</td>
+                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.actualMonth}</td>
+                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10 ${item.varianceMonth > 0 ? 'text-red-500' : 'text-green-500'}`}>{item.varianceMonth}</td>
+                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.percentageMonth.toFixed(0)}%</td>
+
+                {/* Cumulative */}
+                <td className={`${dataCellClass} text-center`}>{item.targetCum}</td>
+                <td className={`${dataCellClass} text-center`}>{item.actualCum}</td>
+                <td className={`${dataCellClass} text-center ${item.varianceCum > 0 ? 'text-red-500' : 'text-green-500'}`}>{item.varianceCum}</td>
+                <td className={`${dataCellClass} text-center`}>{item.percentageCum.toFixed(0)}%</td>
             </tr>
         );
     };
@@ -474,12 +526,23 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                     <table className="min-w-full border-collapse">
                         <thead className="bg-emerald-100 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-xs font-bold uppercase">
                             <tr>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-left w-1/3">Component / Indicator</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Unit</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Target (Cumulative)</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Actual (Cumulative)</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Variance</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Percentage</th>
+                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-left w-1/4">Component / Indicator</th>
+                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Cost</th>
+                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Unit</th>
+                                <th colSpan={4} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-100 dark:bg-blue-900/40">For the Month</th>
+                                <th colSpan={4} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Cumulative (Year-to-Date)</th>
+                            </tr>
+                            <tr>
+                                {/* For the Month */}
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Target</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Actual</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Var</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">%</th>
+                                {/* Cumulative */}
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Target</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Actual</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Var</th>
+                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">%</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -492,7 +555,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                                                 <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span>
                                                 {key}
                                              </td>
-                                             <td colSpan={5} className="border border-gray-300 dark:border-gray-600"></td>
+                                             <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrencyWhole(val.cost)}</td>
+                                             <td colSpan={9} className="border border-gray-300 dark:border-gray-600"></td>
                                          </tr>
                                          {isExpanded && Array.isArray(val) && val.map((item, idx) => renderPhysRow(item, `${key}-${idx}`, 1))}
                                          {isExpanded && val.isNested && Object.entries(val.packages).map(([pkg, pkgItems]: [string, any]) => (
@@ -500,13 +564,15 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                                                  {pkgItems.length > 0 && (
                                                      <>
                                                         <tr className="bg-gray-50 dark:bg-gray-800 font-semibold">
-                                                            <td className="p-2 pl-6 border border-gray-300 dark:border-gray-600" colSpan={6}>{pkg}</td>
+                                                            <td className="p-2 pl-6 border border-gray-300 dark:border-gray-600">{pkg}</td>
+                                                            <td colSpan={10} className="border border-gray-300 dark:border-gray-600"></td>
                                                         </tr>
                                                         {pkgItems.map((item: any, idx: number) => renderPhysRow(item, `${key}-${pkg}-${idx}`, 2))}
                                                      </>
                                                  )}
                                              </React.Fragment>
                                          ))}
+                                         {isExpanded && val.items && val.items.map((item: any, idx: number) => renderPhysRow(item, `${key}-${idx}`, 1))}
                                     </React.Fragment>
                                  )
                             })}
