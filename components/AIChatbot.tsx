@@ -17,6 +17,7 @@ interface AIChatbotProps {
     onSelectIpo: (ipo: IPO) => void;
     onSelectActivity: (act: Activity) => void;
     onSelectMarketingPartner: (mp: MarketingPartner) => void;
+    onApplyFilter?: (filters: { region?: string; year?: string; search?: string }) => void;
 }
 
 // Helper to retrieve API Key
@@ -37,15 +38,16 @@ const getApiKey = () => {
 const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information System.
 Your goal is to help users navigate the app and understand the data.
 
-**CRITICAL: Hyperlink Formatting**
-You MUST use Markdown format for all links: \`[Link Text](URL)\`.
-- **CORRECT:** "You can view the [IPO List](/ipo)."
-- **INCORRECT:** "You can view the list at [/ipo]." or "Go to /ipo".
+**CRITICAL: Smart Navigation**
+You can control the app view by adding query parameters to links.
+- To show MIMAROPA IPOs: \`[View MIMAROPA IPOs](/ipo?region=MIMAROPA Region)\`
+- To show 2024 Subprojects: \`[View 2024 Subprojects](/subprojects?year=2024)\`
+- To show specific search: \`[Search Coffee](/subprojects?search=Coffee)\`
 
 **Response Style:**
 1. **Be Concise**: Summarize data. Do not list more than 5 items unless asked.
 2. **Data Driven**: Use the provided context 'system_stats' and 'filtered_results' to answer specific counting questions.
-3. **Navigation Routes**:
+3. **Hyperlinks**: ALWAYS use Markdown links \`[Text](URL)\`.
    - Lists: \`/dashboards\`, \`/subprojects\`, \`/activities\`, \`/ipo\`, \`/marketing-database\`, \`/program-management\`, \`/reports\`
    - Details: \`/subproject/UID\`, \`/ipo/Name\`, \`/activity/UID\`
 
@@ -56,11 +58,12 @@ If the user asks about a specific year (e.g., 2026) or region (e.g., Region 7), 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
     subprojects, ipos, activities, marketingPartners, 
     officeReqs, staffingReqs, otherProgramExpenses,
-    onNavigate, onSelectSubproject, onSelectIpo, onSelectActivity, onSelectMarketingPartner
+    onNavigate, onSelectSubproject, onSelectIpo, onSelectActivity, onSelectMarketingPartner,
+    onApplyFilter
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
-        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me about subprojects, IPOs, or reports." }
+        { role: 'model', text: "Hello! I'm the 4K Assistant. Ask me to 'Show IPOs in Region 7' or 'Count subprojects in 2024'." }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -74,16 +77,29 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         if (isOpen) scrollToBottom();
     }, [messages, isOpen]);
 
-    // Handle Link Clicks
+    // Handle Link Clicks with Query Params
     const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
         e.preventDefault();
         
-        if (href.startsWith('/') && !href.split('/')[2]) {
-            onNavigate(href);
+        // 1. Parse Query Params for Filtering
+        const [path, query] = href.split('?');
+        if (query && onApplyFilter) {
+            const params = new URLSearchParams(query);
+            const region = params.get('region') || undefined;
+            const year = params.get('year') || undefined;
+            const search = params.get('search') || undefined;
+            
+            // Apply filter globally
+            onApplyFilter({ region, year, search });
+        }
+
+        // 2. Normal Navigation Logic
+        if (path.startsWith('/') && !path.split('/')[2]) {
+            onNavigate(path);
             return;
         }
 
-        const parts = href.split('/');
+        const parts = path.split('/');
         const type = parts[1];
         const id = decodeURIComponent(parts[2]);
 
@@ -100,39 +116,50 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             const item = marketingPartners.find(m => m.uid === id || m.companyName === id);
             if (item) onSelectMarketingPartner(item);
         } else {
-            onNavigate(href);
+            onNavigate(path);
         }
     };
 
-    // Render markdown links
+    // Render markdown links and bold text
     const renderMessage = (text: string) => {
-        const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
-        const parts = [];
-        let lastIndex = 0;
-        let match;
-
-        while ((match = regex.exec(text)) !== null) {
-            if (match.index > lastIndex) {
-                parts.push(text.substring(lastIndex, match.index));
+        // First, split by bold markers (**text**)
+        const boldParts = text.split(/(\*\*[^*]+\*\*)/g);
+        
+        return boldParts.map((part, index) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                // Render bold text
+                return <strong key={index} className="font-bold text-gray-900 dark:text-white">{part.slice(2, -2)}</strong>;
             }
-            const linkText = match[1];
-            const linkUrl = match[2];
-            parts.push(
-                <a 
-                    key={match.index} 
-                    href={linkUrl} 
-                    onClick={(e) => handleLinkClick(e, linkUrl)}
-                    className="text-emerald-200 hover:text-white underline font-medium cursor-pointer"
-                >
-                    {linkText}
-                </a>
-            );
-            lastIndex = regex.lastIndex;
-        }
-        if (lastIndex < text.length) {
-            parts.push(text.substring(lastIndex));
-        }
-        return <>{parts}</>;
+            
+            // For non-bold parts, process links
+            const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+            const linkParts = [];
+            let lastIndex = 0;
+            let match;
+
+            while ((match = linkRegex.exec(part)) !== null) {
+                if (match.index > lastIndex) {
+                    linkParts.push(part.substring(lastIndex, match.index));
+                }
+                const linkText = match[1];
+                const linkUrl = match[2];
+                linkParts.push(
+                    <a 
+                        key={`${index}-${match.index}`} 
+                        href={linkUrl} 
+                        onClick={(e) => handleLinkClick(e, linkUrl)}
+                        className="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold cursor-pointer"
+                    >
+                        {linkText}
+                    </a>
+                );
+                lastIndex = linkRegex.lastIndex;
+            }
+            if (lastIndex < part.length) {
+                linkParts.push(part.substring(lastIndex));
+            }
+            return <span key={index}>{linkParts}</span>;
+        });
     };
 
     /**
@@ -146,28 +173,59 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const yearMatch = q.match(/\b(20\d{2})\b/);
         const targetYear = yearMatch ? yearMatch[1] : null;
 
-        // 2. Identify Region (Arabic to Roman normalization)
-        const arabicToRoman: {[key: string]: string} = {
-            '1': 'I', '2': 'II', '3': 'III', '4a': 'IV-A', '4b': 'IV-B',
-            '5': 'V', '6': 'VI', '7': 'VII', '8': 'VIII', '9': 'IX', '10': 'X',
-            '11': 'XI', '12': 'XII', '13': 'XIII'
+        // 2. Identify Region Aliases
+        const regionAliases: {[key: string]: string} = {
+            'ilocos': 'Region I', 'region 1': 'Region I',
+            'cagayan': 'Region II', 'region 2': 'Region II',
+            'central luzon': 'Region III', 'region 3': 'Region III', 'bulacan': 'Region III', // Bulacan often associated, though location check handles specific
+            'calabarzon': 'Region IV-A', '4a': 'Region IV-A',
+            'mimaropa': 'MIMAROPA Region', '4b': 'MIMAROPA Region', 'region 4b': 'MIMAROPA Region',
+            'bicol': 'Region V', 'region 5': 'Region V',
+            'western visayas': 'Region VI', 'region 6': 'Region VI',
+            'central visayas': 'Region VII', 'region 7': 'Region VII',
+            'eastern visayas': 'Region VIII', 'region 8': 'Region VIII',
+            'zamboanga': 'Region IX', 'region 9': 'Region IX',
+            'northern mindanao': 'Region X', 'region 10': 'Region X',
+            'davao': 'Region XI', 'region 11': 'Region XI',
+            'soccsksargen': 'Region XII', 'region 12': 'Region XII',
+            'caraga': 'Region XIII', 'region 13': 'Region XIII',
+            'ncr': 'National Capital Region', 'metro manila': 'National Capital Region',
+            'car': 'Cordillera Administrative Region', 'cordillera': 'Cordillera Administrative Region',
+            'barmm': 'Bangsamoro', 'muslim mindanao': 'Bangsamoro',
+            'nir': 'Negros Island Region', 'negros': 'Negros Island Region'
         };
         
-        // Detect "Region X" or just "Region"
         let targetRegion: string | null = null;
         
-        // Check for "Region <number/letter>" pattern
-        const regionPattern = /region\s*(\d+[ab]?)/i;
-        const regionMatch = q.match(regionPattern);
-        
-        if (regionMatch) {
-            const num = regionMatch[1].toLowerCase();
-            const roman = arabicToRoman[num];
-            if (roman) targetRegion = `Region ${roman}`;
-        } else {
-            // Fallback: check exact strings in philippineRegions
-            const found = philippineRegions.find(r => q.includes(r.toLowerCase()) || q.includes(r.split(' ')[0].toLowerCase()));
-            if (found) targetRegion = found;
+        // Check for aliases in query
+        const sortedAliases = Object.keys(regionAliases).sort((a,b) => b.length - a.length);
+        for (const alias of sortedAliases) {
+            // Ensure full word match or containment
+            if (q.includes(alias)) {
+                // Find matching official region string
+                const official = philippineRegions.find(r => 
+                    r.toLowerCase().includes(regionAliases[alias].toLowerCase()) || 
+                    regionAliases[alias].toLowerCase().includes(r.toLowerCase())
+                );
+                targetRegion = official || regionAliases[alias];
+                break;
+            }
+        }
+
+        // 3. Identify Target Location (Province/City) if no Region found
+        let targetLocation: string | null = null;
+        if (!targetRegion) {
+             // Look for indicators: "in [text]", "province of [text]", "city of [text]"
+             const locMatch = q.match(/(?:in|from|province of|city of|municipality of)\s+([a-z0-9\s]+)/i);
+             if (locMatch) {
+                 const captured = locMatch[1].trim();
+                 // Ignore if it's likely a year or keyword
+                 if (!/^\d{4}$/.test(captured) && !['region', 'the', 'list', 'show', 'all'].includes(captured)) {
+                     // Extract just the name, e.g., "Bulacan" from "Bulacan in 2024"
+                     const clean = captured.split(/\s+(?:in|for|at|on|and|with|is|are)\s+/)[0];
+                     targetLocation = clean.replace(/[?.,]$/, '');
+                 }
+             }
         }
 
         // Helper: Generic Filter
@@ -182,45 +240,58 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             // Region Filter
             if (targetRegion) {
-                // Build a searchable string that includes direct location AND mapped OU region
                 let locationStr = (item.region || item.location || item.operatingUnit || '').toLowerCase();
-                
-                // Map OU to Region if available (e.g. RPMO 7 -> Region VII)
                 if (item.operatingUnit && ouToRegionMap[item.operatingUnit]) {
                     locationStr += ' ' + ouToRegionMap[item.operatingUnit].toLowerCase();
                 }
 
-                // Simple fuzzy check against targetRegion (e.g. "region vii") or its numeral part "vii"
                 const tr = targetRegion.toLowerCase();
-                const trShort = targetRegion.split(' ')[1]?.toLowerCase();
+                const trShort = targetRegion.split(' ')[1]?.toLowerCase(); // Roman numeral part
                 
-                if (!locationStr.includes(tr) && (!trShort || !locationStr.includes(trShort))) {
-                    match = false;
+                // Special handle for MIMAROPA as it's often misformatted in data
+                if (tr.includes('mimaropa')) {
+                     if (!locationStr.includes('mimaropa') && !locationStr.includes('4b')) match = false;
+                } else {
+                    if (!locationStr.includes(tr) && (!trShort || !locationStr.includes(trShort))) {
+                        match = false;
+                    }
                 }
+            }
+
+            // Specific Location Filter (Province/City) - Only if Region not strictly set
+            if (targetLocation && !targetRegion) {
+                 const loc = (item.location || item.address || '').toLowerCase();
+                 const reg = (item.region || '').toLowerCase();
+                 const search = targetLocation.toLowerCase();
+                 // If location or region field doesn't contain the specific word (e.g. "bulacan")
+                 if (!loc.includes(search) && !reg.includes(search)) {
+                     match = false;
+                 }
             }
 
             return match;
         };
 
-        // 3. Pre-calculate Intersections (Fix for "how many IPOs with subprojects...")
+        // 4. Pre-calculate Intersections
         const filteredSubprojects = subprojects.filter(filterItem);
         const filteredTrainings = activities.filter(a => a.type === 'Training').filter(filterItem);
+        const filteredIPOs = ipos.filter(filterItem);
         
         const iposWithFilteredSP = new Set(filteredSubprojects.map(s => s.indigenousPeopleOrganization));
         const iposWithFilteredTrainings = new Set(filteredTrainings.flatMap(t => t.participatingIpos));
 
-        // 4. Build Stats (Always Included)
+        // 5. Build Stats (Always Included)
         const stats = {
             counts: {
                 total_subprojects: subprojects.length,
                 total_ipos: ipos.length,
                 total_trainings: activities.filter(a => a.type === 'Training').length,
             },
-            filters_applied: { year: targetYear, region: targetRegion },
+            filters_applied: { year: targetYear, region: targetRegion, location: targetLocation },
             filtered_results: {
                 subprojects_count: filteredSubprojects.length,
                 trainings_count: filteredTrainings.length,
-                // These are critical for the user's specific questions
+                ipos_count: filteredIPOs.length,
                 unique_ipos_with_matching_subprojects: iposWithFilteredSP.size,
                 unique_ipos_with_matching_trainings: iposWithFilteredTrainings.size
             }
@@ -228,28 +299,23 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
         const context: any = { system_stats: stats };
 
-        // 5. Filter & Slice Data Lists for detailed view
+        // 6. Filter & Slice Data Lists for detailed view
         const maxItems = 20;
 
-        // If asking about IPOs
         if (q.includes('ipo') || q.includes('organization') || q.includes('farmer')) {
-            let filtered = ipos.filter(filterItem);
-            context.ipos = filtered.slice(0, maxItems).map(i => ({
-                name: i.name, region: i.region, members: i.totalMembers, regDate: i.registrationDate
+            context.ipos = filteredIPOs.slice(0, maxItems).map(i => ({
+                name: i.name, region: i.region, location: i.location, members: i.totalMembers, regDate: i.registrationDate
             }));
         }
 
-        // If asking about Subprojects
         if (q.includes('subproject') || q.includes('project') || q.includes('livelihood')) {
             context.subprojects = filteredSubprojects.slice(0, maxItems).map(s => ({
                 uid: s.uid, name: s.name, status: s.status, location: s.location, year: s.fundingYear, ipo: s.indigenousPeopleOrganization
             }));
         }
 
-        // If asking about Activities / Trainings
         if (q.includes('training') || q.includes('activity')) {
-            let filtered = activities.filter(filterItem);
-            context.activities = filtered.slice(0, maxItems).map(a => ({
+            context.activities = filteredTrainings.slice(0, maxItems).map(a => ({
                 uid: a.uid, name: a.name, type: a.type, date: a.date, location: a.location, participants: (a.participantsMale + a.participantsFemale)
             }));
         }
