@@ -1,7 +1,7 @@
 
 // Author: 4K 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Activity, IPO, ActivityComponentType, otherActivityComponents, ActivityExpense, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity } from '../constants';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, operatingUnits, ReferenceActivity, otherActivityComponents, ActivityComponentType } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -38,6 +38,12 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+    </svg>
+);
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
 const getStatusBadge = (status: Activity['status']) => {
@@ -50,6 +56,137 @@ const getStatusBadge = (status: Activity['status']) => {
         default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
     }
 }
+
+// --- COLUMN HEADER COMPONENT WITH FILTER ---
+interface ActivityColumnHeaderProps {
+    label: string;
+    columnKey: keyof Activity | 'budget';
+    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
+    onSort: (key: any, direction: 'ascending' | 'descending') => void;
+    filters: string[];
+    onFilterChange: (values: string[]) => void;
+    uniqueValues: string[];
+    isNumeric?: boolean;
+}
+
+const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({ 
+    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredValues = uniqueValues.filter(v => v.toLowerCase().includes(searchTerm.toLowerCase()));
+    const isSorted = sortConfig?.key === columnKey;
+    const isFiltered = filters.length > 0;
+
+    const toggleFilter = (value: string) => {
+        if (filters.includes(value)) {
+            onFilterChange(filters.filter(f => f !== value));
+        } else {
+            onFilterChange([...filters, value]);
+        }
+    };
+
+    return (
+        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap">
+            <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
+                <div className="flex items-center gap-1">
+                    {label}
+                    {isSorted && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
+                        </span>
+                    )}
+                </div>
+                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+                    <FilterIcon />
+                </div>
+            </div>
+
+            {isOpen && (
+                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
+                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
+                        <button 
+                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▲</span> Sort Ascending
+                        </button>
+                        <button 
+                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▼</span> Sort Descending
+                        </button>
+                    </div>
+
+                    {!isNumeric && (
+                        <>
+                            <div className="p-2">
+                                <input 
+                                    type="text" 
+                                    placeholder={`Search ${label}...`}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
+                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filters.length === 0} 
+                                        onChange={() => onFilterChange([])} // Clear filters means "Select All" conceptually in this context
+                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="truncate italic text-gray-500">(Select All)</span>
+                                </label>
+                                {filteredValues.map(val => (
+                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filters.includes(val)} 
+                                            onChange={() => toggleFilter(val)}
+                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <span className="truncate" title={val}>{val}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex justify-between">
+                                <button 
+                                    onClick={() => onFilterChange([])}
+                                    className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
+                                >
+                                    Clear
+                                </button>
+                                <button 
+                                    onClick={() => setIsOpen(false)}
+                                    className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </th>
+    );
+};
+
 
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activities, setActivities, onSelectIpo, onSelectActivity, onCreateActivity, uacsCodes, referenceActivities = [], forcedType }) => {
     const { currentUser } = useAuth();
@@ -68,12 +205,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         handleSelectAll, handleSelectRow, resetSelection 
     } = useSelection<Activity>();
 
-    // Persistent Filters
+    // Global Filters (Only Search retained in UI)
     const [searchTerm, setSearchTerm] = useLocalStorageState('activities_searchTerm', '');
-    const [ouFilter, setOuFilter] = useLocalStorageState('activities_ouFilter', 'All');
-    const [fundYearFilter, setFundYearFilter] = useLocalStorageState('activities_fundYearFilter', 'All');
-    const [componentFilter, setComponentFilter] = useLocalStorageState<ActivityComponentType | 'All'>('activities_componentFilter', 'All');
-    const [typeFilter, setTypeFilter] = useLocalStorageState<'All' | 'Training' | 'Activity'>('activities_typeFilter', forcedType || 'All');
+
+    // Column Filters (New) - Stores an array of selected values for each column key
+    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
 
     // Sorting
     type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
@@ -81,54 +217,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
 
-    // Helper to refresh data from Supabase
-    const refreshData = async () => {
-        if (!supabase) return;
-        const data = await fetchAll('activities', 'id', false);
-        if (data) {
-            setActivities(data as Activity[]);
-        }
-    };
-
-    // Update typeFilter if forcedType changes
-    useEffect(() => {
-        if (forcedType) setTypeFilter(forcedType);
-    }, [forcedType]);
-
-    // Enforce User OU restriction on mount
-    useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
-            setOuFilter(currentUser.operatingUnit);
-        }
-    }, [currentUser]);
-
-    const availableFundYears = useMemo(() => {
-        const years = new Set<string>();
-        activities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
-        return Array.from(years).sort().reverse();
-    }, [activities]);
-
-    // Process list data
-    const processedActivities = useMemo(() => {
+    // 1. Initial Filtering (Search + Permissions + ForcedType)
+    const initiallyFilteredActivities = useMemo(() => {
         let filtered = [...activities];
 
-        // OU Filtering
+        // Permission-based OU Filtering
         if (!canViewAll && currentUser) {
             filtered = filtered.filter(a => a.operatingUnit === currentUser.operatingUnit);
-        } else if (canViewAll && ouFilter !== 'All') {
-            filtered = filtered.filter(a => a.operatingUnit === ouFilter);
         }
         
-        if (fundYearFilter !== 'All') {
-            filtered = filtered.filter(a => a.fundingYear?.toString() === fundYearFilter);
-        }
-
-        if (componentFilter !== 'All') {
-            filtered = filtered.filter(activity => activity.component === componentFilter);
-        }
-
-        if (typeFilter !== 'All') {
-            filtered = filtered.filter(activity => activity.type === typeFilter);
+        // Forced Type (e.g. Trainings Page vs Activities Page)
+        if (forcedType) {
+            filtered = filtered.filter(activity => activity.type === forcedType);
         }
 
         if (searchTerm) {
@@ -142,7 +242,40 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 (t.uid && t.uid.toLowerCase().includes(lowercasedSearchTerm))
             );
         }
+        return filtered;
+    }, [activities, searchTerm, forcedType, currentUser, canViewAll]);
 
+    // 2. Extract Unique Values for Column Filters based on Initially Filtered Data
+    const uniqueValues = useMemo(() => {
+        const getUnique = (key: keyof Activity) => Array.from(new Set(initiallyFilteredActivities.map(a => String(a[key] || '')))).filter(Boolean).sort();
+        return {
+            name: getUnique('name'),
+            status: getUnique('status'),
+            date: getUnique('date'), 
+            description: getUnique('description'),
+            budget: [], // Budget is numeric
+            operatingUnit: getUnique('operatingUnit'),
+            component: getUnique('component'),
+            fundingYear: getUnique('fundingYear')
+        };
+    }, [initiallyFilteredActivities]);
+
+    // 3. Apply Column Filters & Sort
+    const processedActivities = useMemo(() => {
+        let filtered = [...initiallyFilteredActivities];
+
+        // Apply Column Filters
+        Object.keys(columnFilters).forEach(key => {
+            const selectedValues = columnFilters[key];
+            if (selectedValues.length > 0) {
+                filtered = filtered.filter(item => {
+                    const itemValue = String((item as any)[key] || '');
+                    return selectedValues.includes(itemValue);
+                });
+            }
+        });
+
+        // Apply Sorting
         if (sortConfig !== null) {
             filtered.sort((a, b) => {
                 let aValue: any;
@@ -154,44 +287,49 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 } else if (sortConfig.key === 'budget') {
                     aValue = a.expenses.reduce((sum, e) => sum + e.amount, 0);
                     bValue = b.expenses.reduce((sum, e) => sum + e.amount, 0);
-                }
-                else {
-                    aValue = a[sortConfig.key as keyof Activity];
-                    bValue = b[sortConfig.key as keyof Activity];
+                } else {
+                    aValue = a[sortConfig.key as keyof Activity] || '';
+                    bValue = b[sortConfig.key as keyof Activity] || '';
                 }
 
-                if (aValue < bValue) {
-                    return sortConfig.direction === 'ascending' ? -1 : 1;
-                }
-                if (aValue > bValue) {
-                    return sortConfig.direction === 'ascending' ? 1 : -1;
-                }
+                if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
                 return 0;
             });
         }
         return filtered;
-    }, [activities, searchTerm, componentFilter, typeFilter, sortConfig, ouFilter, fundYearFilter, ipos, currentUser, canViewAll]);
+    }, [initiallyFilteredActivities, columnFilters, sortConfig]);
 
     // Use Shared Pagination Hook
     const { 
         currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedActivities 
-    } = usePagination(processedActivities, [searchTerm, componentFilter, typeFilter, ouFilter, fundYearFilter, sortConfig]);
+    } = usePagination(processedActivities, [searchTerm, forcedType, sortConfig, columnFilters]);
 
-    const requestSort = (key: SortKeys) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
+    // Sorting Handler
+    const handleSort = (key: SortKeys, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
     };
+
+    // Filter Change Handler
+    const handleColumnFilterChange = (columnKey: string, values: string[]) => {
+        setColumnFilters(prev => ({
+            ...prev,
+            [columnKey]: values
+        }));
+    };
     
+    // Clear Column Filters
+    const clearColumnFilters = () => {
+        setColumnFilters({});
+    }
+
     const handleToggleRow = (activityId: number) => {
         setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
     };
 
+    // ... (Deletion and Cloning Handlers remain the same) ...
     const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
-            // Log Bulk Delete
             const deletedItems = activities.filter(a => selectedIds.includes(a.id)).map(a => a.name).join(', ');
             logAction('Deleted Activities', `Bulk deleted ${selectedIds.length} items: ${deletedItems}`);
 
@@ -201,10 +339,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     console.error("Error deleting items:", error);
                     alert("Failed to delete selected items.");
                 } else {
-                    refreshData();
+                     setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
                 }
             } else {
-                // Offline fallback
                 setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
             }
         }
@@ -227,21 +364,20 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             const newUid = `${prefix}-${currentYear}-${sequence}${index}`;
 
-            // Deep copy expenses and reset actuals
             const clonedExpenses = item.expenses.map(exp => ({
                 ...exp,
-                id: Date.now() + Math.random(), // New temp ID
+                id: Date.now() + Math.random(),
                 actualObligationAmount: 0,
                 actualObligationDate: '',
                 actualDisbursementAmount: 0,
                 actualDisbursementDate: '',
-                actualAmount: 0 // Legacy field
+                actualAmount: 0
             }));
 
             return {
                 ...rest,
                 uid: newUid,
-                status: 'Proposed', // Reset status
+                status: 'Proposed',
                 actualDate: '',
                 actualEndDate: '',
                 actualParticipantsMale: 0,
@@ -271,7 +407,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
             }
         } else {
             const newLocalItems = newActivitiesPayload.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-            setActivities(prev => [...newLocalItems as Activity[], ...prev]);
+            setActivities(prev => [...(newLocalItems as Activity[]), ...prev]);
             resetSelection();
             alert(`Successfully cloned ${newLocalItems.length} activities (Local).`);
         }
@@ -279,12 +415,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const handleToggleMode = (intent: 'delete' | 'clone') => {
         if (isSelectionMode && selectionIntent === intent) {
-            toggleSelectionMode(); // Toggle off
+            toggleSelectionMode();
         } else if (isSelectionMode && selectionIntent !== intent) {
-            setSelectionIntent(intent); // Switch intent
+            setSelectionIntent(intent);
         } else {
             setSelectionIntent(intent);
-            toggleSelectionMode(); // Toggle on
+            toggleSelectionMode();
         }
     };
 
@@ -295,10 +431,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
 
     const confirmDelete = async () => {
         if (itemToDelete) {
-            // Log Delete
             logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '));
 
-             // Log to IPO History
              for (const ipoName of itemToDelete.participatingIpos) {
                 const ipo = ipos.find(i => i.name === ipoName);
                 if (ipo) {
@@ -312,10 +446,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                     console.error("Error deleting activity:", error);
                     alert("Failed to delete activity.");
                 } else {
-                    refreshData();
+                     setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
                 }
             } else {
-                // Offline fallback
                 setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
             }
             setIsDeleteModalOpen(false);
@@ -327,23 +460,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
-    
-    const formatCurrency = (amount: number) => {
-      return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
-    }
-
-    const SortableHeader: React.FC<{ sortKey: SortKeys; label: string; className?: string; }> = ({ sortKey, label, className }) => {
-      const isSorted = sortConfig?.key === sortKey;
-      const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
-      return (
-        <th scope="col" className={`px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${className}`}>
-            <button onClick={() => requestSort(sortKey)} className="flex items-center gap-1.5 group">
-              <span>{label}</span>
-              <span className={`transition-opacity ${isSorted ? 'opacity-100' : 'opacity-30 group-hover:opacity-100'}`}>{directionIcon}</span>
-            </button>
-        </th>
-      )
-    }
 
     return (
         <div>
@@ -385,95 +501,132 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                 )}
             </div>
             <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                 <div className="mb-4 flex flex-col md:flex-row gap-4">
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                        <input type="text" placeholder="Search activities..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-auto ${commonInputClasses} mt-0`} />
-                         {canViewAll && (
-                            <div className="flex items-center gap-2">
-                               <label htmlFor="ouFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">OU:</label>
-                                <select 
-                                    id="ouFilter" 
-                                    value={ouFilter} 
-                                    onChange={(e) => setOuFilter(e.target.value)} 
-                                    disabled={currentUser?.role === 'User'}
-                                    className={`${commonInputClasses} mt-0 disabled:opacity-70 disabled:cursor-not-allowed`}
-                                >
-                                    <option value="All">All OUs</option>
-                                    {operatingUnits.map(ou => (
-                                        <option key={ou} value={ou}>{ou}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        )}
+                 <div className="mb-4 flex flex-col gap-4">
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
+                        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+                            <input type="text" placeholder="Search Activity..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-64 ${commonInputClasses} mt-0`} />
+                            
+                            {Object.keys(columnFilters).length > 0 && (
+                                <button onClick={clearColumnFilters} className="text-sm text-red-500 hover:text-red-700 underline">
+                                    Reset Filters
+                                </button>
+                            )}
+                        </div>
+                        
                         <div className="flex items-center gap-2">
-                           <label htmlFor="fundYearFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year:</label>
-                            <select id="fundYearFilter" value={fundYearFilter} onChange={(e) => setFundYearFilter(e.target.value)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All Years</option>
-                                {availableFundYears.map(y => <option key={y} value={y}>{y}</option>)}
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2">
-                           <label htmlFor="componentFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Component:</label>
-                            <select id="componentFilter" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`}>
-                                <option value="All">All Components</option>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </div>
-                         <div className="flex items-center gap-2">
-                           <label htmlFor="typeFilter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Type:</label>
-                            <select id="typeFilter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`${commonInputClasses} mt-0`} disabled={!!forcedType}>
-                                <option value="All">All Types</option>
-                                <option value="Training">Trainings Only</option>
-                                <option value="Activity">Other Activities Only</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="flex-grow"></div>
-                    <div className="flex items-center gap-2">
-                        {isSelectionMode && selectedIds.length > 0 && (
-                            <button 
-                                onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                                className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
-                            >
-                                {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
-                            </button>
-                        )}
-                        <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
-                        {canEdit && (
-                            <>
-                                <button onClick={downloadActivitiesTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Download Template</button>
-                                <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload XLSX'}</label>
-                                <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                            {isSelectionMode && selectedIds.length > 0 && (
                                 <button 
-                                    onClick={() => handleToggleMode('clone')} 
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
-                                    title="Toggle Clone Mode"
+                                    onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                                    className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
                                 >
-                                    <DuplicateIcon />
+                                    {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                                 </button>
-                                <button
-                                    onClick={() => handleToggleMode('delete')}
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
-                                    title="Toggle Multi-Delete Mode"
-                                >
-                                    <TrashIcon />
-                                </button>
-                            </>
-                        )}
-                    </div>
+                            )}
+                            <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
+                            {canEdit && (
+                                <>
+                                    <button onClick={downloadActivitiesTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
+                                    <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
+                                    <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
+                                    <button 
+                                        onClick={() => handleToggleMode('clone')} 
+                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                        title="Toggle Clone Mode"
+                                    >
+                                        <DuplicateIcon />
+                                    </button>
+                                    <button
+                                        onClick={() => handleToggleMode('delete')}
+                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                        title="Toggle Multi-Delete Mode"
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                     </div>
                  </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-visible pb-24">
                     <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
-                                <SortableHeader sortKey="name" label="Name" />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Status</th>
-                                <SortableHeader sortKey="date" label="Date" />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">Description</th>
-                                <SortableHeader sortKey="budget" label="Budget" />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider">OU</th>
-                                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
+                                <ActivityColumnHeader 
+                                    label="Name" 
+                                    columnKey="name" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['name'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('name', v)} 
+                                    uniqueValues={uniqueValues.name} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Component" 
+                                    columnKey="component" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['component'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('component', v)} 
+                                    uniqueValues={uniqueValues.component} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Fund Year" 
+                                    columnKey="fundingYear" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['fundingYear'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} 
+                                    uniqueValues={uniqueValues.fundingYear} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Status" 
+                                    columnKey="status" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['status'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('status', v)} 
+                                    uniqueValues={uniqueValues.status} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Date" 
+                                    columnKey="date" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['date'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('date', v)} 
+                                    uniqueValues={uniqueValues.date} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Description" 
+                                    columnKey="description" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['description'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('description', v)} 
+                                    uniqueValues={uniqueValues.description} 
+                                />
+                                <ActivityColumnHeader 
+                                    label="Budget" 
+                                    columnKey="budget" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={[]} 
+                                    onFilterChange={() => {}} 
+                                    uniqueValues={[]}
+                                    isNumeric={true}
+                                />
+                                <ActivityColumnHeader 
+                                    label="OU" 
+                                    columnKey="operatingUnit" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['operatingUnit'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} 
+                                    uniqueValues={uniqueValues.operatingUnit} 
+                                />
+                                <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
                                             <span className="text-xs">Select All</span>
@@ -505,6 +658,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                             </button>
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal mt-1">{activity.uid}</div>}
                                         </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             {new Date(activity.date).toLocaleDateString()}
@@ -532,7 +687,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                                     </tr>
                                      {expandedRowId === activity.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={9} className="p-4">
+                                            <td colSpan={11} className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="space-y-4">
                                                         <div>
@@ -597,7 +752,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ ipos, activitie
                         </tbody>
                     </table>
                 </div>
-                 {/* Pagination - Reuse existing code */}
+                 {/* Pagination */}
                  <div className="py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
