@@ -52,6 +52,13 @@ const defaultFormData: Activity = {
     actualEndDate: '',
     actualParticipantsMale: 0,
     actualParticipantsFemale: 0,
+    // Gender and Inclusivity Actuals
+    actualPWD: 0,
+    actualMuslim: 0,
+    actualLGBTQ: 0,
+    actualSoloParent: 0,
+    actualSenior: 0,
+    actualYouth: 0,
     status: 'Proposed'
 };
 
@@ -411,6 +418,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         onBack();
     };
 
+    const TabButton = ({ name, label }: { name: any, label: string }) => (
+        <button type="button" onClick={() => setActiveTab(name)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === name ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
+    );
+
     return (
         <div className="space-y-6 animate-fadeIn pb-20">
              <div className="flex justify-between items-center mb-4">
@@ -731,6 +742,19 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     </div>
                                 </div>
                             ))}
+                        </fieldset>
+
+                        {/* Gender and Inclusivity Section */}
+                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Gender and Inclusivity</legend>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label><input type="number" name="actualPWD" value={formData.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualPWD')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label><input type="number" name="actualMuslim" value={formData.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualMuslim')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label><input type="number" name="actualLGBTQ" value={formData.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualLGBTQ')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label><input type="number" name="actualSoloParent" value={formData.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualSoloParent')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label><input type="number" name="actualSenior" value={formData.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualSenior')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label><input type="number" name="actualYouth" value={formData.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualYouth')} placeholder="0" /></div>
+                            </div>
                         </fieldset>
                      </div>
                 )}

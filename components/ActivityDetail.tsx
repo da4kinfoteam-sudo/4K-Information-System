@@ -90,6 +90,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     </p>
                 </div>
                 <div className="flex items-center gap-4">
+                    {(canEditAccomplishment || isAdmin) && (
+                        <button onClick={() => onEdit('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            Edit Accomplishment
+                        </button>
+                    )}
                     <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
                         Back to {previousPageName}
@@ -294,6 +300,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 ) : (
                                     <p className="text-sm text-gray-500 italic">No expense items to report on.</p>
                                 )}
+                            </div>
+
+                            {/* Gender and Inclusivity (Read-Only) */}
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Gender and Inclusivity</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                    <DetailItem label="PWD" value={activity.actualPWD} />
+                                    <DetailItem label="Muslim" value={activity.actualMuslim} />
+                                    <DetailItem label="LGBTQ+" value={activity.actualLGBTQ} />
+                                    <DetailItem label="Solo Parents" value={activity.actualSoloParent} />
+                                    <DetailItem label="Senior" value={activity.actualSenior} />
+                                    <DetailItem label="Youth" value={activity.actualYouth} />
+                                </div>
                             </div>
                         </div>
                     </div>

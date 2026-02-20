@@ -251,6 +251,13 @@ export interface Activity extends BaseEntity {
     actualEndDate?: string;
     actualParticipantsMale?: number;
     actualParticipantsFemale?: number;
+    // Gender and Inclusivity Actuals
+    actualPWD?: number;
+    actualMuslim?: number;
+    actualLGBTQ?: number;
+    actualSoloParent?: number;
+    actualSenior?: number;
+    actualYouth?: number;
     // Status
     status: 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
 }

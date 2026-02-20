@@ -1,29 +1,5 @@
 
 -- ... existing code ...
--- Add column to activities if not exists
-DO $$ 
-BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='activities' AND column_name='actualEndDate') THEN
-    ALTER TABLE activities ADD COLUMN "actualEndDate" DATE;
-  END IF;
-END $$;
-
--- Add column to office_requirements if not exists
-DO $$ 
-BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='office_requirements' AND column_name='status') THEN
-    ALTER TABLE office_requirements ADD COLUMN "status" TEXT DEFAULT 'Proposed';
-  END IF;
-END $$;
-
--- Add column to staffing_requirements if not exists
-DO $$ 
-BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staffing_requirements' AND column_name='hiringStatus') THEN
-    ALTER TABLE staffing_requirements ADD COLUMN "hiringStatus" TEXT DEFAULT 'Proposed';
-  END IF;
-END $$;
-
 -- Add columns for Gender and Inclusivity to subprojects
 DO $$ 
 BEGIN 
@@ -34,5 +10,18 @@ BEGIN
     ALTER TABLE subprojects ADD COLUMN "actualSoloParent" NUMERIC DEFAULT 0;
     ALTER TABLE subprojects ADD COLUMN "actualSenior" NUMERIC DEFAULT 0;
     ALTER TABLE subprojects ADD COLUMN "actualYouth" NUMERIC DEFAULT 0;
+  END IF;
+END $$;
+
+-- Add columns for Gender and Inclusivity to activities
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='activities' AND column_name='actualPWD') THEN
+    ALTER TABLE activities ADD COLUMN "actualPWD" NUMERIC DEFAULT 0;
+    ALTER TABLE activities ADD COLUMN "actualMuslim" NUMERIC DEFAULT 0;
+    ALTER TABLE activities ADD COLUMN "actualLGBTQ" NUMERIC DEFAULT 0;
+    ALTER TABLE activities ADD COLUMN "actualSoloParent" NUMERIC DEFAULT 0;
+    ALTER TABLE activities ADD COLUMN "actualSenior" NUMERIC DEFAULT 0;
+    ALTER TABLE activities ADD COLUMN "actualYouth" NUMERIC DEFAULT 0;
   END IF;
 END $$;
