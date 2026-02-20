@@ -76,6 +76,11 @@ const AppContent: React.FC = () => {
         status?: string;
     } | null>(null);
 
+    // Callback to clear external filters after they are consumed by a component
+    const clearExternalFilters = () => {
+        setExternalFilters(null);
+    };
+
     // --- DATA STATE MANAGEMENT ---
     
     // Subprojects, IPOs, Activities use the sync hook
@@ -344,6 +349,7 @@ const AppContent: React.FC = () => {
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
                             externalFilters={externalFilters}
+                            onClearExternalFilters={clearExternalFilters}
                         />;
             case '/trainings':
                 return <ActivitiesComponent 
@@ -357,6 +363,7 @@ const AppContent: React.FC = () => {
                             referenceActivities={referenceActivities}
                             forcedType="Training"
                             externalFilters={externalFilters}
+                            onClearExternalFilters={clearExternalFilters}
                         />;
             case '/other-activities':
                 return <ActivitiesComponent 
@@ -370,6 +377,7 @@ const AppContent: React.FC = () => {
                             referenceActivities={referenceActivities}
                             forcedType="Activity"
                             externalFilters={externalFilters}
+                            onClearExternalFilters={clearExternalFilters}
                         />;
             case '/activities': 
                 return <ActivitiesComponent 
@@ -382,6 +390,7 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             externalFilters={externalFilters}
+                            onClearExternalFilters={clearExternalFilters}
                         />;
             case '/activity-edit':
                 return <ActivityEdit 
@@ -542,6 +551,7 @@ const AppContent: React.FC = () => {
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
                             externalFilters={externalFilters}
+                            onClearExternalFilters={clearExternalFilters}
                         />;
             case '/references':
                 return <References 

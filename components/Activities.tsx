@@ -25,6 +25,7 @@ interface ActivitiesProps {
     referenceActivities?: ReferenceActivity[]; 
     forcedType?: 'Training' | 'Activity';
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
+    onClearExternalFilters?: () => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -192,7 +193,7 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
 export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ 
     ipos, activities, setActivities, onSelectIpo, onSelectActivity, 
     onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
-    externalFilters 
+    externalFilters, onClearExternalFilters 
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
@@ -254,8 +255,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             if (Object.keys(newFilters).length > 0) {
                 setColumnFilters(prev => ({ ...prev, ...newFilters }));
             }
+            
+            // Clear the external filters so they don't re-apply on remount or navigation
+            if (onClearExternalFilters) {
+                onClearExternalFilters();
+            }
         }
-    }, [externalFilters]);
+    }, [externalFilters, onClearExternalFilters]);
 
     // 1. Initial Filtering (Search + Permissions + ForcedType)
     const initiallyFilteredActivities = useMemo(() => {

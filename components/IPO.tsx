@@ -1,3 +1,4 @@
+
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes } from '../constants';
@@ -23,6 +24,7 @@ interface IPOsProps {
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
     externalFilters?: { region?: string; year?: string; search?: string } | null;
+    onClearExternalFilters?: () => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -86,7 +88,7 @@ const normalizeRegionName = (inputRegion: string) => {
     return map[inputRegion] || inputRegion;
 };
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const isAdmin = currentUser?.role === 'Administrator';
@@ -152,11 +154,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             if (externalFilters.search) {
                 setSearchTerm(externalFilters.search);
             }
-            // Reset other flags if needed, or keep them user preference. 
-            // Usually, external filter implies a reset of unrelated filters to show what was asked.
-            // setFlagFilter(...) if desired.
+            
+            // Clear the external filters so they don't re-apply on remount
+            if (onClearExternalFilters) {
+                onClearExternalFilters();
+            }
         }
-    }, [externalFilters, setRegionFilter, setSearchTerm]);
+    }, [externalFilters, setRegionFilter, setSearchTerm, onClearExternalFilters]);
 
     // Helper to refresh data from Supabase
     const refreshData = async () => {

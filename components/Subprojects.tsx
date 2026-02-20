@@ -24,6 +24,7 @@ interface SubprojectsProps {
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
+    onClearExternalFilters?: () => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -183,7 +184,7 @@ const SubprojectColumnHeader: React.FC<SubprojectColumnHeaderProps> = ({
 
 const Subprojects: React.FC<SubprojectsProps> = ({ 
     ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, 
-    onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters 
+    onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters, onClearExternalFilters
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
@@ -247,8 +248,13 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             if (Object.keys(newFilters).length > 0) {
                 setColumnFilters(prev => ({ ...prev, ...newFilters }));
             }
+
+            // Clear the external filters so they don't re-apply on remount
+            if (onClearExternalFilters) {
+                onClearExternalFilters();
+            }
         }
-    }, [externalFilters]);
+    }, [externalFilters, onClearExternalFilters]);
 
     // 1. Initial Filtering (Search + Permissions)
     const initiallyFilteredSubprojects = useMemo(() => {

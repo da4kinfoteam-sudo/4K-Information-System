@@ -23,3 +23,16 @@ BEGIN
     ALTER TABLE staffing_requirements ADD COLUMN "hiringStatus" TEXT DEFAULT 'Proposed';
   END IF;
 END $$;
+
+-- Add columns for Gender and Inclusivity to subprojects
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subprojects' AND column_name='actualPWD') THEN
+    ALTER TABLE subprojects ADD COLUMN "actualPWD" NUMERIC DEFAULT 0;
+    ALTER TABLE subprojects ADD COLUMN "actualMuslim" NUMERIC DEFAULT 0;
+    ALTER TABLE subprojects ADD COLUMN "actualLGBTQ" NUMERIC DEFAULT 0;
+    ALTER TABLE subprojects ADD COLUMN "actualSoloParent" NUMERIC DEFAULT 0;
+    ALTER TABLE subprojects ADD COLUMN "actualSenior" NUMERIC DEFAULT 0;
+    ALTER TABLE subprojects ADD COLUMN "actualYouth" NUMERIC DEFAULT 0;
+  END IF;
+END $$;

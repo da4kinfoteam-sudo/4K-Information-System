@@ -158,6 +158,13 @@ export interface Subproject extends BaseEntity {
     remarks?: string;
     catchUpPlanRemarks?: string;
     newTargetCompletionDate?: string;
+    // Gender and Inclusivity Actuals
+    actualPWD?: number;
+    actualMuslim?: number;
+    actualLGBTQ?: number;
+    actualSoloParent?: number;
+    actualSenior?: number;
+    actualYouth?: number;
 }
 
 export interface Commodity {

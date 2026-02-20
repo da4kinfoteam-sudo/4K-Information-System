@@ -265,6 +265,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             setEditedSubproject(prev => ({ ...prev, [name]: value }));
         }
     };
+    
+    // New handler for top-level numeric fields (Gender/Inclusivity)
+    const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setEditedSubproject(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+    };
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -322,8 +328,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             updatedDetailItems = [...detailItems, newItem];
         }
 
-        setDetailItems(updatedDetailItems);
-
         // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
         let newEstimatedCompletionDate = editedSubproject.estimatedCompletionDate;
         const deliveryDates = updatedDetailItems
@@ -337,7 +341,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             const farthestDate = new Date(maxDateTimestamp).toISOString().split('T')[0];
             newEstimatedCompletionDate = farthestDate;
         }
-
+        
+        setDetailItems(updatedDetailItems);
         setEditedSubproject(prev => ({
             ...prev,
             estimatedCompletionDate: newEstimatedCompletionDate
@@ -882,7 +887,38 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <p className="text-sm text-gray-500 dark:text-gray-400 italic">Placeholder for Customer Satisfaction Survey data.</p>
                                     </fieldset>
 
-                                    {/* Section 3: Outcome of Subproject */}
+                                    {/* Section 3: Gender and Inclusivity (Added) */}
+                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
+                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Gender and Inclusivity</legend>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label>
+                                                <input type="number" name="actualPWD" value={editedSubproject.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualPWD)} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label>
+                                                <input type="number" name="actualMuslim" value={editedSubproject.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualMuslim)} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label>
+                                                <input type="number" name="actualLGBTQ" value={editedSubproject.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualLGBTQ)} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label>
+                                                <input type="number" name="actualSoloParent" value={editedSubproject.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualSoloParent)} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label>
+                                                <input type="number" name="actualSenior" value={editedSubproject.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualSenior)} placeholder="0" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label>
+                                                <input type="number" name="actualYouth" value={editedSubproject.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualYouth)} placeholder="0" />
+                                            </div>
+                                        </div>
+                                    </fieldset>
+
+                                    {/* Section 4: Outcome of Subproject */}
                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Outcome of Subproject</legend>
                                         <div className="overflow-x-auto">
@@ -947,7 +983,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         </div>
                                     </fieldset>
 
-                                    {/* Section 4: Catch Up Plan (Conditional) */}
+                                    {/* Section 5: Catch Up Plan (Conditional) */}
                                     {new Date() > new Date(editedSubproject.estimatedCompletionDate) && editedSubproject.status !== 'Completed' && (
                                         <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
                                             <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
@@ -1173,6 +1209,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 ) : (
                                     <p className="text-sm text-gray-500 italic">No items delivered yet.</p>
                                 )}
+                            </div>
+
+                            {/* Gender and Inclusivity (Read-Only) */}
+                            <div>
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Gender and Inclusivity</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                    <DetailItem label="PWD" value={subproject.actualPWD} />
+                                    <DetailItem label="Muslim" value={subproject.actualMuslim} />
+                                    <DetailItem label="LGBTQ+" value={subproject.actualLGBTQ} />
+                                    <DetailItem label="Solo Parents" value={subproject.actualSoloParent} />
+                                    <DetailItem label="Senior" value={subproject.actualSenior} />
+                                    <DetailItem label="Youth" value={subproject.actualYouth} />
+                                </div>
                             </div>
 
                             <div>
