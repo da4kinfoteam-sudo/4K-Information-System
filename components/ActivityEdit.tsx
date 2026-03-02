@@ -141,6 +141,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             setInitialActivity(activity);
             if (activity.endDate && activity.endDate !== activity.date) {
                 setConductType('Multi-day');
+            } else {
+                setConductType('Single');
             }
             if (activity.type === 'Training') {
                 const ref = referenceActivities?.find(ra => ra.component === activity.component && ra.type === 'Training');
@@ -220,6 +222,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         
         if (name === 'component') setSelectedActivityType('');
         if (name === 'date' && conductType === 'Single') setFormData(prev => ({ ...prev, endDate: value }));
+        if (name === 'actualDate' && conductType === 'Single') setFormData(prev => ({ ...prev, actualEndDate: value }));
     };
 
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -244,7 +247,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         const val = e.target.value as any;
         setConductType(val);
         setFormData(prev => {
-             if (val === 'Single') return { ...prev, endDate: prev.date };
+             if (val === 'Single') return { ...prev, endDate: prev.date, actualEndDate: prev.actualDate };
              if (val === 'Repeating') return { ...prev, date: '', endDate: '' };
              return prev;
         });
@@ -475,13 +478,13 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     </div>
                                 )}
                                 
-                                {mode === 'create' && (
+                                {(mode === 'create' || mode === 'details') && (
                                     <div>
                                         <label className="block text-sm font-medium">Conduct Type</label>
-                                        <select value={conductType} onChange={handleConductTypeChange} className={commonInputClasses}>
+                                        <select value={conductType} onChange={handleConductTypeChange} className={commonInputClasses} disabled={isDetailsLocked}>
                                             <option value="Single">Single Day</option>
                                             <option value="Multi-day">Multi-Day</option>
-                                            <option value="Repeating">Repeating Entries</option>
+                                            {mode === 'create' && <option value="Repeating">Repeating Entries</option>}
                                         </select>
                                     </div>
                                 )}
