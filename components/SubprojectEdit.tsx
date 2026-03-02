@@ -363,15 +363,27 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     )}
                     {activeTab === 'commodity' && (
                         <div className="space-y-4">
-                            {formData.subprojectCommodities?.map((c, i) => (
-                                <div key={i} className={`flex justify-between items-center p-2 rounded ${i === editingCommodityIndex ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                    <span className="text-sm">{c.name} ({c.typeName}) - Target {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && c.averageYield ? `| Target Yield: ${c.averageYield}` : ''}</span>
-                                    <div className="flex gap-2">
-                                        <button type="button" onClick={() => handleEditCommodity(i)} className="text-blue-500 text-xs">Edit</button>
-                                        <button type="button" onClick={() => handleRemoveCommodity(i)} className="text-red-500 text-xs">Remove</button>
+                            {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
+                                formData.subprojectCommodities.map((c, i) => (
+                                    <div key={i} className={`flex items-center justify-between p-2 rounded-md text-sm ${i === editingCommodityIndex ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                        <div>
+                                            <span className="font-semibold">{c.name}</span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                                {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && `| Yield: ${c.averageYield}`}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button type="button" onClick={() => handleEditCommodity(i)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                            </button>
+                                            <button type="button" onClick={() => handleRemoveCommodity(i)} className="text-red-500 hover:text-red-700">&times;</button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))
+                            ) : (
+                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added.</p>
+                            )}
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4">
                                 <div><label className="block text-xs font-medium">Type</label><select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="block text-xs font-medium">Commodity</label><select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}><option value="">Select Commodity</option>{currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
