@@ -155,12 +155,15 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const collect = (items: any[]) => {
             items.forEach(item => {
                 if (item.location) {
+                    // Split by comma and clean up
                     const parts = item.location.split(',').map((p:string) => p.trim().toLowerCase());
                     parts.forEach((p: string) => {
+                        // Add individual parts (e.g., "Porac", "Pampanga")
                         if (p.length > 2 && !['region', 'province', 'city', 'municipality'].includes(p)) {
                             locs.add(p);
                         }
                     });
+                    // Also add the full string for exact matches if needed, though parts usually suffice
                 }
             });
         };
@@ -223,14 +226,46 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
-        // 2c. Identify Location (Province/Municipality) from data
-        let targetLocation: string | null = null;
+        // 2c. Identify Locations (Province/Municipality) from data - Support Multiple
+        const targetLocations: string[] = [];
+        // We use a copy of the query to avoid double counting if needed, but simple inclusion check is fine
+        // Iterate through uniqueLocations and check if they exist in query
         for (const loc of uniqueLocations) {
+            // Check for whole word match or distinct part to avoid matching "male" in "female" if that was a location
             if (q.includes(loc)) {
-                targetLocation = loc;
-                break;
+                // Avoid adding "Pampanga" if we already have a more specific location? 
+                // No, for "Porac, Pampanga", we want BOTH "Porac" and "Pampanga" to filter strictly.
+                targetLocations.push(loc);
             }
         }
+
+        // 2d. Identify Topic Keywords (Commodities, Types, etc.)
+        // Remove known entities from query to isolate topics
+        let cleanQuery = q;
+        if (targetYear) cleanQuery = cleanQuery.replace(targetYear, '');
+        if (targetRegion) {
+             // Remove the alias that matched
+             for (const alias of sortedAliases) {
+                if (q.includes(alias)) {
+                    cleanQuery = cleanQuery.replace(alias, '');
+                    break;
+                }
+             }
+        }
+        if (targetStatus) cleanQuery = cleanQuery.replace(targetStatus.toLowerCase(), '');
+        targetLocations.forEach(l => cleanQuery = cleanQuery.replace(l, ''));
+
+        const stopWords = [
+            'how', 'many', 'much', 'is', 'the', 'in', 'at', 'of', 'with', 'for', 'on', 'by',
+            'projects', 'project', 'subprojects', 'subproject', 'ipos', 'ipo', 
+            'activities', 'activity', 'trainings', 'training', 
+            'budget', 'cost', 'total', 'list', 'show', 'me', 'are', 'there', 'allocation', 'fund', 'funding',
+            'type', 'types', 'kind', 'kinds', 'category', 'categories',
+            'district', 'districts', 'province', 'provinces', 'municipality', 'municipalities', 'city', 'cities', 'barangay', 'barangays', 'region', 'regions'
+        ];
+        
+        const potentialKeywords = cleanQuery.split(/[\s,?.!]+/).filter(w => w.length > 2 && !stopWords.includes(w));
+        const targetKeywords = [...new Set(potentialKeywords)]; // Unique keywords
 
         // 3. Filter Data based on detected Intent (Backend Query Logic)
         const filterItem = (item: any) => {
@@ -254,21 +289,47 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     match = false;
                 }
             }
-            // Location Filter (Province/City)
-            if (targetLocation) {
+            // Location Filter (Province/City) - MUST MATCH ALL TARGET LOCATIONS
+            if (targetLocations.length > 0) {
                 const loc = (item.location || '').toLowerCase();
-                if (!loc.includes(targetLocation)) {
+                // Check if ALL target locations are present in the item's location string
+                const allLocationsMatch = targetLocations.every(target => loc.includes(target));
+                if (!allLocationsMatch) {
                     match = false;
                 }
             }
             // Status Filter
             if (targetStatus) {
                 if (item.status && item.status !== targetStatus) match = false;
-                // If item has no status property (like IPOs typically, though we might infer it from subprojects later), exclude it if status is strictly requested
-                // Exception: IPOs typically don't have 'Completed' status themselves, but have 'levels'. 
-                // We'll skip status check if item doesn't have status field to avoid filtering out everything unless user specifically asked for an entity with status.
-                // However, for counts like "Completed Subprojects", we must filter.
                 if (!item.status && (q.includes('subproject') || q.includes('training') || q.includes('activity'))) match = false;
+            }
+
+            // Keyword Filter (Commodities, Types, etc.)
+            if (targetKeywords.length > 0) {
+                const itemString = JSON.stringify(item).toLowerCase();
+                
+                let searchableText = (item.name || '') + ' ' + 
+                                     (item.description || '') + ' ' + 
+                                     (item.packageType || '') + ' ' + 
+                                     (item.particulars || '') + ' ' + 
+                                     (item.component || '') + ' ' + // Added component for activities
+                                     (item.type || '');              // Added type
+                
+                // Add commodities/details
+                if (item.subprojectCommodities) {
+                    searchableText += ' ' + item.subprojectCommodities.map((c: any) => c.name + ' ' + c.typeName).join(' ');
+                }
+                if (item.details) {
+                    searchableText += ' ' + item.details.map((d: any) => d.particulars + ' ' + d.type).join(' ');
+                }
+                if (item.commodities) { // IPO commodities
+                    searchableText += ' ' + item.commodities.map((c: any) => c.particular + ' ' + c.type).join(' ');
+                }
+
+                searchableText = searchableText.toLowerCase();
+                
+                const allKeywordsMatch = targetKeywords.every(kw => searchableText.includes(kw));
+                if (!allKeywordsMatch) match = false;
             }
 
             return match;
@@ -282,10 +343,25 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             // Apply year filter for IPOs (based on registration)
             if (targetYear && new Date(i.registrationDate).getFullYear().toString() !== targetYear) return false;
             if (targetRegion && i.region !== targetRegion) return false;
-            if (targetLocation) {
+            
+            // Location Filter for IPOs
+            if (targetLocations.length > 0) {
                 const loc = (i.location || '').toLowerCase();
-                if (!loc.includes(targetLocation)) return false;
+                const allLocationsMatch = targetLocations.every(target => loc.includes(target));
+                if (!allLocationsMatch) return false;
             }
+
+            // Keyword Filter for IPOs
+            if (targetKeywords.length > 0) {
+                 let searchableText = (i.name || '') + ' ' + (i.indigenousCulturalCommunity || '');
+                 if (i.commodities) {
+                    searchableText += ' ' + i.commodities.map((c: any) => c.particular + ' ' + c.type).join(' ');
+                 }
+                 searchableText = searchableText.toLowerCase();
+                 const allKeywordsMatch = targetKeywords.every(kw => searchableText.includes(kw));
+                 if (!allKeywordsMatch) return false;
+            }
+
             return true;
         });
         
@@ -310,8 +386,9 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             filters_applied: { 
                 year: targetYear || "All Years", 
                 region: targetRegion || "All Regions (National)",
-                location: targetLocation || "None",
-                status: targetStatus || "All Statuses"
+                location: targetLocations.length > 0 ? targetLocations.join(', ') : "None",
+                status: targetStatus || "All Statuses",
+                keywords: targetKeywords.length > 0 ? targetKeywords.join(', ') : "None"
             },
             filtered_results: {
                 subprojects_count: filteredSubprojects.length,
