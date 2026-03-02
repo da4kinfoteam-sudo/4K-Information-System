@@ -291,6 +291,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             });
 
             expensesList.forEach(exp => {
+                exp.actualObligationDate = formData.actualObligationDate;
                 aggregatedTotals.annualSalary += exp.amount;
                 aggregatedTotals.actualObligationAmount += (exp.actualObligationAmount || 0);
                 
@@ -472,31 +473,65 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
                     <form onSubmit={handleSubmit} className="space-y-6">
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
+                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date (Date Hired)</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired (Actual Obligation Date)</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
                             </div>
                         </fieldset>
 
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Actual Monthly Disbursement</legend>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                                {months.map(month => (
-                                    <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
-                                    // @ts-ignore
-                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed" disabled={isFieldLocked(`actualDisbursement${month}`)} /></div>
-                                ))}
+                        <div className="space-y-4">
+                            <h4 className="font-medium text-gray-700 dark:text-gray-300">Financial Accomplishment per Expense Item</h4>
+                            {expensesList.map((expense, idx) => (
+                                <fieldset key={expense.id} className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
+                                    <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">{expense.expenseParticular || 'Unspecified Particular'} ({expense.uacsCode})</legend>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
+                                            <input type="number" value={expense.actualObligationAmount || 0} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', Number(e.target.value))} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} />
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Actual Monthly Disbursement</label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                            {months.map(month => (
+                                                <div key={`actual-${expense.id}-${month}`}>
+                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label>
+                                                    <input type="number" 
+                                                        value={(expense as any)[`actualDisbursement${month}`] || 0} 
+                                                        onChange={(e) => handleExpenseAccomplishmentChange(expense.id, `actualDisbursement${month}` as keyof StaffingExpense, Number(e.target.value))} 
+                                                        min="0" step="0.01" 
+                                                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed" 
+                                                        disabled={isFieldLocked(`actualDisbursement${month}`)} 
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
+                                            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Item Actual Disbursement:</span>
+                                            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(calculateActualDisbursementTotal(expense))}</span>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            ))}
+                            {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
+                        </div>
+
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-md border border-emerald-200 dark:border-emerald-800 flex justify-between items-center">
+                            <div>
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 block">Total Actual Obligation:</span>
+                                <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualObligationAmount || 0)}</span>
                             </div>
-                            <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Actual Disbursement:</span>
-                                <span className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
+                            <div className="text-right">
+                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 block">Total Actual Disbursement:</span>
+                                <span className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
                             </div>
-                        </fieldset>
+                        </div>
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -517,13 +552,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-teal-600 hover:bg-teal-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>

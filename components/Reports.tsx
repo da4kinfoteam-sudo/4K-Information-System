@@ -7,6 +7,7 @@ import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
 import PICSReport from './reports/PICSReport';
 import BAR1Report from './reports/BAR1Report';
+import BudgetUtilizationReport from './reports/BudgetUtilizationReport';
 import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import { useAuth } from '../contexts/AuthContext';
 
@@ -21,7 +22,7 @@ interface ReportsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Monthly Matrix';
+type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const { currentUser } = useAuth();
@@ -171,6 +172,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BAR1':
                 return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
+            case 'Budget Utilization Report':
+                return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Monthly Matrix':
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
                 return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
@@ -250,6 +253,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                         <TabButton tabName="BEDS" label="BEDS" />
                         <TabButton tabName="PICS" label="PICS" />
                         <TabButton tabName="BAR1" label="BAR1" />
+                        <TabButton tabName="Budget Utilization Report" label="Budget Utilization Report" />
                         <TabButton tabName="Monthly Matrix" label="Monthly Matrix" />
                     </nav>
                 </div>

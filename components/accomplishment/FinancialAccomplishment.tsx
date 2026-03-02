@@ -247,32 +247,63 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
         // Staffing Requirements (Supports Monthly Breakdown)
         staffingReqs.filter(matchesFilters).forEach(s => {
-             // Map Monthly Actuals
-             const monthlyActuals: any = {};
-             SHORT_MONTHS.forEach(m => {
-                 monthlyActuals[`actualDisbursement${m}`] = (s as any)[`actualDisbursement${m}`] || 0;
-             });
+            if (s.expenses && s.expenses.length > 0) {
+                s.expenses.forEach(e => {
+                    const monthlyActuals: any = {};
+                    SHORT_MONTHS.forEach(m => {
+                        monthlyActuals[`actualDisbursement${m}`] = (e as any)[`actualDisbursement${m}`] || 0;
+                    });
 
-             loadedItems.push({
-                uniqueId: `staff-${s.id}`,
-                sourceType: 'Staffing',
-                sourceId: s.id,
-                uacsCode: s.uacsCode,
-                objectType: 'MOOE',
-                expenseParticular: 'Salaries & Wages',
-                sourceName: s.personnelPosition,
-                targetObligationMonth: s.obligationDate,
-                targetObligationAmount: s.annualSalary,
-                targetDisbursementMonth: 'Monthly',
-                targetDisbursementAmount: s.annualSalary,
-                actualObligationMonth: s.actualObligationDate || '',
-                actualObligationAmount: s.actualObligationAmount || 0,
-                actualDisbursementMonth: s.actualDisbursementDate || '',
-                actualDisbursementAmount: s.actualDisbursementAmount || 0,
-                ...defaultMonthly, // Default
-                ...monthlyActuals, // Overwrite
-                isConfirmed: false
-            });
+                    loadedItems.push({
+                        uniqueId: `staff-${s.id}-${e.id}`,
+                        sourceType: 'Staffing',
+                        sourceId: s.id,
+                        detailId: e.id,
+                        uacsCode: e.uacsCode,
+                        objectType: e.objectType || 'MOOE',
+                        expenseParticular: e.expenseParticular || 'Salaries & Wages',
+                        sourceName: s.personnelPosition,
+                        targetObligationMonth: e.obligationDate,
+                        targetObligationAmount: e.amount,
+                        targetDisbursementMonth: 'Monthly',
+                        targetDisbursementAmount: e.amount,
+                        actualObligationMonth: e.actualObligationDate || '',
+                        actualObligationAmount: e.actualObligationAmount || 0,
+                        actualDisbursementMonth: e.actualDisbursementDate || '',
+                        actualDisbursementAmount: e.actualDisbursementAmount || 0,
+                        ...defaultMonthly,
+                        ...monthlyActuals,
+                        isConfirmed: false
+                    });
+                });
+            } else {
+                 // Map Monthly Actuals
+                 const monthlyActuals: any = {};
+                 SHORT_MONTHS.forEach(m => {
+                     monthlyActuals[`actualDisbursement${m}`] = (s as any)[`actualDisbursement${m}`] || 0;
+                 });
+
+                 loadedItems.push({
+                    uniqueId: `staff-${s.id}`,
+                    sourceType: 'Staffing',
+                    sourceId: s.id,
+                    uacsCode: s.uacsCode,
+                    objectType: 'MOOE',
+                    expenseParticular: 'Salaries & Wages',
+                    sourceName: s.personnelPosition,
+                    targetObligationMonth: s.obligationDate,
+                    targetObligationAmount: s.annualSalary,
+                    targetDisbursementMonth: 'Monthly',
+                    targetDisbursementAmount: s.annualSalary,
+                    actualObligationMonth: s.actualObligationDate || '',
+                    actualObligationAmount: s.actualObligationAmount || 0,
+                    actualDisbursementMonth: s.actualDisbursementDate || '',
+                    actualDisbursementAmount: s.actualDisbursementAmount || 0,
+                    ...defaultMonthly, // Default
+                    ...monthlyActuals, // Overwrite
+                    isConfirmed: false
+                });
+            }
         });
 
         // Other Program Expenses (Supports Monthly Breakdown)
@@ -528,31 +559,83 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 if (supabase) await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
                 setActivities(prev => prev.map(a => a.id === act.id ? { ...a, expenses: updatedExpenses } : a));
 
-            } else if (item.sourceType === 'Staffing' || item.sourceType === 'Other') {
-                // Handles Staffing and Other Expenses which have separate monthly columns in DB
-                const table = item.sourceType === 'Staffing' ? 'staffing_requirements' : 'other_program_expenses';
+            } else if (item.sourceType === 'Staffing') {
+                const s = staffingReqs.find(req => req.id === item.sourceId);
+                if (!s) throw new Error("Staffing Requirement not found");
+
+                let payload: any = {};
+                let updatedExpenses = s.expenses || [];
+
+                if (item.detailId) {
+                    updatedExpenses = updatedExpenses.map(e => {
+                        if (e.id === item.detailId) {
+                            const updatedExpense: any = {
+                                ...e,
+                                actualObligationDate: item.actualObligationMonth,
+                                actualObligationAmount: item.actualObligationAmount,
+                                actualDisbursementDate: item.actualDisbursementMonth,
+                                actualDisbursementAmount: item.actualDisbursementAmount
+                            };
+                            SHORT_MONTHS.forEach(m => {
+                                updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                            });
+                            return updatedExpense;
+                        }
+                        return e;
+                    });
+
+                    // Aggregate totals for the root
+                    let totalActualObli = 0;
+                    let totalActualDisb = 0;
+                    const monthlyTotals: any = {};
+                    SHORT_MONTHS.forEach(m => monthlyTotals[`actualDisbursement${m}`] = 0);
+
+                    updatedExpenses.forEach(e => {
+                        totalActualObli += (e.actualObligationAmount || 0);
+                        totalActualDisb += (e.actualDisbursementAmount || 0);
+                        SHORT_MONTHS.forEach(m => {
+                            monthlyTotals[`actualDisbursement${m}`] += (e as any)[`actualDisbursement${m}`] || 0;
+                        });
+                    });
+
+                    payload = {
+                        expenses: updatedExpenses,
+                        actualObligationAmount: totalActualObli,
+                        actualDisbursementAmount: totalActualDisb,
+                        ...monthlyTotals
+                    };
+                    
+                    if (item.actualObligationMonth && !s.actualObligationDate) {
+                        payload.actualObligationDate = item.actualObligationMonth;
+                    }
+
+                } else {
+                    payload = {
+                         actualObligationDate: item.actualObligationMonth,
+                         actualObligationAmount: item.actualObligationAmount,
+                         actualDisbursementAmount: item.actualDisbursementAmount,
+                    };
+                    SHORT_MONTHS.forEach(m => {
+                        payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                    });
+                }
+
+                if (supabase) await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
+                setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
+
+            } else if (item.sourceType === 'Other') {
                 const payload: any = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
-                     // We save the aggregated amount for quick access
                      actualDisbursementAmount: item.actualDisbursementAmount,
-                     // But strictly relying on the breakdown
                 };
                 
-                // Add monthly columns
                 SHORT_MONTHS.forEach(m => {
-                    // @ts-ignore
                     payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
                 });
 
-                if (supabase) await supabase.from(table).update(payload).eq('id', item.sourceId);
-                
-                if (item.sourceType === 'Staffing') {
-                    setStaffingReqs(prev => prev.map(s => s.id === item.sourceId ? { ...s, ...payload } : s));
-                } else {
-                    setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
-                }
-
+                if (supabase) await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
+                setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
             } else if (item.sourceType === 'Office') {
                 const payload = {
                      actualObligationDate: item.actualObligationMonth,
