@@ -387,24 +387,24 @@ const Dashboard: React.FC<DashboardProps> = ({
         let spAlloc = 0, spObli = 0, spDisb = 0;
         filteredData.subprojects.forEach(sp => {
             const alloc = sp.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = sp.details.reduce((acc, d) => d.actualObligationDate ? acc + (d.actualAmount || (d.pricePerUnit * d.numberOfUnits)) : acc, 0);
-            const disb = sp.details.reduce((acc, d) => d.actualDisbursementDate ? acc + (d.actualAmount || (d.pricePerUnit * d.numberOfUnits)) : acc, 0);
+            const obli = sp.details.reduce((acc, d) => acc + (d.actualObligationAmount || 0), 0);
+            const disb = sp.details.reduce((acc, d) => acc + (d.actualDisbursementAmount || 0), 0);
             spAlloc += alloc; spObli += obli; spDisb += disb;
         });
 
         let trAlloc = 0, trObli = 0, trDisb = 0;
         filteredData.activities.filter(a => a.type === 'Training').forEach(t => {
             const alloc = t.expenses.reduce((acc, e) => acc + e.amount, 0);
-            const obli = t.expenses.reduce((acc, e) => e.actualObligationDate ? acc + (e.actualAmount || e.amount) : acc, 0);
-            const disb = t.expenses.reduce((acc, e) => e.actualDisbursementDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            const obli = t.expenses.reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
+            const disb = t.expenses.reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
             trAlloc += alloc; trObli += obli; trDisb += disb;
         });
 
         let oaAlloc = 0, oaObli = 0, oaDisb = 0;
         filteredData.activities.filter(a => a.type === 'Activity').forEach(oa => {
             const alloc = oa.expenses.reduce((acc, e) => acc + e.amount, 0);
-            const obli = oa.expenses.reduce((acc, e) => e.actualObligationDate ? acc + (e.actualAmount || e.amount) : acc, 0);
-            const disb = oa.expenses.reduce((acc, e) => e.actualDisbursementDate ? acc + (e.actualAmount || e.amount) : acc, 0);
+            const obli = oa.expenses.reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
+            const disb = oa.expenses.reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
             oaAlloc += alloc; oaObli += obli; oaDisb += disb;
         });
 

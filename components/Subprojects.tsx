@@ -318,8 +318,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 let bValue: any = '';
 
                 const getBudget = (s: Subproject) => calculateTotalBudget(s.details);
-                const getObligated = (s: Subproject) => s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualAmount || 0) : sum, 0);
-                const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualAmount || 0) : sum, 0);
+                const getObligated = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+                const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                 const getRate = (s: Subproject) => {
                     const total = s.details.length;
                     const comp = s.details.filter(d => d.actualDeliveryDate).length;
@@ -642,8 +642,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedSubprojects.map((s) => {
                                 const budget = calculateTotalBudget(s.details);
-                                const actualObligated = s.details.reduce((sum, d) => d.actualObligationDate ? sum + (d.actualObligationAmount || 0) : sum, 0);
-                                const actualDisbursed = s.details.reduce((sum, d) => d.actualDisbursementDate ? sum + (d.actualDisbursementAmount || d.actualAmount || 0) : sum, 0);
+                                const actualObligated = s.details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+                                const actualDisbursed = s.details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                                 const totalItems = s.details.length;
                                 const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
                                 const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
