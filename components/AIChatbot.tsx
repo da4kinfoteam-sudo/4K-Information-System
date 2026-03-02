@@ -226,20 +226,58 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
-        // 2c. Identify Locations (Province/Municipality) from data - Support Multiple
+        // 2c. Identify Location Aliases (Province/City)
+        const locationAliases: {[key: string]: string} = {
+            'cam sur': 'Camarines Sur',
+            'cam norte': 'Camarines Norte',
+            'gen san': 'General Santos',
+            'zambo sur': 'Zamboanga del Sur',
+            'zambo norte': 'Zamboanga del Norte',
+            'zambo sibugay': 'Zamboanga Sibugay',
+            'occ mindoro': 'Occidental Mindoro',
+            'or mindoro': 'Oriental Mindoro',
+            'mis occ': 'Misamis Occidental',
+            'mis or': 'Misamis Oriental',
+            'neg occ': 'Negros Occidental',
+            'neg or': 'Negros Oriental',
+            'davao occ': 'Davao Occidental',
+            'surigao sur': 'Surigao del Sur',
+            'surigao norte': 'Surigao del Norte',
+            'agusan sur': 'Agusan del Sur',
+            'agusan norte': 'Agusan del Norte',
+            'lanao sur': 'Lanao del Sur',
+            'lanao norte': 'Lanao del Norte',
+            'north cot': 'North Cotabato',
+            'south cot': 'South Cotabato',
+            'samar': 'Samar', // Could be Western, Northern, Eastern, but 'Samar' usually refers to Western Samar or the island. 
+                              // However, strict matching might fail if data says "Western Samar". 
+                              // Leaving generic ones out to avoid over-matching unless specific.
+        };
+
         const targetLocations: string[] = [];
+        const sortedLocationAliases = Object.keys(locationAliases).sort((a,b) => b.length - a.length);
+
+        // Check aliases first
+        for (const alias of sortedLocationAliases) {
+            if (q.includes(alias)) {
+                targetLocations.push(locationAliases[alias].toLowerCase()); // Push the full name
+                // We will remove the alias from cleanQuery later
+            }
+        }
+
+        // 2d. Identify Locations (Province/Municipality) from data - Support Multiple
         // We use a copy of the query to avoid double counting if needed, but simple inclusion check is fine
         // Iterate through uniqueLocations and check if they exist in query
         for (const loc of uniqueLocations) {
             // Check for whole word match or distinct part to avoid matching "male" in "female" if that was a location
-            if (q.includes(loc)) {
-                // Avoid adding "Pampanga" if we already have a more specific location? 
-                // No, for "Porac, Pampanga", we want BOTH "Porac" and "Pampanga" to filter strictly.
-                targetLocations.push(loc);
+            // Also check if we already added this location via alias to avoid duplicates (though Set handles unique keywords later, targetLocations is used for filtering)
+            const locLower = loc.toLowerCase();
+            if (q.includes(locLower) && !targetLocations.some(l => l.includes(locLower) || locLower.includes(l))) {
+                 targetLocations.push(locLower);
             }
         }
 
-        // 2d. Identify Topic Keywords (Commodities, Types, etc.)
+        // 2e. Identify Topic Keywords (Commodities, Types, etc.)
         // Remove known entities from query to isolate topics
         let cleanQuery = q;
         if (targetYear) cleanQuery = cleanQuery.replace(targetYear, '');
@@ -253,7 +291,26 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
              }
         }
         if (targetStatus) cleanQuery = cleanQuery.replace(targetStatus.toLowerCase(), '');
-        targetLocations.forEach(l => cleanQuery = cleanQuery.replace(l, ''));
+        
+        // Remove location aliases
+        for (const alias of sortedLocationAliases) {
+            if (q.includes(alias)) {
+                cleanQuery = cleanQuery.replace(alias, '');
+            }
+        }
+        
+        targetLocations.forEach(l => {
+            // Remove the full location name if present
+            cleanQuery = cleanQuery.replace(l, '');
+            // Also try to remove the original string from uniqueLocations if it was matched there
+            // This is a bit tricky since we don't know exactly which string matched if we only have the normalized one
+            // But usually l is from uniqueLocations which is already lowercased in our logic above (actually uniqueLocations has original casing in the Set, but we lowercased it in the loop)
+        });
+        
+        // Remove original unique locations from query just in case
+        for (const loc of uniqueLocations) {
+            if (q.includes(loc)) cleanQuery = cleanQuery.replace(loc, '');
+        }
 
         const stopWords = [
             'how', 'many', 'much', 'is', 'the', 'in', 'at', 'of', 'with', 'for', 'on', 'by',
@@ -261,7 +318,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             'activities', 'activity', 'trainings', 'training', 
             'budget', 'cost', 'total', 'list', 'show', 'me', 'are', 'there', 'allocation', 'fund', 'funding',
             'type', 'types', 'kind', 'kinds', 'category', 'categories',
-            'district', 'districts', 'province', 'provinces', 'municipality', 'municipalities', 'city', 'cities', 'barangay', 'barangays', 'region', 'regions'
+            'district', 'districts', 'province', 'provinces', 'municipality', 'municipalities', 'city', 'cities', 'barangay', 'barangays', 'region', 'regions',
+            'have', 'has'
         ];
         
         const potentialKeywords = cleanQuery.split(/[\s,?.!]+/).filter(w => w.length > 2 && !stopWords.includes(w));
@@ -358,8 +416,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     searchableText += ' ' + i.commodities.map((c: any) => c.particular + ' ' + c.type).join(' ');
                  }
                  searchableText = searchableText.toLowerCase();
-                 const allKeywordsMatch = targetKeywords.every(kw => searchableText.includes(kw));
-                 if (!allKeywordsMatch) return false;
+                 const selfMatch = targetKeywords.every(kw => searchableText.includes(kw));
+                 
+                 // Joint Query Logic: Check if this IPO has any matching subprojects
+                 // If the IPO itself doesn't match the keywords (e.g. "Coffee"), check if it has a subproject that does.
+                 // We use filteredSubprojects because it already contains subprojects matching the keywords (and other filters).
+                 const hasMatchingSubproject = filteredSubprojects.some(sp => sp.indigenousPeopleOrganization === i.name);
+
+                 if (!selfMatch && !hasMatchingSubproject) return false;
             }
 
             return true;
