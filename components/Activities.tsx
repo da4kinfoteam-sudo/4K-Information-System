@@ -212,10 +212,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     } = useSelection<Activity>();
 
     // Global Filters (Only Search retained in UI)
-    const [searchTerm, setSearchTerm] = useLocalStorageState('activities_searchTerm', '');
+    const [savedSearchTerm, setSavedSearchTerm] = useLocalStorageState('activities_searchTerm', '');
+    const [searchTerm, setSearchTerm] = useState(savedSearchTerm);
 
     // Column Filters (New) - Stores an array of selected values for each column key
-    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+    const [savedColumnFilters, setSavedColumnFilters] = useLocalStorageState<Record<string, string[]>>('activities_columnFilters', {});
+    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(savedColumnFilters);
 
     // Sorting
     type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
@@ -358,15 +360,18 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // Filter Change Handler
     const handleColumnFilterChange = (columnKey: string, values: string[]) => {
-        setColumnFilters(prev => ({
-            ...prev,
+        const newFilters = {
+            ...columnFilters,
             [columnKey]: values
-        }));
+        };
+        setColumnFilters(newFilters);
+        setSavedColumnFilters(newFilters);
     };
     
     // Clear Column Filters
     const clearColumnFilters = () => {
         setColumnFilters({});
+        setSavedColumnFilters({});
     }
 
     const handleToggleRow = (activityId: number) => {
@@ -550,7 +555,16 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                  <div className="mb-4 flex flex-col gap-4">
                     <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
                         <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                            <input type="text" placeholder="Search Activity..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full md:w-64 ${commonInputClasses} mt-0`} />
+                            <input 
+                                type="text" 
+                                placeholder="Search Activity..." 
+                                value={searchTerm} 
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    setSavedSearchTerm(e.target.value);
+                                }} 
+                                className={`w-full md:w-64 ${commonInputClasses} mt-0`} 
+                            />
                             
                             {Object.keys(columnFilters).length > 0 && (
                                 <button onClick={clearColumnFilters} className="text-sm text-red-500 hover:text-red-700 underline">

@@ -204,10 +204,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const [isUploading, setIsUploading] = useState(false);
 
     // Filters - Persistent State
-    const [searchTerm, setSearchTerm] = useLocalStorageState('subprojects_searchTerm', '');
+    const [savedSearchTerm, setSavedSearchTerm] = useLocalStorageState('subprojects_searchTerm', '');
+    const [searchTerm, setSearchTerm] = useState(savedSearchTerm);
     
     // Column Filters
-    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+    const [savedColumnFilters, setSavedColumnFilters] = useLocalStorageState<Record<string, string[]>>('subprojects_columnFilters', {});
+    const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>(savedColumnFilters);
 
     // Sorting - Persistent State
     type SortKeys = keyof Subproject | 'totalBudget' | 'actualObligated' | 'actualDisbursed' | 'completionRate' | 'commodityTarget';
@@ -371,14 +373,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     };
 
     const handleColumnFilterChange = (columnKey: string, values: string[]) => {
-        setColumnFilters(prev => ({
-            ...prev,
+        const newFilters = {
+            ...columnFilters,
             [columnKey]: values
-        }));
+        };
+        setColumnFilters(newFilters);
+        setSavedColumnFilters(newFilters);
     };
     
     const clearColumnFilters = () => {
         setColumnFilters({});
+        setSavedColumnFilters({});
     }
 
     const handleToggleRow = (id: number) => {
@@ -572,7 +577,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                             type="text"
                             placeholder="Search Subproject..."
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setSavedSearchTerm(e.target.value);
+                            }}
                             className={`w-full md:w-64 ${commonInputClasses} mt-0`}
                         />
                         {Object.keys(columnFilters).length > 0 && (
