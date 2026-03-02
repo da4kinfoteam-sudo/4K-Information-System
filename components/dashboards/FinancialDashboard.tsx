@@ -380,7 +380,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             {
                 name: "Allocation",
                 labels: Object.keys(components),
-                values: Object.values(components).map(v => v.target)
+                values: Object.values(components).map((v: any) => v.target)
             }
         ];
         slide2.addChart(pptx.ChartType.pie, chartDataPie, { x: 0.5, y: 1.8, w: 6, h: 4, showLegend: true, legendPos: 'b' });
@@ -390,7 +390,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             {
                 name: "Disbursement",
                 labels: Object.keys(components),
-                values: Object.values(components).map(v => v.disbursement)
+                values: Object.values(components).map((v: any) => v.disbursement)
             }
         ];
         slide2.addChart(pptx.ChartType.pie, chartDataDisb, { x: 6.8, y: 1.8, w: 6, h: 4, showLegend: true, legendPos: 'b' });
@@ -402,9 +402,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         
         const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const chartDataMonthly = [
-            { name: "Target", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.target) },
-            { name: "Obligation", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.obligation) },
-            { name: "Disbursement", labels: monthsLabels, values: Object.values(monthlyData).map(v => v.disbursement) }
+            { name: "Target", labels: monthsLabels, values: Object.values(monthlyData).map((v: any) => v.target) },
+            { name: "Obligation", labels: monthsLabels, values: Object.values(monthlyData).map((v: any) => v.obligation) },
+            { name: "Disbursement", labels: monthsLabels, values: Object.values(monthlyData).map((v: any) => v.disbursement) }
         ];
         slide3.addChart(pptx.ChartType.bar, chartDataMonthly, { 
             x: 0.5, y: 1.5, w: 12, h: 5, 
@@ -420,12 +420,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             .sort(([nameA, a], [nameB, b]) => {
                 if (nameA === 'Unspecified') return 1;
                 if (nameB === 'Unspecified') return -1;
-                return b - a;
+                return (b as number) - (a as number);
             })
             .slice(0, 15);
         const provTable = [
             [{ text: "Province", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }],
-            ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole(v)])
+            ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole(v as number)])
         ];
         slide4.addTable(provTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
 
@@ -698,9 +698,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         <ComponentComparisonCard 
                             key={key} 
                             title={key} 
-                            target={value.target} 
-                            obligation={value.obligation} 
-                            disbursement={value.disbursement} 
+                            target={(value as any).target} 
+                            obligation={(value as any).obligation} 
+                            disbursement={(value as any).disbursement} 
                         />
                     ))}
                 </div>
@@ -717,11 +717,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                                 if (nameA === 'Unspecified') return 1;
                                 if (nameB === 'Unspecified') return -1;
                                 // Normal descending sort for the rest
-                                return b - a;
+                                return (b as number) - (a as number);
                             })
                             .map(([province, amount], index) => {
-                                const maxVal = Math.max(...Object.values(provinceData));
-                                const percent = maxVal > 0 ? (amount / maxVal) * 100 : 0;
+                                const maxVal = Math.max(...(Object.values(provinceData) as number[]));
+                                const percent = maxVal > 0 ? ((amount as number) / maxVal) * 100 : 0;
                                 const isUnspecified = province === 'Unspecified';
 
                                 return (
@@ -736,7 +736,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                                                 ></div>
                                             </div>
                                         </div>
-                                        <div className={`w-32 text-right font-semibold ${isUnspecified ? 'text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{formatCurrencyWhole(amount)}</div>
+                                        <div className={`w-32 text-right font-semibold ${isUnspecified ? 'text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{formatCurrencyWhole(amount as number)}</div>
                                     </div>
                                 );
                             })}

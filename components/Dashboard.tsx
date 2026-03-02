@@ -439,8 +439,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         const targetIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training').flatMap(t => (t as Activity).participatingIpos)) as string[]);
         const actualIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos)) as string[]);
 
-        const actualIposAssisted = new Set<string>([...actualIposWithSp, ...actualIposWithTr]);
-        const targetIposAssisted = new Set<string>([...targetIposWithSp, ...targetIposWithTr]);
+        const actualIposAssisted = new Set<string>(Array.from(actualIposWithSp as Set<string>).concat(Array.from(actualIposWithTr as Set<string>)));
+        const targetIposAssisted = new Set<string>(Array.from(targetIposWithSp as Set<string>).concat(Array.from(targetIposWithTr as Set<string>)));
 
         const actualAdsAssisted = getAds(actualIposAssisted);
         const targetAdsAssisted = getAds(targetIposAssisted);

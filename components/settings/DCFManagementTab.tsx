@@ -148,7 +148,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
 
     // Handler: Save to Supabase
     const saveChanges = async () => {
-        const changes = Object.values(pendingChanges);
+        const changes = Object.values(pendingChanges) as PendingChange[];
         if (changes.length === 0) return;
 
         if (!window.confirm(`Are you sure you want to save ${changes.length} changes to the database?`)) return;
@@ -189,7 +189,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = ({
             'office_requirements': setOfficeReqs as any
         };
 
-        const changes = Object.values(pendingChanges);
+        const changes = Object.values(pendingChanges) as PendingChange[];
         
         // Group changes by table to minimize setter calls
         const changesByTable: Record<string, PendingChange[]> = {};

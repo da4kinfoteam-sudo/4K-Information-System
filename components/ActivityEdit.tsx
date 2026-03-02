@@ -526,7 +526,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-medium mb-1">Participating IPOs</label>
-                                            <select multiple value={formData.participatingIpos} onChange={(e) => setFormData(prev => ({ ...prev, participatingIpos: Array.from(e.target.selectedOptions, o => o.value) }))} className={`${commonInputClasses} h-32`}>
+                                            <select multiple value={formData.participatingIpos} onChange={(e) => setFormData(prev => ({ ...prev, participatingIpos: Array.from(e.target.selectedOptions, (o: HTMLOptionElement) => o.value) }))} className={`${commonInputClasses} h-32`}>
                                                 {filteredIpos.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
                                             </select>
                                             <p className="text-xs text-gray-500 mt-1">Hold Ctrl (Cmd on Mac) to select multiple IPOs.</p>

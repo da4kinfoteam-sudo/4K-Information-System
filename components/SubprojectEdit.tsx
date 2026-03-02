@@ -331,7 +331,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} required /></div>
                                 <div><label className="block text-sm font-medium">Region</label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={commonInputClasses}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium">IPO</label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Cancelled">Cancelled</option>{formData.status === 'Completed' && <option value="Completed">Completed</option>}</select></div>
+                                <div><label className="block text-sm font-medium">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses} disabled={currentUser?.role === 'User' && !subproject}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Cancelled">Cancelled</option>{formData.status === 'Completed' && <option value="Completed">Completed</option>}</select></div>
                                 <div><label className="block text-sm font-medium">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -343,25 +343,48 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="block text-sm font-medium">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             </div>
+                            {formData.estimatedCompletionDate && new Date() > new Date(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
+                                <div className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md mt-4">
+                                    <h4 className="font-semibold text-red-600 dark:text-red-400 mb-2">Catch Up Plan</h4>
+                                    <p className="text-xs text-red-500 mb-4">Project is delayed. Please provide a catch-up plan.</p>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Remarks / Justification</label>
+                                            <textarea name="catchUpPlanRemarks" value={formData.catchUpPlanRemarks || ''} onChange={handleInputChange} rows={3} className={commonInputClasses} placeholder="Describe actions taken or justification for delay..." />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Completion Date</label>
+                                            <input type="date" name="newTargetCompletionDate" value={formData.newTargetCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                          </div>
                     )}
                     {activeTab === 'commodity' && (
                         <div className="space-y-4">
                             {formData.subprojectCommodities?.map((c, i) => (
-                                <div key={i} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                    <span>{c.name} ({c.typeName}) - {c.area}</span>
+                                <div key={i} className={`flex justify-between items-center p-2 rounded ${i === editingCommodityIndex ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                    <span className="text-sm">{c.name} ({c.typeName}) - Target {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && c.averageYield ? `| Target Yield: ${c.averageYield}` : ''}</span>
                                     <div className="flex gap-2">
-                                        <button type="button" onClick={() => { setCurrentCommodity(c); setEditingCommodityIndex(i); }} className="text-blue-500 text-xs">Edit</button>
-                                        <button type="button" onClick={() => setFormData(prev => ({...prev, subprojectCommodities: prev.subprojectCommodities?.filter((_, idx) => idx !== i)}))} className="text-red-500 text-xs">Remove</button>
+                                        <button type="button" onClick={() => handleEditCommodity(i)} className="text-blue-500 text-xs">Edit</button>
+                                        <button type="button" onClick={() => handleRemoveCommodity(i)} className="text-red-500 text-xs">Remove</button>
                                     </div>
                                 </div>
                             ))}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end border-t pt-4">
-                                <div><label className="text-xs">Type</label><select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses}><option value="">Select</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="text-xs">Commodity</label><select name="name" value={currentCommodity.name} onChange={handleCommodityChange} className={commonInputClasses}><option value="">Select</option>{currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                <div><label className="text-xs">Area/Heads</label><input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses} /></div>
-                                {currentCommodity.typeName !== 'Animal Commodity' && <div><label className="text-xs">Yield</label><input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses} /></div>}
-                                <button type="button" onClick={handleAddCommodity} className="px-4 py-2 bg-emerald-600 text-white rounded text-sm">{editingCommodityIndex !== null ? 'Update' : 'Add'}</button>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4">
+                                <div><label className="block text-xs font-medium">Type</label><select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium">Commodity</label><select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}><option value="">Select Commodity</option>{currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                <div><label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'No. of Heads' : 'Area (Hectares)'}</label><input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} /></div>
+                                <div className="flex gap-2 items-end">
+                                    {currentCommodity.typeName !== 'Animal Commodity' && (
+                                        <div className="flex-grow">
+                                            <label className="block text-xs font-medium">Yield (Kg/Hectares)</label>
+                                            <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
+                                        </div>
+                                    )}
+                                    <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -378,34 +401,42 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                              ))}
                              <div className="text-right font-bold text-gray-900 dark:text-white">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
                              
-                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end border-t pt-4">
-                                <div><label className="text-xs">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="text-xs">Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentDetail.objectType] && Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
+                                <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                                
+                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                    <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, d]) => <option key={code} value={code}>{code} - {d}</option>)}</select></div>
+                                </div>
+
+                                <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
+                                
                                 <div>
-                                    <label className="text-xs">UACS</label>
-                                    <select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} className={commonInputClasses} disabled={!currentDetail.expenseParticular}>
-                                        <option value="">Select</option>
-                                        {currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, desc]) => (
-                                            <option key={code} value={code}>{code} - {desc}</option>
-                                        ))}
+                                    <label className="block text-xs font-medium">Obligation Month</label>
+                                    <select value={getMonthFromDateStr(currentDetail.obligationMonth)} onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} className={commonInputClasses + " py-1.5 text-sm"}>
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium">Disbursement Month</label>
+                                    <select value={getMonthFromDateStr(currentDetail.disbursementMonth)} onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} className={commonInputClasses + " py-1.5 text-sm"}>
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
                                 </div>
                                 
-                                <div><label className="text-xs">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses}><option value="">Select</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="text-xs">Item Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} className={commonInputClasses} disabled={!currentDetail.type}><option value="">Select</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="text-xs">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses} />{dateError && <span className="text-xs text-red-500">{dateError}</span>}</div>
+                                <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="lots">lots</option></select></div>
+                                <div><label className="block text-xs font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                <div><label className="block text-xs font-medium">No. of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                                 
-                                <div><label className="text-xs">Obligation Month</label><select value={getMonthFromDateStr(currentDetail.obligationMonth)} onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} className={commonInputClasses}><option value="">Select</option>{MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
-                                <div><label className="text-xs">Disbursement Month</label><select value={getMonthFromDateStr(currentDetail.disbursementMonth)} onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} className={commonInputClasses}><option value="">Select</option>{MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
-                                
-                                <div><label className="text-xs">Price</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses} /></div>
-                                <div><label className="text-xs">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses} /></div>
-                                
-                                <div className="md:col-span-2 flex gap-2 justify-end">
-                                     {editingDetailId !== null && (
-                                         <button type="button" onClick={handleCancelEditDetail} className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                                     )}
-                                     <button type="button" onClick={handleAddDetail} className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">{editingDetailId !== null ? 'Update Item' : 'Add Item'}</button>
+                                <div className="flex gap-2 items-end">
+                                    {editingDetailId !== null && (
+                                        <button type="button" onClick={handleCancelEditDetail} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 text-sm font-medium">Cancel</button>
+                                    )}
+                                    <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">{editingDetailId !== null ? '✓' : '+'}</button>
                                 </div>
                              </div>
                         </div>

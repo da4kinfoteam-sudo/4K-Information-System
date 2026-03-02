@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, SubprojectDetail, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
@@ -20,7 +20,7 @@ interface SubprojectDetailProps {
 }
 
 // Extended interface for local editing including completion flag
-interface SubprojectDetailInput extends Omit<SubprojectDetail, 'id'> {
+interface SubprojectDetailInput extends Omit<SubprojectDetailType, 'id'> {
     id?: number; // Optional locally until saved
     isCompleted?: boolean;
 }
@@ -86,7 +86,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         type: '',
         particulars: '',
         deliveryDate: '',
-        unitOfMeasure: 'pcs' as SubprojectDetail['unitOfMeasure'],
+        unitOfMeasure: 'pcs' as SubprojectDetailType['unitOfMeasure'],
         pricePerUnit: '',
         numberOfUnits: '',
         objectType: 'MOOE' as ObjectType,
@@ -105,12 +105,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
     const [dateError, setDateError] = useState('');
+    const [historyLimit, setHistoryLimit] = useState<number>(5);
 
-    // Toggle Flags for Edit Buttons (Ready for Role Based access later)
-    const canEditProjectDetails = canEdit;
-    const canEditCommodity = canEdit;
-    const canEditBudget = canEdit;
-    const canEditAccomplishment = canEdit;
+    const isUserRole = currentUser?.role === 'User';
+
+    // Toggle Flags for Edit Buttons (Role Based access)
+    const canEditProjectDetails = isAdmin || (isUserRole && subproject.status === 'Proposed');
+    const canEditCommodity = isAdmin || (isUserRole && subproject.status === 'Proposed');
+    const canEditBudget = isAdmin || (isUserRole && subproject.status === 'Proposed');
+    const canEditAccomplishment = isAdmin || (isUserRole && ['Ongoing', 'Completed'].includes(subproject.status));
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {
@@ -181,7 +184,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
        return detailItems.reduce((acc, item) => acc + (Number(item.pricePerUnit) * Number(item.numberOfUnits)), 0);
     }, [detailItems]);
 
-    const calculateTotalBudget = (details: SubprojectDetail[]) => {
+    const calculateTotalBudget = (details: SubprojectDetailType[]) => {
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     }
 
@@ -520,7 +523,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
             ipo_id: resolvedIpoId,
-            details: cleanDetails as SubprojectDetail[],
+            details: cleanDetails as SubprojectDetailType[],
             history: [...(subproject.history || []), historyEntry]
         };
         onUpdateSubproject(updatedSubprojectWithDetails);
@@ -564,7 +567,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <select name="status" value={editedSubproject.status} onChange={handleInputChange} className={commonInputClasses}>
                                                     <option value="Proposed">Proposed</option>
                                                     <option value="Ongoing">Ongoing</option>
-                                                    <option value="Completed">Completed</option>
+                                                    {(isAdmin || editedSubproject.status === 'Completed') && <option value="Completed">Completed</option>}
                                                     <option value="Cancelled">Cancelled</option>
                                                 </select>
                                             </div>
@@ -1211,6 +1214,37 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 )}
                             </div>
 
+                            {/* Financial Performance (Read-Only) */}
+                            <div className="mt-8">
+                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Financial Performance</h4>
+                                {subproject.details.some(d => d.actualObligationAmount || d.actualDisbursementAmount) ? (
+                                    <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                                        <table className="min-w-full text-sm text-left">
+                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300">
+                                                <tr>
+                                                    <th className="px-4 py-2 font-medium">Expense Item</th>
+                                                    <th className="px-4 py-2 font-medium text-right">Target Budget</th>
+                                                    <th className="px-4 py-2 font-medium text-right">Actual Obligation</th>
+                                                    <th className="px-4 py-2 font-medium text-right">Actual Disbursement</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                {subproject.details.map(d => (
+                                                    <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
+                                                        <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">{d.particulars}</td>
+                                                        <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
+                                                        <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">{formatCurrency(d.actualObligationAmount || 0)}</td>
+                                                        <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(d.actualDisbursementAmount || 0)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500 italic">No financial data recorded yet.</p>
+                                )}
+                            </div>
+
                             {/* Gender and Inclusivity (Read-Only) */}
                             <div>
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Gender and Inclusivity</h4>
@@ -1288,11 +1322,25 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                  {/* Right Column */}
                 <div className="space-y-8">
                      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-gray-400">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">History</h3>
+                            {subproject.history && subproject.history.length > 5 && (
+                                <select 
+                                    value={historyLimit} 
+                                    onChange={(e) => setHistoryLimit(Number(e.target.value))}
+                                    className="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+                                >
+                                    <option value={5}>5</option>
+                                    <option value={10}>10</option>
+                                    <option value={20}>20</option>
+                                    <option value={subproject.history.length}>All</option>
+                                </select>
+                            )}
+                        </div>
                         {subproject.history && subproject.history.length > 0 ? (
                             <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
                                 <ul className="space-y-8">
-                                    {subproject.history.map((entry, index) => (
+                                    {subproject.history.slice(0, historyLimit).map((entry, index) => (
                                         <li key={index} className="ml-8 relative">
                                             <span className="absolute flex items-center justify-center w-4 h-4 bg-emerald-500 rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800"></span>
                                             <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
