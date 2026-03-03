@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo } from 'react';
-import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage } from '../constants';
+import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions, usePagination } from './mainfunctions/TableHooks';
@@ -156,6 +156,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [lodAssessments, setLodAssessments] = useState<LodAssessment[]>([]);
     
     // History Hook
     const { history, addIpoHistory } = useIpoHistory(ipo.id);
@@ -172,6 +173,25 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
         averageIncome: ''
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
+
+
+    useEffect(() => {
+        const fetchLOD = async () => {
+            if (!supabase || !ipo.id) return;
+            const { data, error } = await supabase
+                .from('lod_assessments')
+                .select('*')
+                .eq('ipo_id', ipo.id)
+                .order('year', { ascending: false });
+            
+            if (error) {
+                console.error("Error fetching LOD assessments:", error);
+            } else {
+                setLodAssessments(data || []);
+            }
+        };
+        fetchLOD();
+    }, [ipo.id]);
 
     // --- Subproject Filters & Pagination ---
     const [spYearFilter, setSpYearFilter] = useState('All');
@@ -709,15 +729,6 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         </div>
                     </fieldset>
                     
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Level of Development</legend>
-                        <div>
-                            <label htmlFor="levelOfDevelopment" className="block text-sm font-medium">Current Level</label>
-                            <select name="levelOfDevelopment" id="levelOfDevelopment" value={editedIpo.levelOfDevelopment} onChange={handleInputChange} required className={commonInputClasses}>
-                                <option value={1}>Level 1</option> <option value={2}>Level 2</option> <option value={3}>Level 3</option> <option value={4}>Level 4</option> <option value={5}>Level 5</option>
-                            </select>
-                        </div>
-                    </fieldset>
 
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
@@ -830,7 +841,22 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
                         <div className="mb-4">
                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
-                            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full inline-block border border-emerald-100 dark:border-emerald-800">Level {ipo.levelOfDevelopment}</p>
+                            {lodAssessments.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {lodAssessments.map(assessment => {
+                                        const isCurrentYear = assessment.year === new Date().getFullYear();
+                                        const level = assessment.manual_level || assessment.computed_level || 'N/A';
+                                        return (
+                                            <div key={assessment.id} className={`flex flex-col items-center px-3 py-1 rounded-md border ${isCurrentYear ? 'bg-emerald-100 border-emerald-300 dark:bg-emerald-900/40 dark:border-emerald-700 shadow-sm' : 'bg-gray-50 border-gray-200 dark:bg-gray-700/50 dark:border-gray-600'}`}>
+                                                <span className={`text-xs font-medium ${isCurrentYear ? 'text-emerald-800 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>{assessment.year}</span>
+                                                <span className={`font-bold ${isCurrentYear ? 'text-emerald-700 dark:text-emerald-400 text-lg' : 'text-gray-700 dark:text-gray-300'}`}>Level {level}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No assessments available.</p>
+                            )}
                         </div>
                          <div>
                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>

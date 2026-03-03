@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes } from '../constants';
+import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -98,6 +98,31 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [editingIpo, setEditingIpo] = useState<IPO | null>(null); 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [latestLevels, setLatestLevels] = useState<Record<number, number>>({});
+
+    useEffect(() => {
+        const fetchLevels = async () => {
+            if (!supabase) return;
+            const { data, error } = await supabase
+                .from('lod_assessments')
+                .select('ipo_id, year, manual_level, computed_level')
+                .order('year', { ascending: false });
+            
+            if (error) {
+                console.error("Error fetching LOD levels:", error);
+                return;
+            }
+
+            const levels: Record<number, number> = {};
+            data?.forEach((assessment: any) => {
+                if (!levels[assessment.ipo_id]) {
+                    levels[assessment.ipo_id] = assessment.manual_level || assessment.computed_level || 0;
+                }
+            });
+            setLatestLevels(levels);
+        };
+        fetchLevels();
+    }, [ipos]);
     const [ipoToDelete, setIpoToDelete] = useState<IPO | null>(null);
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -801,7 +826,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 max-w-[200px]">
                                             {ipo.commodities.map(c => c.particular).join(', ')}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{ipo.levelOfDevelopment}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '-'}</td>
                                         {isAdmin && (
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                                 <div className="flex items-center justify-end">
@@ -1061,15 +1086,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     </div>
                 </fieldset>
                 
-                <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                    <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Level of Development</legend>
-                    <div>
-                        <label htmlFor="levelOfDevelopment" className="block text-sm font-medium">Current Level</label>
-                        <select name="levelOfDevelopment" id="levelOfDevelopment" value={formData.levelOfDevelopment} onChange={handleInputChange} required className={commonInputClasses}>
-                            <option value={1}>Level 1</option> <option value={2}>Level 2</option> <option value={3}>Level 3</option> <option value={4}>Level 4</option> <option value={5}>Level 5</option>
-                        </select>
-                    </div>
-                </fieldset>
 
                 <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                     <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
