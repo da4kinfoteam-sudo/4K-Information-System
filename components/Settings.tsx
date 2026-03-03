@@ -12,6 +12,7 @@ import UserManagementTab from './settings/UserManagementTab';
 import SystemManagementTab from './settings/SystemManagementTab';
 import UserLogsTab from './settings/UserLogsTab';
 import DCFManagementTab from './settings/DCFManagementTab';
+import LODManagementTab from './settings/LODManagementTab';
 
 interface SettingsProps {
     isDarkMode: boolean;
@@ -32,7 +33,7 @@ interface SettingsProps {
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
 }
 
-type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf';
+type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod';
 
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
@@ -79,6 +80,7 @@ const Settings: React.FC<SettingsProps> = ({
                         <TabButton name="profile" label="User Profile" />
                         {isAdmin && <TabButton name="management" label="Users Management" />}
                         {isAdmin && <TabButton name="dcf" label="DCF Management" />}
+                        {isAdmin && <TabButton name="lod" label="LOD Management" />}
                         {canAccessSystem && <TabButton name="system" label="System Management" />}
                         {isAdmin && <TabButton name="logs" label="User Logs" />}
                     </nav>
@@ -100,6 +102,10 @@ const Settings: React.FC<SettingsProps> = ({
                             officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
                             staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
                         />
+                    )}
+
+                    {activeTab === 'lod' && isAdmin && (
+                        <LODManagementTab />
                     )}
 
                     {activeTab === 'system' && canAccessSystem && (

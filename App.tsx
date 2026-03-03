@@ -28,8 +28,9 @@ import MarketingDatabase from './components/resources/MarketingDatabase';
 import MarketProfileDetail from './components/resources/MarketProfileDetail';
 import MarketProfileEdit from './components/resources/MarketProfileEdit';
 import MarketLinkageEdit from './components/resources/MarketLinkageEdit';
-import LevelOfDevelopmentPage from './components/resources/LevelOfDevelopmentPage';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
+import LODPage from './components/LOD/LODPage';
+import LODDetails from './components/LOD/LODDetails';
 import AIChatbot from './components/AIChatbot'; // Import Chatbot
 
 import useLocalStorageState from './hooks/useLocalStorageState';
@@ -309,6 +310,12 @@ const AppContent: React.FC = () => {
     if (!currentUser) {
         return <Login />;
     }
+
+    const handleSelectIpoForLod = (ipo: IPO) => {
+        setSelectedIpo(ipo);
+        setHistoryStack(prev => [...prev, currentPage]);
+        setCurrentPage('/lod-details');
+    };
 
     const renderPage = () => {
         switch (currentPage) {
@@ -711,7 +718,10 @@ const AppContent: React.FC = () => {
                             }}
                         />;
             case '/level-of-development':
-                return <LevelOfDevelopmentPage ipos={ipos} />;
+                return <LODPage ipos={ipos} onSelectIpo={handleSelectIpoForLod} />;
+            case '/lod-details':
+                if (!selectedIpo) return <div>Select an IPO</div>;
+                return <LODDetails ipo={selectedIpo} onBack={handleBack} />;
             case '/commodity-mapping':
                 return <CommodityMappingPage subprojects={subprojects} ipos={ipos} />;
             default:

@@ -516,6 +516,51 @@ export interface ReferenceActivity {
     type: 'Activity' | 'Training';
 }
 
+// LOD Interfaces
+export interface LodSection {
+    id: number;
+    title: string;
+    description?: string;
+    order: number;
+}
+
+export interface LodQuestion {
+    id: number;
+    section_id: number;
+    text: string;
+    weight: number;
+    order: number;
+    choices?: LodChoice[];
+}
+
+export interface LodChoice {
+    id: number;
+    question_id: number;
+    text: string;
+    points: number;
+    order: number;
+}
+
+export interface LodAssessment {
+    id: number;
+    ipo_id: number;
+    year: number;
+    total_score: number;
+    computed_level: number;
+    manual_level?: number;
+    remarks?: string;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export interface LodAnswer {
+    id: number;
+    assessment_id: number;
+    question_id: number;
+    choice_id: number;
+    points_earned: number;
+}
+
 // Data Lists
 export const operatingUnits = [
     'NPMO',
@@ -653,3 +698,49 @@ export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]
 };
 
 export const initialParticularTypes: { [key: string]: string[] } = {};
+
+// LOD Interfaces
+export interface LodSection {
+    id: number;
+    title: string;
+    order: number;
+    created_at?: string;
+}
+
+export interface LodQuestion {
+    id: number;
+    section_id: number;
+    text: string;
+    weight: number;
+    order: number;
+    created_at?: string;
+}
+
+export interface LodChoice {
+    id: number;
+    question_id: number;
+    text: string;
+    points: number;
+    order: number;
+    created_at?: string;
+}
+
+export interface LodAssessment {
+    id: number;
+    ipo_id: number;
+    year: number;
+    total_score: number;
+    computed_level: number;
+    manual_level?: number | null;
+    remarks?: string | null;
+    updated_at?: string;
+}
+
+export interface LodAnswer {
+    id: number;
+    assessment_id: number;
+    question_id: number;
+    choice_id: number;
+    points_earned: number;
+    updated_at?: string;
+}
