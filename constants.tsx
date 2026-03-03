@@ -339,6 +339,7 @@ export interface StaffingExpense {
 
 export interface StaffingRequirement extends BaseProgramManagementItem {
     personnelPosition: string;
+    component: ActivityComponentType; // Added field
     status: string; // Employment Status (Permanent, Contractual, etc.)
     salaryGrade: number;
     annualSalary: number;

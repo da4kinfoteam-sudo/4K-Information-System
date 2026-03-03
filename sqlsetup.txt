@@ -26,6 +26,14 @@ BEGIN
   END IF;
 END $$;
 
+-- Add component column to staffing_requirements
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staffing_requirements' AND column_name='component') THEN
+    ALTER TABLE staffing_requirements ADD COLUMN "component" TEXT DEFAULT 'Program Management';
+  END IF;
+END $$;
+
 -- Level of Development (LOD) Tables
 CREATE TABLE IF NOT EXISTS lod_sections (
     id SERIAL PRIMARY KEY,
