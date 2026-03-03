@@ -700,10 +700,19 @@ export const initialUacsCodes: { [key: string]: { [key: string]: { [key: string]
 export const initialParticularTypes: { [key: string]: string[] } = {};
 
 // LOD Interfaces
+export interface LodLevelConfig {
+    id: number;
+    level: number;
+    min_score: number;
+    max_score: number;
+    updated_at?: string;
+}
+
 export interface LodSection {
     id: number;
     title: string;
     order: number;
+    weight: number;
     created_at?: string;
 }
 

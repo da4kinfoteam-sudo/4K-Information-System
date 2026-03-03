@@ -1,7 +1,7 @@
 // Author: 4K
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer } from '../../constants';
+import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 
@@ -20,6 +20,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     const [sections, setSections] = useState<LodSection[]>([]);
     const [questions, setQuestions] = useState<LodQuestion[]>([]);
     const [choices, setChoices] = useState<LodChoice[]>([]);
+    const [levelConfigs, setLevelConfigs] = useState<LodLevelConfig[]>([]);
 
     // Data
     const [assessment, setAssessment] = useState<LodAssessment | null>(null);
@@ -49,10 +50,12 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
         const { data: sData } = await supabase.from('lod_sections').select('*').order('order');
         const { data: qData } = await supabase.from('lod_questions').select('*').order('order');
         const { data: cData } = await supabase.from('lod_choices').select('*').order('order');
+        const { data: lData } = await supabase.from('lod_level_configs').select('*').order('level');
 
         if (sData) setSections(sData);
         if (qData) setQuestions(qData);
         if (cData) setChoices(cData);
+        if (lData) setLevelConfigs(lData);
     };
 
     const fetchAssessmentData = async () => {
@@ -105,39 +108,89 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     };
 
     const calculateScore = () => {
-        let totalScore = 0;
-        let maxPossibleScore = 0;
+        let totalWeightedScore = 0;
+        let totalMaxWeightedScore = 0;
 
-        questions.forEach(q => {
-            const qChoices = choices.filter(c => c.question_id === q.id);
-            if (qChoices.length === 0) return;
+        // Calculate per section
+        sections.forEach(section => {
+            const sectionQuestions = questions.filter(q => q.section_id === section.id);
+            if (sectionQuestions.length === 0) return;
 
-            // Find max points for this question
-            const maxPoints = Math.max(...qChoices.map(c => c.points));
-            maxPossibleScore += (maxPoints * q.weight);
+            let sectionScore = 0;
+            let sectionMaxScore = 0;
 
-            // Find selected points
-            const selectedChoiceId = localAnswers[q.id];
-            if (selectedChoiceId) {
-                const selectedChoice = qChoices.find(c => c.id === selectedChoiceId);
-                if (selectedChoice) {
-                    totalScore += (selectedChoice.points * q.weight);
+            sectionQuestions.forEach(q => {
+                const qChoices = choices.filter(c => c.question_id === q.id);
+                if (qChoices.length === 0) return;
+
+                // Max points for this question
+                const maxPoints = Math.max(...qChoices.map(c => c.points));
+                sectionMaxScore += (maxPoints * q.weight);
+
+                // Selected points
+                const selectedChoiceId = localAnswers[q.id];
+                if (selectedChoiceId) {
+                    const selectedChoice = qChoices.find(c => c.id === selectedChoiceId);
+                    if (selectedChoice) {
+                        sectionScore += (selectedChoice.points * q.weight);
+                    }
                 }
+            });
+
+            // Apply Section Weight
+            // If section weight is 0 or undefined, treat as raw sum? Or skip?
+            // Let's assume section.weight is a percentage (e.g., 40 for 40%) or raw weight.
+            // If all section weights sum to 100, we can treat them as percentages.
+            // Formula: (SectionScore / SectionMaxScore) * SectionWeight
+            
+            if (sectionMaxScore > 0) {
+                const sectionPercentage = sectionScore / sectionMaxScore;
+                totalWeightedScore += (sectionPercentage * section.weight);
+                totalMaxWeightedScore += section.weight; 
             }
         });
 
-        // Compute Level (1-5)
-        let level = 1;
-        if (maxPossibleScore > 0) {
-            const percentage = (totalScore / maxPossibleScore) * 100;
-            if (percentage >= 81) level = 5;
-            else if (percentage >= 61) level = 4;
-            else if (percentage >= 41) level = 3;
-            else if (percentage >= 21) level = 2;
-            else level = 1;
+        // If no weights defined or total max weight is 0, fallback to raw sum?
+        // Or if totalMaxWeightedScore is e.g. 100, then totalWeightedScore is the final score (0-100).
+        // If totalMaxWeightedScore is e.g. 1 (0.4 + 0.6), then totalWeightedScore is 0-1.
+        // Let's normalize to 0-100 scale for level comparison.
+        
+        let finalScore = 0;
+        if (totalMaxWeightedScore > 0) {
+            // Normalize to 100 if weights are like 40, 60 (sum=100) -> score is already 0-100
+            // If weights are 0.4, 0.6 (sum=1) -> score is 0-1 -> multiply by 100?
+            // Actually, let's just use the sum of weights as the denominator if we want a percentage.
+            // But the user sets "ranges" like 30-40. This implies the final score is an absolute number.
+            // If the user sets weights as 40 and 60, the max score is 100.
+            // If the user sets weights as 10 and 10, max score is 20.
+            // So finalScore = totalWeightedScore.
+            finalScore = totalWeightedScore;
+        } else {
+            // Fallback to raw sum if no section weights?
+            // Or just 0.
+            // Let's assume user sets weights correctly.
+            finalScore = totalWeightedScore;
         }
 
-        return { totalScore, level, maxPossibleScore };
+        // Compute Level based on Configs
+        let level = 1;
+        // Find matching range
+        // If score is 35, and Level 2 is 30-40.
+        const matchedConfig = levelConfigs.find(c => finalScore >= c.min_score && finalScore <= c.max_score);
+        if (matchedConfig) {
+            level = matchedConfig.level;
+        } else {
+            // Fallback logic if gaps?
+            // If score > max of Level 5, level 5.
+            // If score < min of Level 1, level 1.
+            if (levelConfigs.length > 0) {
+                const maxLevel = levelConfigs[levelConfigs.length - 1];
+                if (finalScore > maxLevel.max_score) level = maxLevel.level;
+                else level = 1; // Default
+            }
+        }
+
+        return { totalScore: finalScore, level, maxPossibleScore: totalMaxWeightedScore };
     };
 
     const handleSave = async () => {
@@ -189,7 +242,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 assessment_id: assessmentId,
                 question_id: Number(qId),
                 choice_id: cId,
-                points_earned: points * weight,
+                points_earned: points * weight, // Note: This stores raw points earned, not section-weighted.
                 updated_at: new Date().toISOString()
             };
         });
@@ -286,10 +339,15 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
 
                             return (
                                 <div key={section.id} className="p-6">
-                                    <h4 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-                                        <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm">{section.order}</span>
-                                        {section.title}
-                                    </h4>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                            <span className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm">{section.order}</span>
+                                            {section.title}
+                                        </h4>
+                                        <span className="text-xs font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-gray-500">
+                                            Weight: {section.weight}%
+                                        </span>
+                                    </div>
                                     
                                     <div className="space-y-6 pl-10">
                                         {sectionQuestions.map(question => {
