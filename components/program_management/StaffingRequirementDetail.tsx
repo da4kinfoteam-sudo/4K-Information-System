@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
-import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
+import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
@@ -291,7 +291,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             });
 
             expensesList.forEach(exp => {
-                exp.actualObligationDate = formData.actualObligationDate;
+                // exp.actualObligationDate = formData.actualObligationDate; // Removed override as per request
                 aggregatedTotals.annualSalary += exp.amount;
                 aggregatedTotals.actualObligationAmount += (exp.actualObligationAmount || 0);
                 
@@ -348,6 +348,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Component</label><select name="component" value={formData.component} onChange={handleInputChange} className={commonInputClasses}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hiring Status</label>
                                     <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={commonInputClasses}>
@@ -475,7 +476,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired (Actual Obligation Date)</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
                             </div>
                         </fieldset>
 
@@ -489,6 +490,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
                                             <input type="number" value={expense.actualObligationAmount || 0} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', Number(e.target.value))} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
+                                            <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} />
                                         </div>
                                     </div>
 
@@ -578,6 +583,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                         <DetailItem label="Position" value={item.personnelPosition} />
+                        <DetailItem label="Component" value={item.component} />
                         <DetailItem label="Status" value={<span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span>} />
                         <DetailItem label="Employment" value={item.status} />
                         <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
@@ -667,6 +673,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                             <div className="flex justify-between items-center mb-2">
                                                 <span className="font-bold text-sm text-gray-800 dark:text-white">{exp.expenseParticular}</span>
                                                 <div className="text-right text-xs">
+                                                    <div className="text-gray-500">Date: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatDate(exp.actualObligationDate)}</span></div>
                                                     <div className="text-gray-500">Act. Obli: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(exp.actualObligationAmount || 0)}</span></div>
                                                     <div className="text-emerald-600">Act. Disb: <span className="font-bold">{formatCurrency(calculateActualDisbursementTotal(exp))}</span></div>
                                                 </div>
