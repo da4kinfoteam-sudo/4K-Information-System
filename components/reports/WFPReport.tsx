@@ -442,11 +442,51 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
     return (
         <div id="wfp-container-for-print" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <style>
+                {`
+                    @media print {
+                        @page { size: landscape; margin: 0.5cm; }
+                        body * {
+                            visibility: hidden;
+                        }
+                        #wfp-container-for-print, #wfp-container-for-print * {
+                            visibility: visible;
+                        }
+                        #wfp-container-for-print {
+                            position: absolute;
+                            left: 0;
+                            top: 0;
+                            width: 100%;
+                            margin: 0;
+                            padding: 0;
+                            box-shadow: none;
+                            background: white !important;
+                            color: black !important;
+                        }
+                        .print-hidden {
+                            display: none !important;
+                        }
+                        /* Ensure table borders are visible */
+                        table, th, td {
+                            border: 1px solid #000 !important;
+                        }
+                        /* Adjust font size for print to fit */
+                        table {
+                            font-size: 10px !important;
+                        }
+                        /* Remove dark mode styles for print */
+                        .dark {
+                            background-color: white !important;
+                            color: black !important;
+                        }
+                    }
+                `}
+            </style>
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Work and Financial Plan (WFP)</h3>
                 <div className="flex items-center gap-4">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadXLSX} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md text-sm hover:bg-gray-600">Print Report</button>
+                    <button onClick={handleDownloadXLSX} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700">Download XLSX</button>
                 </div>
             </div>
             <div id="wfp-report" className="overflow-x-auto">

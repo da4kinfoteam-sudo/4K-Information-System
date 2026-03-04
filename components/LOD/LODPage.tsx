@@ -102,7 +102,10 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
             return row;
         });
 
-        const ws = XLSX.utils.json_to_sheet(data);
+        // Explicitly define headers to ensure order: ID, IPO Name, Region, then Years
+        const headers = ['ID', 'IPO Name', 'Region', ...years.map(y => y.toString())];
+
+        const ws = XLSX.utils.json_to_sheet(data, { header: headers });
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "LOD Data");
         XLSX.writeFile(wb, "LOD_Assessments_Template.xlsx");
