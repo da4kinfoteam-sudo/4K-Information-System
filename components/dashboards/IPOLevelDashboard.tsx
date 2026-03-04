@@ -142,7 +142,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     if (loading) return <div className="p-4 text-center">Loading LOD data...</div>;
 
-    const totalDisplayed = Object.values(currentYearCounts).reduce((a, b) => a + b, 0);
+    const totalDisplayed: number = Object.values(currentYearCounts).reduce((a: number, b: number) => a + b, 0);
 
     return (
         <div className="space-y-8 animate-fadeIn">
@@ -182,7 +182,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 </div>
                 <div className="w-full h-6 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
                     {levels.map(l => {
-                        const count = (currentYearCounts as any)[l.level];
+                        const count = Number((currentYearCounts as any)[l.level] || 0);
                         const pct = totalDisplayed > 0 ? (count / totalDisplayed) * 100 : 0;
                         if (pct === 0) return null;
                         
@@ -198,7 +198,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4 text-xs text-gray-500 dark:text-gray-400">
                      {levels.map(l => {
-                        const count = (currentYearCounts as any)[l.level];
+                        const count = Number((currentYearCounts as any)[l.level] || 0);
                         const pct = totalDisplayed > 0 ? (count / totalDisplayed) * 100 : 0;
                         return (
                             <div key={l.level} className="flex items-center gap-2">

@@ -55,6 +55,13 @@ const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 };
 
+const formatMonthYear = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+};
+
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
     subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories 
 }) => {
@@ -138,11 +145,56 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
     }
 
+    const availableUacsCodes = useMemo(() => {
+        let codes: { code: string, desc: string }[] = [];
+        if (currentDetail.expenseParticular) {
+            const ot = currentDetail.objectType;
+            const ep = currentDetail.expenseParticular;
+            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
+                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
+                    codes.push({ code, desc });
+                });
+            }
+        } else {
+            Object.entries(uacsCodes).forEach(([ot, eps]) => {
+                Object.entries(eps).forEach(([ep, codesObj]) => {
+                    Object.entries(codesObj).forEach(([code, desc]) => {
+                        codes.push({ code, desc });
+                    });
+                });
+            });
+        }
+        return codes;
+    }, [currentDetail.expenseParticular, currentDetail.objectType]);
+
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'type') setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
         else if (name === 'objectType') setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
         else if (name === 'expenseParticular') setCurrentDetail(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
+        else if (name === 'uacsCode') {
+            let foundOt = currentDetail.objectType;
+            let foundEp = currentDetail.expenseParticular;
+            
+            let isMatch = false;
+            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
+                isMatch = true;
+            }
+
+            if (!isMatch) {
+                for (const ot in uacsCodes) {
+                    for (const ep in uacsCodes[ot]) {
+                        if (uacsCodes[ot][ep][value]) {
+                            foundOt = ot as ObjectType;
+                            foundEp = ep;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            setCurrentDetail(prev => ({ ...prev, uacsCode: value, objectType: foundOt, expenseParticular: foundEp }));
+        }
         else setCurrentDetail(prev => ({ ...prev, [name]: value }));
     };
 
@@ -412,12 +464,23 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     )}
                     {activeTab === 'budget' && (
                         <div className="space-y-4">
-                             {formData.details.map((d) => (
-                                <div key={d.id} className={`flex justify-between items-center p-2 rounded ${d.id === editingDetailId ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                    <span className="text-sm">{d.particulars} - {formatCurrency(d.pricePerUnit * d.numberOfUnits)}</span>
-                                    <div className="flex gap-2">
-                                        <button type="button" onClick={() => { setCurrentDetail(d); setEditingDetailId(d.id); }} className="text-blue-500 text-xs">Edit</button>
-                                        <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 text-xs">Remove</button>
+                             {formData.details.map((d, index) => (
+                                <div key={d.id} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailId === d.id ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                    <div>
+                                        <span className="font-semibold">{d.particulars}</span>
+                                        <div className="text-xs text-gray-500">
+                                            {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}
+                                            <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <span className="font-bold">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
+                                        <div className="flex items-center gap-2">
+                                            <button type="button" onClick={() => handleEditDetail(d.id)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                            </button>
+                                            <button type="button" onClick={() => handleRemoveDetail(d.id)} className="text-red-500 hover:text-red-700">&times;</button>
+                                        </div>
                                     </div>
                                 </div>
                              ))}
@@ -430,7 +493,23 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
                                     <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                    <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, d]) => <option key={code} value={code}>{code} - {d}</option>)}</select></div>
+                                    <div>
+                                        <label className="block text-xs font-medium">UACS Code</label>
+                                        <input 
+                                            type="text"
+                                            name="uacsCode" 
+                                            value={currentDetail.uacsCode} 
+                                            onChange={handleDetailChange} 
+                                            list="uacs-codes-list-edit"
+                                            placeholder="Search UACS..."
+                                            className={commonInputClasses + " py-1.5"}
+                                        />
+                                        <datalist id="uacs-codes-list-edit">
+                                            {availableUacsCodes.map((item) => (
+                                                <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
+                                            ))}
+                                        </datalist>
+                                    </div>
                                 </div>
 
                                 <div>

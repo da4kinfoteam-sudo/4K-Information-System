@@ -341,8 +341,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const y = act.fundingYear || 0;
             const ft = act.fundType || 'Current';
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
-            const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || e.amount) : 0), 0);
-            const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || e.amount) : 0), 0);
+            const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
+            const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
             aggregate(y, ft, alloc, obli, disb);
         };
         financialData.trainings.forEach(processAct);
@@ -407,11 +407,14 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
     const handleDownload = () => {
         const wb = XLSX.utils.book_new();
 
-        // 1. Physical Sheet with new Columns
+        // 1. Physical Sheet
         const physRows: any[][] = [
-            ["Indicator", "Cost", "Unit", 
-             "Month Target", "Month Actual", "Month Var", "Month %", 
-             "Cumulative Target", "Cumulative Actual", "Cumulative Var", "Cumulative %"]
+            [`Monthly Report - Physical Accomplishment (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
+            [],
+            ["Component / Indicator", "Cost", "Unit", 
+             "For the Month", "", "", "", 
+             "Cumulative (Year-to-Date)", "", "", ""],
+            ["", "", "", "Target", "Actual", "Var", "%", "Target", "Actual", "Var", "%"]
         ];
         
         const processPhysItems = (items: any[], indent: string) => {
@@ -446,10 +449,53 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
         
         const wsPhys = XLSX.utils.aoa_to_sheet(physRows);
+
+        // Merges for Physical Sheet
+        wsPhys['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, // Title
+            { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }, // Component / Indicator
+            { s: { r: 2, c: 1 }, e: { r: 3, c: 1 } }, // Cost
+            { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } }, // Unit
+            { s: { r: 2, c: 3 }, e: { r: 2, c: 6 } }, // For the Month
+            { s: { r: 2, c: 7 }, e: { r: 2, c: 10 } }, // Cumulative
+        ];
+
+        // Column Widths
+        wsPhys['!cols'] = [
+            { wch: 40 }, // Component / Indicator
+            { wch: 15 }, // Cost
+            { wch: 10 }, // Unit
+            { wch: 10 }, // Target
+            { wch: 10 }, // Actual
+            { wch: 10 }, // Var
+            { wch: 10 }, // %
+            { wch: 10 }, // Target
+            { wch: 10 }, // Actual
+            { wch: 10 }, // Var
+            { wch: 10 }  // %
+        ];
+
+        // Format Cells
+        const rangePhys = XLSX.utils.decode_range(wsPhys['!ref'] || "A1:K1");
+        for (let R = 4; R <= rangePhys.e.r; ++R) {
+            const costCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 1 })];
+            if (costCell && typeof costCell.v === 'number') costCell.z = '"₱"#,##0.00';
+
+            const pctMonthCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 6 })];
+            if (pctMonthCell && typeof pctMonthCell.v === 'number') pctMonthCell.z = '0%';
+
+            const pctCumCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 10 })];
+            if (pctCumCell && typeof pctCumCell.v === 'number') pctCumCell.z = '0%';
+        }
+
         XLSX.utils.book_append_sheet(wb, wsPhys, "Physical");
 
         // 2. Financial Sheet
-        const finRows: any[][] = [["Fund Source", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]];
+        const finRows: any[][] = [
+            [`Monthly Report - Financial Accomplishment (Absolute Value) (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
+            [],
+            ["Fund Source", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]
+        ];
         financialHistoryData.forEach(row => {
             finRows.push([
                 row.label, row.alloc, row.obli, row.disb, row.obliRate/100, row.disbRate/100, row.unutilized, row.unpaid
@@ -466,6 +512,37 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }
 
         const wsFin = XLSX.utils.aoa_to_sheet(finRows);
+
+        // Merges for Financial Sheet
+        wsFin['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } } // Title
+        ];
+
+        // Column Widths
+        wsFin['!cols'] = [
+            { wch: 30 }, // Fund Source
+            { wch: 15 }, // Allocation
+            { wch: 15 }, // Obligation
+            { wch: 15 }, // Disbursement
+            { wch: 15 }, // Obligation Rate
+            { wch: 15 }, // Disbursement Rate
+            { wch: 15 }, // Unutilized
+            { wch: 15 }  // Unpaid
+        ];
+
+        // Format Cells
+        const rangeFin = XLSX.utils.decode_range(wsFin['!ref'] || "A1:H1");
+        for (let R = 3; R <= rangeFin.e.r; ++R) {
+            for (let C of [1, 2, 3, 6, 7]) { // Currency columns
+                const cell = wsFin[XLSX.utils.encode_cell({ r: R, c: C })];
+                if (cell && typeof cell.v === 'number') cell.z = '"₱"#,##0.00';
+            }
+            for (let C of [4, 5]) { // Percentage columns
+                const cell = wsFin[XLSX.utils.encode_cell({ r: R, c: C })];
+                if (cell && typeof cell.v === 'number') cell.z = '0.0%';
+            }
+        }
+
         XLSX.utils.book_append_sheet(wb, wsFin, "Financial");
 
         XLSX.writeFile(wb, `Monthly_Report_${selectedYear}_${MONTHS[selectedMonth].label}.xlsx`);
