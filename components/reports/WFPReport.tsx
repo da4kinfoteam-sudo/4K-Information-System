@@ -200,7 +200,23 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                     q3Financial: financialQuarter === 3 ? amount : 0,
                     q4Financial: financialQuarter === 4 ? amount : 0,
                 };
-                addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+
+                if (isStaff) {
+                    const component = pm.component || 'Program Management';
+                    if (component === 'Program Management') {
+                        addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                    } else if (component === 'Production and Livelihood') {
+                         if (!finalData['Production and Livelihood'].packages['Staff Requirements']) {
+                            finalData['Production and Livelihood'].packages['Staff Requirements'] = { items: [] };
+                         }
+                         addItemToGroup(finalData['Production and Livelihood'].packages['Staff Requirements'].items, item);
+                    } else if (finalData[component]) {
+                         // Social Prep or Marketing (Arrays)
+                         addItemToGroup(finalData[component], item);
+                    }
+                } else {
+                    addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                }
             });
         }
 
@@ -218,11 +234,8 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
     const handleDownloadXLSX = () => {
         const aoa: (string | number | null)[][] = [
-            [
-                "Indicator", "Total Physical Target", "MOOE (PHP)", "CO (PHP)", "Total Cost (PHP)", 
-                "Q1 Physical Target", "Q2 Physical Target", "Q3 Physical Target", "Q4 Physical Target", "Total Quarterly Physical", 
-                "Q1 Financial Target", "Q2 Financial Target", "Q3 Financial Target", "Q4 Financial Target", "Total Quarterly Financial"
-            ]
+            ["Program/Activity/Project", "Total Target", null, null, null, "Quarterly Physical Target", null, null, null, null, "Quarterly Financial Target (PHP)", null, null, null, null],
+            [null, "Physical", "MOOE (PHP)", "CO (PHP)", "Total (PHP)", "Q1", "Q2", "Q3", "Q4", "Total", "Q1", "Q2", "Q3", "Q4", "Total"]
         ];
 
         const processItems = (items: any[]) => {
@@ -231,20 +244,20 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 const totalQuarterlyFinancial = item.q1Financial + item.q2Financial + item.q3Financial + item.q4Financial;
                 aoa.push([
                     item.indicator, 
-                    Math.ceil(item.totalPhysicalTarget), 
-                    Math.ceil(item.mooeCost), 
-                    Math.ceil(item.coCost), 
-                    Math.ceil(item.totalCost),
-                    Math.ceil(item.q1Physical), 
-                    Math.ceil(item.q2Physical), 
-                    Math.ceil(item.q3Physical), 
-                    Math.ceil(item.q4Physical), 
-                    Math.ceil(totalQuarterlyPhysical),
-                    Math.ceil(item.q1Financial), 
-                    Math.ceil(item.q2Financial), 
-                    Math.ceil(item.q3Financial), 
-                    Math.ceil(item.q4Financial), 
-                    Math.ceil(totalQuarterlyFinancial)
+                    item.totalPhysicalTarget, 
+                    item.mooeCost, 
+                    item.coCost, 
+                    item.totalCost,
+                    item.q1Physical, 
+                    item.q2Physical, 
+                    item.q3Physical, 
+                    item.q4Physical, 
+                    totalQuarterlyPhysical,
+                    item.q1Financial, 
+                    item.q2Financial, 
+                    item.q3Financial, 
+                    item.q4Financial, 
+                    totalQuarterlyFinancial
                 ]);
             });
         };
@@ -274,20 +287,20 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
             aoa.push([
                 label, 
-                Math.ceil(totals.totalPhysicalTarget), 
-                Math.ceil(totals.mooeCost), 
-                Math.ceil(totals.coCost), 
-                Math.ceil(totals.totalCost),
-                Math.ceil(totals.q1Physical), 
-                Math.ceil(totals.q2Physical), 
-                Math.ceil(totals.q3Physical), 
-                Math.ceil(totals.q4Physical), 
-                Math.ceil(totalQuarterlyPhysical),
-                Math.ceil(totals.q1Financial), 
-                Math.ceil(totals.q2Financial), 
-                Math.ceil(totals.q3Financial), 
-                Math.ceil(totals.q4Financial), 
-                Math.ceil(totalQuarterlyFinancial)
+                totals.totalPhysicalTarget, 
+                totals.mooeCost, 
+                totals.coCost, 
+                totals.totalCost,
+                totals.q1Physical, 
+                totals.q2Physical, 
+                totals.q3Physical, 
+                totals.q4Physical, 
+                totalQuarterlyPhysical,
+                totals.q1Financial, 
+                totals.q2Financial, 
+                totals.q3Financial, 
+                totals.q4Financial, 
+                totalQuarterlyFinancial
             ]);
         };
 
@@ -315,6 +328,48 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         addTotalsRow(grandTotals, "GRAND TOTAL");
         
         const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+        // Merges
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // Program/Activity/Project
+            { s: { r: 0, c: 1 }, e: { r: 0, c: 4 } }, // Total Target
+            { s: { r: 0, c: 5 }, e: { r: 0, c: 9 } }, // Quarterly Physical Target
+            { s: { r: 0, c: 10 }, e: { r: 0, c: 14 } } // Quarterly Financial Target
+        ];
+
+        // Column Widths
+        ws['!cols'] = [
+            { wch: 40 }, // Indicator
+            { wch: 10 }, // Physical
+            { wch: 15 }, // MOOE
+            { wch: 15 }, // CO
+            { wch: 15 }, // Total
+            { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, // Q Physical
+            { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 } // Q Financial
+        ];
+
+        // Hide Gridlines
+        if (!ws['!views']) ws['!views'] = [];
+        ws['!views'].push({ showGridLines: false });
+
+        // Apply formatting (Note: Basic XLSX utils might not support cell styles fully without pro version, 
+        // but we can try setting number format 'z' if the library supports it)
+        // Iterate all cells to set number format for financial columns
+        const range = XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
+        for (let R = 2; R <= range.e.r; ++R) { // Skip headers
+            for (let C = 1; C <= range.e.c; ++C) {
+                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                if (!ws[cellRef]) continue;
+                
+                // Financial Columns: 2, 3, 4, 10, 11, 12, 13, 14
+                if ([2, 3, 4, 10, 11, 12, 13, 14].includes(C)) {
+                    ws[cellRef].z = '#,##0.00'; // Decimal format
+                } else if ([1, 5, 6, 7, 8, 9].includes(C)) {
+                    ws[cellRef].z = '#,##0'; // Integer format for physical
+                }
+            }
+        }
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
         XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedOu}.xlsx`);
