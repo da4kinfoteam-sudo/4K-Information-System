@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap } from '../constants';
+import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
@@ -293,7 +293,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             operatingUnit: getUnique('operatingUnit'),
             indigenousPeopleOrganization: getUnique('indigenousPeopleOrganization'),
             packageType: getUnique('packageType'),
-            fundingYear: getUnique('fundingYear'),
+            fundingYear: filterYears,
             estimatedCompletionDate: getUnique('estimatedCompletionDate'),
             actualCompletionDate: getUnique('actualCompletionDate')
         };

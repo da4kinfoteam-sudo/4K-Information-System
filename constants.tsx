@@ -89,6 +89,8 @@ export type Tier = typeof tiers[number];
 export const fundTypes = ['Current', 'Continuing', 'Insertion', 'Realignment', 'Savings'] as const;
 export type FundType = typeof fundTypes[number];
 
+export const filterYears = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028'];
+
 export const objectTypes = ['MOOE', 'CO'] as const;
 export type ObjectType = typeof objectTypes[number];
 

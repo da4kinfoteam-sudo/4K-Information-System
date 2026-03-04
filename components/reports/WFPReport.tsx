@@ -500,7 +500,10 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             <style>
                 {`
                     @media print {
-                        @page { size: landscape; margin: 0.5cm; }
+                        @page { 
+                            size: landscape; 
+                            margin: 0.5cm; 
+                        }
                         body * {
                             visibility: hidden;
                         }
@@ -521,18 +524,26 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                         .print-hidden {
                             display: none !important;
                         }
-                        /* Ensure table borders are visible */
-                        table, th, td {
-                            border: 1px solid #000 !important;
-                        }
-                        /* Adjust font size for print to fit */
+                        /* Ensure table fits */
                         table {
-                            font-size: 10px !important;
+                            width: 100% !important;
+                            border-collapse: collapse !important;
+                            font-size: 8px !important; /* Smaller font to fit */
+                            table-layout: fixed;
+                        }
+                        th, td {
+                            border: 1px solid black !important;
+                            padding: 2px !important;
+                            word-wrap: break-word;
                         }
                         /* Remove dark mode styles for print */
                         .dark {
                             background-color: white !important;
                             color: black !important;
+                        }
+                        /* Hide scrollbars */
+                        ::-webkit-scrollbar {
+                            display: none;
                         }
                     }
                 `}

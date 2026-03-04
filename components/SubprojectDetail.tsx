@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes } from '../constants';
+import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes, filterYears } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
@@ -290,21 +290,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     
     const handleAddDetail = () => {
         setDateError('');
-        if (!editedSubproject.startDate || !editedSubproject.estimatedCompletionDate) {
-            alert('Please set the project Start Date and Estimated Completion Date first.');
-            return;
-        }
+        
         if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth || !currentDetail.uacsCode) {
             alert('Please fill out all detail fields, including UACS classification and monthly targets.');
             return;
         }
-        const delivery = new Date(currentDetail.deliveryDate + 'T00:00:00Z');
-        const start = new Date(editedSubproject.startDate + 'T00:00:00Z');
         
-        if (delivery < start) {
-            setDateError(`Delivery date must be on or after the project start date (${formatDate(editedSubproject.startDate)}).`);
-            return;
-        }
+        // Removed start date validation
 
         const newItem: SubprojectDetailInput = {
             ...currentDetail,
@@ -592,8 +584,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 />
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={editedSubproject.startDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                                <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={editedSubproject.estimatedCompletionDate} onChange={handleInputChange} required className={commonInputClasses} /></div>
+                                                <div>
+                                                    <label className="block text-sm font-medium">Est. Completion</label>
+                                                    <select 
+                                                        name="estimatedCompletionDate" 
+                                                        value={getMonthFromDateStr(editedSubproject.estimatedCompletionDate)} 
+                                                        disabled 
+                                                        className={commonInputClasses + " bg-gray-100 dark:bg-gray-600 cursor-not-allowed"}
+                                                    >
+                                                        <option value="">Auto-calculated</option>
+                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                    </select>
+                                                    <p className="text-xs text-gray-500 mt-1">Based on latest item delivery</p>
+                                                </div>
                                             </div>
                                         </div>
                                     </fieldset>
@@ -730,7 +733,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, d]) => <option key={code} value={code}>{code} - {d}</option>)}</select></div>
                                             </div>
 
-                                            <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
+                                            <div>
+                                                <label className="block text-xs font-medium">Delivery Month</label>
+                                                <select 
+                                                    value={getMonthFromDateStr(currentDetail.deliveryDate)} 
+                                                    onChange={(e) => updateDetailDateFromMonth('deliveryDate', e.target.value)} 
+                                                    className={commonInputClasses + " py-1.5 text-sm"}
+                                                >
+                                                    <option value="">Select Month</option>
+                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                </select>
+                                                {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
+                                            </div>
                                             
                                             <div>
                                                 <label className="block text-xs font-medium">Obligation Month</label>
@@ -826,13 +840,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <input 
-                                                                        type="date" 
-                                                                        value={(detail as any).actualDeliveryDate || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', e.target.value)} 
+                                                                    <select 
+                                                                        value={getMonthFromDateStr((detail as any).actualDeliveryDate)} 
+                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualDeliveryDate', e.target.value)} 
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         disabled={isLocked(originalDetail?.actualDeliveryDate)} 
-                                                                    />
+                                                                    >
+                                                                        <option value="">Select Month</option>
+                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                                    </select>
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <select 
@@ -998,7 +1014,40 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Completion Date</label>
-                                                    <input type="date" name="newTargetCompletionDate" value={editedSubproject.newTargetCompletionDate || ''} onChange={handleInputChange} className={commonInputClasses} />
+                                                    <div className="flex gap-2">
+                                                        <select
+                                                            value={editedSubproject.newTargetCompletionDate ? new Date(editedSubproject.newTargetCompletionDate).getMonth() : ''}
+                                                            onChange={(e) => {
+                                                                const month = parseInt(e.target.value);
+                                                                const current = new Date(editedSubproject.newTargetCompletionDate || new Date());
+                                                                current.setDate(1); // Ensure day is 1 to avoid overflow
+                                                                current.setMonth(month);
+                                                                const year = current.getFullYear();
+                                                                const newDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+                                                                setEditedSubproject({...editedSubproject, newTargetCompletionDate: newDate});
+                                                            }}
+                                                            className={commonInputClasses}
+                                                        >
+                                                            <option value="" disabled>Select Month</option>
+                                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                        </select>
+                                                        <select
+                                                            value={editedSubproject.newTargetCompletionDate ? new Date(editedSubproject.newTargetCompletionDate).getFullYear() : ''}
+                                                            onChange={(e) => {
+                                                                const year = parseInt(e.target.value);
+                                                                const current = new Date(editedSubproject.newTargetCompletionDate || new Date());
+                                                                current.setDate(1); // Ensure day is 1 to avoid overflow
+                                                                current.setFullYear(year);
+                                                                const month = current.getMonth();
+                                                                const newDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+                                                                setEditedSubproject({...editedSubproject, newTargetCompletionDate: newDate});
+                                                            }}
+                                                            className={commonInputClasses}
+                                                        >
+                                                            <option value="" disabled>Select Year</option>
+                                                            {filterYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                                        </select>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </fieldset>
@@ -1057,9 +1106,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <DetailItem label="UID" value={subproject.uid} />
                             <DetailItem label="Package" value={subproject.packageType} />
                             <DetailItem label="IPO" value={subproject.indigenousPeopleOrganization} />
-                            <DetailItem label="Start Date" value={formatDate(subproject.startDate)} />
-                            <DetailItem label="Est. Completion" value={formatDate(subproject.estimatedCompletionDate)} />
-                            <DetailItem label="Actual Completion" value={formatDate(subproject.actualCompletionDate)} />
+                            <DetailItem label="Est. Completion" value={formatMonthYear(subproject.estimatedCompletionDate)} />
+                            <DetailItem label="Actual Completion" value={formatMonthYear(subproject.actualCompletionDate)} />
                             <DetailItem label="Funding Year" value={subproject.fundingYear?.toString()} />
                             <DetailItem label="Fund Type" value={subproject.fundType} />
                             <DetailItem label="Tier" value={subproject.tier} />
@@ -1148,7 +1196,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         return (
                                             <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
                                                 <td className="px-4 py-2 font-medium">{detail.particulars}</td>
-                                                <td className="px-4 py-2">{formatDate(detail.deliveryDate)}</td>
+                                                <td className="px-4 py-2">{formatMonthYear(detail.deliveryDate)}</td>
                                                 <td className="px-4 py-2">{detail.uacsCode}</td>
                                                 <td className="px-4 py-2">{formatMonthYear(detail.obligationMonth)}</td>
                                                 <td className="px-4 py-2">{formatMonthYear(detail.disbursementMonth)}</td>
@@ -1202,7 +1250,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 {subproject.details.filter(d => d.actualDeliveryDate).map(d => (
                                                     <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
                                                         <td className="px-4 py-2 font-medium">{d.particulars}</td>
-                                                        <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">{formatDate(d.actualDeliveryDate)}</td>
+                                                        <td className="px-4 py-2 text-emerald-600 dark:text-emerald-400">{formatMonthYear(d.actualDeliveryDate)}</td>
                                                         <td className="px-4 py-2 text-right">{d.actualNumberOfUnits || '-'}</td>
                                                     </tr>
                                                 ))}

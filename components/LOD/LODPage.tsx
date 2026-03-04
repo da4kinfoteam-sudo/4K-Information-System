@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { IPO, LodAssessment, philippineRegions, ouToRegionMap } from '../../constants';
+import { IPO, LodAssessment, philippineRegions, ouToRegionMap, filterYears } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePagination } from '../mainfunctions/TableHooks';
@@ -88,13 +88,17 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
             return;
         }
 
+        // Use filterYears for columns, sorted ascending (2019 -> 2028)
+        const exportYears = [...filterYears].sort((a, b) => parseInt(a) - parseInt(b));
+
         const data = filteredIPOs.map(ipo => {
             const row: any = {
                 'ID': ipo.id,
                 'IPO Name': ipo.name,
                 'Region': ipo.region
             };
-            years.forEach(year => {
+            exportYears.forEach(yearStr => {
+                const year = parseInt(yearStr);
                 const assessment = assessments.find(a => a.ipo_id === ipo.id && a.year === year);
                 // Only export manual level to avoid confusion during import
                 row[year] = assessment?.manual_level ?? ''; 
@@ -103,7 +107,7 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
         });
 
         // Explicitly define headers to ensure order: ID, IPO Name, Region, then Years
-        const headers = ['ID', 'IPO Name', 'Region', ...years.map(y => y.toString())];
+        const headers = ['ID', 'IPO Name', 'Region', ...exportYears];
 
         const ws = XLSX.utils.json_to_sheet(data, { header: headers });
         const wb = XLSX.utils.book_new();

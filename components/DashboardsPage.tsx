@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
 import GADDashboard from './dashboards/GADDashboard';
@@ -41,19 +41,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     }, [currentUser]);
 
     const availableYears = useMemo(() => {
-        const years = new Set<string>();
-        props.subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
-        props.trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
-        props.ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
-        props.otherActivities.forEach(a => years.add(new Date(a.date).getFullYear().toString()));
-        
-        // Add PM years
-        props.officeReqs.forEach(i => years.add(i.fundYear.toString()));
-        props.staffingReqs.forEach(i => years.add(i.fundYear.toString()));
-        props.otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
-
-        return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [props]);
+        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
+    }, []);
 
     const filteredData = useMemo(() => {
         // Deep sanitization helper: ensures array exists and filters out null/undefined items inside it

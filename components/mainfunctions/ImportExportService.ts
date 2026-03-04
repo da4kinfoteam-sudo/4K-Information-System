@@ -89,6 +89,33 @@ export const resolveTier = (input: string | number | undefined): Tier | undefine
     return undefined;
 };
 
+// Helper to parse various date/month formats to YYYY-MM-01
+const parseMonthToDate = (input: any): string => {
+    if (!input) return '';
+    
+    // If it's a number (Excel serial date)
+    if (typeof input === 'number') {
+        // Excel base date is 1899-12-30
+        const date = new Date(Math.round((input - 25569) * 86400 * 1000));
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    
+    const str = String(input).trim();
+    
+    // Try YYYY-MM-DD or YYYY-MM
+    if (str.match(/^\d{4}-\d{2}/)) {
+        return str.substring(0, 7) + '-01';
+    }
+    
+    // Try Month Year (e.g. "January 2024", "Jan 2024", "Jan-24")
+    const date = new Date(str);
+    if (!isNaN(date.getTime())) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    
+    return '';
+};
+
 // --- SUBPROJECTS ---
 
 export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
@@ -103,7 +130,6 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
         Location: s.location,
         Status: s.status,
         Budget: calculateTotalBudget(s.details),
-        'Start Date': s.startDate,
         'End Date': s.estimatedCompletionDate,
         'Operating Unit': s.operatingUnit
     }));
@@ -116,7 +142,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
 export const downloadSubprojectsTemplate = () => {
     const headers = [
         'uid', 'name', 'indigenousPeopleOrganization', 'status', 'packageType', 
-        'startDate', 'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
+        'estimatedCompletionDate', 'actualCompletionDate', 'fundingYear', 'fundType', 'tier', 'operatingUnit', 'remarks',
         'detail_type', 'detail_particulars', 'detail_deliveryDate', 'detail_unitOfMeasure', 'detail_pricePerUnit', 'detail_numberOfUnits', 
         'detail_uacsCode', 'detail_obligationMonth', 'detail_disbursementMonth'
     ];
@@ -128,8 +154,7 @@ export const downloadSubprojectsTemplate = () => {
             indigenousPeopleOrganization: 'Samahan ng mga Katutubong Dumagat',
             status: 'Ongoing',
             packageType: 'Package 1',
-            startDate: '2024-01-15',
-            estimatedCompletionDate: '2024-06-15',
+            estimatedCompletionDate: 'June 2024',
             actualCompletionDate: '',
             fundingYear: 2024,
             fundType: 'Current',
@@ -138,13 +163,13 @@ export const downloadSubprojectsTemplate = () => {
             remarks: 'Sample upload with multiple items',
             detail_type: 'Equipment',
             detail_particulars: 'Coffee Roaster',
-            detail_deliveryDate: '2024-03-01',
+            detail_deliveryDate: 'March 2024',
             detail_unitOfMeasure: 'unit',
             detail_pricePerUnit: 150000,
             detail_numberOfUnits: 1,
             detail_uacsCode: '10605030-00',
-            detail_obligationMonth: '2024-02-01',
-            detail_disbursementMonth: '2024-03-15'
+            detail_obligationMonth: 'February 2024',
+            detail_disbursementMonth: 'March 2024'
         }
     ];
 
@@ -155,9 +180,8 @@ export const downloadSubprojectsTemplate = () => {
         ["indigenousPeopleOrganization", "Name of the IPO. Location will be automatically derived from the system's IPO list."],
         ["status", "Proposed, Ongoing, Completed, or Cancelled."],
         ["packageType", "Package 1, Package 2, etc."],
-        ["startDate", "YYYY-MM-DD"],
-        ["estimatedCompletionDate", "YYYY-MM-DD"],
-        ["actualCompletionDate", "YYYY-MM-DD (Optional)"],
+        ["estimatedCompletionDate", "Month Year (e.g., June 2024)"],
+        ["actualCompletionDate", "Month Year (Optional)"],
         ["fundingYear", "Year (e.g., 2024)"],
         ["fundType", "Current, Continuing, or Insertion"],
         ["tier", "Tier 1 or Tier 2"],
@@ -165,13 +189,13 @@ export const downloadSubprojectsTemplate = () => {
         ["remarks", "Optional remarks"],
         ["detail_type", "Item Type (e.g., Equipment, Livestock, etc.)"],
         ["detail_particulars", "Specific item name."],
-        ["detail_deliveryDate", "YYYY-MM-DD"],
+        ["detail_deliveryDate", "Month Year (e.g., March 2024)"],
         ["detail_unitOfMeasure", "pcs, kgs, unit, lot, heads"],
         ["detail_pricePerUnit", "Number"],
         ["detail_numberOfUnits", "Number"],
         ["detail_uacsCode", "Specific UACS Code. Object Type and Expense Particular will be derived from this code."],
-        ["detail_obligationMonth", "YYYY-MM-DD (Date of Obligation)"],
-        ["detail_disbursementMonth", "YYYY-MM-DD (Date of Disbursement)"]
+        ["detail_obligationMonth", "Month Year (e.g., February 2024)"],
+        ["detail_disbursementMonth", "Month Year (e.g., March 2024)"]
     ];
 
     const wb = XLSX.utils.book_new();
@@ -248,9 +272,9 @@ export const handleSubprojectsUpload = (
                         ipo_id: matchedIpo?.id,
                         status: row.status,
                         packageType: row.packageType,
-                        startDate: String(row.startDate),
-                        estimatedCompletionDate: String(row.estimatedCompletionDate),
-                        actualCompletionDate: row.actualCompletionDate ? String(row.actualCompletionDate) : undefined,
+                        startDate: `${row.fundingYear || new Date().getFullYear()}-01-01`, // Default since start date is removed
+                        estimatedCompletionDate: parseMonthToDate(row.estimatedCompletionDate),
+                        actualCompletionDate: row.actualCompletionDate ? parseMonthToDate(row.actualCompletionDate) : undefined,
                         fundingYear: Number(row.fundingYear),
                         fundType: row.fundType,
                         tier: resolveTier(row.tier),
@@ -298,15 +322,15 @@ export const handleSubprojectsUpload = (
                         id: Date.now() + index, 
                         type: row.detail_type,
                         particulars: row.detail_particulars,
-                        deliveryDate: String(row.detail_deliveryDate),
+                        deliveryDate: parseMonthToDate(row.detail_deliveryDate),
                         unitOfMeasure: row.detail_unitOfMeasure,
                         pricePerUnit: Number(row.detail_pricePerUnit),
                         numberOfUnits: Number(row.detail_numberOfUnits),
                         objectType: objectType,
                         expenseParticular: expenseParticular,
                         uacsCode: uacsCode,
-                        obligationMonth: String(row.detail_obligationMonth),
-                        disbursementMonth: String(row.detail_disbursementMonth)
+                        obligationMonth: parseMonthToDate(row.detail_obligationMonth),
+                        disbursementMonth: parseMonthToDate(row.detail_disbursementMonth)
                     });
                 }
             });

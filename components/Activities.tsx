@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -304,7 +304,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             budget: [], // Budget is numeric
             operatingUnit: getUnique('operatingUnit'),
             component: getUnique('component'),
-            fundingYear: getUnique('fundingYear')
+            fundingYear: filterYears
         };
     }, [initiallyFilteredActivities]);
 

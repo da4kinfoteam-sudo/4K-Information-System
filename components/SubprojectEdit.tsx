@@ -148,12 +148,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
     const handleAddDetail = () => {
         setDateError('');
-        if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits) {
-            alert("Please fill in required detail fields."); return;
+        if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.deliveryDate || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
+            alert("Please fill in all required detail fields, including delivery date and monthly targets."); return;
         }
-        if (currentDetail.deliveryDate && formData.startDate && new Date(currentDetail.deliveryDate) < new Date(formData.startDate)) {
-            setDateError('Delivery date cannot be before start date.'); return;
-        }
+        // Removed start date validation as start date is no longer used
+
 
         let updatedDetails: SubprojectDetail[] = [];
         const newItem = { 
@@ -335,8 +334,19 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div><label className="block text-sm font-medium">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium">Start Date</label><input type="date" name="startDate" value={formData.startDate} onChange={handleInputChange} className={commonInputClasses} required /></div>
-                                <div><label className="block text-sm font-medium">Est. Completion</label><input type="date" name="estimatedCompletionDate" value={formData.estimatedCompletionDate} onChange={handleInputChange} className={commonInputClasses} required /></div>
+                                <div>
+                                    <label className="block text-sm font-medium">Est. Completion</label>
+                                    <select 
+                                        name="estimatedCompletionDate" 
+                                        value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
+                                        disabled 
+                                        className={commonInputClasses + " bg-gray-100 dark:bg-gray-800 cursor-not-allowed"}
+                                    >
+                                        <option value="">Auto-calculated</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                    <p className="text-xs text-gray-500 mt-1">Based on latest item delivery</p>
+                                </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div><label className="block text-sm font-medium">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleInputChange} className={commonInputClasses} /></div>
@@ -423,7 +433,18 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentDetail.uacsCode} onChange={handleDetailChange} disabled={!currentDetail.expenseParticular} className={commonInputClasses + " py-1.5"}><option value="">Select UACS</option>{currentDetail.expenseParticular && uacsCodes[currentDetail.objectType]?.[currentDetail.expenseParticular] && Object.entries(uacsCodes[currentDetail.objectType][currentDetail.expenseParticular]).map(([code, d]) => <option key={code} value={code}>{code} - {d}</option>)}</select></div>
                                 </div>
 
-                                <div><label className="block text-xs font-medium">Delivery Date</label><input type="date" name="deliveryDate" value={currentDetail.deliveryDate} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} />{dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}</div>
+                                <div>
+                                    <label className="block text-xs font-medium">Delivery Month</label>
+                                    <select 
+                                        value={getMonthFromDateStr(currentDetail.deliveryDate)} 
+                                        onChange={(e) => updateDetailDateFromMonth('deliveryDate', e.target.value)} 
+                                        className={commonInputClasses + " py-1.5 text-sm"}
+                                    >
+                                        <option value="">Select Month</option>
+                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                    </select>
+                                    {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
+                                </div>
                                 
                                 <div>
                                     <label className="block text-xs font-medium">Obligation Month</label>

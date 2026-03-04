@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import WFPReport from './reports/WFPReport';
 import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
@@ -41,19 +41,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     }, [currentUser]);
 
     const availableYears = useMemo(() => {
-        const years = new Set<string>();
-        subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
-        trainings.forEach(t => t.fundingYear && years.add(t.fundingYear.toString()));
-        // Fixed: Use fundingYear instead of date for consistency
-        otherActivities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
-        // Fixed: Safe access to fundYear
-        officeReqs.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
-        staffingReqs.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
-        otherProgramExpenses.forEach(i => i.fundYear && years.add(i.fundYear.toString()));
-        // Ensure current year is always an option even if no data
-        years.add(new Date().getFullYear().toString());
-        return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
+        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
+    }, []);
 
     // Helper functions for filtering
     const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);

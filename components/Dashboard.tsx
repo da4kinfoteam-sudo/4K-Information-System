@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import StatCard from './StatCard';
-import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings } from '../constants';
+import { TrainingIcon, IpoIcon, ProjectsIcon, ActivitiesIcon, SubprojectDetail, tiers, fundTypes, operatingUnits, ouToRegionMap, SystemSettings, filterYears } from '../constants';
 import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../constants';
 import Calendar, { CalendarEvent } from './Calendar'; // Updated Import
 import { useAuth } from '../contexts/AuthContext';
@@ -314,15 +314,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const availableYears = useMemo(() => {
-        const years = new Set<string>();
-        subprojects.forEach(p => p.fundingYear && years.add(p.fundingYear.toString()));
-        activities.forEach(a => a.fundingYear && years.add(a.fundingYear.toString()));
-        ipos.forEach(i => years.add(new Date(i.registrationDate).getFullYear().toString()));
-        officeReqs.forEach(i => years.add(i.fundYear.toString()));
-        staffingReqs.forEach(i => years.add(i.fundYear.toString()));
-        otherProgramExpenses.forEach(i => years.add(i.fundYear.toString()));
-        return Array.from(years).sort((a, b) => parseInt(b) - parseInt(a));
-    }, [subprojects, ipos, activities, officeReqs, staffingReqs, otherProgramExpenses]);
+        return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
+    }, []);
     
     const filteredData = useMemo(() => {
         // ... (Filtering Logic remains same)
