@@ -119,7 +119,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             const ep = selectedParticular;
             if (uacsCodes[ot] && uacsCodes[ot][ep]) {
                 Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc });
+                    codes.push({ code, desc: desc as string });
                 });
             }
         } else {
@@ -208,8 +208,32 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
-        // If Fund Year changes, update existing dates to align with new year
-        if (name === 'fundYear') {
+        if (name === 'uacsCode') {
+            setFormData(prev => ({ ...prev, [name]: value }));
+            
+            // Auto-select particular if a valid code is entered
+            if (value && uacsCodes[selectedObjectType]) {
+                const trimmedValue = value.trim();
+                let foundParticular = '';
+                
+                // First check if the code exists in the CURRENT selected particular (optimization)
+                if (selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && uacsCodes[selectedObjectType][selectedParticular][trimmedValue]) {
+                    foundParticular = selectedParticular;
+                } else {
+                    // Search all particulars
+                    for (const [particular, codes] of Object.entries(uacsCodes[selectedObjectType])) {
+                        if (codes[trimmedValue]) {
+                            foundParticular = particular;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundParticular && foundParticular !== selectedParticular) {
+                    setSelectedParticular(foundParticular);
+                }
+            }
+        } else if (name === 'fundYear') {
             const newYear = parseInt(value) || new Date().getFullYear();
             setFormData(prev => {
                 const newData = { ...prev, [name]: newYear };

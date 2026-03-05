@@ -100,8 +100,25 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [selectedParticular, setSelectedParticular] = useState('');
 
     const availableUacsCodes = useMemo(() => {
-        if (!selectedParticular || !uacsCodes[selectedObjectType] || !uacsCodes[selectedObjectType][selectedParticular]) return [];
-        return Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => ({ code, desc }));
+        let codes: { code: string, desc: string }[] = [];
+        if (selectedParticular) {
+            const ot = selectedObjectType;
+            const ep = selectedParticular;
+            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
+                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
+                    codes.push({ code, desc: desc as string });
+                });
+            }
+        } else {
+             if (uacsCodes[selectedObjectType]) {
+                 Object.entries(uacsCodes[selectedObjectType]).forEach(([ep, codesObj]) => {
+                     Object.entries(codesObj).forEach(([code, desc]) => {
+                         codes.push({ code, desc });
+                     });
+                 });
+             }
+        }
+        return codes;
     }, [selectedParticular, selectedObjectType, uacsCodes]);
 
     const selectedUacsDesc = useMemo(() => {
@@ -151,14 +168,42 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => {
-            const newData = { ...prev, [name]: value };
-            // Sync Obligated Amount with Target Allocation (amount)
-            if (name === 'amount') {
-                newData.obligatedAmount = Number(value);
+        
+        if (name === 'uacsCode') {
+            setFormData(prev => ({ ...prev, [name]: value }));
+            
+            // Auto-select particular if a valid code is entered
+            if (value && uacsCodes[selectedObjectType]) {
+                const trimmedValue = value.trim();
+                let foundParticular = '';
+                
+                // First check if the code exists in the CURRENT selected particular (optimization)
+                if (selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && uacsCodes[selectedObjectType][selectedParticular][trimmedValue]) {
+                    foundParticular = selectedParticular;
+                } else {
+                    // Search all particulars
+                    for (const [particular, codes] of Object.entries(uacsCodes[selectedObjectType])) {
+                        if (codes[trimmedValue]) {
+                            foundParticular = particular;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundParticular && foundParticular !== selectedParticular) {
+                    setSelectedParticular(foundParticular);
+                }
             }
-            return newData;
-        });
+        } else {
+            setFormData(prev => {
+                const newData = { ...prev, [name]: value };
+                // Sync Obligated Amount with Target Allocation (amount)
+                if (name === 'amount') {
+                    newData.obligatedAmount = Number(value);
+                }
+                return newData;
+            });
+        }
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {

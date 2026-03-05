@@ -107,8 +107,19 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
 
     const availableUacsCodes = useMemo(() => {
-        if (!currentExpense.objectType || !selectedParticular) return {};
-        return uacsCodes[currentExpense.objectType]?.[selectedParticular] || {};
+        const codes: { [key: string]: string } = {};
+        const ot = currentExpense.objectType;
+        
+        if (selectedParticular) {
+            if (uacsCodes[ot]?.[selectedParticular]) {
+                Object.assign(codes, uacsCodes[ot][selectedParticular]);
+            }
+        } else if (uacsCodes[ot]) {
+            Object.values(uacsCodes[ot]).forEach(particularCodes => {
+                Object.assign(codes, particularCodes);
+            });
+        }
+        return codes;
     }, [uacsCodes, currentExpense.objectType, selectedParticular]);
 
     const selectedUacsDesc = useMemo(() => {
@@ -431,16 +442,42 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                             value={currentExpense.uacsCode} 
                                             onChange={(e) => {
                                                 const code = e.target.value;
-                                                const part = selectedParticular;
+                                                let part = selectedParticular;
+                                                
+                                                // Auto-select particular if a valid code is entered
+                                                if (code && uacsCodes[currentExpense.objectType]) {
+                                                    const trimmedCode = code.trim();
+                                                    let foundParticular = '';
+
+                                                    // First check if the code exists in the CURRENT selected particular (optimization)
+                                                    if (selectedParticular && uacsCodes[currentExpense.objectType][selectedParticular] && uacsCodes[currentExpense.objectType][selectedParticular][trimmedCode]) {
+                                                        foundParticular = selectedParticular;
+                                                    } else {
+                                                        // Search all particulars
+                                                        for (const [particular, codes] of Object.entries(uacsCodes[currentExpense.objectType])) {
+                                                            if (codes[trimmedCode]) {
+                                                                foundParticular = particular;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (foundParticular) {
+                                                        part = foundParticular;
+                                                        if (foundParticular !== selectedParticular) {
+                                                            setSelectedParticular(foundParticular);
+                                                        }
+                                                    }
+                                                }
+                                                
                                                 setCurrentExpense(prev => ({ ...prev, uacsCode: code, expenseParticular: part }));
                                             }} 
                                             className={commonInputClasses} 
-                                            disabled={!selectedParticular}
                                             placeholder="Search or select UACS Code"
                                         />
                                         <datalist id="uacs-codes-list-detail">
                                             {Object.entries(availableUacsCodes).map(([code, desc]) => (
-                                                <option key={code} value={code}>{desc}</option>
+                                                <option key={code} value={code}>{code} - {desc}</option>
                                             ))}
                                         </datalist>
                                         {selectedUacsDesc && (

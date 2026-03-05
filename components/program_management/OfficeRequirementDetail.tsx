@@ -58,7 +58,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             const ep = selectedParticular;
             if (uacsCodes[ot] && uacsCodes[ot][ep]) {
                 Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc });
+                    codes.push({ code, desc: desc as string });
                 });
             }
         } else {
@@ -77,30 +77,29 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         return availableUacsCodes.find(c => c.code === formData.uacsCode)?.desc || '';
     }, [formData.uacsCode, availableUacsCodes]);
 
-    // Init selects based on current uacsCode
-    useEffect(() => {
-        let foundType: ObjectType = 'MOOE'; 
-        let foundParticular = '';
-        outerLoop: 
-        for (const type of objectTypes) { 
-            if(uacsCodes[type]) { 
-                for (const part in uacsCodes[type]) { 
-                    if (uacsCodes[type][part].hasOwnProperty(formData.uacsCode)) { 
-                        foundType = type; 
-                        foundParticular = part; 
-                        break outerLoop; 
-                    } 
-                } 
-            } 
-        }
-        setSelectedObjectType(foundType); 
-        setSelectedParticular(foundParticular);
-    }, [formData.uacsCode, uacsCodes]);
-
-    // Reset form data when switching edit modes or items
+    // Reset form data and init selects when switching edit modes or items
     useEffect(() => {
         setFormData(item);
-    }, [item, editMode]);
+        
+        if (editMode === 'details') {
+            let foundType: ObjectType = 'MOOE'; 
+            let foundParticular = '';
+            outerLoop: 
+            for (const type of objectTypes) { 
+                if(uacsCodes[type]) { 
+                    for (const part in uacsCodes[type]) { 
+                        if (uacsCodes[type][part].hasOwnProperty(item.uacsCode)) { 
+                            foundType = type; 
+                            foundParticular = part; 
+                            break outerLoop; 
+                        } 
+                    } 
+                } 
+            }
+            setSelectedObjectType(foundType); 
+            setSelectedParticular(foundParticular);
+        }
+    }, [item, editMode, uacsCodes]);
 
     // Helper to get month index from YYYY-MM-DD string
     const getMonthFromDateStr = (dateStr: string | undefined) => {
@@ -152,8 +151,32 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
-        // If Fund Year changes in details, update existing dates
-        if (name === 'fundYear') {
+        if (name === 'uacsCode') {
+            setFormData(prev => ({ ...prev, [name]: value }));
+            
+            // Auto-select particular if a valid code is entered
+            if (value && uacsCodes[selectedObjectType]) {
+                const trimmedValue = value.trim();
+                let foundParticular = '';
+                
+                // First check if the code exists in the CURRENT selected particular (optimization)
+                if (selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && uacsCodes[selectedObjectType][selectedParticular][trimmedValue]) {
+                    foundParticular = selectedParticular;
+                } else {
+                    // Search all particulars
+                    for (const [particular, codes] of Object.entries(uacsCodes[selectedObjectType])) {
+                        if (codes[trimmedValue]) {
+                            foundParticular = particular;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundParticular && foundParticular !== selectedParticular) {
+                    setSelectedParticular(foundParticular);
+                }
+            }
+        } else if (name === 'fundYear') {
             const newYear = parseInt(value) || new Date().getFullYear();
             setFormData(prev => {
                 const newData = { ...prev, [name]: newYear };
