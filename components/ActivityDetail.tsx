@@ -55,10 +55,18 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit }) => {
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const isAdmin = currentUser?.role === 'Administrator';
+    
+    // Helper to get UACS Description
+    const getUacsDescription = (ot: string, ep: string, code: string) => {
+        if (uacsCodes[ot] && uacsCodes[ot][ep] && uacsCodes[ot][ep][code]) {
+            return uacsCodes[ot][ep][code];
+        }
+        return '';
+    };
     
     // Status Logic for Edit Button Visibility
     const isCompleted = activity.status === 'Completed';
@@ -212,7 +220,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                         activity.expenses.map(exp => (
                                             <tr key={exp.id} className="border-b border-gray-200 dark:border-gray-700">
                                                 <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
-                                                <td className="px-4 py-2">{exp.uacsCode}</td>
+                                                <td className="px-4 py-2">
+                                                    {exp.uacsCode}
+                                                    {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
+                                                        <span className="block text-xs text-gray-500">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-2">{formatMonthYear(exp.obligationMonth)}</td>
                                                 <td className="px-4 py-2">{formatMonthYear(exp.disbursementMonth)}</td>
                                                 <td className="px-4 py-2 text-right font-medium">{formatCurrency(exp.amount)}</td>

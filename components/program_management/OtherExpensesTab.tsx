@@ -140,16 +140,76 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
 
+    const availableUacsCodes = useMemo(() => {
+        let codes: { code: string, desc: string }[] = [];
+        if (selectedParticular) {
+            const ot = selectedObjectType;
+            const ep = selectedParticular;
+            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
+                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
+                    codes.push({ code, desc });
+                });
+            }
+        } else {
+            Object.entries(uacsCodes).forEach(([ot, eps]) => {
+                Object.entries(eps).forEach(([ep, codesObj]) => {
+                    Object.entries(codesObj).forEach(([code, desc]) => {
+                        codes.push({ code, desc });
+                    });
+                });
+            });
+        }
+        return codes;
+    }, [selectedParticular, selectedObjectType, uacsCodes]);
+
+    const getUacsDescription = (code: string) => {
+        for (const ot in uacsCodes) {
+            for (const ep in uacsCodes[ot]) {
+                if (uacsCodes[ot][ep][code]) {
+                    return uacsCodes[ot][ep][code];
+                }
+            }
+        }
+        return '';
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => {
-            const newData = { ...prev, [name]: value };
-            // Sync Obligated Amount with Target Allocation (amount)
-            if (name === 'amount') {
-                newData.obligatedAmount = Number(value);
+        
+        if (name === 'uacsCode') {
+            let foundOt = selectedObjectType;
+            let foundEp = selectedParticular;
+            
+            let isMatch = false;
+            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
+                isMatch = true;
             }
-            return newData;
-        });
+
+            if (!isMatch) {
+                for (const ot in uacsCodes) {
+                    for (const ep in uacsCodes[ot]) {
+                        if (uacsCodes[ot][ep][value]) {
+                            foundOt = ot as ObjectType;
+                            foundEp = ep;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            setSelectedObjectType(foundOt);
+            setSelectedParticular(foundEp);
+            setFormData(prev => ({ ...prev, uacsCode: value }));
+        } else {
+            setFormData(prev => {
+                const newData = { ...prev, [name]: value };
+                // Sync Obligated Amount with Target Allocation (amount)
+                if (name === 'amount') {
+                    newData.obligatedAmount = Number(value);
+                }
+                return newData;
+            });
+        }
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -347,7 +407,23 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                            <input 
+                                type="text"
+                                name="uacsCode" 
+                                value={formData.uacsCode} 
+                                onChange={handleInputChange} 
+                                list="uacs-codes-list-other"
+                                placeholder="Search UACS..."
+                                className={commonInputClasses}
+                            />
+                            <datalist id="uacs-codes-list-other">
+                                {availableUacsCodes.map((item) => (
+                                    <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
+                                ))}
+                            </datalist>
+                        </div>
                     </div>
                     <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -370,7 +446,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             </div>
                         </fieldset>
                     </div>
-                    <div className="flex justify-end gap-4"><button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button><button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95">Save Item</button></div>
+                    <div className="flex justify-end gap-4"><button type="button" onClick={() => { setView('list'); setEditingItem(null); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm">Cancel</button><button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700">Save Item</button></div>
                 </form>
             </div>
         );
@@ -399,7 +475,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     {canEdit && (
                         <button 
                             onClick={() => { setEditingItem(null); setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95"
+                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
                         >
                             + Add New
                         </button>

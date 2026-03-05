@@ -284,12 +284,63 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     };
 
     // Budget Handlers
+    const availableUacsCodes = useMemo(() => {
+        let codes: { code: string, desc: string }[] = [];
+        if (currentExpense.expenseParticular) {
+            const ot = currentExpense.objectType;
+            const ep = currentExpense.expenseParticular;
+            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
+                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
+                    codes.push({ code, desc });
+                });
+            }
+        } else {
+            Object.entries(uacsCodes).forEach(([ot, eps]) => {
+                Object.entries(eps).forEach(([ep, codesObj]) => {
+                    Object.entries(codesObj).forEach(([code, desc]) => {
+                        codes.push({ code, desc });
+                    });
+                });
+            });
+        }
+        return codes;
+    }, [currentExpense.expenseParticular, currentExpense.objectType, uacsCodes]);
+
+    const getUacsDescription = (ot: string, ep: string, code: string) => {
+        if (uacsCodes[ot] && uacsCodes[ot][ep] && uacsCodes[ot][ep][code]) {
+            return uacsCodes[ot][ep][code];
+        }
+        return '';
+    };
+
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'objectType') {
             setCurrentExpense(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
         } else if (name === 'expenseParticular') {
             setCurrentExpense(prev => ({ ...prev, expenseParticular: value, uacsCode: '' }));
+        } else if (name === 'uacsCode') {
+            let foundOt = currentExpense.objectType;
+            let foundEp = currentExpense.expenseParticular;
+            
+            let isMatch = false;
+            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
+                isMatch = true;
+            }
+
+            if (!isMatch) {
+                for (const ot in uacsCodes) {
+                    for (const ep in uacsCodes[ot]) {
+                        if (uacsCodes[ot][ep][value]) {
+                            foundOt = ot as ObjectType;
+                            foundEp = ep;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            setCurrentExpense(prev => ({ ...prev, uacsCode: value, objectType: foundOt, expenseParticular: foundEp }));
         } else {
             setCurrentExpense(prev => ({...prev, [name]: value}));
         }
@@ -598,7 +649,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                 <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                                     <span className="text-sm">
                                         <strong>{exp.expenseParticular}</strong> ({exp.uacsCode}) - {exp.amount.toLocaleString()} 
-                                        <span className="text-xs text-gray-500 ml-2">Ob: {exp.obligationMonth} | Disb: {exp.disbursementMonth}</span>
+                                        {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
+                                            <span className="block text-xs text-gray-500">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
+                                        )}
+                                        <span className="block text-xs text-gray-500 mt-1">Ob: {exp.obligationMonth} | Disb: {exp.disbursementMonth}</span>
                                     </span>
                                     {!isDetailsLocked && (
                                         <div className="flex gap-2">
@@ -617,7 +671,23 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     {/* Row 1: UACS Selection */}
                                     <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <div><label className="block text-xs font-medium">Particular</label><select name="expenseParticular" value={currentExpense.expenseParticular} onChange={handleExpenseChange} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                    <div><label className="block text-xs font-medium">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={handleExpenseChange} className={commonInputClasses} disabled={!currentExpense.expenseParticular}><option value="">Select Code</option>{currentExpense.expenseParticular && uacsCodes[currentExpense.objectType]?.[currentExpense.expenseParticular] && Object.entries(uacsCodes[currentExpense.objectType][currentExpense.expenseParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                                    <div>
+                                        <label className="block text-xs font-medium">UACS Code</label>
+                                        <input 
+                                            type="text"
+                                            name="uacsCode" 
+                                            value={currentExpense.uacsCode} 
+                                            onChange={handleExpenseChange} 
+                                            list="uacs-codes-list-activity-edit"
+                                            placeholder="Search UACS..."
+                                            className={commonInputClasses}
+                                        />
+                                        <datalist id="uacs-codes-list-activity-edit">
+                                            {availableUacsCodes.map((item) => (
+                                                <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
+                                            ))}
+                                        </datalist>
+                                    </div>
                                     
                                     {/* Row 2: Financial Details */}
                                     <div>
@@ -683,7 +753,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Utilization</legend>
                             {formData.expenses.map((exp) => (
                                 <div key={exp.id} className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                    <p className="font-semibold text-sm mb-2">{exp.expenseParticular} ({exp.uacsCode})</p>
+                                    <p className="font-semibold text-sm mb-2">
+                                        {exp.expenseParticular} ({exp.uacsCode})
+                                        {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
+                                            <span className="block text-xs text-gray-500 font-normal">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
+                                        )}
+                                    </p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* Actual Obligation Group */}
                                         <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded border border-blue-100 dark:border-blue-800">

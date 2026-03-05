@@ -179,6 +179,39 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         setFormData(prev => ({ ...prev, [field]: dateStr }));
     };
 
+    const availableUacsCodes = useMemo(() => {
+        let codes: { code: string, desc: string }[] = [];
+        if (selectedParticular) {
+            const ot = selectedObjectType;
+            const ep = selectedParticular;
+            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
+                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
+                    codes.push({ code, desc });
+                });
+            }
+        } else {
+            Object.entries(uacsCodes).forEach(([ot, eps]) => {
+                Object.entries(eps).forEach(([ep, codesObj]) => {
+                    Object.entries(codesObj).forEach(([code, desc]) => {
+                        codes.push({ code, desc });
+                    });
+                });
+            });
+        }
+        return codes;
+    }, [selectedParticular, selectedObjectType, uacsCodes]);
+
+    const getUacsDescription = (code: string) => {
+        for (const ot in uacsCodes) {
+            for (const ep in uacsCodes[ot]) {
+                if (uacsCodes[ot][ep][code]) {
+                    return uacsCodes[ot][ep][code];
+                }
+            }
+        }
+        return '';
+    };
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
@@ -197,6 +230,30 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 }
                 return newData;
             });
+        } else if (name === 'uacsCode') {
+            let foundOt = selectedObjectType;
+            let foundEp = selectedParticular;
+            
+            let isMatch = false;
+            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
+                isMatch = true;
+            }
+
+            if (!isMatch) {
+                for (const ot in uacsCodes) {
+                    for (const ep in uacsCodes[ot]) {
+                        if (uacsCodes[ot][ep][value]) {
+                            foundOt = ot as ObjectType;
+                            foundEp = ep;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            setSelectedObjectType(foundOt);
+            setSelectedParticular(foundEp);
+            setFormData(prev => ({ ...prev, uacsCode: value }));
         } else {
             setFormData(prev => ({ ...prev, [name]: value }));
         }
@@ -462,7 +519,23 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border border-gray-200 dark:border-gray-700 rounded-md">
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                            <input 
+                                type="text"
+                                name="uacsCode" 
+                                value={formData.uacsCode} 
+                                onChange={handleInputChange} 
+                                list="uacs-codes-list-office"
+                                placeholder="Search UACS..."
+                                className={commonInputClasses}
+                            />
+                            <datalist id="uacs-codes-list-office">
+                                {availableUacsCodes.map((item) => (
+                                    <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
+                                ))}
+                            </datalist>
+                        </div>
                     </div>
                     <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
@@ -474,7 +547,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     </div>
                     <div className="flex justify-end gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
                         <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-accent text-white rounded-md text-sm hover:brightness-95 transition-colors">Save Item</button>
+                        <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition-colors">Save Item</button>
                     </div>
                 </form>
             </div>
@@ -508,7 +581,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                     {canEdit && (
                         <button 
                             onClick={() => { setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95"
+                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
                         >
                             + Add New
                         </button>
@@ -569,7 +642,16 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300"><div className="truncate w-48" title={item.specs}>{item.specs}</div><div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div><div className="mt-1 text-xs font-mono">{item.uacsCode}</div></td>
+                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
+                                    <div>{item.fundType} {item.fundYear}</div>
+                                    <div>{item.tier}</div>
+                                    <div className="mt-1 text-xs font-mono">
+                                        {item.uacsCode}
+                                        {getUacsDescription(item.uacsCode) && (
+                                            <span className="block text-[10px] text-gray-400 mt-0.5 whitespace-normal">{getUacsDescription(item.uacsCode)}</span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     {canEdit && (
                                         isSelectionMode ? 
