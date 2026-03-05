@@ -22,7 +22,7 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
 export const parseOtherExpenseRow = (row: any, commonData: any): OtherProgramExpense => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -99,6 +99,15 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
 
+    const availableUacsCodes = useMemo(() => {
+        if (!selectedParticular || !uacsCodes[selectedObjectType] || !uacsCodes[selectedObjectType][selectedParticular]) return [];
+        return Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => ({ code, desc }));
+    }, [selectedParticular, selectedObjectType, uacsCodes]);
+
+    const selectedUacsDesc = useMemo(() => {
+        return availableUacsCodes.find(c => c.code === formData.uacsCode)?.desc || '';
+    }, [formData.uacsCode, availableUacsCodes]);
+
     useEffect(() => {
         if (currentUser && !canViewAll) setOuFilter(currentUser.operatingUnit);
     }, [currentUser, canViewAll]);
@@ -140,76 +149,16 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
 
-    const availableUacsCodes = useMemo(() => {
-        let codes: { code: string, desc: string }[] = [];
-        if (selectedParticular) {
-            const ot = selectedObjectType;
-            const ep = selectedParticular;
-            if (uacsCodes[ot] && uacsCodes[ot][ep]) {
-                Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc });
-                });
-            }
-        } else {
-            Object.entries(uacsCodes).forEach(([ot, eps]) => {
-                Object.entries(eps).forEach(([ep, codesObj]) => {
-                    Object.entries(codesObj).forEach(([code, desc]) => {
-                        codes.push({ code, desc });
-                    });
-                });
-            });
-        }
-        return codes;
-    }, [selectedParticular, selectedObjectType, uacsCodes]);
-
-    const getUacsDescription = (code: string) => {
-        for (const ot in uacsCodes) {
-            for (const ep in uacsCodes[ot]) {
-                if (uacsCodes[ot][ep][code]) {
-                    return uacsCodes[ot][ep][code];
-                }
-            }
-        }
-        return '';
-    };
-
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        
-        if (name === 'uacsCode') {
-            let foundOt = selectedObjectType;
-            let foundEp = selectedParticular;
-            
-            let isMatch = false;
-            if (foundEp && uacsCodes[foundOt] && uacsCodes[foundOt][foundEp] && uacsCodes[foundOt][foundEp][value]) {
-                isMatch = true;
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+            // Sync Obligated Amount with Target Allocation (amount)
+            if (name === 'amount') {
+                newData.obligatedAmount = Number(value);
             }
-
-            if (!isMatch) {
-                for (const ot in uacsCodes) {
-                    for (const ep in uacsCodes[ot]) {
-                        if (uacsCodes[ot][ep][value]) {
-                            foundOt = ot as ObjectType;
-                            foundEp = ep;
-                            break;
-                        }
-                    }
-                }
-            }
-            
-            setSelectedObjectType(foundOt);
-            setSelectedParticular(foundEp);
-            setFormData(prev => ({ ...prev, uacsCode: value }));
-        } else {
-            setFormData(prev => {
-                const newData = { ...prev, [name]: value };
-                // Sync Obligated Amount with Target Allocation (amount)
-                if (name === 'amount') {
-                    newData.obligatedAmount = Number(value);
-                }
-                return newData;
-            });
-        }
+            return newData;
+        });
     };
 
     const handleFormSubmit = async (e: React.FormEvent) => {
@@ -410,19 +359,23 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
                             <input 
-                                type="text"
+                                list="uacs-codes-list" 
                                 name="uacsCode" 
                                 value={formData.uacsCode} 
                                 onChange={handleInputChange} 
-                                list="uacs-codes-list-other"
-                                placeholder="Search UACS..."
-                                className={commonInputClasses}
+                                className={commonInputClasses} 
+                                disabled={!selectedParticular} 
+                                placeholder="Type or select code..."
+                                autoComplete="off"
                             />
-                            <datalist id="uacs-codes-list-other">
+                            <datalist id="uacs-codes-list">
                                 {availableUacsCodes.map((item) => (
                                     <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
                                 ))}
                             </datalist>
+                            {selectedUacsDesc && (
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedUacsDesc}</p>
+                            )}
                         </div>
                     </div>
                     <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-md space-y-4">
@@ -435,7 +388,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 {monthFields.map(month => (
                                     <div key={`target-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
                                     // @ts-ignore
-                                    value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                    value={formData[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white" /></div>
                                 ))}
                             </div>
                             <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-col items-end gap-1">
@@ -480,11 +433,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             + Add New
                         </button>
                     )}
-                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95">Download Report</button>
+                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
                     {canEdit && (
                         <>
                             <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:brightness-95 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
+                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
                                 {isUploading ? 'Uploading...' : 'Upload XLSX'}
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
@@ -526,7 +479,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-medium">
-                                    <button onClick={() => onSelect(item)} className="text-left text-accent hover:brightness-95 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
+                                    <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
                                         {item.uacsCode}
                                     </button>
                                 </td>
@@ -534,7 +487,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    {canEdit && (isSelectionMode ? <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/> : <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>)}
+                                    {canEdit && (isSelectionMode ? <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"/> : <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>)}
                                 </td>
                             </tr>
                         ))}
@@ -543,7 +496,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
             </div>
             
             <div className="py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
+                <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
                 <div className="flex items-center gap-4 text-sm"><span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span><div className="flex items-center gap-2"><button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button><span className="px-2 font-medium">{currentPage} / {totalPages}</span><button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button></div></div>
             </div>
         </div>

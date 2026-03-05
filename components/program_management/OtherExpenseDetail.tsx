@@ -1,5 +1,5 @@
 // Author: 4K 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -13,7 +13,7 @@ interface OtherExpenseDetailProps {
     onUpdate: (item: OtherProgramExpense) => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
     <div>
@@ -34,6 +34,15 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     // For selects
     const [selectedObjectType, setSelectedObjectType] = useState<ObjectType>('MOOE');
     const [selectedParticular, setSelectedParticular] = useState('');
+
+    const availableUacsCodes = useMemo(() => {
+        if (!selectedParticular || !uacsCodes[selectedObjectType] || !uacsCodes[selectedObjectType][selectedParticular]) return [];
+        return Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => ({ code, desc }));
+    }, [selectedParticular, selectedObjectType, uacsCodes]);
+
+    const selectedUacsDesc = useMemo(() => {
+        return availableUacsCodes.find(c => c.code === formData.uacsCode)?.desc || '';
+    }, [formData.uacsCode, availableUacsCodes]);
 
     // Init selects based on current uacsCode
     useEffect(() => {
@@ -142,7 +151,27 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Object Type</label><select value={selectedObjectType} onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setFormData(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[selectedObjectType] && Object.keys(uacsCodes[selectedObjectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label><select name="uacsCode" value={formData.uacsCode} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[selectedObjectType][selectedParticular] && Object.entries(uacsCodes[selectedObjectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">UACS Code</label>
+                                    <input 
+                                        list="uacs-codes-list-detail" 
+                                        name="uacsCode" 
+                                        value={formData.uacsCode} 
+                                        onChange={handleInputChange} 
+                                        className={commonInputClasses} 
+                                        disabled={!selectedParticular} 
+                                        placeholder="Type or select code..."
+                                        autoComplete="off"
+                                    />
+                                    <datalist id="uacs-codes-list-detail">
+                                        {availableUacsCodes.map((item) => (
+                                            <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
+                                        ))}
+                                    </datalist>
+                                    {selectedUacsDesc && (
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedUacsDesc}</p>
+                                    )}
+                                </div>
 
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Obligation Date</label><input type="date" name="obligationDate" value={formData.obligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Allocation Amount</label><input type="number" name="amount" value={formData.amount} onChange={handleInputChange} className={commonInputClasses} /></div>
@@ -156,7 +185,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                 {months.map(month => (
                                     <div key={month}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`disbursement${month}`} 
                                     // @ts-ignore
-                                    value={(formData as any)[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                    value={(formData as any)[`disbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white" /></div>
                                 ))}
                             </div>
                             <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
@@ -168,7 +197,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-accent hover:brightness-95">Save Details</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Details</button>
                         </div>
                     </form>
                 </div>
@@ -199,7 +228,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                 {months.map(month => (
                                     <div key={`actual-${month}`}><label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label><input type="number" name={`actualDisbursement${month}`} 
                                     // @ts-ignore
-                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-accent focus:border-accent dark:bg-gray-700 dark:text-white" /></div>
+                                    value={(formData as any)[`actualDisbursement${month}`]} onChange={handleInputChange} min="0" step="0.01" className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white" /></div>
                                 ))}
                             </div>
                             <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
@@ -210,7 +239,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
 
                         <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">Save Accomplishment</button>
+                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -231,13 +260,13 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 </div>
                 <div className="flex items-center gap-4">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                             Edit Details
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700">
+                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                             Edit Accomplishment
                         </button>

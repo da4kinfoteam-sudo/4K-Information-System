@@ -118,6 +118,16 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     const [selectedParticular, setSelectedParticular] = useState('');
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
 
+    const availableUacsCodes = useMemo(() => {
+        if (!currentExpense.objectType || !selectedParticular) return {};
+        return uacsCodes[currentExpense.objectType]?.[selectedParticular] || {};
+    }, [uacsCodes, currentExpense.objectType, selectedParticular]);
+
+    const selectedUacsDesc = useMemo(() => {
+        if (!currentExpense.uacsCode) return '';
+        return availableUacsCodes[currentExpense.uacsCode] || '';
+    }, [currentExpense.uacsCode, availableUacsCodes]);
+
     useEffect(() => {
         if (currentUser && !canViewAll) setOuFilter(currentUser.operatingUnit);
     }, [currentUser, canViewAll]);
@@ -506,11 +516,32 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                                 <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label><select name="uacsCode" value={currentExpense.uacsCode} onChange={(e) => {
-                                    const code = e.target.value;
-                                    const part = selectedParticular;
-                                    setCurrentExpense(prev => ({ ...prev, uacsCode: code, expenseParticular: part }));
-                                }} className={commonInputClasses} disabled={!selectedParticular}><option value="">Select Code</option>{selectedParticular && uacsCodes[currentExpense.objectType][selectedParticular] && Object.entries(uacsCodes[currentExpense.objectType][selectedParticular]).map(([code, desc]) => (<option key={code} value={code}>{code} - {desc}</option>))}</select></div>
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label>
+                                    <input 
+                                        list="uacs-codes-list"
+                                        name="uacsCode" 
+                                        value={currentExpense.uacsCode} 
+                                        onChange={(e) => {
+                                            const code = e.target.value;
+                                            const part = selectedParticular;
+                                            setCurrentExpense(prev => ({ ...prev, uacsCode: code, expenseParticular: part }));
+                                        }} 
+                                        className={commonInputClasses} 
+                                        disabled={!selectedParticular}
+                                        placeholder="Search or select UACS Code"
+                                    />
+                                    <datalist id="uacs-codes-list">
+                                        {Object.entries(availableUacsCodes).map(([code, desc]) => (
+                                            <option key={code} value={code}>{desc}</option>
+                                        ))}
+                                    </datalist>
+                                    {selectedUacsDesc && (
+                                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">
+                                            {selectedUacsDesc}
+                                        </p>
+                                    )}
+                                </div>
                                 
                                 <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date</label><input type="date" name="obligationDate" value={currentExpense.obligationDate} onChange={handleExpenseChange} className={commonInputClasses} /></div>
                                 <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} min="0" /></div>
