@@ -110,6 +110,8 @@ const Settings: React.FC<SettingsProps> = ({
                             activities={activities} setActivities={setActivities}
                             officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
                             staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
+                            onSelectSubproject={onSelectSubproject}
+                            onSelectActivity={onSelectActivity}
                         />
                     )}
 
