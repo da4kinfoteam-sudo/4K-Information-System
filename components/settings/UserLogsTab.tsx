@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { fetchAll } from '../../hooks/useSupabaseTable';
+import { Subproject, Activity, IPO } from '../../constants';
 
 interface UserLog {
     id: number;
@@ -10,9 +11,27 @@ interface UserLog {
     username: string;
     operating_unit: string;
     created_at: string;
+    entity_type?: string;
+    entity_id?: string;
 }
 
-const UserLogsTab: React.FC = () => {
+interface UserLogsTabProps {
+    subprojects: Subproject[];
+    activities: Activity[];
+    ipos: IPO[];
+    onSelectSubproject: (project: Subproject) => void;
+    onSelectActivity: (activity: Activity) => void;
+    onSelectIpo: (ipo: IPO) => void;
+}
+
+const UserLogsTab: React.FC<UserLogsTabProps> = ({
+    subprojects,
+    activities,
+    ipos,
+    onSelectSubproject,
+    onSelectActivity,
+    onSelectIpo
+}) => {
     const [logs, setLogs] = useState<UserLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
@@ -74,6 +93,24 @@ const UserLogsTab: React.FC = () => {
         return new Date(dateStr).toLocaleString();
     };
 
+    const handleLogClick = (log: UserLog) => {
+        if (!log.entity_type || !log.entity_id) return;
+
+        if (log.entity_type === 'Subproject') {
+            const item = subprojects.find(s => String(s.id) === log.entity_id);
+            if (item) onSelectSubproject(item);
+            else alert("This subproject no longer exists.");
+        } else if (log.entity_type === 'Activity' || log.entity_type === 'Training') {
+            const item = activities.find(a => String(a.id) === log.entity_id);
+            if (item) onSelectActivity(item);
+            else alert("This activity no longer exists.");
+        } else if (log.entity_type === 'IPO') {
+            const item = ipos.find(i => String(i.id) === log.entity_id);
+            if (item) onSelectIpo(item);
+            else alert("This IPO no longer exists.");
+        }
+    };
+
     const SortableHeader = ({ label, sortKey }: { label: string; sortKey: keyof UserLog }) => (
         <th 
             className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -119,7 +156,18 @@ const UserLogsTab: React.FC = () => {
                         ) : (
                             paginatedLogs.map(log => (
                                 <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{log.description}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                                        {log.entity_type && log.entity_id ? (
+                                            <button 
+                                                onClick={() => handleLogClick(log)}
+                                                className="text-emerald-600 hover:underline text-left font-medium"
+                                            >
+                                                {log.description}
+                                            </button>
+                                        ) : (
+                                            log.description
+                                        )}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.username}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.operating_unit}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{formatDate(log.created_at)}</td>

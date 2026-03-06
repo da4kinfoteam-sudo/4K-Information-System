@@ -6,7 +6,7 @@ import { supabase } from '../supabaseClient';
 export const useLogAction = () => {
     const { currentUser } = useAuth();
 
-    const logAction = async (action: string, details: string, ipoName?: string) => {
+    const logAction = async (action: string, details: string, ipoName?: string, entityType?: string, entityId?: string) => {
         if (!currentUser || !supabase) return;
 
         let description = `${action}: ${details}`;
@@ -19,7 +19,9 @@ export const useLogAction = () => {
                 description: description,
                 username: currentUser.username,
                 operating_unit: currentUser.operatingUnit,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                entity_type: entityType,
+                entity_id: entityId
             }]);
         } catch (error) {
             console.error("Failed to log action:", error);

@@ -311,22 +311,32 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     }
                 });
 
-                const activityGroup = {
-                    indicator: name,
-                    isExpandable: true,
-                    items: [
-                        {
-                            indicator: `Number of ${name} conducted`,
-                            target: calculateSumOverTime(targetConducted),
-                            actual: calculateSumOverTime(actualConducted)
-                        },
-                        {
-                            indicator: `Number of IPOs assisted in ${name}`,
-                            target: calculateFirstEncounter(targetIPOs),
-                            actual: calculateFirstEncounter(actualIPOs)
-                        }
-                    ]
-                };
+                let activityGroup: any;
+
+                if (componentName === 'Program Management') {
+                    activityGroup = {
+                        indicator: name,
+                        target: calculateSumOverTime(targetConducted),
+                        actual: calculateSumOverTime(actualConducted)
+                    };
+                } else {
+                    activityGroup = {
+                        indicator: name,
+                        isExpandable: true,
+                        items: [
+                            {
+                                indicator: `Number of ${name} conducted`,
+                                target: calculateSumOverTime(targetConducted),
+                                actual: calculateSumOverTime(actualConducted)
+                            },
+                            {
+                                indicator: `Number of IPOs assisted in ${name}`,
+                                target: calculateFirstEncounter(targetIPOs),
+                                actual: calculateFirstEncounter(actualIPOs)
+                            }
+                        ]
+                    };
+                }
 
                 if (isPackage) {
                      // For Program Management, we add to the 'Activities' package

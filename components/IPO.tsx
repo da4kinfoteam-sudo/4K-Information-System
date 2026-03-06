@@ -573,14 +573,19 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         if (supabase) {
             try {
-                // Log Create
-                logAction('Created IPO', formData.name);
-
                 // Remove generated fields if creating new
-                const { error } = await supabase
+                const { data, error } = await supabase
                     .from('ipos')
-                    .insert([{ ...submissionData, created_at: new Date().toISOString() }]);
+                    .insert([{ ...submissionData, created_at: new Date().toISOString() }])
+                    .select()
+                    .single();
+                
                 if (error) throw error;
+                
+                if (data) {
+                    // Log Create
+                    logAction('Created IPO', formData.name, undefined, 'IPO', String(data.id));
+                }
                 
                 refreshData();
             } catch (error: any) {
@@ -625,7 +630,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const confirmDelete = async () => {
         if (ipoToDelete) {
             // Log Delete
-            logAction('Deleted IPO', ipoToDelete.name);
+            logAction('Deleted IPO', ipoToDelete.name, undefined, 'IPO', String(ipoToDelete.id));
 
             if (supabase) {
                 const { error } = await supabase.from('ipos').delete().eq('id', ipoToDelete.id);

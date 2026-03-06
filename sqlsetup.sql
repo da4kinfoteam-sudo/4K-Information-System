@@ -22,3 +22,12 @@ create table if not exists subproject_accomplishments (
   "created_by" text,
   "created_at" timestamptz default now()
 );
+
+-- Add entity_type and entity_id to user_logs
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_logs' AND column_name='entity_type') THEN
+    ALTER TABLE user_logs ADD COLUMN "entity_type" TEXT;
+    ALTER TABLE user_logs ADD COLUMN "entity_id" TEXT;
+  END IF;
+END $$;

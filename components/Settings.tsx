@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-    Deadline, PlanningSchedule, Subproject, Activity, 
+    Deadline, PlanningSchedule, Subproject, Activity, IPO,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense
 } from '../constants';
 import SystemHealthCard from './settings/SystemHealthCard';
@@ -27,10 +27,15 @@ interface SettingsProps {
     setSubprojects: React.Dispatch<React.SetStateAction<Subproject[]>>;
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
+    ipos: IPO[];
+    setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
     officeReqs: OfficeRequirement[];
     setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
     staffingReqs: StaffingRequirement[];
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
+    onSelectSubproject: (project: Subproject) => void;
+    onSelectActivity: (activity: Activity) => void;
+    onSelectIpo: (ipo: IPO) => void;
 }
 
 type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod';
@@ -41,8 +46,12 @@ const Settings: React.FC<SettingsProps> = ({
     planningSchedules, setPlanningSchedules,
     subprojects, setSubprojects,
     activities, setActivities,
+    ipos, setIpos,
     officeReqs, setOfficeReqs,
-    staffingReqs, setStaffingReqs
+    staffingReqs, setStaffingReqs,
+    onSelectSubproject,
+    onSelectActivity,
+    onSelectIpo
 }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<TabName>('profile');
@@ -118,7 +127,14 @@ const Settings: React.FC<SettingsProps> = ({
                     )}
 
                     {activeTab === 'logs' && isAdmin && (
-                        <UserLogsTab />
+                        <UserLogsTab 
+                            subprojects={subprojects}
+                            activities={activities}
+                            ipos={ipos}
+                            onSelectSubproject={onSelectSubproject}
+                            onSelectActivity={onSelectActivity}
+                            onSelectIpo={onSelectIpo}
+                        />
                     )}
                 </div>
              </div>

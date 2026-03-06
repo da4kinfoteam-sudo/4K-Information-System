@@ -445,14 +445,20 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         if (supabase) {
             try {
-                for (const act of activitiesToSave) {
-                    const { id, ...payload } = act;
+                for (let i = 0; i < activitiesToSave.length; i++) {
+                    const act = activitiesToSave[i];
+                    const { id, participating_ipo_ids, ...payload } = act;
                     if (mode === 'create') {
-                         await supabase.from('activities').insert([payload]);
-                         logAction(`Created ${act.type}`, act.name);
+                         const { data, error } = await supabase.from('activities').insert([payload]).select();
+                         if (error) throw error;
+                         if (data && data.length > 0) {
+                             activitiesToSave[i].id = data[0].id;
+                             logAction(`Created ${act.type}`, act.name, undefined, act.type, String(data[0].id));
+                         }
                     } else {
-                         await supabase.from('activities').update(payload).eq('id', activity!.id);
-                         logAction(`Updated ${act.type}`, act.name);
+                         const { error } = await supabase.from('activities').update(payload).eq('id', activity!.id);
+                         if (error) throw error;
+                         logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id));
                     }
                     
                     // IPO History Log
@@ -465,9 +471,17 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 alert("Error saving: " + err.message);
                 return;
             }
+        } else {
+            if (mode === 'create') {
+                for (let i = 0; i < activitiesToSave.length; i++) {
+                    activitiesToSave[i].id = Date.now() + i;
+                }
+            }
         }
         
-        onUpdateActivity(activitiesToSave[0]); 
+        for (const act of activitiesToSave) {
+            onUpdateActivity(act);
+        }
         if (mode === 'create') alert(`Saved ${activitiesToSave.length} activities.`);
         onBack();
     };

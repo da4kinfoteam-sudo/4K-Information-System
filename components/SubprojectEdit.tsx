@@ -322,7 +322,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 if (error) { alert("Error saving: " + error.message); return; }
                 if (data) {
                     onUpdateSubproject(data);
-                    logAction('Created Subproject', data.name, data.indigenousPeopleOrganization);
+                    logAction('Created Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id));
                     if (resolvedIpoId) addIpoHistory(resolvedIpoId, `Subproject Created: ${data.name}`);
                 }
             } else {
@@ -330,7 +330,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 if (error) { alert("Error saving: " + error.message); return; }
                 if (data) {
                     onUpdateSubproject(data);
-                    logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization);
+                    logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id));
                 }
             }
         } else {

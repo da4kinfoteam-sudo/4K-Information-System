@@ -496,7 +496,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
     const confirmDelete = () => {
         if (subprojectToDelete) {
-            logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization);
+            logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization, 'Subproject', String(subprojectToDelete.id));
             setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
             setIsDeleteModalOpen(false);
             setSubprojectToDelete(null);

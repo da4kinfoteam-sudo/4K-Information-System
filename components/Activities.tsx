@@ -409,7 +409,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         const currentYear = new Date().getFullYear();
 
         const newActivitiesPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, history, ...rest } = item;
+            const { id, uid, created_at, updated_at, history, participating_ipo_ids, ...rest } = item;
             
             const prefix = item.type === 'Training' ? 'TRN' : 'ACT';
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
@@ -482,7 +482,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     const confirmDelete = async () => {
         if (itemToDelete) {
-            logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '));
+            logAction(`Deleted ${itemToDelete.type}`, itemToDelete.name, itemToDelete.participatingIpos.join(', '), itemToDelete.type, String(itemToDelete.id));
 
              for (const ipoName of itemToDelete.participatingIpos) {
                 const ipo = ipos.find(i => i.name === ipoName);
