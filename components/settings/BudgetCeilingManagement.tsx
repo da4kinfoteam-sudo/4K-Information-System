@@ -25,6 +25,11 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
     const [editingCell, setEditingCell] = useState<{ ou: string, year: number } | null>(null);
     const [editValue, setEditValue] = useState<string>('');
     const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
+    
+    // Collapsible States
+    const currentYear = new Date().getFullYear();
+    const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set([currentYear]));
+    const [collapsedOUs, setCollapsedOUs] = useState<Set<string>>(new Set());
 
     // Use filterYears from constants, converted to numbers for logic
     const years = useMemo(() => filterYears.map(y => parseInt(y)), []);
@@ -139,6 +144,22 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
         });
     };
 
+    const toggleYear = (year: number) => {
+        setExpandedYears(prev => {
+            const next = new Set(prev);
+            if (next.has(year)) next.delete(year); else next.add(year);
+            return next;
+        });
+    };
+
+    const toggleOU = (ou: string) => {
+        setCollapsedOUs(prev => {
+            const next = new Set(prev);
+            if (next.has(ou)) next.delete(ou); else next.add(ou);
+            return next;
+        });
+    };
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(amount);
     };
@@ -146,130 +167,172 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
     if (loading) return <div className="p-4 text-center">Loading budget data...</div>;
 
     return (
-        <div className="overflow-x-auto relative">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg border-collapse">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+        <div className="h-[calc(100vh-280px)] overflow-auto relative border border-gray-200 dark:border-gray-700 rounded-lg shadow-inner bg-gray-50 dark:bg-gray-900">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border-collapse">
+                <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-30 shadow-sm">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-800 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-800 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                             Operating Unit
                         </th>
-                        {years.map(year => (
-                            <th key={year} className="px-6 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider min-w-[280px]">
-                                {year}
-                            </th>
-                        ))}
+                        {years.map(year => {
+                            const isExpanded = expandedYears.has(year);
+                            return (
+                                <th 
+                                    key={year} 
+                                    onClick={() => toggleYear(year)}
+                                    className={`px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-all ${isExpanded ? 'min-w-[280px]' : 'w-24 min-w-[100px]'}`}
+                                >
+                                    <div className="flex items-center justify-center gap-1">
+                                        {year}
+                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </th>
+                            );
+                        })}
                     </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {operatingUnits.map(ou => (
-                        <tr key={ou} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-20 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                {ou}
-                            </td>
-                            {years.map(year => {
-                                const ceiling = getCeiling(ou, year);
-                                
-                                // Tier 1 Current (Main Focus)
-                                const usedTier1Current = calculateTotalBudget(ou, year, 'Tier 1', 'Current');
-                                const diff = ceiling - usedTier1Current;
-                                
-                                // Other Breakdowns
-                                const usedTier2Current = calculateTotalBudget(ou, year, 'Tier 2', 'Current');
-                                const totalUsedAll = calculateTotalBudget(ou, year);
-                                const usedOthers = totalUsedAll - (usedTier1Current + usedTier2Current);
-                                
-                                const isEditing = editingCell?.ou === ou && editingCell?.year === year;
-                                const cellId = `${ou}-${year}`;
-                                const isExpanded = expandedCells.has(cellId);
+                    {operatingUnits.map(ou => {
+                        const isOUCollapsed = collapsedOUs.has(ou);
+                        return (
+                            <tr key={ou} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-20 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] align-top">
+                                    <div 
+                                        className="flex items-center gap-2 cursor-pointer group"
+                                        onClick={() => toggleOU(ou)}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 group-hover:text-emerald-500 transition-transform ${isOUCollapsed ? '-rotate-90' : 'rotate-0'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                        {ou}
+                                    </div>
+                                </td>
+                                {years.map(year => {
+                                    const isYearExpanded = expandedYears.has(year);
+                                    
+                                    if (isOUCollapsed) {
+                                        return <td key={`${ou}-${year}`} className="border-r border-gray-100 dark:border-gray-700"></td>;
+                                    }
 
-                                return (
-                                    <td key={cellId} className="px-4 py-4 whitespace-nowrap text-sm text-right border-r border-gray-100 dark:border-gray-700 align-top">
-                                        <div className="flex flex-col gap-2">
-                                            {/* Main Focus: Tier 1 Current */}
-                                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded border border-emerald-100 dark:border-emerald-800">
-                                                <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase mb-1 text-center">Tier 1 (Current)</div>
-                                                
-                                                {isEditing ? (
-                                                    <div className="flex items-center gap-1 justify-end mb-1">
-                                                        <span className="text-xs text-gray-500">Ceiling:</span>
-                                                        <input
-                                                            type="number"
-                                                            value={editValue}
-                                                            onChange={(e) => setEditValue(e.target.value)}
-                                                            className="w-24 px-1 py-0.5 text-sm border rounded focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 text-right"
-                                                            autoFocus
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') handleSave();
-                                                                if (e.key === 'Escape') setEditingCell(null);
-                                                            }}
-                                                        />
-                                                        <button onClick={handleSave} className="text-emerald-600 hover:text-emerald-700">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <div 
-                                                        onClick={() => handleCellClick(ou, year, ceiling)}
-                                                        className="flex justify-between items-center cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded px-1 transition-colors group"
-                                                        title="Click to edit ceiling"
-                                                    >
-                                                        <span className="text-xs text-gray-500">Ceiling:</span>
-                                                        <div className="flex items-center gap-1 font-bold text-gray-800 dark:text-gray-200">
-                                                            {formatCurrency(ceiling)}
-                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                            </svg>
+                                    const ceiling = getCeiling(ou, year);
+                                    
+                                    // Tier 1 Current (Main Focus)
+                                    const usedTier1Current = calculateTotalBudget(ou, year, 'Tier 1', 'Current');
+                                    const diff = ceiling - usedTier1Current;
+                                    
+                                    // Other Breakdowns
+                                    const usedTier2Current = calculateTotalBudget(ou, year, 'Tier 2', 'Current');
+                                    const totalUsedAll = calculateTotalBudget(ou, year);
+                                    const usedOthers = totalUsedAll - (usedTier1Current + usedTier2Current);
+                                    
+                                    const isEditing = editingCell?.ou === ou && editingCell?.year === year;
+                                    const cellId = `${ou}-${year}`;
+                                    const isExpanded = expandedCells.has(cellId);
+
+                                    return (
+                                        <td key={cellId} className="px-4 py-4 whitespace-nowrap text-sm text-right border-r border-gray-100 dark:border-gray-700 align-top">
+                                            {isYearExpanded ? (
+                                                // Expanded View
+                                                <div className="flex flex-col gap-2">
+                                                    {/* Main Focus: Tier 1 Current */}
+                                                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded border border-emerald-100 dark:border-emerald-800">
+                                                        <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase mb-1 text-center">Tier 1 (Current)</div>
+                                                        
+                                                        {isEditing ? (
+                                                            <div className="flex items-center gap-1 justify-end mb-1">
+                                                                <span className="text-xs text-gray-500">Ceiling:</span>
+                                                                <input
+                                                                    type="number"
+                                                                    value={editValue}
+                                                                    onChange={(e) => setEditValue(e.target.value)}
+                                                                    className="w-24 px-1 py-0.5 text-sm border rounded focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 text-right"
+                                                                    autoFocus
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') handleSave();
+                                                                        if (e.key === 'Escape') setEditingCell(null);
+                                                                    }}
+                                                                />
+                                                                <button onClick={handleSave} className="text-emerald-600 hover:text-emerald-700">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                                    </svg>
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div 
+                                                                onClick={() => handleCellClick(ou, year, ceiling)}
+                                                                className="flex justify-between items-center cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded px-1 transition-colors group"
+                                                                title="Click to edit ceiling"
+                                                            >
+                                                                <span className="text-xs text-gray-500">Ceiling:</span>
+                                                                <div className="flex items-center gap-1 font-bold text-gray-800 dark:text-gray-200">
+                                                                    {formatCurrency(ceiling)}
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                                    </svg>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex justify-between items-center px-1 mt-1">
+                                                            <span className="text-xs text-gray-500">Used:</span>
+                                                            <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(usedTier1Current)}</span>
+                                                        </div>
+                                                        
+                                                        <div className={`flex justify-between items-center px-1 mt-1 font-bold text-xs border-t border-emerald-200 dark:border-emerald-800 pt-1 ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                            <span>{diff < 0 ? 'Over:' : 'Rem:'}</span>
+                                                            <span>{formatCurrency(Math.abs(diff))}</span>
                                                         </div>
                                                     </div>
-                                                )}
 
-                                                <div className="flex justify-between items-center px-1 mt-1">
-                                                    <span className="text-xs text-gray-500">Used:</span>
-                                                    <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(usedTier1Current)}</span>
+                                                    {/* Details Toggle */}
+                                                    <button 
+                                                        onClick={(e) => toggleDetails(cellId, e)}
+                                                        className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center gap-1 w-full py-1"
+                                                    >
+                                                        {isExpanded ? 'Hide Details' : 'Show All Funds'}
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                        </svg>
+                                                    </button>
+
+                                                    {/* Collapsible Details */}
+                                                    {isExpanded && (
+                                                        <div className="text-xs space-y-1 bg-gray-50 dark:bg-gray-700/30 p-2 rounded animate-fadeIn">
+                                                            <div className="flex justify-between text-gray-500">
+                                                                <span>Tier 2 (Current):</span>
+                                                                <span>{formatCurrency(usedTier2Current)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between text-gray-500">
+                                                                <span>Other Funds:</span>
+                                                                <span>{formatCurrency(usedOthers)}</span>
+                                                            </div>
+                                                            <div className="flex justify-between font-bold text-gray-700 dark:text-gray-300 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                                                                <span>Grand Total:</span>
+                                                                <span>{formatCurrency(totalUsedAll)}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                
-                                                <div className={`flex justify-between items-center px-1 mt-1 font-bold text-xs border-t border-emerald-200 dark:border-emerald-800 pt-1 ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                    <span>{diff < 0 ? 'Over:' : 'Rem:'}</span>
-                                                    <span>{formatCurrency(Math.abs(diff))}</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Details Toggle */}
-                                            <button 
-                                                onClick={(e) => toggleDetails(cellId, e)}
-                                                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center gap-1 w-full py-1"
-                                            >
-                                                {isExpanded ? 'Hide Details' : 'Show All Funds'}
-                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                            </button>
-
-                                            {/* Collapsible Details */}
-                                            {isExpanded && (
-                                                <div className="text-xs space-y-1 bg-gray-50 dark:bg-gray-700/30 p-2 rounded animate-fadeIn">
-                                                    <div className="flex justify-between text-gray-500">
-                                                        <span>Tier 2 (Current):</span>
-                                                        <span>{formatCurrency(usedTier2Current)}</span>
+                                            ) : (
+                                                // Collapsed View
+                                                <div className="flex flex-col gap-1 items-end justify-center h-full">
+                                                    <div className="text-xs font-bold text-gray-700 dark:text-gray-300" title="Ceiling">
+                                                        {formatCurrency(ceiling)}
                                                     </div>
-                                                    <div className="flex justify-between text-gray-500">
-                                                        <span>Other Funds:</span>
-                                                        <span>{formatCurrency(usedOthers)}</span>
-                                                    </div>
-                                                    <div className="flex justify-between font-bold text-gray-700 dark:text-gray-300 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
-                                                        <span>Grand Total:</span>
-                                                        <span>{formatCurrency(totalUsedAll)}</span>
+                                                    <div className={`text-[10px] font-semibold ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`} title="Remaining">
+                                                        {diff < 0 ? '-' : '+'}{formatCurrency(Math.abs(diff))}
                                                     </div>
                                                 </div>
                                             )}
-                                        </div>
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    ))}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
         </div>
