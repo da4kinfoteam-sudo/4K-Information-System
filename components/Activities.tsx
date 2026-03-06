@@ -419,9 +419,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 ...exp,
                 id: Date.now() + Math.random(),
                 actualObligationAmount: 0,
-                actualObligationDate: '',
+                actualObligationDate: null as unknown as string,
                 actualDisbursementAmount: 0,
-                actualDisbursementDate: '',
+                actualDisbursementDate: null as unknown as string,
                 actualAmount: 0
             }));
 
@@ -429,12 +429,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 ...rest,
                 uid: newUid,
                 status: 'Proposed',
-                actualDate: '',
-                actualEndDate: '',
+                actualDate: null as unknown as string,
+                actualEndDate: null as unknown as string,
                 actualParticipantsMale: 0,
                 actualParticipantsFemale: 0,
                 catchUpPlanRemarks: '',
-                newTargetDate: '',
+                newTargetDate: null as unknown as string,
                 expenses: clonedExpenses,
                 encodedBy: currentUser?.fullName || 'System Clone',
                 created_at: currentTimestamp,

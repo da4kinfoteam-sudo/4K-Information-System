@@ -604,9 +604,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
                                 <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md" disabled={isDetailsLocked}>
                                     <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding</legend>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div><label className="block text-sm font-medium">Fund Year</label><input type="number" name="fundingYear" value={formData.fundingYear} onChange={handleNumericChange} className={commonInputClasses} /></div>
                                         <div><label className="block text-sm font-medium">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                                        <div>
+                                            <label className="block text-sm font-medium">Tier</label>
+                                            <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
+                                                <option value="">Select Tier</option>
+                                                {tiers.map(t => <option key={t} value={t}>{t}</option>)}
+                                            </select>
+                                        </div>
                                     </div>
                                 </fieldset>
                             </>

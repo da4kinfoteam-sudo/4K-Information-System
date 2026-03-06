@@ -140,6 +140,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             <DetailItem label="Component" value={activity.component} />
                             <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="Funding Year" value={activity.fundingYear} />
+                            <DetailItem label="Tier" value={activity.tier} />
                             {activity.type === 'Training' && <DetailItem label="Facilitator" value={activity.facilitator} />}
                             <div className="col-span-2">
                                 <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Description</dt>
