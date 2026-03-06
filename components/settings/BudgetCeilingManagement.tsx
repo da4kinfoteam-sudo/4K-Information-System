@@ -1,6 +1,7 @@
+// Author: 4K
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement } from '../../constants';
+import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement, filterYears } from '../../constants';
 
 interface BudgetCeilingManagementProps {
     subprojects: Subproject[];
@@ -23,21 +24,10 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
     const [loading, setLoading] = useState(true);
     const [editingCell, setEditingCell] = useState<{ ou: string, year: number } | null>(null);
     const [editValue, setEditValue] = useState<string>('');
+    const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set());
 
-    // Calculate available years from data
-    const years = useMemo(() => {
-        const yearSet = new Set<number>();
-        const currentYear = new Date().getFullYear();
-        yearSet.add(currentYear);
-        yearSet.add(currentYear + 1);
-
-        subprojects.forEach(s => s.fundingYear && yearSet.add(s.fundingYear));
-        activities.forEach(a => a.fundingYear && yearSet.add(a.fundingYear));
-        officeReqs.forEach(o => o.fundYear && yearSet.add(o.fundYear));
-        staffingReqs.forEach(s => s.fundYear && yearSet.add(s.fundYear));
-
-        return Array.from(yearSet).sort((a, b) => a - b);
-    }, [subprojects, activities, officeReqs, staffingReqs]);
+    // Use filterYears from constants, converted to numbers for logic
+    const years = useMemo(() => filterYears.map(y => parseInt(y)), []);
 
     useEffect(() => {
         fetchCeilings();
@@ -64,26 +54,42 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
         return ceilings.find(c => c.operating_unit === ou && c.year === year)?.amount || 0;
     };
 
-    const calculateTotalBudget = (ou: string, year: number) => {
+    const calculateTotalBudget = (ou: string, year: number, tier?: string, fundType?: string) => {
         let total = 0;
 
         // Subprojects
-        subprojects.filter(s => s.operatingUnit === ou && s.fundingYear === year)
-            .forEach(s => total += (s.amount || 0));
+        subprojects.filter(s => 
+            s.operatingUnit === ou && 
+            s.fundingYear === year &&
+            (!tier || s.tier === tier) &&
+            (!fundType || s.fundType === fundType)
+        ).forEach(s => total += (s.amount || 0));
 
         // Activities
-        activities.filter(a => a.operatingUnit === ou && a.fundingYear === year)
-            .forEach(a => {
-                a.expenses.forEach(e => total += (e.amount || 0));
-            });
+        activities.filter(a => 
+            a.operatingUnit === ou && 
+            a.fundingYear === year &&
+            (!tier || a.tier === tier) &&
+            (!fundType || a.fundType === fundType)
+        ).forEach(a => {
+            a.expenses.forEach(e => total += (e.amount || 0));
+        });
 
         // Office Requirements
-        officeReqs.filter(o => o.operatingUnit === ou && o.fundYear === year)
-            .forEach(o => total += (o.numberOfUnits * o.pricePerUnit));
+        officeReqs.filter(o => 
+            o.operatingUnit === ou && 
+            o.fundYear === year &&
+            (!tier || o.tier === tier) &&
+            (!fundType || o.fundType === fundType)
+        ).forEach(o => total += (o.numberOfUnits * o.pricePerUnit));
 
         // Staffing Requirements
-        staffingReqs.filter(s => s.operatingUnit === ou && s.fundYear === year)
-            .forEach(s => total += (s.annualSalary || 0));
+        staffingReqs.filter(s => 
+            s.operatingUnit === ou && 
+            s.fundYear === year &&
+            (!tier || s.tier === tier) &&
+            (!fundType || s.fundType === fundType)
+        ).forEach(s => total += (s.annualSalary || 0));
 
         return total;
     };
@@ -124,22 +130,31 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
         }
     };
 
+    const toggleDetails = (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedCells(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+
     const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+        return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(amount);
     };
 
     if (loading) return <div className="p-4 text-center">Loading budget data...</div>;
 
     return (
-        <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="overflow-x-auto relative">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg border-collapse">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-800 z-10">
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-800 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                             Operating Unit
                         </th>
                         {years.map(year => (
-                            <th key={year} className="px-6 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider min-w-[200px]">
+                            <th key={year} className="px-6 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider min-w-[280px]">
                                 {year}
                             </th>
                         ))}
@@ -148,58 +163,108 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {operatingUnits.map(ou => (
                         <tr key={ou} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-10 border-r border-gray-200 dark:border-gray-700">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white sticky left-0 bg-white dark:bg-gray-800 z-20 border-r border-gray-200 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                 {ou}
                             </td>
                             {years.map(year => {
                                 const ceiling = getCeiling(ou, year);
-                                const used = calculateTotalBudget(ou, year);
-                                const diff = ceiling - used;
+                                
+                                // Tier 1 Current (Main Focus)
+                                const usedTier1Current = calculateTotalBudget(ou, year, 'Tier 1', 'Current');
+                                const diff = ceiling - usedTier1Current;
+                                
+                                // Other Breakdowns
+                                const usedTier2Current = calculateTotalBudget(ou, year, 'Tier 2', 'Current');
+                                const totalUsedAll = calculateTotalBudget(ou, year);
+                                const usedOthers = totalUsedAll - (usedTier1Current + usedTier2Current);
+                                
                                 const isEditing = editingCell?.ou === ou && editingCell?.year === year;
+                                const cellId = `${ou}-${year}`;
+                                const isExpanded = expandedCells.has(cellId);
 
                                 return (
-                                    <td key={`${ou}-${year}`} className="px-6 py-4 whitespace-nowrap text-sm text-right border-r border-gray-100 dark:border-gray-700">
-                                        {isEditing ? (
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="number"
-                                                    value={editValue}
-                                                    onChange={(e) => setEditValue(e.target.value)}
-                                                    className="w-24 px-2 py-1 text-sm border rounded focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600"
-                                                    autoFocus
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') handleSave();
-                                                        if (e.key === 'Escape') setEditingCell(null);
-                                                    }}
-                                                />
-                                                <button onClick={handleSave} className="text-emerald-600 hover:text-emerald-700">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div 
-                                                onClick={() => handleCellClick(ou, year, ceiling)}
-                                                className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-2 rounded transition-colors group"
-                                            >
-                                                <div className="font-bold text-gray-800 dark:text-gray-200 flex justify-between items-center">
-                                                    <span className="text-xs text-gray-500 uppercase mr-2">Ceiling:</span>
-                                                    {formatCurrency(ceiling)}
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                    </svg>
+                                    <td key={cellId} className="px-4 py-4 whitespace-nowrap text-sm text-right border-r border-gray-100 dark:border-gray-700 align-top">
+                                        <div className="flex flex-col gap-2">
+                                            {/* Main Focus: Tier 1 Current */}
+                                            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded border border-emerald-100 dark:border-emerald-800">
+                                                <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase mb-1 text-center">Tier 1 (Current)</div>
+                                                
+                                                {isEditing ? (
+                                                    <div className="flex items-center gap-1 justify-end mb-1">
+                                                        <span className="text-xs text-gray-500">Ceiling:</span>
+                                                        <input
+                                                            type="number"
+                                                            value={editValue}
+                                                            onChange={(e) => setEditValue(e.target.value)}
+                                                            className="w-24 px-1 py-0.5 text-sm border rounded focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:border-gray-600 text-right"
+                                                            autoFocus
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleSave();
+                                                                if (e.key === 'Escape') setEditingCell(null);
+                                                            }}
+                                                        />
+                                                        <button onClick={handleSave} className="text-emerald-600 hover:text-emerald-700">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div 
+                                                        onClick={() => handleCellClick(ou, year, ceiling)}
+                                                        className="flex justify-between items-center cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded px-1 transition-colors group"
+                                                        title="Click to edit ceiling"
+                                                    >
+                                                        <span className="text-xs text-gray-500">Ceiling:</span>
+                                                        <div className="flex items-center gap-1 font-bold text-gray-800 dark:text-gray-200">
+                                                            {formatCurrency(ceiling)}
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                            </svg>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex justify-between items-center px-1 mt-1">
+                                                    <span className="text-xs text-gray-500">Used:</span>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(usedTier1Current)}</span>
                                                 </div>
-                                                <div className="text-xs text-gray-500 mt-1 flex justify-between">
-                                                    <span>Used:</span>
-                                                    <span>{formatCurrency(used)}</span>
-                                                </div>
-                                                <div className={`text-xs font-semibold mt-1 flex justify-between ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                    <span>{diff < 0 ? 'Over:' : 'Remaining:'}</span>
+                                                
+                                                <div className={`flex justify-between items-center px-1 mt-1 font-bold text-xs border-t border-emerald-200 dark:border-emerald-800 pt-1 ${diff < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                                    <span>{diff < 0 ? 'Over:' : 'Rem:'}</span>
                                                     <span>{formatCurrency(Math.abs(diff))}</span>
                                                 </div>
                                             </div>
-                                        )}
+
+                                            {/* Details Toggle */}
+                                            <button 
+                                                onClick={(e) => toggleDetails(cellId, e)}
+                                                className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center gap-1 w-full py-1"
+                                            >
+                                                {isExpanded ? 'Hide Details' : 'Show All Funds'}
+                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
+
+                                            {/* Collapsible Details */}
+                                            {isExpanded && (
+                                                <div className="text-xs space-y-1 bg-gray-50 dark:bg-gray-700/30 p-2 rounded animate-fadeIn">
+                                                    <div className="flex justify-between text-gray-500">
+                                                        <span>Tier 2 (Current):</span>
+                                                        <span>{formatCurrency(usedTier2Current)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-gray-500">
+                                                        <span>Other Funds:</span>
+                                                        <span>{formatCurrency(usedOthers)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between font-bold text-gray-700 dark:text-gray-300 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                                                        <span>Grand Total:</span>
+                                                        <span>{formatCurrency(totalUsedAll)}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </td>
                                 );
                             })}
