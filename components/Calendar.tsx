@@ -16,7 +16,6 @@ export interface CalendarEvent {
 }
 
 interface CalendarProps {
-    subprojects: Subproject[];
     activities: Activity[];
     systemSettings: SystemSettings;
     onDateClick: (date: Date, events: CalendarEvent[]) => void;
@@ -37,7 +36,7 @@ interface Holiday {
     types: string[];
 }
 
-const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSettings, onDateClick, onEventClick }) => {
+const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateClick, onEventClick }) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [holidays, setHolidays] = useState<Holiday[]>([]);
 
@@ -112,35 +111,6 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
             if (!events[key]) events[key] = [];
             events[key].push(event);
         };
-
-        subprojects.forEach(sp => {
-            const isCompleted = sp.status === 'Completed';
-            
-            if (sp.startDate) {
-                const styles = getStatusStyles(isCompleted, sp.startDate, 'border-blue-500');
-                addEvent(sp.startDate, {
-                    id: `sp-start-${sp.id}`,
-                    title: `Start: ${sp.name}`,
-                    type: 'Subproject Start',
-                    ...styles,
-                    originalData: sp,
-                    dataId: sp.id,
-                    dataType: 'Subproject'
-                });
-            }
-            if (sp.estimatedCompletionDate) {
-                const styles = getStatusStyles(isCompleted, sp.estimatedCompletionDate, 'border-red-500');
-                addEvent(sp.estimatedCompletionDate, {
-                    id: `sp-end-${sp.id}`,
-                    title: `Target: ${sp.name}`,
-                    type: 'Subproject End',
-                    ...styles,
-                    originalData: sp,
-                    dataId: sp.id,
-                    dataType: 'Subproject'
-                });
-            }
-        });
 
         activities.forEach(act => {
             if (act.date) {
@@ -224,7 +194,7 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
         });
 
         return events;
-    }, [subprojects, activities, systemSettings, holidays]);
+    }, [activities, systemSettings, holidays]);
 
     const renderCells = () => {
         const cells = [];
@@ -317,10 +287,6 @@ const Calendar: React.FC<CalendarProps> = ({ subprojects, activities, systemSett
                 <div className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-red-100 border-l-4 border-red-600 rounded-sm"></span>
                     <span>Past Due / Incomplete</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="w-4 h-4 bg-white border border-gray-200 border-l-4 border-blue-500 rounded-sm"></span>
-                    <span>Subproject</span>
                 </div>
                  <div className="flex items-center gap-2">
                     <span className="w-4 h-4 bg-white border border-gray-200 border-l-4 border-green-500 rounded-sm"></span>

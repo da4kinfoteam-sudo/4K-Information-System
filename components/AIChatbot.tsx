@@ -277,10 +277,25 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
-        // 2e. Identify Topic Keywords (Commodities, Types, etc.)
+        // 2e. Identify Tier and Fund Type
+        const tierMatch = q.match(/tier\s*([12])/i);
+        const targetTier = tierMatch ? `Tier ${tierMatch[1]}` : null;
+
+        const fundTypeKeywords = ['current', 'continuing', 'unprogrammed'];
+        let targetFundType: string | null = null;
+        for (const ft of fundTypeKeywords) {
+            if (q.includes(ft)) {
+                targetFundType = ft.charAt(0).toUpperCase() + ft.slice(1);
+                break;
+            }
+        }
+
+        // 2f. Identify Topic Keywords (Commodities, Types, etc.)
         // Remove known entities from query to isolate topics
         let cleanQuery = q;
         if (targetYear) cleanQuery = cleanQuery.replace(targetYear, '');
+        if (targetTier) cleanQuery = cleanQuery.replace(new RegExp(`tier\\s*${tierMatch?.[1]}`, 'i'), '');
+        if (targetFundType) cleanQuery = cleanQuery.replace(targetFundType.toLowerCase(), '');
         if (targetRegion) {
              // Remove the alias that matched
              for (const alias of sortedAliases) {
@@ -302,9 +317,6 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         targetLocations.forEach(l => {
             // Remove the full location name if present
             cleanQuery = cleanQuery.replace(l, '');
-            // Also try to remove the original string from uniqueLocations if it was matched there
-            // This is a bit tricky since we don't know exactly which string matched if we only have the normalized one
-            // But usually l is from uniqueLocations which is already lowercased in our logic above (actually uniqueLocations has original casing in the Set, but we lowercased it in the loop)
         });
         
         // Remove original unique locations from query just in case
@@ -332,6 +344,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             if (targetYear) {
                 const y = item.fundingYear || item.fundYear || (item.date ? new Date(item.date).getFullYear() : null);
                 if (y && y.toString() !== targetYear) match = false;
+            }
+            // Tier Filter
+            if (targetTier) {
+                if (item.tier && item.tier !== targetTier) match = false;
+            }
+            // Fund Type Filter
+            if (targetFundType) {
+                if (item.fundType && item.fundType !== targetFundType) match = false;
             }
             // Region Filter
             if (targetRegion) {
@@ -432,11 +452,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         // 4. PRE-CALCULATE FINANCIALS (The "Formula")
         const calculateBudget = (items: any[], type: 'sp' | 'act') => {
             if (type === 'sp') {
-                return items.reduce((sum, sp) => 
-                    sum + (sp.details?.reduce((dSum: number, d: any) => dSum + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
+                return items.reduce((sum, sp) => sum + (sp.amount || 0), 0);
             } else {
                 return items.reduce((sum, act) => 
-                    sum + (act.expenses?.reduce((eSum: number, e: any) => eSum + e.amount, 0) || 0), 0);
+                    sum + (act.expenses?.reduce((eSum: number, e: any) => eSum + (e.amount || 0), 0) || 0), 0);
             }
         };
 
@@ -449,6 +468,8 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const stats = {
             filters_applied: { 
                 year: targetYear || "All Years", 
+                tier: targetTier || "All Tiers",
+                fundType: targetFundType || "All Fund Types",
                 region: targetRegion || "All Regions (National)",
                 location: targetLocations.length > 0 ? targetLocations.join(', ') : "None",
                 status: targetStatus || "All Statuses",

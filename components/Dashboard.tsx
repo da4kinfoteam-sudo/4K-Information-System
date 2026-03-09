@@ -714,7 +714,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Calendar</h3>
                 </div>
                 <Calendar 
-                    subprojects={filteredData.subprojects}
                     activities={filteredData.activities}
                     systemSettings={systemSettings}
                     onDateClick={handleDateClick}
