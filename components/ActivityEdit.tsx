@@ -300,13 +300,13 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             const ep = currentExpense.expenseParticular;
             if (uacsCodes[ot] && uacsCodes[ot][ep]) {
                 Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc });
+                    codes.push({ code, desc: desc as string });
                 });
             }
         } else {
             Object.entries(uacsCodes).forEach(([ot, eps]) => {
                 Object.entries(eps).forEach(([ep, codesObj]) => {
-                    Object.entries(codesObj).forEach(([code, desc]) => {
+                    Object.entries(codesObj as Record<string, string>).forEach(([code, desc]) => {
                         codes.push({ code, desc });
                     });
                 });

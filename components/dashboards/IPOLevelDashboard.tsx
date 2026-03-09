@@ -142,7 +142,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     if (loading) return <div className="p-4 text-center">Loading LOD data...</div>;
 
-    const totalDisplayed: number = Object.values(currentYearCounts).reduce((a: number, b: number) => a + b, 0);
+    const totalDisplayed: number = (Object.values(currentYearCounts) as number[]).reduce((a: number, b: number) => a + b, 0);
 
     return (
         <div className="space-y-8 animate-fadeIn">

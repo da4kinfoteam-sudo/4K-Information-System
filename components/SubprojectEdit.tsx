@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes, philippineRegions } from '../constants';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -72,7 +72,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [formData, setFormData] = useState<Subproject>(subproject || defaultFormData);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [selectedRegion, setSelectedRegion] = useState('');
-    const [dateError, setDateError] = useState('');
     
     // Budget Form State
     const [currentDetail, setCurrentDetail] = useState<Omit<SubprojectDetail, 'id'>>({
@@ -86,6 +85,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
     const [missingFields, setMissingFields] = useState<string[]>([]);
+    const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{field: string, dateStr: string} | null>(null);
 
     // Initialize logic
     useEffect(() => {
@@ -94,11 +94,14 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             const linkedIpo = ipos.find(i => i.name === subproject.indigenousPeopleOrganization);
             if (linkedIpo) setSelectedRegion(linkedIpo.region);
         } else {
+            const defaultOu = currentUser?.operatingUnit || '';
+            const defaultRegion = ouToRegionMap[defaultOu] || '';
             setFormData({
                 ...defaultFormData,
-                operatingUnit: currentUser?.operatingUnit || '',
+                operatingUnit: defaultOu,
                 encodedBy: currentUser?.fullName || ''
             });
+            setSelectedRegion(defaultRegion);
         }
     }, [subproject, ipos, currentUser]);
 
@@ -123,6 +126,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     newData.location = '';
                     newData.ipo_id = undefined;
                 }
+            } else if (name === 'operatingUnit') {
+                const mappedRegion = ouToRegionMap[value] || '';
+                setSelectedRegion(mappedRegion);
+                newData.indigenousPeopleOrganization = '';
             }
             return newData;
         });
@@ -144,8 +151,47 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         const mIndex = parseInt(monthIndex);
         const year = formData.fundingYear || new Date().getFullYear();
         const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        
+        if (field === 'deliveryDate' && formData.estimatedCompletionDate) {
+            const estCompDate = new Date(formData.estimatedCompletionDate);
+            const selectedDate = new Date(dateStr);
+            if (selectedDate.getFullYear() > estCompDate.getFullYear() || 
+                (selectedDate.getFullYear() === estCompDate.getFullYear() && selectedDate.getMonth() > estCompDate.getMonth())) {
+                setConfirmDeliveryDate({ field, dateStr });
+                return;
+            }
+        }
+        
         setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
     }
+
+    const handleConfirmDeliveryDate = () => {
+        if (confirmDeliveryDate) {
+            setFormData(prev => ({ ...prev, estimatedCompletionDate: confirmDeliveryDate.dateStr }));
+            setCurrentDetail(prev => ({ ...prev, [confirmDeliveryDate.field]: confirmDeliveryDate.dateStr }));
+            setConfirmDeliveryDate(null);
+        }
+    };
+
+    const handleCancelDeliveryDate = () => {
+        setConfirmDeliveryDate(null);
+    };
+
+    const handleEstimatedCompletionMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const monthIndex = e.target.value;
+        if (monthIndex === '') {
+            setFormData(prev => ({ ...prev, estimatedCompletionDate: '' }));
+            return;
+        }
+        const mIndex = parseInt(monthIndex);
+        const year = formData.fundingYear || new Date().getFullYear();
+        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
+        
+        if (!currentDetail.deliveryDate) {
+            setCurrentDetail(prev => ({ ...prev, deliveryDate: dateStr }));
+        }
+    };
 
     const availableUacsCodes = useMemo(() => {
         let codes: { code: string, desc: string }[] = [];
@@ -154,13 +200,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             const ep = currentDetail.expenseParticular;
             if (uacsCodes[ot] && uacsCodes[ot][ep]) {
                 Object.entries(uacsCodes[ot][ep]).forEach(([code, desc]) => {
-                    codes.push({ code, desc });
+                    codes.push({ code, desc: desc as string });
                 });
             }
         } else {
             Object.entries(uacsCodes).forEach(([ot, eps]) => {
                 Object.entries(eps).forEach(([ep, codesObj]) => {
-                    Object.entries(codesObj).forEach(([code, desc]) => {
+                    Object.entries(codesObj as Record<string, string>).forEach(([code, desc]) => {
                         codes.push({ code, desc });
                     });
                 });
@@ -201,7 +247,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     };
 
     const handleAddDetail = () => {
-        setDateError('');
         if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.deliveryDate || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
             alert("Please fill in all required detail fields, including delivery date and monthly targets."); return;
         }
@@ -226,7 +271,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         let newEstimatedCompletionDate = formData.estimatedCompletionDate;
         const deliveryDates = updatedDetails.map(d => d.deliveryDate).filter(d => d).map(d => new Date(d).getTime());
         if (deliveryDates.length > 0) {
-            newEstimatedCompletionDate = new Date(Math.max(...deliveryDates)).toISOString().split('T')[0];
+            const maxDate = new Date(Math.max(...deliveryDates)).toISOString().split('T')[0];
+            if (!newEstimatedCompletionDate || new Date(maxDate) > new Date(newEstimatedCompletionDate)) {
+                newEstimatedCompletionDate = maxDate;
+            }
         }
 
         setFormData(prev => ({ ...prev, details: updatedDetails, estimatedCompletionDate: newEstimatedCompletionDate }));
@@ -293,11 +341,38 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
+    const handleNextSection = () => {
+        if (activeTab === 'details') {
+            const required = ['name', 'indigenousPeopleOrganization', 'status'];
+            const missing = required.filter(field => !formData[field as keyof Subproject]);
+            if (missing.length > 0) {
+                setMissingFields(missing);
+            }
+            setActiveTab('commodity');
+        } else if (activeTab === 'commodity') {
+            setActiveTab('budget');
+        }
+    };
+
+    const handleBackSection = () => {
+        if (activeTab === 'budget') {
+            setActiveTab('commodity');
+        } else if (activeTab === 'commodity') {
+            setActiveTab('details');
+        }
+    };
+
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
         const required = ['name', 'indigenousPeopleOrganization', 'status'];
         const missing = required.filter(field => !formData[field as keyof Subproject]);
+        if (missing.length > 0) {
+            setMissingFields(missing);
+            alert("Please fill in all required fields in the Subproject Details section.");
+            setActiveTab('details');
+            return;
+        }
         
         if (missing.length > 0) {
             setMissingFields(missing);
@@ -393,6 +468,20 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                          <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div><label className="block text-sm font-medium">Subproject Name <span className="text-red-500">*</span></label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} required /></div>
+                                <div>
+                                    <label className="block text-sm font-medium">Operating Unit</label>
+                                    <select 
+                                        name="operatingUnit" 
+                                        value={formData.operatingUnit || ''} 
+                                        onChange={handleInputChange} 
+                                        className={commonInputClasses} 
+                                        disabled={currentUser?.role !== 'Administrator'}
+                                        title={currentUser?.role !== 'Administrator' ? "Only Administrators can edit the Operating Unit" : ""}
+                                    >
+                                        <option value="">Select Operating Unit</option>
+                                        {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
+                                    </select>
+                                </div>
                                 <div><label className="block text-sm font-medium">Region <span className="text-red-500">*</span></label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !selectedRegion ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium">Indigenous People Organization <span className="text-red-500">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
                                 <div><label className="block text-sm font-medium">Status <span className="text-red-500">*</span></label><select name="status" value={formData.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={currentUser?.role === 'User' && !subproject}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Cancelled">Cancelled</option>{formData.status === 'Completed' && <option value="Completed">Completed</option>}</select></div>
@@ -404,13 +493,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <select 
                                         name="estimatedCompletionDate" 
                                         value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
-                                        disabled 
-                                        className={commonInputClasses + " bg-gray-100 dark:bg-gray-800 cursor-not-allowed"}
+                                        onChange={handleEstimatedCompletionMonthChange}
+                                        className={commonInputClasses}
                                     >
-                                        <option value="">Auto-calculated</option>
+                                        <option value="">Select Month</option>
                                         {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
-                                    <p className="text-xs text-gray-500 mt-1">Based on latest item delivery</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -536,7 +624,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         <option value="">Select Month</option>
                                         {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
                                     </select>
-                                    {dateError && <p className="text-xs text-red-500 mt-1">{dateError}</p>}
                                 </div>
                                 
                                 <div>
@@ -571,9 +658,33 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     )}
                 </div>
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Subproject</button>
+                    {activeTab !== 'details' && (
+                        <button type="button" onClick={handleBackSection} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Back Section</button>
+                    )}
+                    {activeTab !== 'budget' ? (
+                        <button type="button" onClick={handleNextSection} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Next Section</button>
+                    ) : (
+                        <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Subproject</button>
+                    )}
                 </div>
             </form>
+
+            {/* Delivery Date Confirmation Modal */}
+            {confirmDeliveryDate && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Confirm Delivery Date</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                            The delivery date you selected is beyond the subproject's estimated completion date. 
+                            Do you want to update the subproject's estimated completion date to match this delivery date?
+                        </p>
+                        <div className="flex justify-end gap-4">
+                            <button onClick={handleCancelDeliveryDate} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
+                            <button onClick={handleConfirmDeliveryDate} className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700">Confirm & Update</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
