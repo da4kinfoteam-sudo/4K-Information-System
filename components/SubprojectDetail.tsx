@@ -106,6 +106,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
     const [dateError, setDateError] = useState('');
     const [historyLimit, setHistoryLimit] = useState<number>(5);
+    const [missingFields, setMissingFields] = useState<string[]>([]);
 
     const isUserRole = currentUser?.role === 'User';
 
@@ -249,6 +250,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        
+        if (missingFields.includes(name)) {
+            setMissingFields(prev => prev.filter(f => f !== name));
+        }
         
         if (name === 'status') {
             const newStatus = value as Subproject['status'];
@@ -489,6 +494,17 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
+        if (editMode === 'details') {
+            const requiredFields = ['name', 'indigenousPeopleOrganization', 'status'];
+            const missing = requiredFields.filter(field => !editedSubproject[field as keyof Subproject]);
+            
+            if (missing.length > 0) {
+                setMissingFields(missing);
+                alert("Please fill in all required fields marked with an asterisk (*).");
+                return;
+            }
+        }
+        
         let eventType = "Updated via Detail View";
         if (editMode === 'details') eventType = "Updated Details";
         if (editMode === 'commodity') eventType = "Updated Commodities";
@@ -588,19 +604,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Project Details</legend>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-sm font-medium">Subproject Name</label>
-                                                <input type="text" name="name" value={editedSubproject.name} onChange={handleInputChange} required className={commonInputClasses} />
+                                                <label className="block text-sm font-medium">Subproject Name <span className="text-red-500">*</span></label>
+                                                <input type="text" name="name" value={editedSubproject.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">IPO</label>
-                                                <select name="indigenousPeopleOrganization" value={editedSubproject.indigenousPeopleOrganization} onChange={handleInputChange} required className={commonInputClasses}>
+                                                <label className="block text-sm font-medium">IPO <span className="text-red-500">*</span></label>
+                                                <select name="indigenousPeopleOrganization" value={editedSubproject.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                                     <option value="">Select IPO</option>
                                                     {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">Status</label>
-                                                <select name="status" value={editedSubproject.status} onChange={handleInputChange} className={commonInputClasses}>
+                                                <label className="block text-sm font-medium">Status <span className="text-red-500">*</span></label>
+                                                <select name="status" value={editedSubproject.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                                     <option value="Proposed">Proposed</option>
                                                     <option value="Ongoing">Ongoing</option>
                                                     {(isAdmin || editedSubproject.status === 'Completed') && <option value="Completed">Completed</option>}
@@ -629,7 +645,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="block text-sm font-medium">Est. Completion</label>
+                                                    <label className="block text-sm font-medium">Estimated Completion</label>
                                                     <select 
                                                         name="estimatedCompletionDate" 
                                                         value={getMonthFromDateStr(editedSubproject.estimatedCompletionDate)} 
@@ -721,7 +737,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'No. of Heads' : 'Area (ha)'}</label>
+                                                <label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'Number of Heads' : 'Area (Hectares)'}</label>
                                                 <input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                             </div>
                                             <div className="flex gap-2 items-end">
@@ -749,8 +765,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     <div>
                                                         <span className="font-semibold">{d.particulars}</span>
                                                         <div className="text-xs text-gray-500">
-                                                            {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}
-                                                            <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
+                                                            <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
+                                                            <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
+                                                            <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-4">
@@ -790,6 +807,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
                                                         ))}
                                                     </datalist>
+                                                    {currentDetail.uacsCode && availableUacsCodes.find(c => c.code === currentDetail.uacsCode) && (
+                                                        <p className="text-[10px] text-gray-500 mt-1 leading-tight">
+                                                            {availableUacsCodes.find(c => c.code === currentDetail.uacsCode)?.desc}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -829,17 +851,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </select>
                                             </div>
 
-                                            <div><label className="block text-xs font-medium">Unit</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                            <div><label className="block text-xs font-medium">Qty</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
+                                            <div><label className="block text-xs font-medium">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
+                                            <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             
                                             {editingDetailIndex !== null ? (
                                                 <div className="flex gap-1 h-9 items-end">
-                                                    <button type="button" onClick={handleAddDetail} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
-                                                    <button type="button" onClick={handleCancelDetailEdit} className="h-full px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                                    <button type="button" onClick={handleAddDetail} className="h-full px-4 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update Item</button>
+                                                    <button type="button" onClick={handleCancelDetailEdit} className="h-full px-4 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
                                                 </div>
                                             ) : (
-                                                <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
+                                                <div className="flex items-end h-[60px]">
+                                                    <button type="button" onClick={handleAddDetail} className="h-9 px-4 inline-flex items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-medium transition-colors w-full">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                        Add Item
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                      </fieldset>
@@ -1166,7 +1193,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <DetailItem label="UID" value={subproject.uid} />
                             <DetailItem label="Package" value={subproject.packageType} />
                             <DetailItem label="IPO" value={subproject.indigenousPeopleOrganization} />
-                            <DetailItem label="Est. Completion" value={formatMonthYear(subproject.estimatedCompletionDate)} />
+                            <DetailItem label="Estimated Completion" value={formatMonthYear(subproject.estimatedCompletionDate)} />
                             <DetailItem label="Actual Completion" value={formatMonthYear(subproject.actualCompletionDate)} />
                             <DetailItem label="Funding Year" value={subproject.fundingYear?.toString()} />
                             <DetailItem label="Fund Type" value={subproject.fundType} />

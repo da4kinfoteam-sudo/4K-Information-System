@@ -386,7 +386,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             Specs: item.specs,
             Purpose: item.purpose,
             Status: item.status,
-            'No. of Units': item.numberOfUnits,
+            'Number of Units': item.numberOfUnits,
             'Price/Unit': item.pricePerUnit,
             'Total Amount': item.numberOfUnits * item.pricePerUnit,
             'Fund Type': item.fundType,
@@ -537,7 +537,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Equipment</label><input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} required className={commonInputClasses} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Specifications</label><input type="text" name="specs" value={formData.specs} onChange={handleInputChange} className={commonInputClasses} /></div>
                         <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Purpose</label><textarea name="purpose" value={formData.purpose} onChange={handleInputChange} rows={2} className={commonInputClasses} /></div>
-                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Number of Units</label><input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} /></div>
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Price per Unit</label><input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} /></div>
                         <div className="md:col-span-2 text-right font-bold text-lg mt-2 text-gray-800 dark:text-white">Total: {formatCurrency((Number(formData.numberOfUnits) || 0) * (Number(formData.pricePerUnit) || 0))}</div>
                     </div>

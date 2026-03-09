@@ -85,6 +85,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         typeName: '', name: '', area: 0, averageYield: 0
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
+    const [missingFields, setMissingFields] = useState<string[]>([]);
 
     // Initialize logic
     useEffect(() => {
@@ -110,6 +111,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     // Handlers
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        setMissingFields(prev => prev.filter(f => f !== name));
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
             if (name === 'indigenousPeopleOrganization') {
@@ -294,6 +296,17 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
+        const required = ['name', 'indigenousPeopleOrganization', 'status'];
+        const missing = required.filter(field => !formData[field as keyof Subproject]);
+        
+        if (missing.length > 0) {
+            setMissingFields(missing);
+            alert("Please fill in all required fields.");
+            setActiveTab('details');
+            return;
+        }
+        setMissingFields([]);
+
         const timestamp = new Date().toISOString();
         const historyEntry = { date: timestamp, event: subproject ? "Subproject Updated" : "Subproject Created", user: currentUser?.fullName || "System" };
         
@@ -379,15 +392,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     {activeTab === 'details' && (
                          <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium">Subproject Name</label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} required /></div>
-                                <div><label className="block text-sm font-medium">Region</label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={commonInputClasses}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium">IPO</label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={commonInputClasses} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium">Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses} disabled={currentUser?.role === 'User' && !subproject}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Cancelled">Cancelled</option>{formData.status === 'Completed' && <option value="Completed">Completed</option>}</select></div>
+                                <div><label className="block text-sm font-medium">Subproject Name <span className="text-red-500">*</span></label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} required /></div>
+                                <div><label className="block text-sm font-medium">Region <span className="text-red-500">*</span></label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !selectedRegion ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium">Indigenous People Organization <span className="text-red-500">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium">Status <span className="text-red-500">*</span></label><select name="status" value={formData.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={currentUser?.role === 'User' && !subproject}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Cancelled">Cancelled</option>{formData.status === 'Completed' && <option value="Completed">Completed</option>}</select></div>
                                 <div><label className="block text-sm font-medium">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium">Est. Completion</label>
+                                    <label className="block text-sm font-medium">Estimated Completion</label>
                                     <select 
                                         name="estimatedCompletionDate" 
                                         value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
@@ -449,11 +462,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4">
                                 <div><label className="block text-xs font-medium">Type</label><select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                 <div><label className="block text-xs font-medium">Commodity</label><select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}><option value="">Select Commodity</option>{currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'No. of Heads' : 'Area (Hectares)'}</label><input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} /></div>
+                                <div><label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'Number of Heads' : 'Area (Hectares)'}</label><input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} /></div>
                                 <div className="flex gap-2 items-end">
                                     {currentCommodity.typeName !== 'Animal Commodity' && (
                                         <div className="flex-grow">
-                                            <label className="block text-xs font-medium">Yield (Kg/Hectares)</label>
+                                            <label className="block text-xs font-medium">Yield (Kilograms/Hectares)</label>
                                             <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
                                         </div>
                                     )}
@@ -469,8 +482,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <div>
                                         <span className="font-semibold">{d.particulars}</span>
                                         <div className="text-xs text-gray-500">
-                                            {d.uacsCode} - {d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}
-                                            <span className="block mt-1">Obl: {formatMonthYear(d.obligationMonth)} | Disb: {formatMonthYear(d.disbursementMonth)}</span>
+                                            <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
+                                            <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
+                                            <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
@@ -540,15 +554,17 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     </select>
                                 </div>
                                 
-                                <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="lots">lots</option></select></div>
                                 <div><label className="block text-xs font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                <div><label className="block text-xs font-medium">No. of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                <div><label className="block text-xs font-medium">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
+                                <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="lots">lots</option></select></div>
                                 
-                                <div className="flex gap-2 items-end">
+                                <div className="lg:col-span-4 flex gap-2 mt-2">
                                     {editingDetailId !== null && (
-                                        <button type="button" onClick={handleCancelEditDetail} className="h-9 px-3 flex-shrink-0 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 text-sm font-medium">Cancel</button>
+                                        <button type="button" onClick={handleCancelEditDetail} className="flex-1 py-2 bg-gray-400 text-white rounded text-sm hover:bg-gray-500">Cancel</button>
                                     )}
-                                    <button type="button" onClick={handleAddDetail} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">{editingDetailId !== null ? '✓' : '+'}</button>
+                                    <button type="button" onClick={handleAddDetail} className="flex-1 py-2 bg-emerald-600 text-white rounded text-sm hover:bg-emerald-700">
+                                        {editingDetailId !== null ? 'Update Item' : 'Add Item'}
+                                    </button>
                                 </div>
                              </div>
                         </div>

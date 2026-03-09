@@ -1044,7 +1044,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         </div>
                          <div className="flex items-end gap-2">
                             <div className="flex-1">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Animal Commodity' ? 'Number of Heads' : 'Area (ha)'}</label>
+                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Animal Commodity' ? 'Number of Heads' : 'Area (Hectares)'}</label>
                                 <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                             </div>
                             {currentCommodity.type !== 'Animal Commodity' && (

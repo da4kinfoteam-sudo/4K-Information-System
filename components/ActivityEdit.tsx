@@ -86,6 +86,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     // Expense Edit State
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+    const [missingFields, setMissingFields] = useState<string[]>([]);
     const [currentExpense, setCurrentExpense] = useState({
         objectType: 'MOOE' as ObjectType,
         expenseParticular: '',
@@ -220,6 +221,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
         
+        if (missingFields.includes(name)) {
+            setMissingFields(prev => prev.filter(f => f !== name));
+        }
+
         if (name === 'component') setSelectedActivityType('');
         if (name === 'date' && conductType === 'Single') setFormData(prev => ({ ...prev, endDate: value }));
         if (name === 'actualDate' && conductType === 'Single') setFormData(prev => ({ ...prev, actualEndDate: value }));
@@ -236,6 +241,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         const ref = referenceActivities?.find(ra => ra.activity_name === selectedName && ra.component === formData.component);
         const type = ref?.type || 'Activity'; 
         
+        if (missingFields.includes('type')) {
+            setMissingFields(prev => prev.filter(f => f !== 'type'));
+        }
+
         setFormData(prev => ({ 
             ...prev, 
             name: type === 'Training' && (!activity || activity.type !== 'Training') ? '' : selectedName, 
@@ -395,6 +404,19 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         
+        if ((mode === 'create' && activeTab === 'details') || mode === 'details') {
+            const requiredFields = ['component', 'type', 'date', 'location'];
+            if (formData.type === 'Training') requiredFields.push('name');
+            if (conductType === 'Multi-day') requiredFields.push('endDate');
+
+            const missing = requiredFields.filter(field => !formData[field as keyof Activity]);
+            if (missing.length > 0) {
+                setMissingFields(missing);
+                alert('Please fill out all required fields before proceeding.');
+                return;
+            }
+        }
+
         let activitiesToSave: Activity[] = [];
         const currentYear = new Date().getFullYear();
         const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
@@ -524,22 +546,22 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium">Component</label>
-                                    <select name="component" value={formData.component} onChange={handleInputChange} className={commonInputClasses}>
+                                    <label className="block text-sm font-medium">Component <span className="text-red-500">*</span></label>
+                                    <select name="component" value={formData.component} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('component') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                         {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium">Activity Type</label>
-                                    <select value={selectedActivityType} onChange={handleActivityTypeChange} className={commonInputClasses}>
+                                    <label className="block text-sm font-medium">Activity Type <span className="text-red-500">*</span></label>
+                                    <select value={selectedActivityType} onChange={handleActivityTypeChange} className={`${commonInputClasses} ${missingFields.includes('type') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                         <option value="">Select Activity</option>
                                         {activityOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
                                 </div>
                                 {formData.type === 'Training' && (
                                     <div className="md:col-span-2">
-                                        <label className="block text-sm font-medium">Specific Title</label>
-                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={commonInputClasses} required />
+                                        <label className="block text-sm font-medium">Specific Title <span className="text-red-500">*</span></label>
+                                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} required />
                                     </div>
                                 )}
                                 
@@ -557,21 +579,28 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                 {conductType !== 'Repeating' && (
                                     <>
                                         <div>
-                                            <label className="block text-sm font-medium">Start Date</label>
-                                            <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={commonInputClasses} />
+                                            <label className="block text-sm font-medium">Start Date <span className="text-red-500">*</span></label>
+                                            <input type="date" name="date" value={formData.date} onChange={handleInputChange} required className={`${commonInputClasses} ${missingFields.includes('date') ? 'border-red-500 ring-1 ring-red-500' : ''}`} />
                                         </div>
                                         {conductType === 'Multi-day' && (
                                             <div>
-                                                <label className="block text-sm font-medium">End Date</label>
-                                                <input type="date" name="endDate" value={formData.endDate} onChange={handleInputChange} required className={commonInputClasses} />
+                                                <label className="block text-sm font-medium">End Date <span className="text-red-500">*</span></label>
+                                                <input type="date" name="endDate" value={formData.endDate} onChange={handleInputChange} required className={`${commonInputClasses} ${missingFields.includes('endDate') ? 'border-red-500 ring-1 ring-red-500' : ''}`} />
                                             </div>
                                         )}
                                     </>
                                 )}
 
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium">Location</label>
-                                    <LocationPicker value={formData.location} onChange={(val) => setFormData(prev => ({...prev, location: val}))} />
+                                    <label className="block text-sm font-medium">Location <span className="text-red-500">*</span></label>
+                                    <div className={missingFields.includes('location') ? 'border-red-500 ring-1 ring-red-500 rounded-md' : ''}>
+                                        <LocationPicker value={formData.location} onChange={(val) => {
+                                            setFormData(prev => ({...prev, location: val}));
+                                            if (missingFields.includes('location')) {
+                                                setMissingFields(prev => prev.filter(f => f !== 'location'));
+                                            }
+                                        }} />
+                                    </div>
                                 </div>
                             </div>
                         </fieldset>
@@ -708,6 +737,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                 <option key={item.code} value={item.code}>{item.code} - {item.desc}</option>
                                             ))}
                                         </datalist>
+                                        {currentExpense.uacsCode && availableUacsCodes.find(c => c.code === currentExpense.uacsCode)?.desc && (
+                                            <p className="text-xs text-gray-500 mt-1">{availableUacsCodes.find(c => c.code === currentExpense.uacsCode)?.desc}</p>
+                                        )}
                                     </div>
                                     
                                     {/* Row 2: Financial Details */}
