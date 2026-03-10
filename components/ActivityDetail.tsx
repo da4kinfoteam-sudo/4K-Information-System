@@ -129,6 +129,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                         </div>
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
                             <DetailItem label="Status" value={<span className={getStatusBadge(activity.status)}>{activity.status}</span>} />
+                            <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="UID" value={activity.uid} />
                             <DetailItem label="Type" value={activity.type} />
                             <DetailItem label="Date" value={
@@ -138,7 +139,6 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 </>
                             } />
                             <DetailItem label="Component" value={activity.component} />
-                            <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="Funding Year" value={activity.fundingYear} />
                             <DetailItem label="Tier" value={activity.tier} />
                             {activity.type === 'Training' && <DetailItem label="Facilitator" value={activity.facilitator} />}

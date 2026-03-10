@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions } from '../constants';
+import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -153,14 +153,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             }
         } else {
             // Create Mode Defaults
+            const userOu = currentUser?.operatingUnit || '';
             setFormData({
                 ...defaultFormData,
                 type: forcedType || 'Activity',
-                operatingUnit: currentUser?.operatingUnit || '',
+                operatingUnit: userOu,
                 encodedBy: currentUser?.fullName || '',
                 status: 'Proposed'
             });
             setConductType('Single');
+            setIpoRegionFilter(ouToRegionMap[userOu] || 'All');
         }
         
         if (mode === 'expenses') setActiveTab('expenses');
@@ -219,15 +221,22 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const newData = { ...prev, [name]: value };
+            if (name === 'operatingUnit') {
+                const mappedRegion = ouToRegionMap[value] || 'All';
+                setIpoRegionFilter(mappedRegion);
+                newData.participatingIpos = [];
+            }
+            if (name === 'component') setSelectedActivityType('');
+            if (name === 'date' && conductType === 'Single') newData.endDate = value;
+            if (name === 'actualDate' && conductType === 'Single') newData.actualEndDate = value;
+            return newData;
+        });
         
         if (missingFields.includes(name)) {
             setMissingFields(prev => prev.filter(f => f !== name));
         }
-
-        if (name === 'component') setSelectedActivityType('');
-        if (name === 'date' && conductType === 'Single') setFormData(prev => ({ ...prev, endDate: value }));
-        if (name === 'actualDate' && conductType === 'Single') setFormData(prev => ({ ...prev, actualEndDate: value }));
     };
 
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -543,6 +552,20 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     <label className="block text-sm font-medium">Status</label>
                                     <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses} disabled={mode === 'create'}>
                                         {availableStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium">Operating Unit</label>
+                                    <select 
+                                        name="operatingUnit" 
+                                        value={formData.operatingUnit || ''} 
+                                        onChange={handleInputChange} 
+                                        className={commonInputClasses} 
+                                        disabled={!isAdmin}
+                                        title={!isAdmin ? "Only Administrators can edit the Operating Unit" : ""}
+                                    >
+                                        <option value="">Select Operating Unit</option>
+                                        {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                     </select>
                                 </div>
                                 <div>
