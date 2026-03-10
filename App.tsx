@@ -151,6 +151,64 @@ const AppContent: React.FC = () => {
     const [historyStack, setHistoryStack] = useState<string[]>([]);
     const previousPage = historyStack.length > 0 ? historyStack[historyStack.length - 1] : '/';
 
+    const currentPageRef = useRef(currentPage);
+    const historyStackRef = useRef(historyStack);
+
+    useEffect(() => {
+        currentPageRef.current = currentPage;
+    }, [currentPage]);
+
+    useEffect(() => {
+        historyStackRef.current = historyStack;
+    }, [historyStack]);
+
+    const navigateTo = (page: string) => {
+        const current = currentPageRef.current;
+        const stack = historyStackRef.current;
+        const newStack = [...stack, current];
+        setHistoryStack(newStack);
+        setCurrentPage(page);
+        window.history.pushState({ page, stack: newStack }, '', `#${page}`);
+    };
+
+    useEffect(() => {
+        const handlePopState = (event: PopStateEvent) => {
+            const leavingPage = currentPageRef.current;
+            
+            if (leavingPage === '/subproject-detail') setSelectedSubproject(null);
+            if (leavingPage === '/activity-detail') setSelectedActivity(null);
+            if (leavingPage === '/ipo-detail') setSelectedIpo(null);
+            if (leavingPage === '/program-management/office-detail') setSelectedOfficeReq(null);
+            if (leavingPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
+            if (leavingPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
+            if (leavingPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
+            if (leavingPage === '/lod-details') setSelectedIpo(null);
+
+            if (event.state && event.state.page) {
+                setCurrentPage(event.state.page);
+                setHistoryStack(event.state.stack || []);
+            } else {
+                const hash = window.location.hash.replace('#', '') || '/';
+                setCurrentPage(hash);
+                setHistoryStack([]);
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        
+        // Initial setup
+        if (!window.history.state) {
+            const hash = window.location.hash.replace('#', '') || '/';
+            window.history.replaceState({ page: hash, stack: [] }, '', `#${hash}`);
+            setCurrentPage(hash);
+        } else {
+            setCurrentPage(window.history.state.page);
+            setHistoryStack(window.history.state.stack || []);
+        }
+
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, []);
+
     // Track previous user to redirect to home on login
     const prevUserRef = useRef<User | null>(null);
 
@@ -158,6 +216,7 @@ const AppContent: React.FC = () => {
         if (currentUser && !prevUserRef.current) {
             setCurrentPage('/');
             setHistoryStack([]);
+            window.history.replaceState({ page: '/', stack: [] }, '', '#/');
         }
         prevUserRef.current = currentUser;
     }, [currentUser]);
@@ -224,82 +283,62 @@ const AppContent: React.FC = () => {
     // Navigation Handlers
     const handleSelectSubproject = (project: Subproject) => {
         setSelectedSubproject(project);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/subproject-detail');
+        navigateTo('/subproject-detail');
     };
 
     const handleSelectIpo = (ipo: IPO) => {
         setSelectedIpo(ipo);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/ipo-detail');
+        navigateTo('/ipo-detail');
     };
 
     const handleSelectActivity = (activity: Activity) => {
         setSelectedActivity(activity);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/activity-detail');
+        navigateTo('/activity-detail');
     };
 
     const handleSelectOfficeReq = (req: OfficeRequirement) => {
         setSelectedOfficeReq(req);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/program-management/office-detail');
+        navigateTo('/program-management/office-detail');
     };
 
     const handleSelectStaffingReq = (req: StaffingRequirement) => {
         setSelectedStaffingReq(req);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/program-management/staffing-detail');
+        navigateTo('/program-management/staffing-detail');
     };
 
     const handleSelectOtherExpense = (req: OtherProgramExpense) => {
         setSelectedOtherExpense(req);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/program-management/other-expense-detail');
+        navigateTo('/program-management/other-expense-detail');
     };
 
     const handleSelectMarketingPartner = (partner: MarketingPartner) => {
         setSelectedMarketingPartner(partner);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/marketing-profile-detail');
+        navigateTo('/marketing-profile-detail');
     }
     
     // New handler for activity creation
     const handleCreateActivity = () => {
         setActivityEditMode('create');
         setSelectedActivity(null);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/activity-edit');
+        navigateTo('/activity-edit');
     };
     
     const handleCreateSubproject = () => {
         setSelectedSubproject(null);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/subproject-edit');
+        navigateTo('/subproject-edit');
     };
 
     const handleBack = () => {
-        if (historyStack.length === 0) return;
-        
-        const prev = historyStack[historyStack.length - 1];
-        setHistoryStack(prevStack => prevStack.slice(0, -1));
-        setCurrentPage(prev);
-
-        // Cleanup selection states if we are leaving their detail views
-        // We check the page we are *leaving* (currentPage)
-        if (currentPage === '/subproject-detail') setSelectedSubproject(null);
-        if (currentPage === '/activity-detail') setSelectedActivity(null);
-        if (currentPage === '/ipo-detail') setSelectedIpo(null);
-        if (currentPage === '/program-management/office-detail') setSelectedOfficeReq(null);
-        if (currentPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
-        if (currentPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
-        if (currentPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
+        if (historyStackRef.current.length === 0) {
+            navigateTo('/');
+            return;
+        }
+        window.history.back();
     };
 
     // Generic navigation handler for Chatbot
     const handleNavigate = (path: string) => {
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage(path);
+        navigateTo(path);
     };
     
     // Handler for Chatbot-driven filters
@@ -313,8 +352,7 @@ const AppContent: React.FC = () => {
 
     const handleSelectIpoForLod = (ipo: IPO) => {
         setSelectedIpo(ipo);
-        setHistoryStack(prev => [...prev, currentPage]);
-        setCurrentPage('/lod-details');
+        navigateTo('/lod-details');
     };
 
     const renderPage = () => {
@@ -650,8 +688,7 @@ const AppContent: React.FC = () => {
                             }}
                             onEdit={(mode) => {
                                 setActivityEditMode(mode);
-                                setHistoryStack(prev => [...prev, currentPage]);
-                                setCurrentPage('/activity-edit');
+                                navigateTo('/activity-edit');
                             }}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
@@ -690,12 +727,10 @@ const AppContent: React.FC = () => {
                             ipos={ipos}
                             onBack={handleBack}
                             onEditDetails={() => {
-                                setHistoryStack(prev => [...prev, currentPage]);
-                                setCurrentPage('/marketing-profile-edit');
+                                navigateTo('/marketing-profile-edit');
                             }}
                             onEditLinkages={() => {
-                                setHistoryStack(prev => [...prev, currentPage]);
-                                setCurrentPage('/marketing-linkage-edit');
+                                navigateTo('/marketing-linkage-edit');
                             }}
                             commodityCategories={derivedCommodityCategories}
                         />;
@@ -740,20 +775,14 @@ const AppContent: React.FC = () => {
                 toggleSidebar={toggleSidebar}
                 closeSidebar={() => setIsSidebarOpen(false)} 
                 currentPage={currentPage} 
-                setCurrentPage={(page) => {
-                    setHistoryStack(prev => [...prev, currentPage]);
-                    setCurrentPage(page);
-                }} 
+                setCurrentPage={navigateTo} 
             />
             <div className="flex-1 flex flex-col overflow-hidden relative">
                 <Header 
                     toggleSidebar={toggleSidebar} 
                     toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
-                    setCurrentPage={(page) => {
-                        setHistoryStack(prev => [...prev, currentPage]);
-                        setCurrentPage(page);
-                    }}
+                    setCurrentPage={navigateTo}
                 />
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
                     {renderPage()}
