@@ -7,6 +7,22 @@ BEGIN
   END IF;
 END $$;
 
+-- Add description column to lod_questions
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='lod_questions' AND column_name='description') THEN
+    ALTER TABLE lod_questions ADD COLUMN description TEXT;
+  END IF;
+END $$;
+
+-- Add remarks column to lod_answers
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='lod_answers' AND column_name='remarks') THEN
+    ALTER TABLE lod_answers ADD COLUMN remarks TEXT;
+  END IF;
+END $$;
+
 -- Create table for LOD Level Configurations (Ranges)
 CREATE TABLE IF NOT EXISTS lod_level_configs (
     id SERIAL PRIMARY KEY,

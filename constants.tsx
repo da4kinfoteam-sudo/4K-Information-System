@@ -723,6 +723,7 @@ export interface LodQuestion {
     id: number;
     section_id: number;
     text: string;
+    description?: string;
     weight: number;
     order: number;
     created_at?: string;
@@ -754,5 +755,6 @@ export interface LodAnswer {
     question_id: number;
     choice_id: number;
     points_earned: number;
+    remarks?: string;
     updated_at?: string;
 }

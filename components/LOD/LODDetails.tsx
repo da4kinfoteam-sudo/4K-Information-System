@@ -34,6 +34,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
 
     // Local Answers State (Map<QuestionId, ChoiceId>)
     const [localAnswers, setLocalAnswers] = useState<Record<number, number>>({});
+    const [localAnswerRemarks, setLocalAnswerRemarks] = useState<Record<number, string>>({});
 
     useEffect(() => {
         fetchStructure();
@@ -84,16 +85,22 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
             if (ansData) {
                 setAnswers(ansData);
                 const initialAnswers: Record<number, number> = {};
+                const initialRemarks: Record<number, string> = {};
                 ansData.forEach(a => {
                     initialAnswers[a.question_id] = a.choice_id;
+                    if (a.remarks) {
+                        initialRemarks[a.question_id] = a.remarks;
+                    }
                 });
                 setLocalAnswers(initialAnswers);
+                setLocalAnswerRemarks(initialRemarks);
             }
         } else {
             // Reset for new year
             setAssessment(null);
             setAnswers([]);
             setLocalAnswers({});
+            setLocalAnswerRemarks({});
             setManualLevel('');
             setRemarks('');
         }
@@ -104,6 +111,13 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
         setLocalAnswers(prev => ({
             ...prev,
             [questionId]: choiceId
+        }));
+    };
+
+    const handleAnswerRemarkChange = (questionId: number, remark: string) => {
+        setLocalAnswerRemarks(prev => ({
+            ...prev,
+            [questionId]: remark
         }));
     };
 
@@ -233,6 +247,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
             const choice = choices.find(c => c.id === cId);
             const points = choice ? choice.points : 0;
             const weight = question ? question.weight : 1;
+            const remark = localAnswerRemarks[Number(qId)] || null;
             
             // Find existing answer id if any
             const existingAnswer = answers.find(a => a.question_id === Number(qId));
@@ -243,6 +258,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 question_id: Number(qId),
                 choice_id: cId,
                 points_earned: points * weight, // Note: This stores raw points earned, not section-weighted.
+                remarks: remark,
                 updated_at: new Date().toISOString()
             };
         });
@@ -358,6 +374,11 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                         {question.text} 
                                                         <span className="text-xs text-gray-400 font-normal ml-2">(Weight: {question.weight})</span>
                                                     </p>
+                                                    {question.description && (
+                                                        <p className="text-sm text-gray-500 dark:text-gray-400 italic mb-2">
+                                                            {question.description}
+                                                        </p>
+                                                    )}
                                                     <div className="space-y-2">
                                                         {qChoices.map(choice => (
                                                             <label key={choice.id} className={`flex items-center p-3 rounded-lg border cursor-pointer transition-colors
@@ -375,9 +396,18 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                     className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300"
                                                                 />
                                                                 <span className="ml-3 text-sm text-gray-700 dark:text-gray-300 flex-1">{choice.text}</span>
-                                                                <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{choice.points} pts</span>
+                                                                <span className="text-xs font-bold text-gray-400 bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded">{Number(choice.points.toFixed(1))} pts</span>
                                                             </label>
                                                         ))}
+                                                    </div>
+                                                    <div className="mt-3">
+                                                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Remarks (Optional)</label>
+                                                        <textarea 
+                                                            value={localAnswerRemarks[question.id] || ''}
+                                                            onChange={(e) => handleAnswerRemarkChange(question.id, e.target.value)}
+                                                            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-transparent focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 dark:text-gray-300 resize-none h-16"
+                                                            placeholder="Add remarks or assessment notes for this question..."
+                                                        />
                                                     </div>
                                                 </div>
                                             );

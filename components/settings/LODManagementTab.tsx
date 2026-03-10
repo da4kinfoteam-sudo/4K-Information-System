@@ -103,9 +103,21 @@ const LODManagementTab: React.FC = () => {
     };
 
     // Question Edits
-    const handleQuestionChange = (id: number, field: 'text' | 'weight', value: string | number) => {
+    const handleQuestionChange = (id: number, field: 'text' | 'description' | 'weight', value: string | number) => {
+        const oldWeight = editingQuestions.find(q => q.id === id)?.weight || 1;
         setEditingQuestions(prev => prev.map(q => q.id === id ? { ...q, [field]: value } : q));
         setIsEditingQuestionnaire(true);
+
+        if (field === 'weight' && oldWeight > 0) {
+            // Update points for all choices of this question to maintain their percentage
+            setEditingChoices(prev => prev.map(c => {
+                if (c.question_id === id) {
+                    const percentage = c.points / oldWeight;
+                    return { ...c, points: percentage * (value as number) };
+                }
+                return c;
+            }));
+        }
     };
 
     // Choice Edits
@@ -200,9 +212,6 @@ const LODManagementTab: React.FC = () => {
     };
 
     const handleAddQuestion = async (sectionId: number) => {
-        // Use prompt for quick add or just a default "New Question"
-        const text = prompt("Enter Question Text:");
-        if (!text) return;
         if (!supabase) return;
 
         const sectionQuestions = questions.filter(q => q.section_id === sectionId);
@@ -210,7 +219,7 @@ const LODManagementTab: React.FC = () => {
 
         const newQuestion = {
             section_id: sectionId,
-            text: text,
+            text: 'New Question',
             weight: 1,
             order: maxOrder + 1
         };
@@ -238,8 +247,6 @@ const LODManagementTab: React.FC = () => {
     };
 
     const handleAddChoice = async (questionId: number) => {
-        const text = prompt("Enter Choice Text:");
-        if (!text) return;
         if (!supabase) return;
 
         const questionChoices = choices.filter(c => c.question_id === questionId);
@@ -247,7 +254,7 @@ const LODManagementTab: React.FC = () => {
 
         const newChoice = {
             question_id: questionId,
-            text: text,
+            text: 'New Choice',
             points: 0,
             order: maxOrder + 1
         };
@@ -423,6 +430,15 @@ const LODManagementTab: React.FC = () => {
                                                             className="w-full font-medium text-gray-800 dark:text-gray-200 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-emerald-500 focus:outline-none"
                                                         />
                                                     </div>
+                                                    <div className="mb-2">
+                                                        <input 
+                                                            type="text" 
+                                                            value={question.description || ''}
+                                                            placeholder="Optional description/remarks to guide users"
+                                                            onChange={(e) => handleQuestionChange(question.id, 'description', e.target.value)}
+                                                            className="w-full text-sm text-gray-500 dark:text-gray-400 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-emerald-500 focus:outline-none italic"
+                                                        />
+                                                    </div>
                                                     <div className="flex items-center gap-2 text-xs text-gray-500">
                                                         <span>Weight:</span>
                                                         <input 
@@ -450,11 +466,16 @@ const LODManagementTab: React.FC = () => {
                                                         <div className="flex items-center gap-1">
                                                             <input 
                                                                 type="number" 
-                                                                value={choice.points}
-                                                                onChange={(e) => handleChoiceChange(choice.id, 'points', Number(e.target.value))}
-                                                                className="w-10 text-right bg-transparent border-b border-transparent hover:border-gray-200 focus:border-emerald-500 focus:outline-none text-gray-500"
+                                                                value={question.weight > 0 ? Math.round((choice.points / question.weight) * 100) : 0}
+                                                                onChange={(e) => {
+                                                                    const percentage = Number(e.target.value);
+                                                                    const points = (percentage / 100) * question.weight;
+                                                                    handleChoiceChange(choice.id, 'points', points);
+                                                                }}
+                                                                className="w-12 text-right bg-transparent border-b border-transparent hover:border-gray-200 focus:border-emerald-500 focus:outline-none text-gray-500"
                                                             />
-                                                            <span className="text-xs text-gray-400">pts</span>
+                                                            <span className="text-xs text-gray-400">%</span>
+                                                            <span className="text-xs text-gray-400 ml-2">({Number(choice.points.toFixed(1))} pts)</span>
                                                         </div>
                                                         <button onClick={() => handleDeleteChoice(choice.id)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500">×</button>
                                                     </div>
