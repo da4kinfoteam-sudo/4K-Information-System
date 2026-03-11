@@ -155,15 +155,25 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const collect = (items: any[]) => {
             items.forEach(item => {
                 if (item.location) {
-                    // Split by comma and clean up
+                    // 1. Split by comma for major parts
                     const parts = item.location.split(',').map((p:string) => p.trim().toLowerCase());
                     parts.forEach((p: string) => {
                         // Add individual parts (e.g., "Porac", "Pampanga")
-                        if (p.length > 2 && !['region', 'province', 'city', 'municipality'].includes(p)) {
+                        // Also strip common prefixes for better matching
+                        const cleanPart = p.replace(/\b(brgy\.?|barangay|city|mun\.?|municipality|prov\.?|province|region|sitio|poblacion)\b/g, '').trim();
+                        
+                        if (cleanPart.length > 2) {
+                            locs.add(cleanPart);
+                            // Also split cleanPart by space to get individual words (e.g. "Antipolo" from "Antipolo City")
+                            cleanPart.split(/\s+/).forEach(word => {
+                                if (word.length > 3) locs.add(word);
+                            });
+                        }
+                        
+                        if (p.length > 2 && !['region', 'province', 'city', 'municipality', 'barangay', 'sitio', 'poblacion'].includes(p)) {
                             locs.add(p);
                         }
                     });
-                    // Also add the full string for exact matches if needed, though parts usually suffice
                 }
             });
         };
@@ -172,6 +182,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         collect(activities);
         return Array.from(locs).sort((a, b) => b.length - a.length); // Longest match first
     }, [subprojects, ipos, activities]);
+
+    const normalizeText = (text: string) => {
+        return text.toLowerCase()
+            .replace(/\bbrgy\.?\b/g, 'barangay')
+            .replace(/\bmun\.?\b/g, 'municipality')
+            .replace(/\bprov\.?\b/g, 'province')
+            .replace(/\breg\.?\b/g, 'region')
+            .replace(/\b(city|municipality|province|barangay|region|sitio|poblacion)\b/g, '') // Strip for comparison
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
 
     /**
      * DYNAMIC QUERY ENGINE
@@ -265,15 +286,18 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             }
         }
 
-        // 2d. Identify Locations (Province/Municipality) from data - Support Multiple
-        // We use a copy of the query to avoid double counting if needed, but simple inclusion check is fine
-        // Iterate through uniqueLocations and check if they exist in query
+        // 2d. Identify Locations (Province/Municipality/Barangay) from data - Support Multiple
+        const normalizedQuery = normalizeText(q);
+        
         for (const loc of uniqueLocations) {
-            // Check for whole word match or distinct part to avoid matching "male" in "female" if that was a location
-            // Also check if we already added this location via alias to avoid duplicates (though Set handles unique keywords later, targetLocations is used for filtering)
             const locLower = loc.toLowerCase();
-            if (q.includes(locLower) && !targetLocations.some(l => l.includes(locLower) || locLower.includes(l))) {
-                 targetLocations.push(locLower);
+            const normalizedLoc = normalizeText(locLower);
+            
+            // Check if normalized query contains normalized location
+            if (normalizedQuery.includes(normalizedLoc) && normalizedLoc.length > 1) {
+                if (!targetLocations.some(l => normalizeText(l).includes(normalizedLoc) || normalizedLoc.includes(normalizeText(l)))) {
+                    targetLocations.push(locLower);
+                }
             }
         }
 
@@ -367,11 +391,11 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                     match = false;
                 }
             }
-            // Location Filter (Province/City) - MUST MATCH ALL TARGET LOCATIONS
+            // Location Filter (Province/City/Barangay) - MUST MATCH ALL TARGET LOCATIONS
             if (targetLocations.length > 0) {
-                const loc = (item.location || '').toLowerCase();
+                const loc = normalizeText(item.location || '');
                 // Check if ALL target locations are present in the item's location string
-                const allLocationsMatch = targetLocations.every(target => loc.includes(target));
+                const allLocationsMatch = targetLocations.every(target => loc.includes(normalizeText(target)));
                 if (!allLocationsMatch) {
                     match = false;
                 }
@@ -388,6 +412,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                 
                 let searchableText = (item.name || '') + ' ' + 
                                      (item.description || '') + ' ' + 
+                                     (item.location || '') + ' ' + 
                                      (item.packageType || '') + ' ' + 
                                      (item.particulars || '') + ' ' + 
                                      (item.component || '') + ' ' + // Added component for activities
@@ -424,14 +449,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             
             // Location Filter for IPOs
             if (targetLocations.length > 0) {
-                const loc = (i.location || '').toLowerCase();
-                const allLocationsMatch = targetLocations.every(target => loc.includes(target));
+                const loc = normalizeText(i.location || '');
+                const allLocationsMatch = targetLocations.every(target => loc.includes(normalizeText(target)));
                 if (!allLocationsMatch) return false;
             }
 
             // Keyword Filter for IPOs
             if (targetKeywords.length > 0) {
-                 let searchableText = (i.name || '') + ' ' + (i.indigenousCulturalCommunity || '');
+                 let searchableText = (i.name || '') + ' ' + (i.indigenousCulturalCommunity || '') + ' ' + (i.location || '');
                  if (i.commodities) {
                     searchableText += ' ' + i.commodities.map((c: any) => c.particular + ' ' + c.type).join(' ');
                  }
