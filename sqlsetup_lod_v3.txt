@@ -1,0 +1,10 @@
+-- Add code column to lod_sections and lod_questions
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='lod_sections' AND column_name='code') THEN
+    ALTER TABLE lod_sections ADD COLUMN code TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='lod_questions' AND column_name='code') THEN
+    ALTER TABLE lod_questions ADD COLUMN code TEXT;
+  END IF;
+END $$;

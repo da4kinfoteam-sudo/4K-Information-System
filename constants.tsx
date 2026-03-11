@@ -714,6 +714,7 @@ export interface LodLevelConfig {
 export interface LodSection {
     id: number;
     title: string;
+    code?: string;
     order: number;
     weight: number;
     created_at?: string;
@@ -723,6 +724,7 @@ export interface LodQuestion {
     id: number;
     section_id: number;
     text: string;
+    code?: string;
     description?: string;
     weight: number;
     order: number;

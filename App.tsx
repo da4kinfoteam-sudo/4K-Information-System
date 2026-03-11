@@ -168,7 +168,8 @@ const AppContent: React.FC = () => {
         const newStack = [...stack, current];
         setHistoryStack(newStack);
         setCurrentPage(page);
-        window.history.pushState({ page, stack: newStack }, '', `#${page}`);
+        // Replace # with /4kis for a more professional look
+        window.history.pushState({ page, stack: newStack }, '', `/4kis${page}`);
     };
 
     useEffect(() => {
@@ -188,8 +189,9 @@ const AppContent: React.FC = () => {
                 setCurrentPage(event.state.page);
                 setHistoryStack(event.state.stack || []);
             } else {
-                const hash = window.location.hash.replace('#', '') || '/';
-                setCurrentPage(hash);
+                // Parse the page from the pathname instead of hash
+                const path = window.location.pathname.replace('/4kis', '') || '/';
+                setCurrentPage(path);
                 setHistoryStack([]);
             }
         };
@@ -198,9 +200,9 @@ const AppContent: React.FC = () => {
         
         // Initial setup
         if (!window.history.state) {
-            const hash = window.location.hash.replace('#', '') || '/';
-            window.history.replaceState({ page: hash, stack: [] }, '', `#${hash}`);
-            setCurrentPage(hash);
+            const path = window.location.pathname.replace('/4kis', '') || '/';
+            window.history.replaceState({ page: path, stack: [] }, '', `/4kis${path}`);
+            setCurrentPage(path);
         } else {
             setCurrentPage(window.history.state.page);
             setHistoryStack(window.history.state.stack || []);
@@ -216,7 +218,7 @@ const AppContent: React.FC = () => {
         if (currentUser && !prevUserRef.current) {
             setCurrentPage('/');
             setHistoryStack([]);
-            window.history.replaceState({ page: '/', stack: [] }, '', '#/');
+            window.history.replaceState({ page: '/', stack: [] }, '', '/4kis/');
         }
         prevUserRef.current = currentUser;
     }, [currentUser]);
