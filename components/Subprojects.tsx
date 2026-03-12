@@ -258,11 +258,9 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         }
     }, [externalFilters, onClearExternalFilters]);
 
-    // 1. Initial Filtering (Search + Permissions)
     const initiallyFilteredSubprojects = useMemo(() => {
         let filtered = [...subprojects];
 
-        // OU Permissions
         if (currentUser?.role === 'User') {
             filtered = filtered.filter(s => s.operatingUnit === currentUser.operatingUnit);
         }
@@ -270,14 +268,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             filtered = filtered.filter(s =>
-                s.name.toLowerCase().includes(lower) ||
-                s.indigenousPeopleOrganization.toLowerCase().includes(lower) ||
-                s.location.toLowerCase().includes(lower) ||
-                s.operatingUnit.toLowerCase().includes(lower) ||
-                s.uid.toLowerCase().includes(lower) ||
+                (s.name?.toLowerCase() || '').includes(lower) ||
+                (s.indigenousPeopleOrganization?.toLowerCase() || '').includes(lower) ||
+                (s.location?.toLowerCase() || '').includes(lower) ||
+                (s.operatingUnit?.toLowerCase() || '').includes(lower) ||
+                (s.uid?.toLowerCase() || '').includes(lower) ||
                 (s.details && s.details.some(d => 
-                    (d.type && d.type.toLowerCase().includes(lower)) || 
-                    (d.particulars && d.particulars.toLowerCase().includes(lower))
+                    (d.type?.toLowerCase() || '').includes(lower) || 
+                    (d.particulars?.toLowerCase() || '').includes(lower)
                 ))
             );
         }
@@ -299,14 +297,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         };
     }, [initiallyFilteredSubprojects]);
 
-    // 3. Apply Column Filters & Sorting
     const processedSubprojects = useMemo(() => {
         let filtered = [...initiallyFilteredSubprojects];
 
-        // Apply Column Filters
         Object.keys(columnFilters).forEach(key => {
             const selectedValues = columnFilters[key];
-            if (selectedValues.length > 0) {
+            if (selectedValues && selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
                     const itemValue = String((item as any)[key] || '');
                     return selectedValues.includes(itemValue);
@@ -319,15 +315,16 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 let aValue: any = '';
                 let bValue: any = '';
 
-                const getBudget = (s: Subproject) => calculateTotalBudget(s.details);
-                const getObligated = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
-                const getDisbursed = (s: Subproject) => s.details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
+                const getBudget = (s: Subproject) => calculateTotalBudget(s.details || []);
+                const getObligated = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+                const getDisbursed = (s: Subproject) => (s.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
                 const getRate = (s: Subproject) => {
-                    const total = s.details.length;
-                    const comp = s.details.filter(d => d.actualDeliveryDate).length;
+                    const details = s.details || [];
+                    const total = details.length;
+                    const comp = details.filter(d => d.actualDeliveryDate).length;
                     return total > 0 ? (comp / total) * 100 : 0;
                 };
-                const getCommodities = (s: Subproject) => s.subprojectCommodities?.map(c => c.name).join(', ') || '';
+                const getCommodities = (s: Subproject) => s.subprojectCommodities?.map(c => c.name || '').join(', ') || '';
 
                 switch (sortConfig.key) {
                     case 'totalBudget':
@@ -657,11 +654,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedSubprojects.map((s) => {
-                                const budget = calculateTotalBudget(s.details);
-                                const actualObligated = s.details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
-                                const actualDisbursed = s.details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
-                                const totalItems = s.details.length;
-                                const completedItems = s.details.filter(d => d.actualDeliveryDate).length;
+                                const details = s.details || [];
+                                const budget = calculateTotalBudget(details);
+                                const actualObligated = details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+                                const actualDisbursed = details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
+                                const totalItems = details.length;
+                                const completedItems = details.filter(d => d.actualDeliveryDate).length;
                                 const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
                                 const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Animal Commodity' ? 'heads' : 'ha'})`).join(', ') : 'N/A';
 
@@ -671,14 +669,14 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                         <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === s.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white min-w-[200px]">
                                             <button onClick={(e) => {e.stopPropagation(); onSelectSubproject(s);}} className="text-left hover:text-emerald-600 hover:underline">
-                                                {s.name}
+                                                {s.name || 'Unnamed Subproject'}
                                             </button>
-                                            <div className="text-xs text-gray-400">{s.uid}</div>
+                                            <div className="text-xs text-gray-400">{s.uid || 'No UID'}</div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit}</td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status}</span></td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
@@ -708,10 +706,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Project Details</h4>
                                                             <div className="space-y-2 text-sm">
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status}</span></p>
-                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Location:</strong> <span className="text-gray-900 dark:text-gray-100">{s.location || 'N/A'}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Package:</strong> <span className="text-gray-900 dark:text-gray-100">{s.packageType || 'N/A'}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Status:</strong> <span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></p>
+                                                                <p><strong className="text-gray-500 dark:text-gray-400">Encoded by:</strong> <span className="text-gray-900 dark:text-gray-100">{s.encodedBy || 'N/A'}</span></p>
                                                             </div>
                                                         </div>
                                                         <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
@@ -732,19 +730,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                     
                                                     <div className="space-y-4 text-sm bg-gray-100 dark:bg-gray-800/50 p-4 rounded-lg">
                                                         <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Budget & Particulars</h4>
-                                                        {s.details.length > 0 ? (
+                                                        {details.length > 0 ? (
                                                             <ul className="space-y-1">
-                                                                {s.details.map(detail => (
+                                                                {details.map(detail => (
                                                                     <li key={detail.id} className="flex justify-between items-start p-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
                                                                         <div>
-                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars}</span>
-                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode} | {detail.numberOfUnits} {detail.unitOfMeasure}</span>
+                                                                            <span className="block font-medium text-gray-800 dark:text-gray-200">{detail.particulars || 'Unnamed Item'}</span>
+                                                                            <span className="text-xs text-gray-500 dark:text-gray-400">{detail.uacsCode || 'No UACS'} | {detail.numberOfUnits || 0} {detail.unitOfMeasure || 'units'}</span>
                                                                             <span className="text-xs text-gray-400 block">Obl: {formatMonthYear(detail.obligationMonth)} | Disb: {formatMonthYear(detail.disbursementMonth)}</span>
                                                                         </div>
-                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</span>
+                                                                        <span className="font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{formatCurrency((detail.pricePerUnit || 0) * (detail.numberOfUnits || 0))}</span>
                                                                     </li>
                                                                 ))}
-                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white"><span>Total</span><span>{formatCurrency(calculateTotalBudget(s.details))}</span></li>
+                                                                <li className="flex justify-between items-center p-1 border-t border-gray-300 dark:border-gray-600 mt-2 pt-2 font-bold text-gray-900 dark:text-white"><span>Total</span><span>{formatCurrency(calculateTotalBudget(details))}</span></li>
                                                             </ul>
                                                         ) : ( <p className="text-sm text-gray-500 dark:text-gray-400 italic">No budget items listed.</p> )}
                                                         
@@ -773,7 +771,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
                                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
                                                                     {s.subprojectCommodities.map((c, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)</span></div>
+                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name || 'Unknown'}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)</span></div>
                                                                     ))}
                                                                 </div>
                                                             )}
@@ -813,6 +811,8 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
 export default Subprojects;
 
+// --- End of Subprojects.tsx ---
+
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -836,3 +836,5 @@ const getStatusBadge = (status: Subproject['status']) => {
         default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
     }
 };
+
+// --- End of Subprojects.tsx ---
