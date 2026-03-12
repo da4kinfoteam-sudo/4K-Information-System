@@ -1,5 +1,4 @@
-
-// Author: 4K 
+// Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
 import LocationPicker from './LocationPicker';
@@ -64,22 +63,20 @@ const formatMonthYear = (dateString?: string) => {
 
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
     subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories 
-}) => {
+}): React.ReactNode => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
     
     const [formData, setFormData] = useState<Subproject>(subproject || defaultFormData);
-    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget' | 'summary'>('details');
     const [selectedRegion, setSelectedRegion] = useState('');
     
-    // Budget Form State
     const [currentDetail, setCurrentDetail] = useState<Omit<SubprojectDetail, 'id'>>({
         type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: 0, numberOfUnits: 0, objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: ''
     });
     const [editingDetailId, setEditingDetailId] = useState<number | null>(null);
 
-    // Commodity Form State
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
         typeName: '', name: '', area: 0, averageYield: 0
     });
@@ -87,7 +84,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [missingFields, setMissingFields] = useState<string[]>([]);
     const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{field: string, dateStr: string} | null>(null);
 
-    // Initialize logic
     useEffect(() => {
         if (subproject) {
             setFormData(subproject);
@@ -105,14 +101,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     }, [subproject, ipos, currentUser]);
 
-    // Filter IPOs
     const filteredIpos = useMemo(() => {
         if (!selectedRegion) return [];
         return ipos.filter(ipo => ipo.region === selectedRegion).sort((a, b) => a.name.localeCompare(b.name));
     }, [ipos, selectedRegion]);
 
-    // Handlers
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>): void => {
         const { name, value } = e.target;
         setMissingFields(prev => prev.filter(f => f !== name));
         setFormData(prev => {
@@ -135,15 +129,14 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         });
     };
 
-    // Helper for Months
-    const getMonthFromDateStr = (dateStr: string) => {
+    const getMonthFromDateStr = (dateStr: string): string => {
         if (!dateStr) return '';
         const parts = dateStr.split('-');
         if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
         return '';
     };
 
-    const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
+    const updateDetailDateFromMonth = (field: string, monthIndex: string): void => {
         if (monthIndex === '') {
             setCurrentDetail(prev => ({ ...prev, [field]: '' }));
             return;
@@ -165,7 +158,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
     }
 
-    const handleConfirmDeliveryDate = () => {
+    const handleConfirmDeliveryDate = (): void => {
         if (confirmDeliveryDate) {
             setFormData(prev => ({ ...prev, estimatedCompletionDate: confirmDeliveryDate.dateStr }));
             setCurrentDetail(prev => ({ ...prev, [confirmDeliveryDate.field]: confirmDeliveryDate.dateStr }));
@@ -173,11 +166,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
-    const handleCancelDeliveryDate = () => {
+    const handleCancelDeliveryDate = (): void => {
         setConfirmDeliveryDate(null);
     };
 
-    const handleEstimatedCompletionMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleEstimatedCompletionMonthChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
         const monthIndex = e.target.value;
         if (monthIndex === '') {
             setFormData(prev => ({ ...prev, estimatedCompletionDate: '' }));
@@ -213,9 +206,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             });
         }
         return codes;
-    }, [currentDetail.expenseParticular, currentDetail.objectType]);
+    }, [currentDetail.expenseParticular, currentDetail.objectType, uacsCodes]);
 
-    const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
         if (name === 'type') setCurrentDetail(prev => ({ ...prev, type: value, particulars: '' }));
         else if (name === 'objectType') setCurrentDetail(prev => ({ ...prev, objectType: value as ObjectType, expenseParticular: '', uacsCode: '' }));
@@ -246,12 +239,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         else setCurrentDetail(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAddDetail = () => {
+    const handleAddDetail = (): void => {
         if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.deliveryDate || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
             alert("Please fill in all required detail fields, including delivery date and monthly targets."); return;
         }
-        // Removed start date validation as start date is no longer used
-
 
         let updatedDetails: SubprojectDetail[] = [];
         const newItem = { 
@@ -267,7 +258,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             updatedDetails = [...formData.details, { id: Date.now(), ...newItem } as SubprojectDetail];
         }
 
-        // Auto update estimated completion
         let newEstimatedCompletionDate = formData.estimatedCompletionDate;
         const deliveryDates = updatedDetails.map(d => d.deliveryDate).filter(d => d).map(d => new Date(d).getTime());
         if (deliveryDates.length > 0) {
@@ -281,7 +271,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: 0, numberOfUnits: 0, objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
 
-    const handleEditDetail = (id: number) => {
+    const handleEditDetail = (id: number): void => {
         const d = formData.details.find(d => d.id === id);
         if (d) {
             setCurrentDetail(d);
@@ -289,7 +279,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
-    const handleRemoveDetail = (id: number) => {
+    const handleRemoveDetail = (id: number): void => {
         setFormData(prev => ({ ...prev, details: prev.details.filter(d => d.id !== id) }));
         if (editingDetailId === id) {
             setEditingDetailId(null);
@@ -297,18 +287,18 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
-    const handleCancelEditDetail = () => {
+    const handleCancelEditDetail = (): void => {
         setEditingDetailId(null);
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: 0, numberOfUnits: 0, objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     };
 
-    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
         if (name === 'typeName') setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
         else setCurrentCommodity(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAddCommodity = () => {
+    const handleAddCommodity = (): void => {
         const isAnimal = currentCommodity.typeName === 'Animal Commodity';
         if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area) {
             alert("Please fill in required commodity fields."); return;
@@ -326,14 +316,14 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
     };
 
-    const handleEditCommodity = (idx: number) => {
+    const handleEditCommodity = (idx: number): void => {
         if (formData.subprojectCommodities) {
             setCurrentCommodity(formData.subprojectCommodities[idx]);
             setEditingCommodityIndex(idx);
         }
     };
 
-    const handleRemoveCommodity = (idx: number) => {
+    const handleRemoveCommodity = (idx: number): void => {
         setFormData(prev => ({ ...prev, subprojectCommodities: prev.subprojectCommodities?.filter((_, i) => i !== idx) }));
         if (editingCommodityIndex === idx) {
              setEditingCommodityIndex(null);
@@ -341,52 +331,65 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
     };
 
-    const handleNextSection = () => {
+    const handleNextSection = (): void => {
         if (activeTab === 'details') {
             const required = ['name', 'indigenousPeopleOrganization', 'status'];
             const missing = required.filter(field => !formData[field as keyof Subproject]);
             if (missing.length > 0) {
                 setMissingFields(missing);
+                alert("Please fill in all required fields in the Subproject Details section.");
+                return;
             }
             setActiveTab('commodity');
         } else if (activeTab === 'commodity') {
             setActiveTab('budget');
+        } else if (activeTab === 'budget') {
+            if (!subproject && !formData.estimatedCompletionDate) {
+                alert("Estimated Completion Date is required before proceeding to summary.");
+                setMissingFields(['estimatedCompletionDate']);
+                setActiveTab('details');
+                return;
+            }
+            if (!subproject) {
+                setActiveTab('summary');
+            }
         }
     };
 
-    const handleBackSection = () => {
-        if (activeTab === 'budget') {
+    const handleBackSection = (): void => {
+        if (activeTab === 'summary') {
+            setActiveTab('budget');
+        } else if (activeTab === 'budget') {
             setActiveTab('commodity');
         } else if (activeTab === 'commodity') {
             setActiveTab('details');
         }
     };
 
-    const handleSubmit = async (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent): Promise<void> => {
         e.preventDefault();
         
-        const required = ['name', 'indigenousPeopleOrganization', 'status'];
-        const missing = required.filter(field => !formData[field as keyof Subproject]);
-        if (missing.length > 0) {
-            setMissingFields(missing);
-            alert("Please fill in all required fields in the Subproject Details section.");
-            setActiveTab('details');
+        if (!subproject && activeTab !== 'summary') {
+            handleNextSection();
             return;
         }
+
+        const required = ['name', 'indigenousPeopleOrganization', 'status'];
+        if (!subproject) required.push('estimatedCompletionDate');
         
+        const missing = required.filter(field => !formData[field as keyof Subproject]);
         if (missing.length > 0) {
             setMissingFields(missing);
             alert("Please fill in all required fields.");
             setActiveTab('details');
             return;
         }
+        
         setMissingFields([]);
 
         const timestamp = new Date().toISOString();
         const historyEntry = { date: timestamp, event: subproject ? "Subproject Updated" : "Subproject Created", user: currentUser?.fullName || "System" };
         
-        // Resolve ID logic for Offline mode
-        // For online, Supabase handles ID
         let resolvedIpoId = formData.ipo_id;
         if (!resolvedIpoId && formData.indigenousPeopleOrganization) {
             const matched = ipos.find(i => i.name === formData.indigenousPeopleOrganization);
@@ -402,9 +405,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             payload.history = [...(subproject.history || []), historyEntry];
         }
 
-        // DB Operations
         if (supabase) {
-            const { id, ...dbPayload } = payload; // Remove ID for insert/update handled by DB
+            const { id, ...dbPayload } = payload; 
             if (!subproject) {
                 const { data, error } = await supabase.from('subprojects').insert([dbPayload]).select().single();
                 if (error) { alert("Error saving: " + error.message); return; }
@@ -422,12 +424,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 }
             }
         } else {
-             // Offline fallback
              const offlinePayload = { ...payload, id: subproject ? subproject.id : Date.now() };
              onUpdateSubproject(offlinePayload);
         }
 
-        // Sync Commodities to IPO
         if (payload.subprojectCommodities && payload.subprojectCommodities.length > 0) {
             setIpos(prev => prev.map(ipo => {
                 if (ipo.name === payload.indigenousPeopleOrganization) {
@@ -449,7 +449,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         onBack();
     };
 
-    const TabButton = ({ name, label }: { name: any, label: string }) => (
+    const TabButton = ({ name, label }: { name: any, label: string }): React.ReactNode => (
         <button type="button" onClick={() => setActiveTab(name)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === name ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
     );
 
@@ -461,7 +461,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             </div>
             <form onSubmit={handleSubmit}>
                 <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-4"><TabButton name="details" label="Subproject Details" /><TabButton name="commodity" label="Subproject Commodity" /><TabButton name="budget" label="Budget Items" /></nav>
+                    <nav className="-mb-px flex space-x-4">
+                        <TabButton name="details" label="Subproject Details" />
+                        <TabButton name="commodity" label="Subproject Commodity" />
+                        <TabButton name="budget" label="Budget Items" />
+                        {!subproject && <TabButton name="summary" label="Summary" />}
+                    </nav>
                 </div>
                 <div className="min-h-[400px]">
                     {activeTab === 'details' && (
@@ -489,12 +494,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium">Estimated Completion</label>
+                                    <label className="block text-sm font-medium">Estimated Completion {!subproject && <span className="text-red-500">*</span>}</label>
                                     <select 
                                         name="estimatedCompletionDate" 
                                         value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
                                         onChange={handleEstimatedCompletionMonthChange}
-                                        className={commonInputClasses}
+                                        className={`${commonInputClasses} ${missingFields.includes('estimatedCompletionDate') ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                        required={!subproject}
                                     >
                                         <option value="">Select Month</option>
                                         {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
@@ -613,7 +619,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         </datalist>
                                     </div>
                                 </div>
-
+ 
                                 <div>
                                     <label className="block text-xs font-medium">Delivery Month</label>
                                     <select 
@@ -656,15 +662,87 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                              </div>
                         </div>
                     )}
+                    {activeTab === 'summary' && (
+                        <div className="space-y-6 animate-fadeIn">
+                            <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
+                                <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-200 mb-2">Subproject Summary</h4>
+                                <p className="text-sm text-emerald-600 dark:text-emerald-400">Please review the details below before confirming the creation of this subproject.</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="space-y-4">
+                                    <h5 className="font-bold text-gray-700 dark:text-gray-300 border-b pb-1">General Information</h5>
+                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                        <span className="text-gray-500">Name:</span> <span className="font-medium">{formData.name}</span>
+                                        <span className="text-gray-500">IPO:</span> <span className="font-medium">{formData.indigenousPeopleOrganization}</span>
+                                        <span className="text-gray-500">Location:</span> <span className="font-medium">{formData.location}</span>
+                                        <span className="text-gray-500">OU:</span> <span className="font-medium">{formData.operatingUnit}</span>
+                                        <span className="text-gray-500">Status:</span> <span className="font-medium">{formData.status}</span>
+                                        <span className="text-gray-500">Package:</span> <span className="font-medium">{formData.packageType}</span>
+                                        <span className="text-gray-500">Est. Completion:</span> <span className="font-medium">{formatMonthYear(formData.estimatedCompletionDate)}</span>
+                                        <span className="text-gray-500">Fund Year:</span> <span className="font-medium">{formData.fundingYear}</span>
+                                        <span className="text-gray-500">Fund Type:</span> <span className="font-medium">{formData.fundType}</span>
+                                        <span className="text-gray-500">Tier:</span> <span className="font-medium">{formData.tier}</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h5 className="font-bold text-gray-700 dark:text-gray-300 border-b pb-1">Commodities</h5>
+                                    {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {formData.subprojectCommodities.map((c, i) => (
+                                                <div key={i} className="text-sm bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                                                    <div className="font-medium">{c.name} ({c.typeName})</div>
+                                                    <div className="text-xs text-gray-500">{c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500 italic">No commodities added.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h5 className="font-bold text-gray-700 dark:text-gray-300 border-b pb-1">Budget Items</h5>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                        <thead>
+                                            <tr className="text-left text-gray-500 border-b">
+                                                <th className="pb-2">Particulars</th>
+                                                <th className="pb-2">Qty/Unit</th>
+                                                <th className="pb-2 text-right">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {formData.details.map(d => (
+                                                <tr key={d.id}>
+                                                    <td className="py-2">{d.particulars}</td>
+                                                    <td className="py-2">{d.numberOfUnits} {d.unitOfMeasure}</td>
+                                                    <td className="py-2 text-right font-medium">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
+                                                </tr>
+                                            ))}
+                                            <tr className="font-bold">
+                                                <td colSpan={2} className="py-4 text-right">Grand Total:</td>
+                                                <td className="py-4 text-right text-emerald-600">{formatCurrency(calculateTotalBudget(formData.details))}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                     {activeTab !== 'details' && (
                         <button type="button" onClick={handleBackSection} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Back Section</button>
                     )}
-                    {activeTab !== 'budget' ? (
-                        <button type="button" onClick={handleNextSection} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Next Section</button>
+                    {activeTab === 'summary' || (subproject && activeTab === 'budget') ? (
+                        <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                            {subproject ? 'Update Subproject' : 'Confirm & Save Subproject'}
+                        </button>
                     ) : (
-                        <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Subproject</button>
+                        <button type="button" onClick={handleNextSection} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Next Section</button>
                     )}
                 </div>
             </form>
@@ -690,3 +768,4 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 };
 
 export default SubprojectEdit;
+// --- End of SubprojectEdit.tsx ---

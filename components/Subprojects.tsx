@@ -350,6 +350,12 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                         aValue = getCommodities(a);
                         bValue = getCommodities(b);
                         break;
+                    case 'estimatedCompletionDate':
+                    case 'actualCompletionDate':
+                    case 'startDate':
+                        aValue = a[sortConfig.key] ? new Date(a[sortConfig.key] as string).getTime() : 0;
+                        bValue = b[sortConfig.key] ? new Date(b[sortConfig.key] as string).getTime() : 0;
+                        break;
                     default:
                         aValue = a[sortConfig.key as keyof Subproject] ?? '';
                         bValue = b[sortConfig.key as keyof Subproject] ?? '';
@@ -506,13 +512,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     // --- Render Helpers ---
     const formatDate = (dateString?: string) => {
         if (!dateString) return 'N/A';
-        return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return 'N/A';
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
     const formatMonthYear = (dateString?: string) => {
         if (!dateString) return 'N/A';
         const date = new Date(dateString);
-        if (isNaN(date.getTime())) return dateString;
+        if (isNaN(date.getTime())) return 'N/A';
         return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
     };
 
