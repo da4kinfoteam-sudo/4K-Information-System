@@ -558,6 +558,14 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         if (!inputText.trim() || isLoading) return;
 
         const userMessage = inputText;
+        
+        // Check for "Display Quick Stat" prompt
+        if (userMessage.toLowerCase().includes('display quick stat')) {
+            setInputText('');
+            startQuickStats();
+            return;
+        }
+
         setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setInputText('');
         setIsLoading(true);
@@ -614,9 +622,39 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
     const startQuickStats = () => {
         setQuickStatsStep(1);
+        setQuickStatsFilters({
+            year: '',
+            fundType: '',
+            tier: '',
+            ou: '',
+            type: ''
+        });
         setMessages(prev => [...prev, 
             { role: 'user', text: "I want to view Quick Stats" },
             { role: 'model', text: "Great! Let's build your Quick Stats. First, please select the Fund Year:" }
+        ]);
+    };
+
+    const goBackQuickStats = () => {
+        if (quickStatsStep <= 1) {
+            setQuickStatsStep(0);
+            setMessages(prev => [...prev, { role: 'model', text: "Quick Stats cancelled. How else can I help you?" }]);
+            return;
+        }
+        
+        const prevStep = quickStatsStep - 1;
+        setQuickStatsStep(prevStep);
+        
+        let backMsg = "";
+        if (prevStep === 1) backMsg = "Select Fund Year:";
+        else if (prevStep === 2) backMsg = "Select Fund Type:";
+        else if (prevStep === 3) backMsg = "Select Tier:";
+        else if (prevStep === 4) backMsg = "Select Operating Unit:";
+        else if (prevStep === 5) backMsg = "What type of Quick Stat would you like to see?";
+        
+        setMessages(prev => [...prev, 
+            { role: 'user', text: "Go back" },
+            { role: 'model', text: backMsg }
         ]);
     };
 
@@ -716,21 +754,31 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
 
             const totalAllocation = spAllocation + actAllocation + pmAllocation;
             
-            const componentAllocation: {[key: string]: number} = {};
+            const componentAllocation: {[key: string]: number} = {
+                'Social Preparation': 0,
+                'Production and Livelihood': 0,
+                'Marketing and Enterprise': 0,
+                'Program Management': pmAllocation
+            };
+
+            const getCategory = (name: string) => {
+                const n = name.toLowerCase();
+                if (n.includes('social') || n.includes('prep')) return 'Social Preparation';
+                if (n.includes('production') || n.includes('livelihood')) return 'Production and Livelihood';
+                if (n.includes('marketing') || n.includes('enterprise')) return 'Marketing and Enterprise';
+                return 'Program Management';
+            };
+
             fSubprojects.forEach(s => {
-                const comp = s.packageType || 'Subprojects';
+                const cat = getCategory(s.packageType || '');
                 const amt = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
-                componentAllocation[comp] = (componentAllocation[comp] || 0) + amt;
+                componentAllocation[cat] += amt;
             });
             fActivities.forEach(a => {
-                const comp = a.component || 'Activities';
+                const cat = getCategory(a.component || '');
                 const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
-                componentAllocation[comp] = (componentAllocation[comp] || 0) + amt;
+                componentAllocation[cat] += amt;
             });
-            // Add Program Management items
-            if (pmAllocation > 0) {
-                componentAllocation['Program Management'] = (componentAllocation['Program Management'] || 0) + pmAllocation;
-            }
 
             const iposWithTargetSP = new Set(fSubprojects.map(s => s.indigenousPeopleOrganization)).size;
             const iposWithTargetTrainings = new Set(fTrainings.map(t => t.participatingIpos).flat()).size;
@@ -807,6 +855,24 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                 </div>
                             </div>
                         ))}
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex gap-2">
+                        <button 
+                            onClick={() => setQuickStatsStep(6)}
+                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded transition-colors flex items-center justify-center gap-1"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                            Refresh Stats
+                        </button>
+                        <button 
+                            onClick={startQuickStats}
+                            className="flex-1 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-bold rounded transition-colors"
+                        >
+                            New Query
+                        </button>
                     </div>
                 </div>
             );
@@ -904,6 +970,24 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             <div className="text-lg font-bold">{adsWithCompletedSP}</div>
                         </div>
                     </div>
+
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex gap-2">
+                        <button 
+                            onClick={() => setQuickStatsStep(6)}
+                            className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition-colors flex items-center justify-center gap-1"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                            </svg>
+                            Refresh Stats
+                        </button>
+                        <button 
+                            onClick={startQuickStats}
+                            className="flex-1 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-xs font-bold rounded transition-colors"
+                        >
+                            New Query
+                        </button>
+                    </div>
                 </div>
             );
         }
@@ -974,11 +1058,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                     <button 
                                         key={y} 
                                         onClick={() => selectQuickStatsFilter('year', y)}
-                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors shadow-sm"
                                     >
                                         {y}
                                     </button>
                                 ))}
+                                <button 
+                                    onClick={goBackQuickStats}
+                                    className="px-3 py-1 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-full text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-200 transition-all"
+                                >
+                                    ← Cancel
+                                </button>
                             </div>
                         )}
 
@@ -988,11 +1078,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                     <button 
                                         key={ft} 
                                         onClick={() => selectQuickStatsFilter('fundType', ft)}
-                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors shadow-sm"
                                     >
                                         {ft}
                                     </button>
                                 ))}
+                                <button 
+                                    onClick={goBackQuickStats}
+                                    className="px-3 py-1 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-full text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-200 transition-all"
+                                >
+                                    ← Back
+                                </button>
                             </div>
                         )}
 
@@ -1002,11 +1098,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                     <button 
                                         key={t} 
                                         onClick={() => selectQuickStatsFilter('tier', t)}
-                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors shadow-sm"
                                     >
                                         {t}
                                     </button>
                                 ))}
+                                <button 
+                                    onClick={goBackQuickStats}
+                                    className="px-3 py-1 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-full text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-200 transition-all"
+                                >
+                                    ← Back
+                                </button>
                             </div>
                         )}
 
@@ -1014,7 +1116,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             <div className="flex flex-wrap gap-2 justify-start">
                                 <button 
                                     onClick={() => selectQuickStatsFilter('ou', 'All')}
-                                    className="px-3 py-1 bg-emerald-600 text-white rounded-full text-xs hover:bg-emerald-700 transition-colors"
+                                    className="px-3 py-1 bg-emerald-600 text-white rounded-full text-xs hover:bg-emerald-700 transition-colors shadow-sm"
                                 >
                                     All Units
                                 </button>
@@ -1022,11 +1124,17 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                     <button 
                                         key={ou} 
                                         onClick={() => selectQuickStatsFilter('ou', ou)}
-                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors shadow-sm"
                                     >
                                         {ou}
                                     </button>
                                 ))}
+                                <button 
+                                    onClick={goBackQuickStats}
+                                    className="px-3 py-1 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-full text-xs font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-200 transition-all"
+                                >
+                                    ← Back
+                                </button>
                             </div>
                         )}
 
@@ -1043,6 +1151,12 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                     className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
                                 >
                                     Accomplishments
+                                </button>
+                                <button 
+                                    onClick={goBackQuickStats}
+                                    className="px-4 py-2 bg-gray-100 dark:bg-gray-600 border border-gray-200 dark:border-gray-500 rounded-lg text-sm font-bold text-gray-600 dark:text-gray-200 hover:bg-gray-200 transition-all"
+                                >
+                                    ← Back
                                 </button>
                             </div>
                         )}

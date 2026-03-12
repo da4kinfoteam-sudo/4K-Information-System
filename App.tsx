@@ -173,8 +173,8 @@ const AppContent: React.FC = () => {
         const newStack = [...stack, current];
         setHistoryStack(newStack);
         setCurrentPage(page);
-        // Replace # with /4kis for a more professional look
-        window.history.pushState({ page, stack: newStack }, '', `/4kis${page}`);
+        // Use hash-based routing to avoid 404 on refresh in static environments
+        window.history.pushState({ page, stack: newStack }, '', `/#${page}`);
     };
 
     useEffect(() => {
@@ -194,8 +194,8 @@ const AppContent: React.FC = () => {
                 setCurrentPage(event.state.page);
                 setHistoryStack(event.state.stack || []);
             } else {
-                // Parse the page from the pathname instead of hash
-                const path = window.location.pathname.replace('/4kis', '') || '/';
+                // Parse the page from the hash instead of pathname to avoid 404
+                const path = window.location.hash.replace('#', '') || '/';
                 setCurrentPage(path);
                 setHistoryStack([]);
             }
@@ -203,15 +203,12 @@ const AppContent: React.FC = () => {
 
         window.addEventListener('popstate', handlePopState);
         
-        // Initial setup
-        if (!window.history.state) {
-            const path = window.location.pathname.replace('/4kis', '') || '/';
-            window.history.replaceState({ page: path, stack: [] }, '', `/4kis${path}`);
-            setCurrentPage(path);
-        } else {
-            setCurrentPage(window.history.state.page);
-            setHistoryStack(window.history.state.stack || []);
-        }
+        // Initial setup: Fix for 404 on refresh
+        // To satisfy the requirement of going back to homepage on refresh,
+        // we force the page to '/' regardless of the current URL hash/path.
+        const initialPath = '/';
+        window.history.replaceState({ page: initialPath, stack: [] }, '', `/#${initialPath}`);
+        setCurrentPage(initialPath);
 
         return () => window.removeEventListener('popstate', handlePopState);
     }, []);
@@ -223,7 +220,7 @@ const AppContent: React.FC = () => {
         if (currentUser && !prevUserRef.current) {
             setCurrentPage('/');
             setHistoryStack([]);
-            window.history.replaceState({ page: '/', stack: [] }, '', '/4kis/');
+            window.history.replaceState({ page: '/', stack: [] }, '', '/#/');
         }
         prevUserRef.current = currentUser;
     }, [currentUser]);
