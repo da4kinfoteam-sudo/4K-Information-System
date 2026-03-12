@@ -33,6 +33,8 @@ interface SettingsProps {
     setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
     staffingReqs: StaffingRequirement[];
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
+    otherProgramExpenses: OtherProgramExpense[];
+    setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     onSelectSubproject: (project: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
     onSelectIpo: (ipo: IPO) => void;
@@ -49,6 +51,7 @@ const Settings: React.FC<SettingsProps> = ({
     ipos, setIpos,
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
+    otherProgramExpenses, setOtherProgramExpenses,
     onSelectSubproject,
     onSelectActivity,
     onSelectIpo
@@ -110,6 +113,8 @@ const Settings: React.FC<SettingsProps> = ({
                             activities={activities} setActivities={setActivities}
                             officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
                             staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
+                            otherProgramExpenses={otherProgramExpenses}
+                            setOtherProgramExpenses={setOtherProgramExpenses}
                             onSelectSubproject={onSelectSubproject}
                             onSelectActivity={onSelectActivity}
                         />

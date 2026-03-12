@@ -1,7 +1,7 @@
 // Author: 4K
 import React, { useState } from 'react';
 import { 
-    Subproject, Activity, OfficeRequirement, StaffingRequirement
+    Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense
 } from '../../constants';
 import PhysicalStatusManagement from './PhysicalStatusManagement';
 import BudgetCeilingManagement from './BudgetCeilingManagement';
@@ -15,6 +15,8 @@ interface DCFManagementTabProps {
     setOfficeReqs: React.Dispatch<React.SetStateAction<OfficeRequirement[]>>;
     staffingReqs: StaffingRequirement[];
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
+    otherProgramExpenses: OtherProgramExpense[];
+    setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
     onSelectSubproject: (project: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
 }
@@ -55,6 +57,7 @@ const DCFManagementTab: React.FC<DCFManagementTabProps> = (props) => {
                     activities={props.activities}
                     officeReqs={props.officeReqs}
                     staffingReqs={props.staffingReqs}
+                    otherProgramExpenses={props.otherProgramExpenses}
                 />
             )}
         </div>

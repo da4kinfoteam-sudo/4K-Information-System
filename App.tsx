@@ -712,6 +712,7 @@ const AppContent: React.FC = () => {
                             ipos={ipos} setIpos={setIpos}
                             officeReqs={officeReqs} setOfficeReqs={setOfficeReqs}
                             staffingReqs={staffingReqs} setStaffingReqs={setStaffingReqs}
+                            otherProgramExpenses={otherProgramExpenses} setOtherProgramExpenses={setOtherProgramExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
                             onSelectIpo={handleSelectIpo}

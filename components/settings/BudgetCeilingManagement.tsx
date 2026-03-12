@@ -1,13 +1,14 @@
 // Author: 4K
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
-import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement, filterYears } from '../../constants';
+import { operatingUnits, Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears } from '../../constants';
 
 interface BudgetCeilingManagementProps {
     subprojects: Subproject[];
     activities: Activity[];
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
+    otherProgramExpenses: OtherProgramExpense[];
 }
 
 interface BudgetCeiling {
@@ -18,7 +19,7 @@ interface BudgetCeiling {
 }
 
 const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
-    subprojects, activities, officeReqs, staffingReqs
+    subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses
 }) => {
     const [ceilings, setCeilings] = useState<BudgetCeiling[]>([]);
     const [loading, setLoading] = useState(true);
@@ -62,15 +63,19 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
     const calculateTotalBudget = (ou: string, year: number, tier?: string, fundType?: string) => {
         let total = 0;
 
-        // Subprojects
+        // Subprojects - Calculate total from details (matching report logic)
         subprojects.filter(s => 
             s.operatingUnit === ou && 
             s.fundingYear === year &&
             (!tier || s.tier === tier) &&
             (!fundType || s.fundType === fundType)
-        ).forEach(s => total += (s.amount || 0));
+        ).forEach(s => {
+            s.details.forEach(d => {
+                total += (d.pricePerUnit * d.numberOfUnits);
+            });
+        });
 
-        // Activities
+        // Activities (Trainings and Other Activities)
         activities.filter(a => 
             a.operatingUnit === ou && 
             a.fundingYear === year &&
@@ -88,13 +93,27 @@ const BudgetCeilingManagement: React.FC<BudgetCeilingManagementProps> = ({
             (!fundType || o.fundType === fundType)
         ).forEach(o => total += (o.numberOfUnits * o.pricePerUnit));
 
-        // Staffing Requirements
+        // Staffing Requirements - Check expenses first, then annualSalary (matching report logic)
         staffingReqs.filter(s => 
             s.operatingUnit === ou && 
             s.fundYear === year &&
             (!tier || s.tier === tier) &&
             (!fundType || s.fundType === fundType)
-        ).forEach(s => total += (s.annualSalary || 0));
+        ).forEach(s => {
+            if (s.expenses && s.expenses.length > 0) {
+                s.expenses.forEach(e => total += (e.amount || 0));
+            } else {
+                total += (s.annualSalary || 0);
+            }
+        });
+
+        // Other Program Expenses (Missing in original logic)
+        otherProgramExpenses.filter(ope => 
+            ope.operatingUnit === ou && 
+            ope.fundYear === year &&
+            (!tier || ope.tier === tier) &&
+            (!fundType || ope.fundType === fundType)
+        ).forEach(ope => total += (ope.amount || 0));
 
         return total;
     };
