@@ -99,6 +99,7 @@ const AppContent: React.FC = () => {
     // Managed manually to support direct DB operations
     const [deadlines, setDeadlines] = useState<Deadline[]>([]);
     const [planningSchedules, setPlanningSchedules] = useState<PlanningSchedule[]>([]);
+    const [budgetCeilings, setBudgetCeilings] = useState<any[]>([]);
 
     // Fetch Program Management & System Settings Data on mount
     useEffect(() => {
@@ -119,6 +120,10 @@ const AppContent: React.FC = () => {
 
             const ps = await fetchAll('planning_schedules', 'startDate', true);
             setPlanningSchedules(ps as PlanningSchedule[]);
+
+            // Fetch Budget Ceilings
+            const { data: bc } = await supabase.from('budget_ceilings').select('*');
+            setBudgetCeilings(bc || []);
         };
         fetchAllData();
     }, [currentUser]);
@@ -797,6 +802,7 @@ const AppContent: React.FC = () => {
                     officeReqs={officeReqs}
                     staffingReqs={staffingReqs}
                     otherProgramExpenses={otherProgramExpenses}
+                    budgetCeilings={budgetCeilings}
                     onNavigate={handleNavigate}
                     onSelectSubproject={handleSelectSubproject}
                     onSelectIpo={handleSelectIpo}

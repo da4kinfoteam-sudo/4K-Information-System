@@ -2,7 +2,12 @@
 // Author: 4K
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, StaffingRequirement, OtherProgramExpense, philippineRegions, ouToRegionMap } from '../constants';
+import { 
+    Subproject, IPO, Activity, MarketingPartner, OfficeRequirement, 
+    StaffingRequirement, OtherProgramExpense, philippineRegions, ouToRegionMap,
+    filterYears, fundTypes, tiers, operatingUnits
+} from '../constants';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AIChatbotProps {
     subprojects: Subproject[];
@@ -12,6 +17,7 @@ interface AIChatbotProps {
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
+    budgetCeilings?: any[];
     onNavigate: (path: string) => void;
     onSelectSubproject: (sp: Subproject) => void;
     onSelectIpo: (ipo: IPO) => void;
@@ -46,17 +52,28 @@ const BASE_SYSTEM_INSTRUCTION = `You are the AI Assistant for the 4K Information
 
 const AIChatbot: React.FC<AIChatbotProps> = ({ 
     subprojects, ipos, activities, marketingPartners, 
-    officeReqs, staffingReqs, otherProgramExpenses,
+    officeReqs, staffingReqs, otherProgramExpenses, budgetCeilings = [],
     onNavigate, onSelectSubproject, onSelectIpo, onSelectActivity, onSelectMarketingPartner,
     onApplyFilter
 }) => {
+    const { currentUser } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string }[]>([
+    const [messages, setMessages] = useState<{ role: 'user' | 'model', text: string, type?: 'quickstats' }[]>([
         { role: 'model', text: "Hello! I'm ready to help. Ask me 'How many Completed Subprojects in Region 2?' or 'How much is the budget for 2024?'" }
     ]);
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Quickstats State
+    const [quickStatsStep, setQuickStatsStep] = useState(0);
+    const [quickStatsFilters, setQuickStatsFilters] = useState({
+        year: '',
+        fundType: '',
+        tier: '',
+        ou: '',
+        type: '' as 'Targets' | 'Accomplishments' | ''
+    });
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -544,6 +561,7 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
         setInputText('');
         setIsLoading(true);
+        setQuickStatsStep(0); // Reset quickstats if user types manually
 
         // Strict API Key Retrieval
         const apiKey = process.env.API_KEY || (import.meta as any).env.VITE_API_KEY;
@@ -594,6 +612,230 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         }
     };
 
+    const startQuickStats = () => {
+        setQuickStatsStep(1);
+        setMessages(prev => [...prev, 
+            { role: 'user', text: "I want to view Quick Stats" },
+            { role: 'model', text: "Great! Let's build your Quick Stats. First, please select the Fund Year:" }
+        ]);
+    };
+
+    const selectQuickStatsFilter = (key: keyof typeof quickStatsFilters, value: string) => {
+        const newFilters = { ...quickStatsFilters, [key]: value };
+        setQuickStatsFilters(newFilters);
+        
+        setMessages(prev => [...prev, { role: 'user', text: value }]);
+
+        if (key === 'year') {
+            setQuickStatsStep(2);
+            setMessages(prev => [...prev, { role: 'model', text: "Select Fund Type:" }]);
+        } else if (key === 'fundType') {
+            setQuickStatsStep(3);
+            setMessages(prev => [...prev, { role: 'model', text: "Select Tier:" }]);
+        } else if (key === 'tier') {
+            if (currentUser?.role === 'Administrator') {
+                setQuickStatsStep(4);
+                setMessages(prev => [...prev, { role: 'model', text: "Select Operating Unit:" }]);
+            } else {
+                const userOU = currentUser?.operatingUnit || 'NPMO';
+                setQuickStatsFilters(prev => ({ ...prev, ou: userOU }));
+                setQuickStatsStep(5);
+                setMessages(prev => [...prev, 
+                    { role: 'model', text: `Using your Operating Unit: ${userOU}` },
+                    { role: 'model', text: "What type of Quick Stat would you like to see?" }
+                ]);
+            }
+        } else if (key === 'ou') {
+            setQuickStatsStep(5);
+            setMessages(prev => [...prev, { role: 'model', text: "What type of Quick Stat would you like to see?" }]);
+        } else if (key === 'type') {
+            setQuickStatsStep(6);
+            setMessages(prev => [...prev, { role: 'model', text: "Generating your Quick Stats...", type: 'quickstats' }]);
+        }
+    };
+
+    const renderQuickStats = (filters: typeof quickStatsFilters) => {
+        const year = parseInt(filters.year);
+        const ou = filters.ou;
+        const isTargets = filters.type === 'Targets';
+
+        // Filter Data
+        const fSubprojects = subprojects.filter(s => 
+            s.fundingYear === year && 
+            s.fundType === filters.fundType && 
+            s.tier === filters.tier && 
+            (ou === 'All' ? true : s.operatingUnit === ou)
+        );
+        const fActivities = activities.filter(a => 
+            a.fundingYear === year && 
+            a.fundType === filters.fundType && 
+            a.tier === filters.tier && 
+            (ou === 'All' ? true : a.operatingUnit === ou)
+        );
+        const fTrainings = fActivities.filter(a => a.type === 'Training');
+        
+        const fIPOs = ipos.filter(i => {
+            if (ou !== 'All' && ouToRegionMap[ou] && i.region !== ouToRegionMap[ou]) return false;
+            return true;
+        });
+
+        // Budget Ceiling
+        const ceiling = budgetCeilings.find(c => c.operating_unit === ou && c.year === year)?.amount || 0;
+
+        if (isTargets) {
+            const totalAllocation = fSubprojects.reduce((sum, s) => sum + (s.amount || 0), 0) +
+                                   fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            
+            const componentAllocation: {[key: string]: number} = {};
+            fSubprojects.forEach(s => {
+                const comp = s.packageType || 'Subprojects';
+                componentAllocation[comp] = (componentAllocation[comp] || 0) + (s.amount || 0);
+            });
+            fActivities.forEach(a => {
+                const comp = a.component || 'Activities';
+                const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
+                componentAllocation[comp] = (componentAllocation[comp] || 0) + amt;
+            });
+
+            const iposWithTargetSP = new Set(fSubprojects.map(s => s.indigenousPeopleOrganization)).size;
+            const iposWithTargetTrainings = new Set(fTrainings.map(t => t.participatingIpos).flat()).size;
+            const adsWithTargetSP = new Set(fIPOs.filter(i => fSubprojects.some(s => s.indigenousPeopleOrganization === i.name)).map(i => i.ancestralDomainNo)).size;
+
+            const isExceeded = ceiling > 0 && totalAllocation > ceiling;
+
+            return (
+                <div className="space-y-4 p-2">
+                    <div className="flex justify-between items-center border-b pb-2">
+                        <h4 className="font-bold text-emerald-700 dark:text-emerald-400">Target Quick Stats</h4>
+                        <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded text-emerald-700 dark:text-emerald-300">{filters.year} | {filters.tier}</span>
+                    </div>
+
+                    <div className={`p-3 rounded-lg border ${isExceeded ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
+                        <div className="text-xs text-gray-500 uppercase font-bold mb-1">Total Allocation</div>
+                        <div className="text-2xl font-black text-gray-900 dark:text-white">
+                            ₱{totalAllocation.toLocaleString()}
+                        </div>
+                        {ceiling > 0 && (
+                            <div className="mt-1 flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full ${isExceeded ? 'bg-red-500' : 'bg-emerald-500'}`} 
+                                        style={{ width: `${Math.min(100, (totalAllocation / ceiling) * 100)}%` }}
+                                    />
+                                </div>
+                                <span className={`text-[10px] font-bold ${isExceeded ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {((totalAllocation / ceiling) * 100).toFixed(1)}% of Ceiling
+                                </span>
+                            </div>
+                        )}
+                        {isExceeded && (
+                            <div className="mt-2 text-[10px] text-red-600 font-bold flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                                Allocation exceeds budget ceiling!
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">Subprojects</div>
+                            <div className="text-lg font-bold">{fSubprojects.length}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">Trainings</div>
+                            <div className="text-lg font-bold">{fTrainings.length}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">IPOs w/ SPs</div>
+                            <div className="text-lg font-bold">{iposWithTargetSP}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">ADs w/ SPs</div>
+                            <div className="text-lg font-bold">{adsWithTargetSP}</div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Allocation per Component</div>
+                        {Object.entries(componentAllocation).map(([name, amt]) => (
+                            <div key={name} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                                <span className="text-gray-600 dark:text-gray-400 truncate pr-2">{name}</span>
+                                <div className="text-right shrink-0">
+                                    <div className="font-bold">₱{(amt / 1000000).toFixed(2)}M</div>
+                                    <div className="text-[10px] text-gray-400">{((amt / totalAllocation) * 100).toFixed(1)}%</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        } else {
+            // Accomplishments
+            const totalAllocation = fSubprojects.reduce((sum, s) => sum + (s.amount || 0), 0) +
+                                   fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            
+            const totalObligated = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0), 0) +
+                                  fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0), 0);
+            
+            const totalDisbursed = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0), 0) +
+                                  fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0), 0);
+
+            const completedSPs = fSubprojects.filter(s => s.status === 'Completed');
+            const completedTrainings = fTrainings.filter(t => t.status === 'Completed');
+            
+            const iposWithCompletedSP = new Set(completedSPs.map(s => s.indigenousPeopleOrganization)).size;
+            const iposWithCompletedTrainings = new Set(completedTrainings.map(t => t.participatingIpos).flat()).size;
+            const adsWithCompletedSP = new Set(fIPOs.filter(i => completedSPs.some(s => s.indigenousPeopleOrganization === i.name)).map(i => i.ancestralDomainNo)).size;
+
+            return (
+                <div className="space-y-4 p-2">
+                    <div className="flex justify-between items-center border-b pb-2">
+                        <h4 className="font-bold text-blue-700 dark:text-blue-400">Accomplishment Quick Stats</h4>
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-blue-700 dark:text-blue-300">{filters.year}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3">
+                        <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Total Obligated</div>
+                            <div className="text-xl font-black text-gray-900 dark:text-white">₱{totalObligated.toLocaleString()}</div>
+                            <div className="text-[10px] text-blue-600 font-bold mt-1">
+                                {totalAllocation > 0 ? ((totalObligated / totalAllocation) * 100).toFixed(1) : 0}% vs Allocation
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="text-[10px] text-gray-500 uppercase font-bold mb-1">Total Disbursed</div>
+                            <div className="text-xl font-black text-gray-900 dark:text-white">₱{totalDisbursed.toLocaleString()}</div>
+                            <div className="text-[10px] text-emerald-600 font-bold mt-1">
+                                {totalObligated > 0 ? ((totalDisbursed / totalObligated) * 100).toFixed(1) : 0}% vs Obligated
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">Completed SPs</div>
+                            <div className="text-lg font-bold">{completedSPs.length}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">Completed Trainings</div>
+                            <div className="text-lg font-bold">{completedTrainings.length}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">IPOs w/ Comp. SP</div>
+                            <div className="text-lg font-bold">{iposWithCompletedSP}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">ADs w/ Comp. SP</div>
+                            <div className="text-lg font-bold">{adsWithCompletedSP}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+    };
+
     return (
         <>
             {/* Chat Bubble Trigger */}
@@ -633,10 +875,105 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                                         ? 'bg-emerald-600 text-white rounded-tr-none shadow-md' 
                                         : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-tl-none shadow-sm'
                                 }`}>
-                                    {msg.role === 'model' ? renderMessage(msg.text) : msg.text}
+                                    {msg.type === 'quickstats' ? renderQuickStats(quickStatsFilters) : (msg.role === 'model' ? renderMessage(msg.text) : msg.text)}
                                 </div>
                             </div>
                         ))}
+                        
+                        {/* Quick Stats Options */}
+                        {quickStatsStep === 0 && messages.length === 1 && (
+                            <div className="flex justify-start">
+                                <button 
+                                    onClick={startQuickStats}
+                                    className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-2"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                    </svg>
+                                    View Quick Stats
+                                </button>
+                            </div>
+                        )}
+
+                        {quickStatsStep === 1 && (
+                            <div className="flex flex-wrap gap-2 justify-start">
+                                {filterYears.map(y => (
+                                    <button 
+                                        key={y} 
+                                        onClick={() => selectQuickStatsFilter('year', y)}
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                    >
+                                        {y}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {quickStatsStep === 2 && (
+                            <div className="flex flex-wrap gap-2 justify-start">
+                                {fundTypes.map(ft => (
+                                    <button 
+                                        key={ft} 
+                                        onClick={() => selectQuickStatsFilter('fundType', ft)}
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                    >
+                                        {ft}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {quickStatsStep === 3 && (
+                            <div className="flex flex-wrap gap-2 justify-start">
+                                {tiers.map(t => (
+                                    <button 
+                                        key={t} 
+                                        onClick={() => selectQuickStatsFilter('tier', t)}
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {quickStatsStep === 4 && (
+                            <div className="flex flex-wrap gap-2 justify-start">
+                                <button 
+                                    onClick={() => selectQuickStatsFilter('ou', 'All')}
+                                    className="px-3 py-1 bg-emerald-600 text-white rounded-full text-xs hover:bg-emerald-700 transition-colors"
+                                >
+                                    All Units
+                                </button>
+                                {operatingUnits.map(ou => (
+                                    <button 
+                                        key={ou} 
+                                        onClick={() => selectQuickStatsFilter('ou', ou)}
+                                        className="px-3 py-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-xs hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 transition-colors"
+                                    >
+                                        {ou}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {quickStatsStep === 5 && (
+                            <div className="flex gap-2 justify-start">
+                                <button 
+                                    onClick={() => selectQuickStatsFilter('type', 'Targets')}
+                                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors shadow-sm"
+                                >
+                                    Targets
+                                </button>
+                                <button 
+                                    onClick={() => selectQuickStatsFilter('type', 'Accomplishments')}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                                >
+                                    Accomplishments
+                                </button>
+                            </div>
+                        )}
+
                         {isLoading && (
                             <div className="flex justify-start">
                                 <div className="bg-white dark:bg-gray-700 p-3 rounded-lg rounded-tl-none border border-gray-200 dark:border-gray-600 shadow-sm flex gap-1 items-center">
