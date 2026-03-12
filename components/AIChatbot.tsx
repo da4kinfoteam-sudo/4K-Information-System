@@ -679,23 +679,58 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             return true;
         });
 
+        // Filter Program Management items
+        const fOfficeReqs = officeReqs.filter(i => 
+            i.fundYear === year && 
+            i.fundType === filters.fundType && 
+            i.tier === filters.tier && 
+            (ou === 'All' ? true : i.operatingUnit === ou)
+        );
+        const fStaffingReqs = staffingReqs.filter(i => 
+            i.fundYear === year && 
+            i.fundType === filters.fundType && 
+            i.tier === filters.tier && 
+            (ou === 'All' ? true : i.operatingUnit === ou)
+        );
+        const fOtherExpenses = otherProgramExpenses.filter(i => 
+            i.fundYear === year && 
+            i.fundType === filters.fundType && 
+            i.tier === filters.tier && 
+            (ou === 'All' ? true : i.operatingUnit === ou)
+        );
+
         // Budget Ceiling
         const ceiling = budgetCeilings.find(c => c.operating_unit === ou && c.year === year)?.amount || 0;
 
         if (isTargets) {
-            const totalAllocation = fSubprojects.reduce((sum, s) => sum + (s.amount || 0), 0) +
-                                   fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            const spAllocation = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
+            const actAllocation = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            const pmAllocation = fOfficeReqs.reduce((sum, o) => sum + (o.pricePerUnit * o.numberOfUnits), 0) +
+                                fStaffingReqs.reduce((sum, s) => {
+                                    if (s.expenses && s.expenses.length > 0) {
+                                        return sum + s.expenses.reduce((es, e) => es + (e.amount || 0), 0);
+                                    }
+                                    return sum + (s.annualSalary || 0);
+                                }, 0) +
+                                fOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+            const totalAllocation = spAllocation + actAllocation + pmAllocation;
             
             const componentAllocation: {[key: string]: number} = {};
             fSubprojects.forEach(s => {
                 const comp = s.packageType || 'Subprojects';
-                componentAllocation[comp] = (componentAllocation[comp] || 0) + (s.amount || 0);
+                const amt = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
+                componentAllocation[comp] = (componentAllocation[comp] || 0) + amt;
             });
             fActivities.forEach(a => {
                 const comp = a.component || 'Activities';
                 const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
                 componentAllocation[comp] = (componentAllocation[comp] || 0) + amt;
             });
+            // Add Program Management items
+            if (pmAllocation > 0) {
+                componentAllocation['Program Management'] = (componentAllocation['Program Management'] || 0) + pmAllocation;
+            }
 
             const iposWithTargetSP = new Set(fSubprojects.map(s => s.indigenousPeopleOrganization)).size;
             const iposWithTargetTrainings = new Set(fTrainings.map(t => t.participatingIpos).flat()).size;
@@ -752,6 +787,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             <div className="text-lg font-bold">{iposWithTargetSP}</div>
                         </div>
                         <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">IPOs w/ Trainings</div>
+                            <div className="text-lg font-bold">{iposWithTargetTrainings}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600 col-span-2">
                             <div className="text-[10px] text-gray-500 uppercase">ADs w/ SPs</div>
                             <div className="text-lg font-bold">{adsWithTargetSP}</div>
                         </div>
@@ -773,14 +812,44 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             );
         } else {
             // Accomplishments
-            const totalAllocation = fSubprojects.reduce((sum, s) => sum + (s.amount || 0), 0) +
-                                   fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            const spAllocation = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
+            const actAllocation = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
+            const pmAllocation = fOfficeReqs.reduce((sum, o) => sum + (o.pricePerUnit * o.numberOfUnits), 0) +
+                                fStaffingReqs.reduce((sum, s) => {
+                                    if (s.expenses && s.expenses.length > 0) {
+                                        return sum + s.expenses.reduce((es, e) => es + (e.amount || 0), 0);
+                                    }
+                                    return sum + (s.annualSalary || 0);
+                                }, 0) +
+                                fOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+            const totalAllocation = spAllocation + actAllocation + pmAllocation;
             
-            const totalObligated = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0), 0) +
-                                  fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0), 0);
+            const spObligated = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0), 0);
+            const actObligated = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0), 0);
+            const pmObligated = fOfficeReqs.reduce((sum, o) => sum + (o.actualObligationAmount || 0), 0) +
+                               fStaffingReqs.reduce((sum, s) => {
+                                   if (s.expenses && s.expenses.length > 0) {
+                                       return sum + s.expenses.reduce((es, e) => es + (e.actualObligationAmount || 0), 0);
+                                   }
+                                   return sum + (s.actualObligationAmount || 0);
+                               }, 0) +
+                               fOtherExpenses.reduce((sum, e) => sum + (e.actualObligationAmount || 0), 0);
+
+            const totalObligated = spObligated + actObligated + pmObligated;
             
-            const totalDisbursed = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0), 0) +
-                                  fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0), 0);
+            const spDisbursed = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0), 0);
+            const actDisbursed = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0), 0);
+            const pmDisbursed = fOfficeReqs.reduce((sum, o) => sum + (o.actualDisbursementAmount || 0), 0) +
+                               fStaffingReqs.reduce((sum, s) => {
+                                   if (s.expenses && s.expenses.length > 0) {
+                                       return sum + s.expenses.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0);
+                                   }
+                                   return sum + (s.actualDisbursementAmount || 0);
+                               }, 0) +
+                               fOtherExpenses.reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
+
+            const totalDisbursed = spDisbursed + actDisbursed + pmDisbursed;
 
             const completedSPs = fSubprojects.filter(s => s.status === 'Completed');
             const completedTrainings = fTrainings.filter(t => t.status === 'Completed');
@@ -827,6 +896,10 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             <div className="text-lg font-bold">{iposWithCompletedSP}</div>
                         </div>
                         <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600">
+                            <div className="text-[10px] text-gray-500 uppercase">IPOs w/ Comp. Trng</div>
+                            <div className="text-lg font-bold">{iposWithCompletedTrainings}</div>
+                        </div>
+                        <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-100 dark:border-gray-600 col-span-2">
                             <div className="text-[10px] text-gray-500 uppercase">ADs w/ Comp. SP</div>
                             <div className="text-lg font-bold">{adsWithCompletedSP}</div>
                         </div>
