@@ -85,8 +85,14 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{field: string, dateStr: string} | null>(null);
 
     const validationErrors = useMemo(() => {
-        const required = ['name', 'indigenousPeopleOrganization', 'status', 'estimatedCompletionDate'];
-        return required.filter(field => !formData[field as keyof Subproject]);
+        const errors: string[] = [];
+        if (!formData.name?.trim()) errors.push('name');
+        if (!formData.indigenousPeopleOrganization) errors.push('indigenousPeopleOrganization');
+        if (!formData.status) errors.push('status');
+        if (!formData.estimatedCompletionDate) errors.push('estimatedCompletionDate');
+        if (!formData.details || formData.details.length === 0) errors.push('details');
+        if (!formData.subprojectCommodities || formData.subprojectCommodities.length === 0) errors.push('commodities');
+        return errors;
     }, [formData]);
 
     useEffect(() => {
@@ -374,12 +380,19 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const handleSubmit = async (e: FormEvent): Promise<void> => {
         e.preventDefault();
         
-        if (!subproject && activeTab !== 'summary') {
-            handleNextSection();
+        // Final guard: only allow submission from the intended tabs
+        const isNew = !subproject;
+        if (isNew && activeTab !== 'summary') {
+            // If they pressed Enter, we don't want to save.
+            // We just return and do nothing, letting the user use the navigation buttons.
             return;
         }
 
-        if (!subproject && validationErrors.length > 0) {
+        if (!isNew && activeTab !== 'budget' && activeTab !== 'summary') {
+            return;
+        }
+
+        if (isNew && validationErrors.length > 0) {
             setMissingFields(validationErrors);
             alert("Please fill in all required fields before saving.");
             setActiveTab('details');
@@ -671,7 +684,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <p className="text-sm text-red-600 dark:text-red-400">The following fields are required before you can save:</p>
                                     <ul className="list-disc list-inside text-xs text-red-500 mt-2">
                                         {validationErrors.map(field => (
-                                            <li key={field}>{field === 'indigenousPeopleOrganization' ? 'IPO' : field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</li>
+                                            <li key={field}>
+                                                {field === 'indigenousPeopleOrganization' ? 'IPO' : 
+                                                 field === 'details' ? 'Budget Items (at least one required)' :
+                                                 field === 'commodities' ? 'Commodities (at least one required)' :
+                                                 field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                                            </li>
                                         ))}
                                     </ul>
                                 </div>
@@ -729,7 +747,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             ))}
                                         </div>
                                     ) : (
-                                        <p className="text-sm text-gray-500 italic">No commodities added.</p>
+                                        <p className="text-sm text-red-500 italic font-medium">Missing Commodities - Please add at least one commodity.</p>
                                     )}
                                 </div>
                             </div>
@@ -737,28 +755,32 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                             <div className="space-y-4">
                                 <h5 className="font-bold text-gray-700 dark:text-gray-300 border-b pb-1">Budget Items</h5>
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full text-sm">
-                                        <thead>
-                                            <tr className="text-left text-gray-500 border-b">
-                                                <th className="pb-2">Particulars</th>
-                                                <th className="pb-2">Qty/Unit</th>
-                                                <th className="pb-2 text-right">Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                            {formData.details.map(d => (
-                                                <tr key={d.id}>
-                                                    <td className="py-2">{d.particulars}</td>
-                                                    <td className="py-2">{d.numberOfUnits} {d.unitOfMeasure}</td>
-                                                    <td className="py-2 text-right font-medium">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
+                                    {formData.details.length > 0 ? (
+                                        <table className="min-w-full text-sm">
+                                            <thead>
+                                                <tr className="text-left text-gray-500 border-b">
+                                                    <th className="pb-2">Particulars</th>
+                                                    <th className="pb-2">Qty/Unit</th>
+                                                    <th className="pb-2 text-right">Total</th>
                                                 </tr>
-                                            ))}
-                                            <tr className="font-bold">
-                                                <td colSpan={2} className="py-4 text-right">Grand Total:</td>
-                                                <td className="py-4 text-right text-emerald-600">{formatCurrency(calculateTotalBudget(formData.details))}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                {formData.details.map(d => (
+                                                    <tr key={d.id}>
+                                                        <td className="py-2">{d.particulars}</td>
+                                                        <td className="py-2">{d.numberOfUnits} {d.unitOfMeasure}</td>
+                                                        <td className="py-2 text-right font-medium">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
+                                                    </tr>
+                                                ))}
+                                                <tr className="font-bold">
+                                                    <td colSpan={2} className="py-4 text-right">Grand Total:</td>
+                                                    <td className="py-4 text-right text-emerald-600">{formatCurrency(calculateTotalBudget(formData.details))}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    ) : (
+                                        <p className="text-sm text-red-500 italic font-medium">Missing Budget Items - Please add at least one budget item.</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -768,7 +790,20 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     {activeTab !== 'details' && (
                         <button type="button" onClick={handleBackSection} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Back Section</button>
                     )}
-                    {activeTab === 'summary' || (subproject && activeTab === 'budget') ? (
+                    
+                    {/* Navigation Buttons */}
+                    {activeTab !== 'summary' && !(subproject && activeTab === 'budget') && (
+                        <button 
+                            type="button" 
+                            onClick={handleNextSection} 
+                            className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700"
+                        >
+                            Next Section
+                        </button>
+                    )}
+
+                    {/* Confirmation/Update Buttons */}
+                    {(activeTab === 'summary' || (subproject && activeTab === 'budget')) && (
                         <button 
                             type="submit" 
                             disabled={!subproject && validationErrors.length > 0}
@@ -776,8 +811,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         >
                             {subproject ? 'Update Subproject' : 'Confirm & Save Subproject'}
                         </button>
-                    ) : (
-                        <button type="button" onClick={handleNextSection} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Next Section</button>
                     )}
                 </div>
             </form>
