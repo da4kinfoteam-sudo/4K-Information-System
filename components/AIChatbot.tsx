@@ -741,45 +741,50 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
         const ceiling = budgetCeilings.find(c => c.operating_unit === ou && c.year === year)?.amount || 0;
 
         if (isTargets) {
-            const spAllocation = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
-            const actAllocation = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
-            const pmAllocation = fOfficeReqs.reduce((sum, o) => sum + (o.pricePerUnit * o.numberOfUnits), 0) +
-                                fStaffingReqs.reduce((sum, s) => {
-                                    if (s.expenses && s.expenses.length > 0) {
-                                        return sum + s.expenses.reduce((es, e) => es + (e.amount || 0), 0);
-                                    }
-                                    return sum + (s.annualSalary || 0);
-                                }, 0) +
-                                fOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-
-            const totalAllocation = spAllocation + actAllocation + pmAllocation;
-            
             const componentAllocation: {[key: string]: number} = {
                 'Social Preparation': 0,
                 'Production and Livelihood': 0,
                 'Marketing and Enterprise': 0,
-                'Program Management': pmAllocation
+                'Program Management': 0
             };
 
-            const getCategory = (name: string) => {
-                const n = name.toLowerCase();
-                if (n.includes('social') || n.includes('prep')) return 'Social Preparation';
-                if (n.includes('production') || n.includes('livelihood')) return 'Production and Livelihood';
-                if (n.includes('marketing') || n.includes('enterprise')) return 'Marketing and Enterprise';
-                return 'Program Management';
-            };
-
+            // Subprojects always go to Production and Livelihood as per WFP report structure
             fSubprojects.forEach(s => {
-                const cat = getCategory(s.packageType || '');
                 const amt = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
-                componentAllocation[cat] += amt;
-            });
-            fActivities.forEach(a => {
-                const cat = getCategory(a.component || '');
-                const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
-                componentAllocation[cat] += amt;
+                componentAllocation['Production and Livelihood'] += amt;
             });
 
+            // Activities (Trainings and Other Activities) use their component field
+            fActivities.forEach(a => {
+                const cat = a.component || 'Program Management';
+                const amt = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
+                if (componentAllocation.hasOwnProperty(cat)) {
+                    componentAllocation[cat] += amt;
+                } else {
+                    componentAllocation['Program Management'] += amt;
+                }
+            });
+
+            // Staffing Requirements use their component field (default to Program Management)
+            fStaffingReqs.forEach(s => {
+                const amt = s.expenses && s.expenses.length > 0 
+                    ? s.expenses.reduce((es, e) => es + (e.amount || 0), 0)
+                    : (s.annualSalary || 0);
+                const cat = s.component || 'Program Management';
+                if (componentAllocation.hasOwnProperty(cat)) {
+                    componentAllocation[cat] += amt;
+                } else {
+                    componentAllocation['Program Management'] += amt;
+                }
+            });
+
+            // Office Requirements and Other Expenses always go to Program Management
+            const officeAmt = fOfficeReqs.reduce((sum, o) => sum + (o.pricePerUnit * o.numberOfUnits), 0);
+            const otherExpAmt = fOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+            componentAllocation['Program Management'] += (officeAmt + otherExpAmt);
+
+            const totalAllocation = Object.values(componentAllocation).reduce((a, b) => a + b, 0);
+            
             const iposWithTargetSP = new Set(fSubprojects.map(s => s.indigenousPeopleOrganization)).size;
             const iposWithTargetTrainings = new Set(fTrainings.map(t => t.participatingIpos).flat()).size;
             const adsWithTargetSP = new Set(fIPOs.filter(i => fSubprojects.some(s => s.indigenousPeopleOrganization === i.name)).map(i => i.ancestralDomainNo)).size;
@@ -878,47 +883,85 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
             );
         } else {
             // Accomplishments
-            const spAllocation = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0), 0);
-            const actAllocation = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0), 0);
-            const pmAllocation = fOfficeReqs.reduce((sum, o) => sum + (o.pricePerUnit * o.numberOfUnits), 0) +
-                                fStaffingReqs.reduce((sum, s) => {
-                                    if (s.expenses && s.expenses.length > 0) {
-                                        return sum + s.expenses.reduce((es, e) => es + (e.amount || 0), 0);
-                                    }
-                                    return sum + (s.annualSalary || 0);
-                                }, 0) +
-                                fOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+            const componentAllocation: {[key: string]: number} = {
+                'Social Preparation': 0,
+                'Production and Livelihood': 0,
+                'Marketing and Enterprise': 0,
+                'Program Management': 0
+            };
+            const componentObligated: {[key: string]: number} = {
+                'Social Preparation': 0,
+                'Production and Livelihood': 0,
+                'Marketing and Enterprise': 0,
+                'Program Management': 0
+            };
+            const componentDisbursed: {[key: string]: number} = {
+                'Social Preparation': 0,
+                'Production and Livelihood': 0,
+                'Marketing and Enterprise': 0,
+                'Program Management': 0
+            };
 
-            const totalAllocation = spAllocation + actAllocation + pmAllocation;
-            
-            const spObligated = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0), 0);
-            const actObligated = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0), 0);
-            const pmObligated = fOfficeReqs.reduce((sum, o) => sum + (o.actualObligationAmount || 0), 0) +
-                               fStaffingReqs.reduce((sum, s) => {
-                                   if (s.expenses && s.expenses.length > 0) {
-                                       return sum + s.expenses.reduce((es, e) => es + (e.actualObligationAmount || 0), 0);
-                                   }
-                                   return sum + (s.actualObligationAmount || 0);
-                               }, 0) +
-                               fOtherExpenses.reduce((sum, e) => sum + (e.actualObligationAmount || 0), 0);
+            // Consolidation logic (same as Targets but for financial actuals)
+            fSubprojects.forEach(s => {
+                const cat = 'Production and Livelihood';
+                const alloc = s.details?.reduce((ds, d) => ds + (d.pricePerUnit * d.numberOfUnits), 0) || 0;
+                const obli = s.details?.reduce((ds, d) => ds + (d.actualObligationAmount || 0), 0) || 0;
+                const disb = s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0;
+                componentAllocation[cat] += alloc;
+                componentObligated[cat] += obli;
+                componentDisbursed[cat] += disb;
+            });
 
-            const totalObligated = spObligated + actObligated + pmObligated;
-            
-            const spDisbursed = fSubprojects.reduce((sum, s) => sum + (s.details?.reduce((ds, d) => ds + (d.actualDisbursementAmount || 0), 0) || 0), 0);
-            const actDisbursed = fActivities.reduce((sum, a) => sum + (a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0), 0);
-            const pmDisbursed = fOfficeReqs.reduce((sum, o) => sum + (o.actualDisbursementAmount || 0), 0) +
-                               fStaffingReqs.reduce((sum, s) => {
-                                   if (s.expenses && s.expenses.length > 0) {
-                                       return sum + s.expenses.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0);
-                                   }
-                                   return sum + (s.actualDisbursementAmount || 0);
-                               }, 0) +
-                               fOtherExpenses.reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
+            fActivities.forEach(a => {
+                const cat = a.component || 'Program Management';
+                const targetCat = componentAllocation.hasOwnProperty(cat) ? cat : 'Program Management';
+                const alloc = a.expenses?.reduce((es, e) => es + (e.amount || 0), 0) || 0;
+                const obli = a.expenses?.reduce((es, e) => es + (e.actualObligationAmount || 0), 0) || 0;
+                const disb = a.expenses?.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0) || 0;
+                componentAllocation[targetCat] += alloc;
+                componentObligated[targetCat] += obli;
+                componentDisbursed[targetCat] += disb;
+            });
 
-            const totalDisbursed = spDisbursed + actDisbursed + pmDisbursed;
+            fStaffingReqs.forEach(s => {
+                const cat = s.component || 'Program Management';
+                const targetCat = componentAllocation.hasOwnProperty(cat) ? cat : 'Program Management';
+                const alloc = s.expenses && s.expenses.length > 0 
+                    ? s.expenses.reduce((es, e) => es + (e.amount || 0), 0)
+                    : (s.annualSalary || 0);
+                const obli = s.expenses && s.expenses.length > 0
+                    ? s.expenses.reduce((es, e) => es + (e.actualObligationAmount || 0), 0)
+                    : (s.actualObligationAmount || 0);
+                const disb = s.expenses && s.expenses.length > 0
+                    ? s.expenses.reduce((es, e) => es + (e.actualDisbursementAmount || 0), 0)
+                    : (s.actualDisbursementAmount || 0);
+                componentAllocation[targetCat] += alloc;
+                componentObligated[targetCat] += obli;
+                componentDisbursed[targetCat] += disb;
+            });
 
-            const completedSPs = fSubprojects.filter(s => s.status === 'Completed');
-            const completedTrainings = fTrainings.filter(t => t.status === 'Completed');
+            fOfficeReqs.forEach(o => {
+                const cat = 'Program Management';
+                componentAllocation[cat] += (o.pricePerUnit * o.numberOfUnits);
+                componentObligated[cat] += (o.actualObligationAmount || 0);
+                componentDisbursed[cat] += (o.actualDisbursementAmount || 0);
+            });
+
+            fOtherExpenses.forEach(e => {
+                const cat = 'Program Management';
+                componentAllocation[cat] += (e.amount || 0);
+                componentObligated[cat] += (e.actualObligationAmount || 0);
+                componentDisbursed[cat] += (e.actualDisbursementAmount || 0);
+            });
+
+            const totalAllocation = Object.values(componentAllocation).reduce((a, b) => a + b, 0);
+            const totalObligated = Object.values(componentObligated).reduce((a, b) => a + b, 0);
+            const totalDisbursed = Object.values(componentDisbursed).reduce((a, b) => a + b, 0);
+
+            // Physical Accomplishments (BAR1 logic: based on actual dates)
+            const completedSPs = fSubprojects.filter(s => s.actualCompletionDate);
+            const completedTrainings = fTrainings.filter(t => t.actualDate);
             
             const iposWithCompletedSP = new Set(completedSPs.map(s => s.indigenousPeopleOrganization)).size;
             const iposWithCompletedTrainings = new Set(completedTrainings.map(t => t.participatingIpos).flat()).size;
@@ -969,6 +1012,19 @@ const AIChatbot: React.FC<AIChatbotProps> = ({
                             <div className="text-[10px] text-gray-500 uppercase">ADs w/ Comp. SP</div>
                             <div className="text-lg font-bold">{adsWithCompletedSP}</div>
                         </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Obligation per Component</div>
+                        {Object.entries(componentObligated).map(([name, amt]) => (
+                            <div key={name} className="flex items-center justify-between text-xs py-1 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                                <span className="text-gray-600 dark:text-gray-400 truncate pr-2">{name}</span>
+                                <div className="text-right shrink-0">
+                                    <div className="font-bold">₱{(amt / 1000000).toFixed(2)}M</div>
+                                    <div className="text-[10px] text-gray-400">{totalObligated > 0 ? ((amt / totalObligated) * 100).toFixed(1) : 0}%</div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
 
                     <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex gap-2">
