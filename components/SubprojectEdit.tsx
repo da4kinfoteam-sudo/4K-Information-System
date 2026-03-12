@@ -84,6 +84,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     const [missingFields, setMissingFields] = useState<string[]>([]);
     const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{field: string, dateStr: string} | null>(null);
 
+    const validationErrors = useMemo(() => {
+        const required = ['name', 'indigenousPeopleOrganization', 'status', 'estimatedCompletionDate'];
+        return required.filter(field => !formData[field as keyof Subproject]);
+    }, [formData]);
+
     useEffect(() => {
         if (subproject) {
             setFormData(subproject);
@@ -374,13 +379,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             return;
         }
 
-        const required = ['name', 'indigenousPeopleOrganization', 'status'];
-        if (!subproject) required.push('estimatedCompletionDate');
-        
-        const missing = required.filter(field => !formData[field as keyof Subproject]);
-        if (missing.length > 0) {
-            setMissingFields(missing);
-            alert("Please fill in all required fields.");
+        if (!subproject && validationErrors.length > 0) {
+            setMissingFields(validationErrors);
+            alert("Please fill in all required fields before saving.");
             setActiveTab('details');
             return;
         }
@@ -664,6 +665,18 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     )}
                     {activeTab === 'summary' && (
                         <div className="space-y-6 animate-fadeIn">
+                            {validationErrors.length > 0 && (
+                                <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-800 mb-4">
+                                    <h5 className="text-red-800 dark:text-red-200 font-bold mb-1">Missing Required Information</h5>
+                                    <p className="text-sm text-red-600 dark:text-red-400">The following fields are required before you can save:</p>
+                                    <ul className="list-disc list-inside text-xs text-red-500 mt-2">
+                                        {validationErrors.map(field => (
+                                            <li key={field}>{field === 'indigenousPeopleOrganization' ? 'IPO' : field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            
                             <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
                                 <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-200 mb-2">Subproject Summary</h4>
                                 <p className="text-sm text-emerald-600 dark:text-emerald-400">Please review the details below before confirming the creation of this subproject.</p>
@@ -673,13 +686,31 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div className="space-y-4">
                                     <h5 className="font-bold text-gray-700 dark:text-gray-300 border-b pb-1">General Information</h5>
                                     <div className="grid grid-cols-2 gap-2 text-sm">
-                                        <span className="text-gray-500">Name:</span> <span className="font-medium">{formData.name}</span>
-                                        <span className="text-gray-500">IPO:</span> <span className="font-medium">{formData.indigenousPeopleOrganization}</span>
+                                        <span className="text-gray-500">Name:</span> 
+                                        <span className={`font-medium ${!formData.name ? 'text-red-500 italic' : ''}`}>
+                                            {formData.name || 'Missing Name'}
+                                        </span>
+                                        
+                                        <span className="text-gray-500">IPO:</span> 
+                                        <span className={`font-medium ${!formData.indigenousPeopleOrganization ? 'text-red-500 italic' : ''}`}>
+                                            {formData.indigenousPeopleOrganization || 'Missing IPO'}
+                                        </span>
+                                        
                                         <span className="text-gray-500">Location:</span> <span className="font-medium">{formData.location}</span>
                                         <span className="text-gray-500">OU:</span> <span className="font-medium">{formData.operatingUnit}</span>
-                                        <span className="text-gray-500">Status:</span> <span className="font-medium">{formData.status}</span>
+                                        
+                                        <span className="text-gray-500">Status:</span> 
+                                        <span className={`font-medium ${!formData.status ? 'text-red-500 italic' : ''}`}>
+                                            {formData.status || 'Missing Status'}
+                                        </span>
+                                        
                                         <span className="text-gray-500">Package:</span> <span className="font-medium">{formData.packageType}</span>
-                                        <span className="text-gray-500">Est. Completion:</span> <span className="font-medium">{formatMonthYear(formData.estimatedCompletionDate)}</span>
+                                        
+                                        <span className="text-gray-500">Est. Completion:</span> 
+                                        <span className={`font-medium ${!formData.estimatedCompletionDate ? 'text-red-500 italic' : ''}`}>
+                                            {formData.estimatedCompletionDate ? formatMonthYear(formData.estimatedCompletionDate) : 'Missing Date'}
+                                        </span>
+                                        
                                         <span className="text-gray-500">Fund Year:</span> <span className="font-medium">{formData.fundingYear}</span>
                                         <span className="text-gray-500">Fund Type:</span> <span className="font-medium">{formData.fundType}</span>
                                         <span className="text-gray-500">Tier:</span> <span className="font-medium">{formData.tier}</span>
@@ -738,7 +769,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         <button type="button" onClick={handleBackSection} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Back Section</button>
                     )}
                     {activeTab === 'summary' || (subproject && activeTab === 'budget') ? (
-                        <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+                        <button 
+                            type="submit" 
+                            disabled={!subproject && validationErrors.length > 0}
+                            className={`px-4 py-2 rounded-md text-sm font-medium text-white ${(!subproject && validationErrors.length > 0) ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                        >
                             {subproject ? 'Update Subproject' : 'Confirm & Save Subproject'}
                         </button>
                     ) : (
