@@ -423,7 +423,12 @@ const LODManagementTab: React.FC = () => {
             weight: 1,
             order: maxOrder + 1,
             code: generateCode('Q'),
-            description: ''
+            description: '',
+            is_calculation_mode: false,
+            actual_label: '',
+            total_label: '',
+            is_specific_answer_mode: false,
+            specific_answer_label: ''
         };
         setEditingQuestions([...editingQuestions, newQuestion]);
         setIsEditingQuestionnaire(true);
@@ -790,7 +795,6 @@ const LODManagementTab: React.FC = () => {
                                                 
                                                 <div className="flex flex-col flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[10px] font-mono bg-gray-200 dark:bg-gray-600 px-1 rounded text-gray-500 dark:text-gray-300">{section.code}</span>
                                                         <input 
                                                             type="text" 
                                                             value={section.title}
@@ -828,7 +832,6 @@ const LODManagementTab: React.FC = () => {
                                                                     <div className="flex justify-between items-start mb-3">
                                                                         <div className="flex-1">
                                                                             <div className="flex items-center gap-2 mb-1">
-                                                                                <span className="text-[10px] font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-400">{question.code}</span>
                                                                                 <input 
                                                                                     type="text" 
                                                                                     value={question.text}
@@ -871,6 +874,71 @@ const LODManagementTab: React.FC = () => {
                                                                                     className="w-12 bg-transparent border-b border-gray-200 focus:border-emerald-500 focus:outline-none text-center"
                                                                                 />
                                                                             </div>
+
+                                                                            {/* New: Calculation and Specific Answer Modes */}
+                                                                            <div className="flex flex-wrap gap-4 mt-2">
+                                                                                <label className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase cursor-pointer">
+                                                                                    <input 
+                                                                                        type="checkbox" 
+                                                                                        checked={question.is_calculation_mode || false}
+                                                                                        disabled={lockedQuestionIds.has(question.id)}
+                                                                                        onChange={(e) => handleQuestionChange(question.id, 'is_calculation_mode', e.target.checked)}
+                                                                                        className="h-3 w-3 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                                                                                    />
+                                                                                    Calculation Mode
+                                                                                </label>
+                                                                                <label className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase cursor-pointer">
+                                                                                    <input 
+                                                                                        type="checkbox" 
+                                                                                        checked={question.is_specific_answer_mode || false}
+                                                                                        disabled={lockedQuestionIds.has(question.id)}
+                                                                                        onChange={(e) => handleQuestionChange(question.id, 'is_specific_answer_mode', e.target.checked)}
+                                                                                        className="h-3 w-3 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                                                                                    />
+                                                                                    Specific Answer Mode
+                                                                                </label>
+                                                                            </div>
+
+                                                                            {question.is_calculation_mode && (
+                                                                                <div className="grid grid-cols-2 gap-4 mt-2 bg-gray-50 dark:bg-gray-900/30 p-2 rounded-md">
+                                                                                    <div>
+                                                                                        <label className="block text-[9px] uppercase text-gray-400 font-bold">Actual Value Label</label>
+                                                                                        <input 
+                                                                                            type="text" 
+                                                                                            value={question.actual_label || ''}
+                                                                                            disabled={lockedQuestionIds.has(question.id)}
+                                                                                            onChange={(e) => handleQuestionChange(question.id, 'actual_label', e.target.value)}
+                                                                                            className="w-full text-xs bg-transparent border-b border-gray-200 focus:border-emerald-500 focus:outline-none"
+                                                                                            placeholder="e.g. Actual Participants"
+                                                                                        />
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <label className="block text-[9px] uppercase text-gray-400 font-bold">Total Value Label</label>
+                                                                                        <input 
+                                                                                            type="text" 
+                                                                                            value={question.total_label || ''}
+                                                                                            disabled={lockedQuestionIds.has(question.id)}
+                                                                                            onChange={(e) => handleQuestionChange(question.id, 'total_label', e.target.value)}
+                                                                                            className="w-full text-xs bg-transparent border-b border-gray-200 focus:border-emerald-500 focus:outline-none"
+                                                                                            placeholder="e.g. Total Members"
+                                                                                        />
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+
+                                                                            {question.is_specific_answer_mode && (
+                                                                                <div className="mt-2 bg-gray-50 dark:bg-gray-900/30 p-2 rounded-md">
+                                                                                    <label className="block text-[9px] uppercase text-gray-400 font-bold">Specific Answer Label</label>
+                                                                                    <input 
+                                                                                        type="text" 
+                                                                                        value={question.specific_answer_label || ''}
+                                                                                        disabled={lockedQuestionIds.has(question.id)}
+                                                                                        onChange={(e) => handleQuestionChange(question.id, 'specific_answer_label', e.target.value)}
+                                                                                        className="w-full text-xs bg-transparent border-b border-gray-200 focus:border-emerald-500 focus:outline-none"
+                                                                                        placeholder="e.g. Average Income"
+                                                                                    />
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                         {!lockedQuestionIds.has(question.id) && (
                                                                             <button onClick={() => handleDeleteQuestion(question.id)} className="text-gray-400 hover:text-red-500 ml-2">×</button>

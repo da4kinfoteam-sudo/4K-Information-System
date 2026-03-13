@@ -728,6 +728,11 @@ export interface LodQuestion {
     description?: string;
     weight: number;
     order: number;
+    is_calculation_mode?: boolean;
+    actual_label?: string;
+    total_label?: string;
+    is_specific_answer_mode?: boolean;
+    specific_answer_label?: string;
     created_at?: string;
 }
 
@@ -760,5 +765,8 @@ export interface LodAnswer {
     choice_id: number;
     points_earned: number;
     remarks?: string;
+    actual_value?: number | null;
+    total_value?: number | null;
+    specific_answer_value?: string | null;
     updated_at?: string;
 }

@@ -38,6 +38,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     // Local Answers State (Map<QuestionId, ChoiceId>)
     const [localAnswers, setLocalAnswers] = useState<Record<number, number>>({});
     const [localAnswerRemarks, setLocalAnswerRemarks] = useState<Record<number, string>>({});
+    const [localActualValues, setLocalActualValues] = useState<Record<number, number | ''>>({});
+    const [localTotalValues, setLocalTotalValues] = useState<Record<number, number | ''>>({});
+    const [localSpecificValues, setLocalSpecificValues] = useState<Record<number, string>>({});
 
     useEffect(() => {
         fetchStructure();
@@ -91,14 +94,21 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 setAnswers(ansData);
                 const initialAnswers: Record<number, number> = {};
                 const initialRemarks: Record<number, string> = {};
+                const initialActuals: Record<number, number | ''> = {};
+                const initialTotals: Record<number, number | ''> = {};
+                const initialSpecifics: Record<number, string> = {};
                 ansData.forEach(a => {
                     initialAnswers[a.question_id] = a.choice_id;
-                    if (a.remarks) {
-                        initialRemarks[a.question_id] = a.remarks;
-                    }
+                    if (a.remarks) initialRemarks[a.question_id] = a.remarks;
+                    initialActuals[a.question_id] = a.actual_value ?? '';
+                    initialTotals[a.question_id] = a.total_value ?? '';
+                    initialSpecifics[a.question_id] = a.specific_answer_value ?? '';
                 });
                 setLocalAnswers(initialAnswers);
                 setLocalAnswerRemarks(initialRemarks);
+                setLocalActualValues(initialActuals);
+                setLocalTotalValues(initialTotals);
+                setLocalSpecificValues(initialSpecifics);
             }
         } else {
             // Reset for new year
@@ -106,6 +116,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
             setAnswers([]);
             setLocalAnswers({});
             setLocalAnswerRemarks({});
+            setLocalActualValues({});
+            setLocalTotalValues({});
+            setLocalSpecificValues({});
             setManualLevel('');
             setRemarks('');
             setIsCarriedOver(false);
@@ -259,6 +272,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
             return;
         }
 
+        setAssessment(savedAssessment);
         assessmentId = savedAssessment.id;
 
         // 2. Upsert Answers
@@ -279,6 +293,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 choice_id: cId,
                 points_earned: points * weight, // Note: This stores raw points earned, not section-weighted.
                 remarks: remark,
+                actual_value: localActualValues[Number(qId)] === '' ? null : Number(localActualValues[Number(qId)]),
+                total_value: localTotalValues[Number(qId)] === '' ? null : Number(localTotalValues[Number(qId)]),
+                specific_answer_value: localSpecificValues[Number(qId)] || null,
                 updated_at: new Date().toISOString()
             };
         });
@@ -456,6 +473,56 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap leading-relaxed italic">
                                                                         {question.description}
                                                                     </p>
+                                                                )}
+
+                                                                {/* Calculation Fields */}
+                                                                {question.is_calculation_mode && (
+                                                                    <div className="mt-3 bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/30">
+                                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                                            <div>
+                                                                                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1">{question.actual_label || 'Actual Value'}</label>
+                                                                                <input 
+                                                                                    type="number"
+                                                                                    value={localActualValues[question.id] ?? ''}
+                                                                                    onChange={(e) => setLocalActualValues(prev => ({ ...prev, [question.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                                    placeholder="Enter actual number"
+                                                                                />
+                                                                            </div>
+                                                                            <div>
+                                                                                <label className="block text-xs font-bold text-blue-700 dark:text-blue-400 uppercase mb-1">{question.total_label || 'Total Value'}</label>
+                                                                                <input 
+                                                                                    type="number"
+                                                                                    value={localTotalValues[question.id] ?? ''}
+                                                                                    onChange={(e) => setLocalTotalValues(prev => ({ ...prev, [question.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                                    placeholder="Enter total number"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        {Number(localActualValues[question.id]) >= 0 && Number(localTotalValues[question.id]) > 0 && (
+                                                                            <div className="mt-2 text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                                                </svg>
+                                                                                Computed Result: {((Number(localActualValues[question.id]) / Number(localTotalValues[question.id])) * 100).toFixed(2)}%
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Specific Answer Field */}
+                                                                {question.is_specific_answer_mode && (
+                                                                    <div className="mt-3 bg-purple-50/50 dark:bg-purple-900/10 p-3 rounded-lg border border-purple-100 dark:border-purple-900/30">
+                                                                        <label className="block text-xs font-bold text-purple-700 dark:text-purple-400 uppercase mb-1">{question.specific_answer_label || 'Specific Answer'}</label>
+                                                                        <input 
+                                                                            type="text"
+                                                                            value={localSpecificValues[question.id] || ''}
+                                                                            onChange={(e) => setLocalSpecificValues(prev => ({ ...prev, [question.id]: e.target.value }))}
+                                                                            className="w-full px-3 py-1.5 text-sm border border-purple-200 dark:border-purple-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-purple-500 outline-none"
+                                                                            placeholder="Enter specific answer"
+                                                                        />
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </div>
