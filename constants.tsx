@@ -748,6 +748,8 @@ export interface LodAssessment {
     computed_level: number;
     manual_level?: number | null;
     remarks?: string | null;
+    is_carried_over?: boolean;
+    is_dropped?: boolean;
     updated_at?: string;
 }
 
