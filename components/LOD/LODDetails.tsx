@@ -419,7 +419,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold text-sm">
-                                                {section.code || section.order}
+                                                {section.order}
                                             </div>
                                             <h4 className="text-lg font-bold text-gray-800 dark:text-white">{section.title}</h4>
                                         </div>
@@ -447,7 +447,6 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                 return (
                                                     <div key={question.id} className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 pb-4 last:pb-0">
                                                         <div className="flex gap-3 mb-2">
-                                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold text-sm mt-0.5">{question.code}</span>
                                                             <div className="flex-1">
                                                                 <p className="text-gray-900 dark:text-white font-medium leading-tight">
                                                                     {question.text} 
