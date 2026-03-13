@@ -26,7 +26,27 @@ interface MonthlyDataPoint {
 
 interface FinancialData {
     components: { [key: string]: { target: number; obligation: number; disbursement: number } };
-    provinceData: { [key: string]: number };
+    provinceData: { 
+        [province: string]: {
+            alloc: number;
+            obli: number;
+            disb: number;
+            ancestralDomains: {
+                [ad: string]: {
+                    alloc: number;
+                    obli: number;
+                    disb: number;
+                    ipos: {
+                        [ipo: string]: {
+                            alloc: number;
+                            obli: number;
+                            disb: number;
+                        }
+                    }
+                }
+            }
+        }
+    };
     totalAllocation: number;
     totalObligation: number;
     totalDisbursement: number;
@@ -125,7 +145,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             'Program Management': { target: 0, obligation: 0, disbursement: 0 }
         };
 
-        const provinceData: { [key: string]: number } = {};
+        const provinceData: FinancialData['provinceData'] = {};
 
         let totalAllocation = 0;
         let totalObligation = 0;
@@ -141,11 +161,44 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             return new Date(dateStr).getMonth();
         };
 
-        const addToProvince = (loc: string, amount: number) => {
+        const ipoToADMap: { [key: string]: string } = {};
+        data.ipos.forEach(ipo => {
+            ipoToADMap[ipo.name] = ipo.ancestralDomainNo || 'Unspecified AD';
+        });
+
+        const addToProvince = (loc: string, ipoName: string | string[] | undefined, alloc: number, obli: number, disb: number) => {
             const { province } = parseLocation(loc);
-            const key = province || 'Unspecified';
-            if (!provinceData[key]) provinceData[key] = 0;
-            provinceData[key] += amount;
+            const pKey = province || 'Unspecified';
+            
+            if (!provinceData[pKey]) {
+                provinceData[pKey] = { alloc: 0, obli: 0, disb: 0, ancestralDomains: {} };
+            }
+            provinceData[pKey].alloc += alloc;
+            provinceData[pKey].obli += obli;
+            provinceData[pKey].disb += disb;
+
+            const ipos = Array.isArray(ipoName) ? ipoName : (ipoName ? [ipoName] : ['Unspecified IPO']);
+            const perIpoAlloc = alloc / ipos.length;
+            const perIpoObli = obli / ipos.length;
+            const perIpoDisb = disb / ipos.length;
+
+            ipos.forEach(ipo => {
+                const adKey = ipoToADMap[ipo] || 'Unspecified AD';
+                
+                if (!provinceData[pKey].ancestralDomains[adKey]) {
+                    provinceData[pKey].ancestralDomains[adKey] = { alloc: 0, obli: 0, disb: 0, ipos: {} };
+                }
+                provinceData[pKey].ancestralDomains[adKey].alloc += perIpoAlloc;
+                provinceData[pKey].ancestralDomains[adKey].obli += perIpoObli;
+                provinceData[pKey].ancestralDomains[adKey].disb += perIpoDisb;
+
+                if (!provinceData[pKey].ancestralDomains[adKey].ipos[ipo]) {
+                    provinceData[pKey].ancestralDomains[adKey].ipos[ipo] = { alloc: 0, obli: 0, disb: 0 };
+                }
+                provinceData[pKey].ancestralDomains[adKey].ipos[ipo].alloc += perIpoAlloc;
+                provinceData[pKey].ancestralDomains[adKey].ipos[ipo].obli += perIpoObli;
+                provinceData[pKey].ancestralDomains[adKey].ipos[ipo].disb += perIpoDisb;
+            });
         };
 
         // 1. Process Subprojects
@@ -174,7 +227,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             components['Production and Livelihood'].obligation += spObligation;
             components['Production and Livelihood'].disbursement += spDisbursement;
 
-            addToProvince(sp.location, spBudget);
+            addToProvince(sp.location, sp.indigenousPeopleOrganization, spBudget, spObligation, spDisbursement);
 
             totalAllocation += spBudget;
             totalObligation += spObligation;
@@ -214,7 +267,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 components['Program Management'].disbursement += actDisbursement;
             }
 
-            addToProvince(act.location, actBudget);
+            addToProvince(act.location, act.participatingIpos, actBudget, actObligation, actDisbursement);
         };
 
         data.trainings.forEach(processActivity);
@@ -420,12 +473,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             .sort(([nameA, a], [nameB, b]) => {
                 if (nameA === 'Unspecified') return 1;
                 if (nameB === 'Unspecified') return -1;
-                return (b as number) - (a as number);
+                return (b as any).alloc - (a as any).alloc;
             })
             .slice(0, 15);
         const provTable = [
             [{ text: "Province", options: { bold: true, fill: 'EEEEEE' } }, { text: "Allocation", options: { bold: true, fill: 'EEEEEE' } }],
-            ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole(v as number)])
+            ...sortedProvinces.map(([k, v]) => [k, formatCurrencyWhole((v as any).alloc)])
         ];
         slide4.addTable(provTable, { x: 0.5, y: 2.0, w: 6, border: { type: 'solid', color: 'CCCCCC' } });
 
@@ -482,6 +535,147 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                         </div>
                     </div>
                 </div>
+            </div>
+        );
+    };
+
+    const HierarchicalProvinceChart = () => {
+        const [expandedProvinces, setExpandedProvinces] = React.useState<Set<string>>(new Set());
+        const [expandedADs, setExpandedADs] = React.useState<Set<string>>(new Set());
+
+        const toggleProvince = (p: string) => {
+            const next = new Set(expandedProvinces);
+            if (next.has(p)) next.delete(p);
+            else next.add(p);
+            setExpandedProvinces(next);
+        };
+
+        const toggleAD = (ad: string) => {
+            const next = new Set(expandedADs);
+            if (next.has(ad)) next.delete(ad);
+            else next.add(ad);
+            setExpandedADs(next);
+        };
+
+        const maxVal = useMemo(() => {
+            let max = 0;
+            Object.values(provinceData).forEach((p: any) => {
+                max = Math.max(max, p.alloc, p.obli, p.disb);
+                Object.values(p.ancestralDomains).forEach((ad: any) => {
+                    max = Math.max(max, ad.alloc, ad.obli, ad.disb);
+                    Object.values(ad.ipos).forEach((ipo: any) => {
+                        max = Math.max(max, ipo.alloc, ipo.obli, ipo.disb);
+                    });
+                });
+            });
+            return max || 1;
+        }, [provinceData]);
+
+        const renderBars = (alloc: number, obli: number, disb: number, isExpanded: boolean) => {
+            if (isExpanded) return <div className="h-10 flex items-center italic text-gray-400 text-xs">Expanded - showing sub-items</div>;
+
+            const allocWidth = (alloc / maxVal) * 100;
+            const obliWidth = (obli / maxVal) * 100;
+            const disbWidth = (disb / maxVal) * 100;
+
+            return (
+                <div className="space-y-1.5 py-2">
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-green-400" style={{ width: `${allocWidth}%` }}></div>
+                        </div>
+                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(alloc)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-teal-500" style={{ width: `${obliWidth}%` }}></div>
+                        </div>
+                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(obli)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-700" style={{ width: `${disbWidth}%` }}></div>
+                        </div>
+                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(disb)}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <div className="space-y-4">
+                <div className="flex justify-end gap-4 mb-4 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full"></span> Allocation</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-teal-500 rounded-full"></span> Obligation</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-700 rounded-full"></span> Disbursement</div>
+                </div>
+
+                {Object.entries(provinceData)
+                    .sort(([nameA, a], [nameB, b]) => {
+                        if (nameA === 'Unspecified') return 1;
+                        if (nameB === 'Unspecified') return -1;
+                        return (b as any).alloc - (a as any).alloc;
+                    })
+                    .map(([province, pData]: [string, any]) => {
+                        const isExpanded = expandedProvinces.has(province);
+                        return (
+                            <div key={province} className="border-b border-gray-100 dark:border-gray-700 pb-4 last:border-0">
+                                <div 
+                                    className="flex items-center gap-3 cursor-pointer group"
+                                    onClick={() => toggleProvince(province)}
+                                >
+                                    <div className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors">
+                                        {isExpanded ? '-' : '+'}
+                                    </div>
+                                    <div className="flex-1 font-bold text-gray-800 dark:text-gray-100">{province}</div>
+                                </div>
+                                
+                                <div className="ml-8 mt-2">
+                                    {renderBars(pData.alloc, pData.obli, pData.disb, isExpanded)}
+                                    
+                                    {isExpanded && (
+                                        <div className="mt-4 space-y-4 border-l-2 border-gray-100 dark:border-gray-700 pl-4">
+                                            {Object.entries(pData.ancestralDomains)
+                                                .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
+                                                .map(([ad, adData]: [string, any]) => {
+                                                    const isADExpanded = expandedADs.has(`${province}-${ad}`);
+                                                    return (
+                                                        <div key={ad}>
+                                                            <div 
+                                                                className="flex items-center gap-3 cursor-pointer group"
+                                                                onClick={() => toggleAD(`${province}-${ad}`)}
+                                                            >
+                                                                <div className="w-4 h-4 flex items-center justify-center rounded bg-gray-50 dark:bg-gray-800 text-gray-400 group-hover:bg-green-50 group-hover:text-green-500 transition-colors text-[10px]">
+                                                                    {isADExpanded ? '-' : '+'}
+                                                                </div>
+                                                                <div className="flex-1 text-sm font-semibold text-gray-700 dark:text-gray-300">{ad}</div>
+                                                            </div>
+                                                            
+                                                            <div className="ml-7 mt-1">
+                                                                {renderBars(adData.alloc, adData.obli, adData.disb, isADExpanded)}
+                                                                
+                                                                {isADExpanded && (
+                                                                    <div className="mt-2 space-y-3 border-l border-gray-100 dark:border-gray-700 pl-4">
+                                                                        {Object.entries(adData.ipos)
+                                                                            .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
+                                                                            .map(([ipo, ipoData]: [string, any]) => (
+                                                                                <div key={ipo}>
+                                                                                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{ipo}</div>
+                                                                                    {renderBars(ipoData.alloc, ipoData.obli, ipoData.disb, false)}
+                                                                                </div>
+                                                                            ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
             </div>
         );
     };
@@ -707,41 +901,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             </section>
 
             <section aria-labelledby="province-breakdown">
-                <h3 id="province-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Allocation per Province</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 italic">Provincial allocation highlights investment towards specific regions. Items like program management or multi-region expenses are categorized as Unspecified.</p>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[500px] overflow-y-auto custom-scrollbar">
-                    <div className="space-y-4">
-                        {Object.entries(provinceData)
-                            .sort(([nameA, a], [nameB, b]) => {
-                                // Explicitly move 'Unspecified' to the bottom
-                                if (nameA === 'Unspecified') return 1;
-                                if (nameB === 'Unspecified') return -1;
-                                // Normal descending sort for the rest
-                                return (b as number) - (a as number);
-                            })
-                            .map(([province, amount], index) => {
-                                const maxVal = Math.max(...(Object.values(provinceData) as number[]));
-                                const percent = maxVal > 0 ? ((amount as number) / maxVal) * 100 : 0;
-                                const isUnspecified = province === 'Unspecified';
-
-                                return (
-                                    <div key={province} className={`flex items-center text-sm group ${isUnspecified ? 'mt-6 pt-4 border-t border-gray-100 dark:border-gray-700' : ''}`}>
-                                        <div className="w-6 text-gray-400 font-mono text-xs">{isUnspecified ? '' : index + 1}</div>
-                                        <div className={`w-40 truncate font-medium ${isUnspecified ? 'text-gray-400' : 'text-gray-700 dark:text-gray-300'}`} title={province}>{province}</div>
-                                        <div className="flex-1 mx-4">
-                                            <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                                <div 
-                                                    className={`h-full transition-all duration-500 ${isUnspecified ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gradient-to-r from-green-400 to-green-600 group-hover:from-green-500 group-hover:to-green-700'}`} 
-                                                    style={{ width: `${percent}%` }}
-                                                ></div>
-                                            </div>
-                                        </div>
-                                        <div className={`w-32 text-right font-semibold ${isUnspecified ? 'text-gray-500' : 'text-gray-800 dark:text-gray-100'}`}>{formatCurrencyWhole(amount as number)}</div>
-                                    </div>
-                                );
-                            })}
-                        {Object.keys(provinceData).length === 0 && <p className="text-center text-gray-500 italic py-4">No location data available for current selection.</p>}
-                    </div>
+                <h3 id="province-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Allocation per Province, Ancestral Domains, IPOs</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 italic">Hierarchical breakdown of financial performance. Expand provinces and ancestral domains to see detailed allocations, obligations, and disbursements.</p>
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[600px] overflow-y-auto custom-scrollbar">
+                    <HierarchicalProvinceChart />
                 </div>
             </section>
 
