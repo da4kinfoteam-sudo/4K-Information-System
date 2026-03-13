@@ -571,111 +571,123 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             return max || 1;
         }, [provinceData]);
 
-        const renderBars = (alloc: number, obli: number, disb: number, isExpanded: boolean) => {
-            if (isExpanded) return <div className="h-10 flex items-center italic text-gray-400 text-xs">Expanded - showing sub-items</div>;
+        const renderDataColumns = (alloc: number, obli: number, disb: number, isExpanded: boolean) => {
+            if (isExpanded) return <div className="col-span-3 text-right italic text-gray-400 text-[10px] py-1">Showing sub-items...</div>;
 
             const allocWidth = (alloc / maxVal) * 100;
             const obliWidth = (obli / maxVal) * 100;
             const disbWidth = (disb / maxVal) * 100;
 
             return (
-                <div className="space-y-1.5 py-2">
-                    <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <>
+                    <div className="text-right">
+                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(alloc)}</div>
+                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
                             <div className="h-full bg-green-400" style={{ width: `${allocWidth}%` }}></div>
                         </div>
-                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(alloc)}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="text-right">
+                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(obli)}</div>
+                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
                             <div className="h-full bg-teal-500" style={{ width: `${obliWidth}%` }}></div>
                         </div>
-                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(obli)}</div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="text-right">
+                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(disb)}</div>
+                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
                             <div className="h-full bg-emerald-700" style={{ width: `${disbWidth}%` }}></div>
                         </div>
-                        <div className="w-24 text-right text-[10px] font-mono text-gray-500">{formatCurrencyWhole(disb)}</div>
                     </div>
-                </div>
+                </>
             );
         };
 
         return (
-            <div className="space-y-4">
-                <div className="flex justify-end gap-4 mb-4 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full"></span> Allocation</div>
-                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-teal-500 rounded-full"></span> Obligation</div>
-                    <div className="flex items-center gap-1.5"><span className="w-2 h-2 bg-emerald-700 rounded-full"></span> Disbursement</div>
+            <div className="w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+                {/* Table Header */}
+                <div className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 bg-gray-100 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                    <div>Location Hierarchy</div>
+                    <div className="text-right">Allocation</div>
+                    <div className="text-right">Obligation</div>
+                    <div className="text-right">Disbursement</div>
                 </div>
 
-                {Object.entries(provinceData)
-                    .sort(([nameA, a], [nameB, b]) => {
-                        if (nameA === 'Unspecified') return 1;
-                        if (nameB === 'Unspecified') return -1;
-                        return (b as any).alloc - (a as any).alloc;
-                    })
-                    .map(([province, pData]: [string, any]) => {
-                        const isExpanded = expandedProvinces.has(province);
-                        return (
-                            <div key={province} className="border-b border-gray-100 dark:border-gray-700 pb-4 last:border-0">
-                                <div 
-                                    className="flex items-center gap-3 cursor-pointer group"
-                                    onClick={() => toggleProvince(province)}
-                                >
-                                    <div className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors">
-                                        {isExpanded ? '-' : '+'}
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {Object.entries(provinceData)
+                        .sort(([nameA, a], [nameB, b]) => {
+                            if (nameA === 'Unspecified') return 1;
+                            if (nameB === 'Unspecified') return -1;
+                            return (b as any).alloc - (a as any).alloc;
+                        })
+                        .map(([province, pData]: [string, any]) => {
+                            const isExpanded = expandedProvinces.has(province);
+                            return (
+                                <div key={province} className="flex flex-col">
+                                    {/* Province Row */}
+                                    <div 
+                                        className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-2.5 items-center hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer group"
+                                        onClick={() => toggleProvince(province)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors text-xs font-bold">
+                                                {isExpanded ? '−' : '+'}
+                                            </div>
+                                            <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{province}</span>
+                                        </div>
+                                        {renderDataColumns(pData.alloc, pData.obli, pData.disb, isExpanded)}
                                     </div>
-                                    <div className="flex-1 font-bold text-gray-800 dark:text-gray-100">{province}</div>
-                                </div>
-                                
-                                <div className="ml-8 mt-2">
-                                    {renderBars(pData.alloc, pData.obli, pData.disb, isExpanded)}
-                                    
+
+                                    {/* Ancestral Domains Hierarchy */}
                                     {isExpanded && (
-                                        <div className="mt-4 space-y-4 border-l-2 border-gray-100 dark:border-gray-700 pl-4">
+                                        <div className="bg-gray-50/30 dark:bg-gray-800/10 divide-y divide-gray-50 dark:divide-gray-800/50">
                                             {Object.entries(pData.ancestralDomains)
                                                 .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
                                                 .map(([ad, adData]: [string, any]) => {
-                                                    const isADExpanded = expandedADs.has(`${province}-${ad}`);
+                                                    const adKey = `${province}-${ad}`;
+                                                    const isADExpanded = expandedADs.has(adKey);
                                                     return (
-                                                        <div key={ad}>
+                                                        <div key={ad} className="flex flex-col">
+                                                            {/* AD Row */}
                                                             <div 
-                                                                className="flex items-center gap-3 cursor-pointer group"
-                                                                onClick={() => toggleAD(`${province}-${ad}`)}
+                                                                className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-2 items-center hover:bg-gray-100/50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer group pl-12"
+                                                                onClick={() => toggleAD(adKey)}
                                                             >
-                                                                <div className="w-4 h-4 flex items-center justify-center rounded bg-gray-50 dark:bg-gray-800 text-gray-400 group-hover:bg-green-50 group-hover:text-green-500 transition-colors text-[10px]">
-                                                                    {isADExpanded ? '-' : '+'}
-                                                                </div>
-                                                                <div className="flex-1 text-sm font-semibold text-gray-700 dark:text-gray-300">{ad}</div>
-                                                            </div>
-                                                            
-                                                            <div className="ml-7 mt-1">
-                                                                {renderBars(adData.alloc, adData.obli, adData.disb, isADExpanded)}
-                                                                
-                                                                {isADExpanded && (
-                                                                    <div className="mt-2 space-y-3 border-l border-gray-100 dark:border-gray-700 pl-4">
-                                                                        {Object.entries(adData.ipos)
-                                                                            .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
-                                                                            .map(([ipo, ipoData]: [string, any]) => (
-                                                                                <div key={ipo}>
-                                                                                    <div className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{ipo}</div>
-                                                                                    {renderBars(ipoData.alloc, ipoData.obli, ipoData.disb, false)}
-                                                                                </div>
-                                                                            ))}
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-4 h-4 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-600 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors text-[10px] font-bold">
+                                                                        {isADExpanded ? '−' : '+'}
                                                                     </div>
-                                                                )}
+                                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">{ad}</span>
+                                                                </div>
+                                                                {renderDataColumns(adData.alloc, adData.obli, adData.disb, isADExpanded)}
                                                             </div>
+
+                                                            {/* IPOs Hierarchy */}
+                                                            {isADExpanded && (
+                                                                <div className="bg-white dark:bg-gray-900/50 divide-y divide-gray-50 dark:divide-gray-800/30">
+                                                                    {Object.entries(adData.ipos)
+                                                                        .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
+                                                                        .map(([ipo, ipoData]: [string, any]) => (
+                                                                            <div 
+                                                                                key={ipo}
+                                                                                className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-1.5 items-center pl-20"
+                                                                            >
+                                                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium italic">
+                                                                                    {ipo}
+                                                                                </div>
+                                                                                {renderDataColumns(ipoData.alloc, ipoData.obli, ipoData.disb, false)}
+                                                                            </div>
+                                                                        ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     );
                                                 })}
                                         </div>
                                     )}
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                </div>
             </div>
         );
     };
