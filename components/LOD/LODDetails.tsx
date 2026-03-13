@@ -98,11 +98,14 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 const initialTotals: Record<number, number | ''> = {};
                 const initialSpecifics: Record<number, string> = {};
                 ansData.forEach(a => {
-                    initialAnswers[a.question_id] = a.choice_id;
-                    if (a.remarks) initialRemarks[a.question_id] = a.remarks;
-                    initialActuals[a.question_id] = a.actual_value ?? '';
-                    initialTotals[a.question_id] = a.total_value ?? '';
-                    initialSpecifics[a.question_id] = a.specific_answer_value ?? '';
+                    const qId = Number(a.question_id);
+                    const cId = a.choice_id ? Number(a.choice_id) : null;
+                    
+                    if (cId !== null) initialAnswers[qId] = cId;
+                    if (a.remarks) initialRemarks[qId] = a.remarks;
+                    initialActuals[qId] = a.actual_value ?? '';
+                    initialTotals[qId] = a.total_value ?? '';
+                    initialSpecifics[qId] = a.specific_answer_value ?? '';
                 });
                 setLocalAnswers(initialAnswers);
                 setLocalAnswerRemarks(initialRemarks);
@@ -139,9 +142,12 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     };
 
     const handleAnswerChange = (questionId: number, choiceId: number) => {
+        const qId = Number(questionId);
+        const cId = Number(choiceId);
+        console.log(`Answer changed: Q:${qId} -> C:${cId}`);
         setLocalAnswers(prev => ({
             ...prev,
-            [questionId]: choiceId
+            [qId]: cId
         }));
     };
 
@@ -262,7 +268,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
 
         const { data: savedAssessment, error: aError } = await supabase
             .from('lod_assessments')
-            .upsert(assessmentId ? { ...assessmentPayload, id: assessmentId } : assessmentPayload)
+            .upsert(assessmentPayload, { onConflict: 'ipo_id, year' })
             .select()
             .single();
 
@@ -276,38 +282,64 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
         assessmentId = savedAssessment.id;
 
         // 2. Upsert Answers
-        const answersPayload = Object.entries(localAnswers).map(([qId, cId]) => {
-            const question = questions.find(q => q.id === Number(qId));
-            const choice = choices.find(c => c.id === cId);
-            const points = choice ? choice.points : 0;
-            const weight = question ? question.weight : 1;
-            const remark = localAnswerRemarks[Number(qId)] || null;
-            
-            // Find existing answer id if any
-            const existingAnswer = answers.find(a => a.question_id === Number(qId));
+        const validQuestionIds = new Set(questions.map(q => q.id));
+        const validChoiceIds = new Set(choices.map(c => c.id));
 
-            return {
-                id: existingAnswer?.id, // Include ID if updating
-                assessment_id: assessmentId,
-                question_id: Number(qId),
-                choice_id: cId,
-                points_earned: points * weight, // Note: This stores raw points earned, not section-weighted.
-                remarks: remark,
-                actual_value: localActualValues[Number(qId)] === '' ? null : Number(localActualValues[Number(qId)]),
-                total_value: localTotalValues[Number(qId)] === '' ? null : Number(localTotalValues[Number(qId)]),
-                specific_answer_value: localSpecificValues[Number(qId)] || null,
-                updated_at: new Date().toISOString()
-            };
-        });
+        const answersPayload = Object.entries(localAnswers)
+            .filter(([qIdStr, cId]) => {
+                const qId = Number(qIdStr);
+                const choiceId = Number(cId);
+                // Ensure both are valid numbers and the question exists
+                return !isNaN(qId) && !isNaN(choiceId) && validQuestionIds.has(qId);
+            })
+            .map(([qIdStr, cId]) => {
+                const qId = Number(qIdStr);
+                const choiceId = Number(cId);
+                const question = questions.find(q => q.id === qId);
+                const choice = choices.find(c => c.id === choiceId);
+                
+                const points = choice ? (Number(choice.points) || 0) : 0;
+                const weight = question ? (Number(question.weight) || 1) : 1;
+                const remark = localAnswerRemarks[qId] || null;
+                
+                const actual = localActualValues[qId];
+                const total = localTotalValues[qId];
+
+                const safeNum = (val: any) => {
+                    if (val === '' || val === undefined || val === null) return null;
+                    const n = Number(val);
+                    return isNaN(n) ? null : n;
+                };
+
+                const pointsEarned = Number((points * weight).toFixed(4));
+
+                // Find existing answer ID to ensure update works correctly if onConflict is picky
+                const existingAnswer = answers.find(a => a.question_id === qId);
+
+                return {
+                    id: existingAnswer?.id, // Include ID if we have it
+                    assessment_id: assessmentId,
+                    question_id: qId,
+                    choice_id: choiceId,
+                    points_earned: isNaN(pointsEarned) ? 0 : pointsEarned,
+                    remarks: remark,
+                    actual_value: safeNum(actual),
+                    total_value: safeNum(total),
+                    specific_answer_value: localSpecificValues[qId] || null,
+                    updated_at: new Date().toISOString()
+                };
+            });
+
+        console.log('Saving LOD Answers Payload:', answersPayload);
 
         if (answersPayload.length > 0) {
             const { error: ansError } = await supabase
                 .from('lod_answers')
-                .upsert(answersPayload);
+                .upsert(answersPayload, { onConflict: 'assessment_id,question_id' });
             
             if (ansError) {
                 console.error('Error saving answers:', ansError);
-                alert('Assessment saved but error saving detailed answers.');
+                alert(`Assessment saved but error saving detailed answers: ${ansError.message || JSON.stringify(ansError)}`);
             }
         }
 
@@ -530,7 +562,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                         <div className="ml-8 grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                                                             {qChoices.map(choice => (
                                                                 <label key={choice.id} className={`flex items-center p-2 rounded-lg border cursor-pointer transition-colors
-                                                                    ${localAnswers[question.id] === choice.id 
+                                                                    ${Number(localAnswers[question.id]) === Number(choice.id) 
                                                                         ? 'bg-emerald-50 border-emerald-500 dark:bg-emerald-900/20 dark:border-emerald-500' 
                                                                         : 'border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700'
                                                                     }
@@ -539,7 +571,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                         type="radio" 
                                                                         name={`q-${question.id}`} 
                                                                         value={choice.id}
-                                                                        checked={localAnswers[question.id] === choice.id}
+                                                                        checked={Number(localAnswers[question.id]) === Number(choice.id)}
                                                                         onChange={() => handleAnswerChange(question.id, choice.id)}
                                                                         className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300"
                                                                     />
