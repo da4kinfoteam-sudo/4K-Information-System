@@ -4,6 +4,13 @@ import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
 import { getObjectTypeByCode, XLSX } from './ReportUtils';
 
+interface DetailPopup {
+    indicator: string;
+    month: string;
+    items: string[];
+    type: 'Target' | 'Accomplishment';
+}
+
 interface BAR1ReportProps {
     data: {
         subprojects: Subproject[];
@@ -21,6 +28,8 @@ interface BAR1ReportProps {
 
 const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
+    const [popup, setPopup] = useState<DetailPopup | null>(null);
+
     const toggleRow = (key: string) => {
         setExpandedRows(prev => {
             const newSet = new Set(prev);
@@ -58,29 +67,48 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             m4: 0, m5: 0, m6: 0, q2: 0,
             m7: 0, m8: 0, m9: 0, q3: 0,
             m10: 0, m11: 0, m12: 0, q4: 0,
-            total: 0
+            total: 0,
+            m1_items: [] as string[], m2_items: [] as string[], m3_items: [] as string[],
+            m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
+            m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
+            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[]
         });
 
         const addItemToGroup = (list: any[], newItem: any) => {
             const existing = list.find(i => i.indicator === newItem.indicator);
             if (existing) {
                 for (const key in newItem.target) {
-                    existing.target[key] += newItem.target[key];
+                    if (key.endsWith('_items')) {
+                        existing.target[key] = [...(existing.target[key] || []), ...(newItem.target[key] || [])];
+                    } else {
+                        existing.target[key] += newItem.target[key];
+                    }
                 }
                 for (const key in newItem.actual) {
-                    existing.actual[key] += newItem.actual[key];
+                    if (key.endsWith('_items')) {
+                        existing.actual[key] = [...(existing.actual[key] || []), ...(newItem.actual[key] || [])];
+                    } else {
+                        existing.actual[key] += newItem.actual[key];
+                    }
                 }
             } else {
                 list.push(newItem);
             }
         };
 
-        const incrementCounter = (counter: any, dateStr?: string, count: number = 1) => {
+        const incrementCounter = (counter: any, dateStr?: string, count: number = 1, itemName?: string) => {
             const monthIdx = getMonthIndex(dateStr);
             if (monthIdx !== -1) {
                 const monthKey = `m${monthIdx + 1}`;
                 counter[monthKey] += count;
                 
+                if (itemName) {
+                    const itemsKey = `${monthKey}_items`;
+                    if (!counter[itemsKey].includes(itemName)) {
+                        counter[itemsKey].push(itemName);
+                    }
+                }
+
                 if (monthIdx < 3) counter.q1 += count;
                 else if (monthIdx < 6) counter.q2 += count;
                 else if (monthIdx < 9) counter.q3 += count;
@@ -90,18 +118,18 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             }
         };
 
-        const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string) => {
+        const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string, itemName?: string) => {
             const item: any = {
                 indicator,
                 target: initializeCounter(),
                 actual: initializeCounter()
             };
-            incrementCounter(item.target, targetDate, physicalCount);
-            incrementCounter(item.actual, actualDate, physicalCount);
+            incrementCounter(item.target, targetDate, physicalCount, itemName);
+            incrementCounter(item.actual, actualDate, physicalCount, itemName);
             return item;
         };
 
-        const calculateFirstEncounter = (entries: { id: string; date?: string }[]) => {
+        const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string }[]) => {
             const counter = initializeCounter();
             const validEntries = entries
                 .filter(e => e.date)
@@ -113,17 +141,17 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             validEntries.forEach(entry => {
                 if (!seen.has(entry.id)) {
                     seen.add(entry.id);
-                    incrementCounter(counter, entry.date, 1);
+                    incrementCounter(counter, entry.date, 1, entry.label || entry.id);
                 }
             });
             return counter;
         };
 
-        const calculateSumOverTime = (entries: { val: number; date?: string }[]) => {
+        const calculateSumOverTime = (entries: { val: number; date?: string; label?: string }[]) => {
             const counter = initializeCounter();
             entries.forEach(e => {
                 if (e.date) {
-                    incrementCounter(counter, e.date, e.val);
+                    incrementCounter(counter, e.date, e.val, e.label);
                 }
             });
             return counter;
@@ -136,19 +164,23 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         const allTargetADs = data.subprojects.map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+            label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             date: sp.estimatedCompletionDate
         })).filter(x => x.id);
         const allActualADs = data.subprojects.map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+            label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             date: sp.actualCompletionDate
         })).filter(x => x.id);
 
         const allTargetIPOs = data.subprojects.map(sp => ({
             id: sp.indigenousPeopleOrganization,
+            label: sp.indigenousPeopleOrganization,
             date: sp.estimatedCompletionDate
         }));
         const allActualIPOs = data.subprojects.map(sp => ({
             id: sp.indigenousPeopleOrganization,
+            label: sp.indigenousPeopleOrganization,
             date: sp.actualCompletionDate
         }));
 
@@ -182,10 +214,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
             const targetADs = subprojects.map(sp => ({
                 id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+                label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
                 date: sp.estimatedCompletionDate 
             })).filter(x => x.id); 
             const actualADs = subprojects.map(sp => ({
                 id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
+                label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
                 date: sp.actualCompletionDate
             })).filter(x => x.id);
 
@@ -197,10 +231,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
             const targetIPOs = subprojects.map(sp => ({
                 id: sp.indigenousPeopleOrganization,
+                label: sp.indigenousPeopleOrganization,
                 date: sp.estimatedCompletionDate
             }));
             const actualIPOs = subprojects.map(sp => ({
                 id: sp.indigenousPeopleOrganization,
+                label: sp.indigenousPeopleOrganization,
                 date: sp.actualCompletionDate
             }));
 
@@ -212,10 +248,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
             const targetSPs = subprojects.map(sp => ({
                 val: 1,
+                label: sp.name,
                 date: sp.estimatedCompletionDate
             }));
             const actualSPs = subprojects.map(sp => ({
                 val: 1,
+                label: sp.name,
                 date: sp.actualCompletionDate
             }));
             
@@ -230,26 +268,28 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             const relevantTrainings = data.trainings.filter(t => t.component === componentName);
             const getTargetDate = (t: Training) => t.endDate || t.date;
             const getActualDate = (t: Training) => t.actualDate;
-            const targetTrainings = relevantTrainings.map(t => ({ val: 1, date: getTargetDate(t) }));
-            const actualTrainings = relevantTrainings.map(t => ({ val: 1, date: getActualDate(t) }));
-            const targetIPOs: { id: string, date?: string }[] = [];
-            const actualIPOs: { id: string, date?: string }[] = [];
+            const targetTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
+            const actualTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getActualDate(t) }));
+            const targetIPOs: { id: string, label: string, date?: string }[] = [];
+            const actualIPOs: { id: string, label: string, date?: string }[] = [];
             
             relevantTrainings.forEach(t => {
                 const tDate = getTargetDate(t);
                 const aDate = getActualDate(t);
                 t.participatingIpos.forEach(ipo => {
-                    targetIPOs.push({ id: ipo, date: tDate });
-                    if (aDate) actualIPOs.push({ id: ipo, date: aDate });
+                    targetIPOs.push({ id: ipo, label: ipo, date: tDate });
+                    if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate });
                 });
             });
 
             const targetPax = relevantTrainings.map(t => ({ 
                 val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
+                label: t.name,
                 date: getTargetDate(t) 
             }));
             const actualPax = relevantTrainings.map(t => ({ 
                 val: (t.actualParticipantsMale || 0) + (t.actualParticipantsFemale || 0), 
+                label: t.name,
                 date: getActualDate(t) 
             }));
 
@@ -296,17 +336,17 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             });
 
             Object.entries(groups).forEach(([name, activities]) => {
-                const targetConducted = activities.map(a => ({ val: 1, date: a.date }));
-                const actualConducted = activities.map(a => ({ val: 1, date: a.actualDate }));
+                const targetConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
+                const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.actualDate }));
 
-                const targetIPOs: { id: string, date?: string }[] = [];
-                const actualIPOs: { id: string, date?: string }[] = [];
+                const targetIPOs: { id: string, label: string, date?: string }[] = [];
+                const actualIPOs: { id: string, label: string, date?: string }[] = [];
                 
                 activities.forEach(a => {
                     if (a.participatingIpos) {
                         a.participatingIpos.forEach(ipo => {
-                            targetIPOs.push({ id: ipo, date: a.date });
-                            if (a.actualDate) actualIPOs.push({ id: ipo, date: a.actualDate });
+                            targetIPOs.push({ id: ipo, label: ipo, date: a.date });
+                            if (a.actualDate) actualIPOs.push({ id: ipo, label: ipo, date: a.actualDate });
                         });
                     }
                 });
@@ -370,7 +410,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 if (isOtherExpense) return; 
                 const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
                 const count = isStaff ? 1 : (pm.numberOfUnits || 1);
-                const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate);
+                const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
+                const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate, itemName);
                 addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
             });
         }
@@ -391,7 +432,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             m4: 0, m5: 0, m6: 0, q2: 0,
             m7: 0, m8: 0, m9: 0, q3: 0,
             m10: 0, m11: 0, m12: 0, q4: 0,
-            total: 0
+            total: 0,
+            m1_items: [] as string[], m2_items: [] as string[], m3_items: [] as string[],
+            m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
+            m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
+            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[]
         };
 
         const total = {
@@ -406,6 +451,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                      for (let i = 1; i <= 12; i++) {
                         total.target[`m${i}`] += (primaryMetric.target[`m${i}`] || 0);
                         total.actual[`m${i}`] += (primaryMetric.actual[`m${i}`] || 0);
+                        total.target[`m${i}_items`] = [...new Set([...total.target[`m${i}_items`], ...(primaryMetric.target[`m${i}_items`] || [])])];
+                        total.actual[`m${i}_items`] = [...new Set([...total.actual[`m${i}_items`], ...(primaryMetric.actual[`m${i}_items`] || [])])];
                     }
                     total.target.q1 += (primaryMetric.target.q1 || 0); total.actual.q1 += (primaryMetric.actual.q1 || 0);
                     total.target.q2 += (primaryMetric.target.q2 || 0); total.actual.q2 += (primaryMetric.actual.q2 || 0);
@@ -419,6 +466,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             for (let i = 1; i <= 12; i++) {
                 total.target[`m${i}`] += (item.target[`m${i}`] || 0);
                 total.actual[`m${i}`] += (item.actual[`m${i}`] || 0);
+                total.target[`m${i}_items`] = [...new Set([...total.target[`m${i}_items`], ...(item.target[`m${i}_items`] || [])])];
+                total.actual[`m${i}_items`] = [...new Set([...total.actual[`m${i}_items`], ...(item.actual[`m${i}_items`] || [])])];
             }
             total.target.q1 += (item.target.q1 || 0); total.actual.q1 += (item.actual.q1 || 0);
             total.target.q2 += (item.target.q2 || 0); total.actual.q2 += (item.actual.q2 || 0);
@@ -451,30 +500,46 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             return `${Math.round((actual / target) * 100)}%`;
         };
 
+        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+        const ClickableValue = ({ val, items, month, type }: { val: number | string, items: string[], month: string, type: 'Target' | 'Accomplishment' }) => {
+            if (!val || val === 0) return <span></span>;
+            if (!items || items.length === 0) return <span>{val}</span>;
+            
+            return (
+                <button 
+                    onClick={() => setPopup({ indicator: item.indicator, month, items, type })}
+                    className="hover:text-emerald-600 hover:underline transition-colors focus:outline-none"
+                >
+                    {val}
+                </button>
+            );
+        };
+
         const renderTargetSection = () => (
             <>
-                <td className={cellClass}>{t.m1 || ''}</td>
-                <td className={cellClass}>{t.m2 || ''}</td>
-                <td className={cellClass}>{t.m3 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m1} items={t.m1_items} month="January" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m2} items={t.m2_items} month="February" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m3} items={t.m3_items} month="March" type="Target" /></td>
                 <td className={totalClass}>{t.q1 || ''}</td>
 
-                <td className={cellClass}>{t.m4 || ''}</td>
-                <td className={cellClass}>{t.m5 || ''}</td>
-                <td className={cellClass}>{t.m6 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m4} items={t.m4_items} month="April" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m5} items={t.m5_items} month="May" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m6} items={t.m6_items} month="June" type="Target" /></td>
                 <td className={totalClass}>{t.q2 || ''}</td>
 
                 <td className={calculatedClass}>{t.semestralTotal || ''}</td>
 
-                <td className={cellClass}>{t.m7 || ''}</td>
-                <td className={cellClass}>{t.m8 || ''}</td>
-                <td className={cellClass}>{t.m9 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m7} items={t.m7_items} month="July" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m8} items={t.m8_items} month="August" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m9} items={t.m9_items} month="September" type="Target" /></td>
                 <td className={totalClass}>{t.q3 || ''}</td>
 
                 <td className={calculatedClass}>{t.asOfSept || ''}</td>
 
-                <td className={cellClass}>{t.m10 || ''}</td>
-                <td className={cellClass}>{t.m11 || ''}</td>
-                <td className={cellClass}>{t.m12 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m10} items={t.m10_items} month="October" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m11} items={t.m11_items} month="November" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m12} items={t.m12_items} month="December" type="Target" /></td>
                 <td className={totalClass}>{t.q4 || ''}</td>
 
                 <td className={yearEndClass}>{t.yearEndNov || ''}</td>
@@ -484,33 +549,33 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         const renderActualSection = () => (
             <>
-                <td className={cellClass}>{a.m1 || ''}</td>
-                <td className={cellClass}>{a.m2 || ''}</td>
-                <td className={cellClass}>{a.m3 || ''}</td>
+                <td className={cellClass}><ClickableValue val={a.m1} items={a.m1_items} month="January" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m2} items={a.m2_items} month="February" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m3} items={a.m3_items} month="March" type="Accomplishment" /></td>
                 <td className={totalClass}>{a.q1 || ''}</td>
                 <td className={percentClass}>{getPct(a.q1, t.q1)}</td>
 
-                <td className={cellClass}>{a.m4 || ''}</td>
-                <td className={cellClass}>{a.m5 || ''}</td>
-                <td className={cellClass}>{a.m6 || ''}</td>
+                <td className={cellClass}><ClickableValue val={a.m4} items={a.m4_items} month="April" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m5} items={a.m5_items} month="May" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m6} items={a.m6_items} month="June" type="Accomplishment" /></td>
                 <td className={totalClass}>{a.q2 || ''}</td>
                 <td className={percentClass}>{getPct(a.q2, t.q2)}</td>
 
                 <td className={calculatedClass}>{a.semestralTotal || ''}</td>
                 <td className={percentClass}>{getPct(a.semestralTotal, t.semestralTotal)}</td>
 
-                <td className={cellClass}>{a.m7 || ''}</td>
-                <td className={cellClass}>{a.m8 || ''}</td>
-                <td className={cellClass}>{a.m9 || ''}</td>
+                <td className={cellClass}><ClickableValue val={a.m7} items={a.m7_items} month="July" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m8} items={a.m8_items} month="August" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m9} items={a.m9_items} month="September" type="Accomplishment" /></td>
                 <td className={totalClass}>{a.q3 || ''}</td>
                 <td className={percentClass}>{getPct(a.q3, t.q3)}</td>
 
                 <td className={calculatedClass}>{a.asOfSept || ''}</td>
                 <td className={percentClass}>{getPct(a.asOfSept, t.asOfSept)}</td>
 
-                <td className={cellClass}>{a.m10 || ''}</td>
-                <td className={cellClass}>{a.m11 || ''}</td>
-                <td className={cellClass}>{a.m12 || ''}</td>
+                <td className={cellClass}><ClickableValue val={a.m10} items={a.m10_items} month="October" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m11} items={a.m11_items} month="November" type="Accomplishment" /></td>
+                <td className={cellClass}><ClickableValue val={a.m12} items={a.m12_items} month="December" type="Accomplishment" /></td>
                 <td className={totalClass}>{a.q4 || ''}</td>
                 <td className={percentClass}>{getPct(a.q4, t.q4)}</td>
 
@@ -797,6 +862,46 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            {popup && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in duration-200">
+                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                            <div>
+                                <h4 className="font-bold text-gray-900 dark:text-white text-lg">{popup.type} Details</h4>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{popup.month} - {popup.indicator}</p>
+                            </div>
+                            <button 
+                                onClick={() => setPopup(null)}
+                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-6 max-h-[60vh] overflow-y-auto">
+                            <ul className="space-y-2">
+                                {popup.items.map((item, idx) => (
+                                    <li key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800">
+                                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-bold">
+                                            {idx + 1}
+                                        </span>
+                                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-right">
+                            <button 
+                                onClick={() => setPopup(null)}
+                                className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
                 <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 hover:brightness-95 transition-all flex items-center gap-2">
