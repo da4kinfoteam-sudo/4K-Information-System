@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { objectTypes, referenceCommodityTypes } from '../constants';
+import { objectTypes, referenceCommodityTypes, GidaArea } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -36,6 +36,8 @@ interface ReferencesProps {
     setParticularList: React.Dispatch<React.SetStateAction<ReferenceParticular[]>>;
     commodityList: ReferenceCommodity[];
     setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
+    gidaList: GidaArea[];
+    setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -44,9 +46,9 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'GIDA'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -83,6 +85,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [commodityForm, setCommodityForm] = useState({
         type: 'Crop Commodity',
         particular: ''
+    });
+
+    // --- GIDA Form State ---
+    const [gidaForm, setGidaForm] = useState({
+        region: '',
+        province: '',
+        municipality: '',
+        barangay: ''
     });
 
     // Reset selection mode and sort on tab change
@@ -189,12 +199,38 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [commodityList, searchTerm, sortConfig]);
 
+    const processedGida = useMemo(() => {
+        let items = [...gidaList];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.region.toLowerCase().includes(lower) || 
+                i.province.toLowerCase().includes(lower) ||
+                i.municipality.toLowerCase().includes(lower) ||
+                i.barangay.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [gidaList, searchTerm, sortConfig]);
+
     // --- Handlers ---
     const handleOpenAdd = () => {
         setEditingItem(null);
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
         setCommodityForm({ type: 'Crop Commodity', particular: '' });
+        setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
         setIsModalOpen(true);
     };
 
@@ -212,10 +248,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 type: item.type,
                 particular: item.particular
             });
-        } else {
+        } else if (activeTab === 'Commodities') {
             setCommodityForm({
                 type: item.type,
                 particular: item.particular
+            });
+        } else {
+            setGidaForm({
+                region: item.region,
+                province: item.province,
+                municipality: item.municipality,
+                barangay: item.barangay
             });
         }
         setIsModalOpen(true);
@@ -239,12 +282,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             } else {
                 setParticularList(prev => [newData, ...prev]);
             }
-        } else {
+        } else if (activeTab === 'Commodities') {
             const newData = { id, ...commodityForm };
             if (editingItem) {
                 setCommodityList(prev => prev.map(i => i.id === id ? newData : i));
             } else {
                 setCommodityList(prev => [newData, ...prev]);
+            }
+        } else {
+            const newData = { id, ...gidaForm };
+            if (editingItem) {
+                setGidaList(prev => prev.map(i => i.id === id ? newData : i));
+            } else {
+                setGidaList(prev => [newData, ...prev]);
             }
         }
         setIsModalOpen(false);
@@ -256,8 +306,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else {
+        } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else {
+            setGidaList(prev => prev.filter(i => i.id !== deleteItem.id));
         }
         setDeleteItem(null);
     };
@@ -273,7 +325,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : processedCommodities);
+        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : (activeTab === 'Commodities' ? processedCommodities : processedGida));
         if (e.target.checked) {
             const ids = currentList.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
@@ -298,8 +350,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else {
+        } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else {
+            setGidaList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -330,7 +384,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Items_Template.xlsx';
-        } else {
+        } else if (activeTab === 'Commodities') {
             const headers = ['type', 'particular'];
             const example = [{
                 type: 'Crop Commodity',
@@ -338,6 +392,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Commodities_Template.xlsx';
+        } else {
+            const headers = ['region', 'province', 'municipality', 'barangay'];
+            const example = [{
+                region: 'Region I',
+                province: 'Ilocos Norte',
+                municipality: 'Adams',
+                barangay: 'Adams (Pob.)'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'GIDA_Areas_Template.xlsx';
         }
 
         XLSX.utils.book_append_sheet(wb, ws, "Template");
@@ -401,7 +465,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setParticularList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} items imported locally.`);
                     }
-                } else {
+                } else if (activeTab === 'Commodities') {
                     const newItems: ReferenceCommodity[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
                         type: row.type || 'Crop Commodity',
@@ -421,6 +485,28 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setCommodityList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} commodities imported locally.`);
                     }
+                } else {
+                    const newItems: GidaArea[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        region: row.region || '',
+                        province: row.province || '',
+                        municipality: row.municipality || '',
+                        barangay: row.barangay || ''
+                    })).filter(i => i.region && i.province && i.municipality && i.barangay);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('gida_areas').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setGidaList(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} GIDA areas uploaded successfully to database.`);
+                        }
+                    } else {
+                        setGidaList(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} GIDA areas imported locally.`);
+                    }
                 }
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -438,7 +524,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const getCurrentList = () => {
         if (activeTab === 'UACS') return processedUacs;
         if (activeTab === 'Items') return processedParticulars;
-        return processedCommodities;
+        if (activeTab === 'Commodities') return processedCommodities;
+        return processedGida;
     }
 
     return (
@@ -468,7 +555,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : 'Commodity'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : 'GIDA Area'}
                     </button>
                 )}
             </div>
@@ -506,6 +593,18 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     >
                         Commodities
                     </button>
+                    {currentUser?.role === 'Administrator' && (
+                        <button
+                            onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }}
+                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                activeTab === 'GIDA'
+                                    ? 'border-accent text-accent'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            GIDA Areas
+                        </button>
+                    )}
                 </nav>
             </div>
 
@@ -577,10 +676,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="Item Type" sortKey="type" />
                                         <SortableHeader label="Item Particular" sortKey="particular" />
                                     </>
-                                ) : (
+                                ) : activeTab === 'Commodities' ? (
                                     <>
                                         <SortableHeader label="Commodity Type" sortKey="type" />
                                         <SortableHeader label="Particulars" sortKey="particular" />
+                                    </>
+                                ) : (
+                                    <>
+                                        <SortableHeader label="Region" sortKey="region" />
+                                        <SortableHeader label="Province" sortKey="province" />
+                                        <SortableHeader label="Municipality" sortKey="municipality" />
+                                        <SortableHeader label="Barangay" sortKey="barangay" />
                                     </>
                                 )}
                                 {canEdit && (
@@ -613,10 +719,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
                                                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
                                             </>
-                                        ) : (
+                                        ) : activeTab === 'Items' || activeTab === 'Commodities' ? (
                                             <>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.region}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.province}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.municipality}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.barangay}</td>
                                             </>
                                         )}
                                         {canEdit && (
@@ -640,7 +753,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </tr>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : 3) : (activeTab === 'UACS' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -652,7 +765,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : 'Commodity'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : 'GIDA Area'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -728,7 +841,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         />
                                     </div>
                                 </>
-                            ) : (
+                            ) : activeTab === 'Commodities' ? (
                                 <>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Commodity Type</label>
@@ -748,6 +861,49 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             required
                                             value={commodityForm.particular}
                                             onChange={e => setCommodityForm({...commodityForm, particular: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={gidaForm.region}
+                                            onChange={e => setGidaForm({...gidaForm, region: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Province</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={gidaForm.province}
+                                            onChange={e => setGidaForm({...gidaForm, province: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Municipality</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={gidaForm.municipality}
+                                            onChange={e => setGidaForm({...gidaForm, municipality: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Barangay</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={gidaForm.barangay}
+                                            onChange={e => setGidaForm({...gidaForm, barangay: e.target.value})}
                                             className={commonInputClasses}
                                         />
                                     </div>

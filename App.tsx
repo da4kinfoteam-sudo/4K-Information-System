@@ -40,7 +40,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -133,6 +133,7 @@ const AppContent: React.FC = () => {
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
+    const [gidaAreas, setGidaAreas] = useSupabaseTable<GidaArea>('gida_areas', []);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
@@ -610,6 +611,8 @@ const AppContent: React.FC = () => {
                             setParticularList={setReferenceParticularList}
                             commodityList={referenceCommodityList}
                             setCommodityList={setReferenceCommodityList}
+                            gidaList={gidaAreas}
+                            setGidaList={setGidaAreas}
                         />;
             case '/reports':
                 return <Reports 

@@ -519,6 +519,14 @@ export interface ReferenceActivity {
     type: 'Activity' | 'Training';
 }
 
+export interface GidaArea {
+    id: string;
+    region: string;
+    province: string;
+    municipality: string;
+    barangay: string;
+}
+
 // LOD Interfaces
 export interface LodSection {
     id: number;
