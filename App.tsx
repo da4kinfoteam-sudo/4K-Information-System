@@ -124,6 +124,10 @@ const AppContent: React.FC = () => {
             // Fetch Budget Ceilings
             const { data: bc } = await supabase.from('budget_ceilings').select('*');
             setBudgetCeilings(bc || []);
+
+            // Fetch GIDA Areas
+            const ga = await fetchAll('gida_areas', 'id', true);
+            setGidaAreas(ga as GidaArea[]);
         };
         fetchAllData();
     }, [currentUser]);
@@ -133,7 +137,7 @@ const AppContent: React.FC = () => {
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
-    const [gidaAreas, setGidaAreas] = useSupabaseTable<GidaArea>('gida_areas', []);
+    const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
