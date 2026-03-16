@@ -502,52 +502,101 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                     @media print {
                         @page { 
                             size: landscape; 
-                            margin: 0.5cm; 
+                            margin: 1.5cm; 
                         }
+                        
+                        /* Reset body and container for print */
+                        html, body {
+                            height: auto !important;
+                            overflow: visible !important;
+                            background: white !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                        }
+
+                        /* Hide everything by default */
                         body * {
                             visibility: hidden;
+                            height: 0 !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            overflow: hidden !important;
+                            border: none !important;
                         }
-                        #wfp-container-for-print, #wfp-container-for-print * {
+
+                        /* Show only the report container and its children */
+                        #wfp-container-for-print, 
+                        #wfp-container-for-print * {
                             visibility: visible;
+                            height: auto !important;
+                            overflow: visible !important;
                         }
+
                         #wfp-container-for-print {
+                            display: block !important;
                             position: absolute;
-                            left: 0;
                             top: 0;
+                            left: 0;
                             width: 100%;
-                            margin: 0;
-                            padding: 0;
-                            box-shadow: none;
+                            padding: 0 !important;
+                            margin: 0 !important;
+                            box-shadow: none !important;
                             background: white !important;
-                            color: black !important;
                         }
+
+                        /* Logo space at the top */
+                        .print-logo-space {
+                            display: block !important;
+                            height: 2.5cm; /* Space for logo */
+                            width: 100%;
+                        }
+
                         .print-hidden {
                             display: none !important;
                         }
-                        /* Ensure table fits */
+
+                        /* Table styling for print */
                         table {
                             width: 100% !important;
                             border-collapse: collapse !important;
-                            font-size: 8px !important; /* Smaller font to fit */
-                            table-layout: fixed;
+                            font-size: 7.5pt !important;
+                            table-layout: auto !important;
+                            margin-top: 0.5cm !important;
                         }
+
                         th, td {
-                            border: 1px solid black !important;
-                            padding: 2px !important;
+                            border: 0.5pt solid #000 !important;
+                            padding: 3pt !important;
                             word-wrap: break-word;
+                            color: black !important;
                         }
-                        /* Remove dark mode styles for print */
+
+                        thead {
+                            display: table-header-group;
+                        }
+
+                        tr {
+                            page-break-inside: avoid;
+                        }
+
+                        /* Force background colors for print */
+                        .bg-gray-200 { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; }
+                        .bg-gray-100 { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; }
+                        
+                        /* Ensure text is black */
+                        .text-gray-900, .text-gray-800, .text-gray-500 {
+                            color: black !important;
+                        }
+
+                        /* Remove dark mode overrides */
                         .dark {
                             background-color: white !important;
                             color: black !important;
                         }
-                        /* Hide scrollbars */
-                        ::-webkit-scrollbar {
-                            display: none;
-                        }
                     }
                 `}
             </style>
+            <div className="print-logo-space hidden"></div>
             <div className="flex justify-between items-center mb-4 print-hidden">
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Work and Financial Plan (WFP)</h3>
                 <div className="flex items-center gap-4">
