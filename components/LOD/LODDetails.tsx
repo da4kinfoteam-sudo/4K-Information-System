@@ -355,7 +355,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     const { totalScore, level, maxPossibleScore } = calculateScore();
     const currentLevel = manualLevel !== '' ? manualLevel : level;
     const isAdmin = currentUser?.role === 'Administrator';
-    const isLocked = assessment && !isAdmin;
+    const isManagement = currentUser?.role === 'Management';
+    const isLocked = (assessment && !isAdmin) || isManagement;
 
     const toggleSection = (sectionId: number) => {
         setExpandedSections(prev => ({
@@ -466,7 +467,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                             const sectionQuestions = questions.filter(q => q.section_id === section.id);
                             if (sectionQuestions.length === 0) return null;
 
-                            const isExpanded = expandedSections[section.id] !== false; // Default to expanded
+                            const isExpanded = !!expandedSections[section.id];
                             const sectionScore = calculateSectionScore(section.id);
 
                             return (
@@ -618,7 +619,12 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                         </svg>
-                        <p className="text-sm font-medium">This assessment is locked for reference. Only Administrators can modify existing assessments.</p>
+                        <p className="text-sm font-medium">
+                            {isManagement 
+                                ? "You have view-only access to this assessment." 
+                                : "This assessment is locked for reference. Only Administrators can modify existing assessments."
+                            }
+                        </p>
                     </div>
                 )}
                 <div className="p-6 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
