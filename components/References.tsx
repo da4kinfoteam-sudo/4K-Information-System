@@ -1,9 +1,10 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { objectTypes, referenceCommodityTypes, GidaArea } from '../constants';
+import { objectTypes, referenceCommodityTypes, GidaArea, normalizeRegionName, IPO } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
+import { parseLocation } from './LocationPicker';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -38,6 +39,8 @@ interface ReferencesProps {
     setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
+    ipos: IPO[];
+    setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -46,7 +49,7 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'GIDA'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
@@ -94,6 +97,52 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         municipality: '',
         barangay: ''
     });
+
+    const handleRetroactiveGidaUpdate = async () => {
+        if (!supabase) return;
+        if (!window.confirm("This will check all IPOs and update their 'Within GIDA Areas' status based on the current GIDA list. Continue?")) return;
+
+        setIsUploading(true);
+        try {
+            const updates = ipos.map(ipo => {
+                const { province, municipality, barangays } = parseLocation(ipo.location);
+                const isWithinGida = gidaList.some(g => 
+                    g.region === ipo.region &&
+                    g.province.toLowerCase() === province.toLowerCase() &&
+                    g.municipality.toLowerCase() === municipality.toLowerCase() &&
+                    barangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
+                );
+
+                if (isWithinGida && !ipo.isWithinGida) {
+                    return { ...ipo, isWithinGida: true };
+                }
+                return null;
+            }).filter(Boolean) as IPO[];
+
+            if (updates.length === 0) {
+                alert("No IPOs found that need updating.");
+                return;
+            }
+
+            // Update in Supabase
+            for (const ipo of updates) {
+                await supabase.from('ipos').update({ isWithinGida: true }).eq('id', ipo.id);
+            }
+
+            // Update local state
+            setIpos(prev => prev.map(ipo => {
+                const match = updates.find(u => u.id === ipo.id);
+                return match ? match : ipo;
+            }));
+
+            alert(`Successfully updated ${updates.length} IPOs.`);
+        } catch (error: any) {
+            console.error("Error during retroactive GIDA update:", error);
+            alert(`Failed to update IPOs: ${error.message}`);
+        } finally {
+            setIsUploading(false);
+        }
+    };
 
     // Reset selection mode and sort on tab change
     useEffect(() => {
@@ -488,7 +537,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 } else {
                     const newItems: GidaArea[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
-                        region: row.region || '',
+                        region: normalizeRegionName(row.region || ''),
                         province: row.province || '',
                         municipality: row.municipality || '',
                         barangay: row.barangay || ''
@@ -647,6 +696,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             accept=".xlsx, .xls"
                             disabled={isUploading}
                         />
+                        {activeTab === 'GIDA' && (
+                            <button 
+                                onClick={handleRetroactiveGidaUpdate}
+                                disabled={isUploading}
+                                className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                title="Check all IPOs and update GIDA status"
+                            >
+                                Retroactive Update
+                            </button>
+                        )}
                         <button
                             onClick={handleToggleSelectionMode}
                             className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}

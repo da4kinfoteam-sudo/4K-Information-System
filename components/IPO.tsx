@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment } from '../constants';
+import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -25,6 +25,7 @@ interface IPOsProps {
     commodityCategories: { [key: string]: string[] };
     externalFilters?: { region?: string; year?: string; search?: string } | null;
     onClearExternalFilters?: () => void;
+    gidaAreas: GidaArea[];
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -60,35 +61,7 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-// Helper for Region Normalization
-const normalizeRegionName = (inputRegion: string) => {
-    const map: { [key: string]: string } = {
-        'Ilocos Region': 'Region I (Ilocos Region)',
-        'Cagayan Valley': 'Region II (Cagayan Valley)',
-        'Central Luzon': 'Region III (Central Luzon)',
-        'CALABARZON': 'Region IV-A (CALABARZON)',
-        'MIMAROPA': 'MIMAROPA Region',
-        'MIMAROPA Region': 'MIMAROPA Region',
-        'Bicol Region': 'Region V (Bicol Region)',
-        'Western Visayas': 'Region VI (Western Visayas)',
-        'Central Visayas': 'Region VII (Central Visayas)',
-        'Eastern Visayas': 'Region VIII (Eastern Visayas)',
-        'Zamboanga Peninsula': 'Region IX (Zamboanga Peninsula)',
-        'Northern Mindanao': 'Region X (Northern Mindanao)',
-        'Davao Region': 'Region XI (Davao Region)',
-        'SOCCSKSARGEN': 'Region XII (SOCCSKSARGEN)',
-        'Caraga': 'Region XIII (Caraga)',
-        'NCR': 'National Capital Region (NCR)',
-        'National Capital Region': 'National Capital Region (NCR)',
-        'CAR': 'Cordillera Administrative Region (CAR)',
-        'Cordillera Administrative Region': 'Cordillera Administrative Region (CAR)',
-        'BARMM': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
-        'Bangsamoro Autonomous Region in Muslim Mindanao': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)'
-    };
-    return map[inputRegion] || inputRegion;
-};
-
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const isAdmin = currentUser?.role === 'Administrator';
@@ -525,7 +498,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
 
     const handleLocationChange = (locationString: string) => {
-        const { province } = parseLocation(locationString);
+        const { province, municipality, barangays } = parseLocation(locationString);
         let region = formData.region;
         
         // NIR Exception
@@ -539,19 +512,38 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             }
         }
 
+        // Auto-check GIDA
+        const isWithinGida = gidaAreas.some(g => 
+            g.region === region &&
+            g.province.toLowerCase() === province.toLowerCase() &&
+            g.municipality.toLowerCase() === municipality.toLowerCase() &&
+            barangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
+        );
+
         setFormData(prev => ({
             ...prev,
             location: locationString,
-            region: region
+            region: region,
+            isWithinGida: isWithinGida || prev.isWithinGida // Keep true if already true, or set if match
         }));
     };
     
     const handleRegionChange = (region: string) => {
         const normalized = normalizeRegionName(region);
         setBaseRegion(normalized); // Update base region
+        
+        const { province, municipality, barangays } = parseLocation(formData.location);
+        const isWithinGida = gidaAreas.some(g => 
+            g.region === normalized &&
+            g.province.toLowerCase() === province.toLowerCase() &&
+            g.municipality.toLowerCase() === municipality.toLowerCase() &&
+            barangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
+        );
+
         setFormData(prev => ({
             ...prev,
-            region: normalized
+            region: normalized,
+            isWithinGida: isWithinGida || prev.isWithinGida
         }));
     };
 
@@ -723,7 +715,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <>
                                     <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
                                     <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
-                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading)} accept=".xlsx, .xls" disabled={isUploading} />
+                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading, gidaAreas)} accept=".xlsx, .xls" disabled={isUploading} />
                                     {isAdmin && (
                                         <button
                                             onClick={handleToggleSelectionMode}

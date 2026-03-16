@@ -732,7 +732,8 @@ export const handleIposUpload = (
     ipos: IPO[],
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>,
     logAction: (action: string, details: string) => void,
-    setIsUploading: (val: boolean) => void
+    setIsUploading: (val: boolean) => void,
+    gidaAreas: any[]
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -778,6 +779,16 @@ export const handleIposUpload = (
 
                 const isWithScad = commodities.some((c: any) => c.isScad);
 
+                // Auto-check GIDA status
+                const { province: parsedProvince, municipality: parsedMunicipality, barangays: parsedBarangays } = parseLocation(locationString);
+                const matchedGida = gidaAreas.some(g => 
+                    g.region === region &&
+                    g.province.toLowerCase() === parsedProvince.toLowerCase() &&
+                    g.municipality.toLowerCase() === parsedMunicipality.toLowerCase() &&
+                    parsedBarangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
+                );
+                const isWithinGida = String(row.isWithinGida).toUpperCase() === 'TRUE' || matchedGida;
+
                 return {
                     name: String(row.name),
                     location: locationString,
@@ -786,7 +797,7 @@ export const handleIposUpload = (
                     ancestralDomainNo: String(row.ancestralDomainNo || ''),
                     registeringBody: String(row.registeringBody || ''),
                     isWomenLed: String(row.isWomenLed).toUpperCase() === 'TRUE',
-                    isWithinGida: String(row.isWithinGida).toUpperCase() === 'TRUE',
+                    isWithinGida: isWithinGida,
                     isWithinElcac: String(row.isWithinElcac).toUpperCase() === 'TRUE',
                     isWithScad: isWithScad,
                     contactPerson: String(row.contactPerson || ''),

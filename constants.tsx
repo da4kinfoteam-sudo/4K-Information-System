@@ -593,6 +593,62 @@ export const operatingUnits = [
     'RPMO NIR'
 ];
 
+// Helper for Region Normalization
+export const normalizeRegionName = (inputRegion: string) => {
+    const map: { [key: string]: string } = {
+        'Ilocos Region': 'Region I (Ilocos Region)',
+        'Cagayan Valley': 'Region II (Cagayan Valley)',
+        'Central Luzon': 'Region III (Central Luzon)',
+        'CALABARZON': 'Region IV-A (CALABARZON)',
+        'MIMAROPA': 'MIMAROPA Region',
+        'MIMAROPA Region': 'MIMAROPA Region',
+        'Bicol Region': 'Region V (Bicol Region)',
+        'Western Visayas': 'Region VI (Western Visayas)',
+        'Central Visayas': 'Region VII (Central Visayas)',
+        'Eastern Visayas': 'Region VIII (Eastern Visayas)',
+        'Zamboanga Peninsula': 'Region IX (Zamboanga Peninsula)',
+        'Northern Mindanao': 'Region X (Northern Mindanao)',
+        'Davao Region': 'Region XI (Davao Region)',
+        'SOCCSKSARGEN': 'Region XII (SOCCSKSARGEN)',
+        'Caraga': 'Region XIII (Caraga)',
+        'NCR': 'National Capital Region (NCR)',
+        'National Capital Region': 'National Capital Region (NCR)',
+        'CAR': 'Cordillera Administrative Region (CAR)',
+        'Cordillera Administrative Region': 'Cordillera Administrative Region (CAR)',
+        'BARMM': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
+        'Bangsamoro Autonomous Region in Muslim Mindanao': 'Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)',
+        'Region 1': 'Region I (Ilocos Region)',
+        'Region 2': 'Region II (Cagayan Valley)',
+        'Region 3': 'Region III (Central Luzon)',
+        'Region 4A': 'Region IV-A (CALABARZON)',
+        'Region 4-A': 'Region IV-A (CALABARZON)',
+        'Region 5': 'Region V (Bicol Region)',
+        'Region 6': 'Region VI (Western Visayas)',
+        'Region 7': 'Region VII (Central Visayas)',
+        'Region 8': 'Region VIII (Eastern Visayas)',
+        'Region 9': 'Region IX (Zamboanga Peninsula)',
+        'Region 10': 'Region X (Northern Mindanao)',
+        'Region 11': 'Region XI (Davao Region)',
+        'Region 12': 'Region XII (SOCCSKSARGEN)',
+        'Region 13': 'Region XIII (Caraga)',
+        'Region I': 'Region I (Ilocos Region)',
+        'Region II': 'Region II (Cagayan Valley)',
+        'Region III': 'Region III (Central Luzon)',
+        'Region IV-A': 'Region IV-A (CALABARZON)',
+        'Region IV-B': 'MIMAROPA Region',
+        'Region V': 'Region V (Bicol Region)',
+        'Region VI': 'Region VI (Western Visayas)',
+        'Region VII': 'Region VII (Central Visayas)',
+        'Region VIII': 'Region VIII (Eastern Visayas)',
+        'Region IX': 'Region IX (Zamboanga Peninsula)',
+        'Region X': 'Region X (Northern Mindanao)',
+        'Region XI': 'Region XI (Davao Region)',
+        'Region XII': 'Region XII (SOCCSKSARGEN)',
+        'Region XIII': 'Region XIII (Caraga)',
+    };
+    return map[inputRegion] || inputRegion;
+};
+
 export const philippineRegions = [
     'National Capital Region (NCR)',
     'Cordillera Administrative Region (CAR)',

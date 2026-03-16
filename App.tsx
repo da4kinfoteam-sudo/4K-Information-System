@@ -602,6 +602,7 @@ const AppContent: React.FC = () => {
                             commodityCategories={derivedCommodityCategories}
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
+                            gidaAreas={gidaAreas}
                         />;
             case '/references':
                 return <References 
@@ -613,6 +614,8 @@ const AppContent: React.FC = () => {
                             setCommodityList={setReferenceCommodityList}
                             gidaList={gidaAreas}
                             setGidaList={setGidaAreas}
+                            ipos={ipos}
+                            setIpos={setIpos}
                         />;
             case '/reports':
                 return <Reports 
