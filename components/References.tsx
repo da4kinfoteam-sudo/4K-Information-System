@@ -313,7 +313,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setIsModalOpen(true);
     };
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         const id = editingItem ? editingItem.id : crypto.randomUUID();
 
@@ -339,17 +339,40 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 setCommodityList(prev => [newData, ...prev]);
             }
         } else {
-            const newData = { id, ...gidaForm };
-            if (editingItem) {
-                setGidaList(prev => prev.map(i => i.id === id ? newData : i));
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('gida_areas').update(gidaForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating GIDA area:", error);
+                        alert(`Failed to update GIDA area: ${error.message}`);
+                        return;
+                    }
+                    const newData = { id: editingItem.id, ...gidaForm };
+                    setGidaList(prev => prev.map(i => i.id === editingItem.id ? newData : i));
+                } else {
+                    const { data, error } = await supabase.from('gida_areas').insert(gidaForm).select();
+                    if (error) {
+                        console.error("Error inserting GIDA area:", error);
+                        alert(`Failed to add GIDA area: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setGidaList(prev => [data[0] as GidaArea, ...prev]);
+                    }
+                }
             } else {
-                setGidaList(prev => [newData, ...prev]);
+                const newData = { id, ...gidaForm };
+                if (editingItem) {
+                    setGidaList(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setGidaList(prev => [newData, ...prev]);
+                }
             }
         }
         setIsModalOpen(false);
     };
 
-    const handleDeleteConfirm = () => {
+    const handleDeleteConfirm = async () => {
         if (!deleteItem) return;
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
@@ -358,6 +381,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else {
+            if (supabase) {
+                const { error } = await supabase.from('gida_areas').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting GIDA area:", error);
+                    alert(`Failed to delete GIDA area: ${error.message}`);
+                    return;
+                }
+            }
             setGidaList(prev => prev.filter(i => i.id !== deleteItem.id));
         }
         setDeleteItem(null);
@@ -394,7 +425,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         });
     };
 
-    const confirmMultiDelete = () => {
+    const confirmMultiDelete = async () => {
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Items') {
@@ -402,6 +433,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else {
+            if (supabase) {
+                const { error } = await supabase.from('gida_areas').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting GIDA areas:", error);
+                    alert(`Failed to delete GIDA areas: ${error.message}`);
+                    return;
+                }
+            }
             setGidaList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         }
         setIsMultiDeleteModalOpen(false);
@@ -535,8 +574,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         alert(`${newItems.length} commodities imported locally.`);
                     }
                 } else {
-                    const newItems: GidaArea[] = jsonData.map((row: any) => ({
-                        id: crypto.randomUUID(),
+                    const newItems = jsonData.map((row: any) => ({
                         region: normalizeRegionName(row.region || ''),
                         province: row.province || '',
                         municipality: row.municipality || '',
@@ -544,16 +582,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     })).filter(i => i.region && i.province && i.municipality && i.barangay);
 
                     if (supabase) {
-                        const { error } = await supabase.from('gida_areas').insert(newItems);
+                        const { data, error } = await supabase.from('gida_areas').insert(newItems).select();
                         if (error) {
                             console.error("Batch insert error:", error);
                             alert(`Failed to upload to Supabase: ${error.message}`);
                         } else {
-                            setGidaList(prev => [...newItems, ...prev]);
+                            if (data) {
+                                setGidaList(prev => [...(data as GidaArea[]), ...prev]);
+                            }
                             alert(`${newItems.length} GIDA areas uploaded successfully to database.`);
                         }
                     } else {
-                        setGidaList(prev => [...newItems, ...prev]);
+                        const localItems = newItems.map(item => ({...item, id: crypto.randomUUID()}));
+                        setGidaList(prev => [...localItems, ...prev]);
                         alert(`${newItems.length} GIDA areas imported locally.`);
                     }
                 }
