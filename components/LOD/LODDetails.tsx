@@ -313,11 +313,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
 
                 const pointsEarned = Number((points * weight).toFixed(4));
 
-                // Find existing answer ID to ensure update works correctly if onConflict is picky
-                const existingAnswer = answers.find(a => a.question_id === qId);
-
                 return {
-                    id: existingAnswer?.id, // Include ID if we have it
                     assessment_id: assessmentId,
                     question_id: qId,
                     choice_id: choiceId,
