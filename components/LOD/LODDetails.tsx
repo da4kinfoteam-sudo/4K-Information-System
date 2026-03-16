@@ -34,6 +34,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     const [isCarriedOver, setIsCarriedOver] = useState<boolean>(false);
     const [isDropped, setIsDropped] = useState<boolean>(false);
     const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({});
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     // Local Answers State (Map<QuestionId, ChoiceId>)
     const [localAnswers, setLocalAnswers] = useState<Record<number, number>>({});
@@ -260,6 +261,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
             is_carried_over: isCarriedOver,
             is_dropped: isDropped,
             remarks: remarks,
+            assessed_by: currentUser?.id,
+            assessor_name: currentUser?.user_metadata?.full_name || currentUser?.email,
             updated_at: new Date().toISOString()
         };
 
@@ -344,7 +347,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
         // Refresh
         await fetchAssessmentData();
         setSaving(false);
-        alert('Assessment saved successfully!');
+        setShowSuccessModal(true);
     };
 
     if (!ipo) return <div>Loading IPO...</div>;
@@ -352,6 +355,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     const { totalScore, level, maxPossibleScore } = calculateScore();
     const currentLevel = manualLevel !== '' ? manualLevel : level;
     const isAdmin = currentUser?.role === 'Administrator';
+    const isLocked = assessment && !isAdmin;
 
     const toggleSection = (sectionId: number) => {
         setExpandedSections(prev => ({
@@ -429,11 +433,20 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                     </div>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border-l-4 border-purple-500">
-                    <h4 className="text-sm font-bold text-gray-500 uppercase">Status</h4>
-                    <div className="mt-2">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${assessment ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {assessment ? `Assessed on ${new Date(assessment.updated_at!).toLocaleDateString()}` : 'Not Assessed'}
-                        </span>
+                    <h4 className="text-sm font-bold text-gray-500 uppercase">Status & Assessor</h4>
+                    <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${assessment ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                {assessment ? 'Completed' : 'Pending'}
+                            </span>
+                            {assessment && <span className="text-xs text-gray-500">{new Date(assessment.updated_at!).toLocaleDateString()}</span>}
+                        </div>
+                        {assessment?.assessor_name && (
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                                <span className="text-gray-400 font-normal text-xs block uppercase">Assessed By:</span>
+                                {assessment.assessor_name}
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -513,8 +526,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                                     type="number"
                                                                                     value={localActualValues[question.id] ?? ''}
                                                                                     onChange={(e) => setLocalActualValues(prev => ({ ...prev, [question.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50"
                                                                                     placeholder="Enter actual number"
+                                                                                    disabled={isLocked}
                                                                                 />
                                                                             </div>
                                                                             <div>
@@ -523,8 +537,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                                     type="number"
                                                                                     value={localTotalValues[question.id] ?? ''}
                                                                                     onChange={(e) => setLocalTotalValues(prev => ({ ...prev, [question.id]: e.target.value === '' ? '' : Number(e.target.value) }))}
-                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none"
+                                                                                    className="w-full px-3 py-1.5 text-sm border border-blue-200 dark:border-blue-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50"
                                                                                     placeholder="Enter total number"
+                                                                                    disabled={isLocked}
                                                                                 />
                                                                             </div>
                                                                         </div>
@@ -569,7 +584,8 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                                         value={choice.id}
                                                                         checked={Number(localAnswers[question.id]) === Number(choice.id)}
                                                                         onChange={() => handleAnswerChange(question.id, choice.id)}
-                                                                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300"
+                                                                        className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 disabled:opacity-50"
+                                                                        disabled={isLocked}
                                                                     />
                                                                     <span className="ml-3 text-sm text-gray-700 dark:text-gray-300 flex-1">{choice.text}</span>
                                                                     <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-600 px-1.5 py-0.5 rounded">{Number(choice.points.toFixed(1))} pts</span>
@@ -580,8 +596,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                                                             <textarea 
                                                                 value={localAnswerRemarks[question.id] || ''}
                                                                 onChange={(e) => handleAnswerRemarkChange(question.id, e.target.value)}
-                                                                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-transparent focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 dark:text-gray-300 resize-none h-12"
+                                                                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md bg-transparent focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 dark:text-gray-300 resize-none h-12 disabled:opacity-50"
                                                                 placeholder="Add remarks (optional)..."
+                                                                disabled={isLocked}
                                                             />
                                                         </div>
                                                     </div>
@@ -596,6 +613,14 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                 )}
 
                 {/* Admin Overrides & Actions */}
+                {isLocked && (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800 flex items-center gap-3 text-amber-800 dark:text-amber-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                        </svg>
+                        <p className="text-sm font-medium">This assessment is locked for reference. Only Administrators can modify existing assessments.</p>
+                    </div>
+                )}
                 <div className="p-6 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-700">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <div>
@@ -603,8 +628,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                             <textarea 
                                 value={remarks}
                                 onChange={(e) => setRemarks(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white h-24"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white h-24 disabled:opacity-50"
                                 placeholder="Enter any observations or notes..."
+                                disabled={isLocked}
                             />
                         </div>
                         {isAdmin && (
@@ -654,16 +680,47 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                         >
                             Cancel
                         </button>
-                        <button 
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            {saving ? 'Saving...' : 'Save Assessment'}
-                        </button>
+                        {(!isLocked || isAdmin) && (
+                            <button 
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {saving ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Saving...
+                                    </>
+                                ) : 'Save Assessment'}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* Success Modal */}
+            {showSuccessModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-8 text-center animate-in fade-in zoom-in duration-300">
+                        <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Success!</h3>
+                        <p className="text-gray-500 dark:text-gray-400 mb-8">The LOD assessment for {ipo.name} has been saved successfully.</p>
+                        <button 
+                            onClick={() => setShowSuccessModal(false)}
+                            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors shadow-lg shadow-emerald-200 dark:shadow-none"
+                        >
+                            Great, thanks!
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

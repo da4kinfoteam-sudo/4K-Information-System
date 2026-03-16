@@ -755,6 +755,8 @@ export interface LodAssessment {
     remarks?: string | null;
     is_carried_over?: boolean;
     is_dropped?: boolean;
+    assessed_by?: string | null;
+    assessor_name?: string | null;
     updated_at?: string;
 }
 
