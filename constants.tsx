@@ -527,6 +527,14 @@ export interface GidaArea {
     barangay: string;
 }
 
+export interface ElcacArea {
+    id: string;
+    region: string;
+    province: string;
+    municipality: string;
+    barangay: string;
+}
+
 // LOD Interfaces
 export interface LodSection {
     id: number;

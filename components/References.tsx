@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { objectTypes, referenceCommodityTypes, GidaArea, normalizeRegionName, IPO } from '../constants';
+import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
@@ -39,6 +39,8 @@ interface ReferencesProps {
     setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
+    elcacList: ElcacArea[];
+    setElcacList: React.Dispatch<React.SetStateAction<ElcacArea[]>>;
     ipos: IPO[];
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>;
 }
@@ -49,9 +51,9 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList, ipos, setIpos }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'GIDA'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -98,6 +100,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         barangay: ''
     });
 
+    // --- ELCAC Form State ---
+    const [elcacForm, setElcacForm] = useState({
+        region: '',
+        province: '',
+        municipality: '',
+        barangay: ''
+    });
+
     const handleRetroactiveGidaUpdate = async () => {
         if (!supabase) return;
         if (!window.confirm("This will check all IPOs and update their 'Within GIDA Areas' status based on the current GIDA list. Continue?")) return;
@@ -138,6 +148,52 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             alert(`Successfully updated ${updates.length} IPOs.`);
         } catch (error: any) {
             console.error("Error during retroactive GIDA update:", error);
+            alert(`Failed to update IPOs: ${error.message}`);
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleRetroactiveElcacUpdate = async () => {
+        if (!supabase) return;
+        if (!window.confirm("This will check all IPOs and update their 'Within ELCAC Areas' status based on the current ELCAC list. Continue?")) return;
+
+        setIsUploading(true);
+        try {
+            const updates = ipos.map(ipo => {
+                const { province, municipality, barangays } = parseLocation(ipo.location);
+                const isWithinElcac = elcacList.some(e => 
+                    e.region === ipo.region &&
+                    e.province.toLowerCase() === province.toLowerCase() &&
+                    e.municipality.toLowerCase() === municipality.toLowerCase() &&
+                    barangays.some(b => b.toLowerCase() === e.barangay.toLowerCase())
+                );
+
+                if (isWithinElcac && !ipo.isWithinElcac) {
+                    return { ...ipo, isWithinElcac: true };
+                }
+                return null;
+            }).filter(Boolean) as IPO[];
+
+            if (updates.length === 0) {
+                alert("No IPOs found that need updating.");
+                return;
+            }
+
+            // Update in Supabase
+            for (const ipo of updates) {
+                await supabase.from('ipos').update({ isWithinElcac: true }).eq('id', ipo.id);
+            }
+
+            // Update local state
+            setIpos(prev => prev.map(ipo => {
+                const match = updates.find(u => u.id === ipo.id);
+                return match ? match : ipo;
+            }));
+
+            alert(`Successfully updated ${updates.length} IPOs.`);
+        } catch (error: any) {
+            console.error("Error during retroactive ELCAC update:", error);
             alert(`Failed to update IPOs: ${error.message}`);
         } finally {
             setIsUploading(false);
@@ -273,6 +329,31 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [gidaList, searchTerm, sortConfig]);
 
+    const processedElcac = useMemo(() => {
+        let items = [...elcacList];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.region.toLowerCase().includes(lower) || 
+                i.province.toLowerCase().includes(lower) ||
+                i.municipality.toLowerCase().includes(lower) ||
+                i.barangay.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [elcacList, searchTerm, sortConfig]);
+
     // --- Handlers ---
     const handleOpenAdd = () => {
         setEditingItem(null);
@@ -280,6 +361,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setItemForm({ type: '', particular: '' });
         setCommodityForm({ type: 'Crop Commodity', particular: '' });
         setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
+        setElcacForm({ region: '', province: '', municipality: '', barangay: '' });
         setIsModalOpen(true);
     };
 
@@ -302,8 +384,15 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 type: item.type,
                 particular: item.particular
             });
-        } else {
+        } else if (activeTab === 'GIDA') {
             setGidaForm({
+                region: item.region,
+                province: item.province,
+                municipality: item.municipality,
+                barangay: item.barangay
+            });
+        } else {
+            setElcacForm({
                 region: item.region,
                 province: item.province,
                 municipality: item.municipality,
@@ -338,7 +427,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             } else {
                 setCommodityList(prev => [newData, ...prev]);
             }
-        } else {
+        } else if (activeTab === 'GIDA') {
             if (supabase) {
                 if (editingItem) {
                     const { error } = await supabase.from('gida_areas').update(gidaForm).eq('id', editingItem.id);
@@ -368,6 +457,36 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     setGidaList(prev => [newData, ...prev]);
                 }
             }
+        } else {
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('elcac_areas').update(elcacForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating ELCAC area:", error);
+                        alert(`Failed to update ELCAC area: ${error.message}`);
+                        return;
+                    }
+                    const newData = { id: editingItem.id, ...elcacForm };
+                    setElcacList(prev => prev.map(i => i.id === editingItem.id ? newData : i));
+                } else {
+                    const { data, error } = await supabase.from('elcac_areas').insert(elcacForm).select();
+                    if (error) {
+                        console.error("Error inserting ELCAC area:", error);
+                        alert(`Failed to add ELCAC area: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setElcacList(prev => [data[0] as ElcacArea, ...prev]);
+                    }
+                }
+            } else {
+                const newData = { id, ...elcacForm };
+                if (editingItem) {
+                    setElcacList(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setElcacList(prev => [newData, ...prev]);
+                }
+            }
         }
         setIsModalOpen(false);
     };
@@ -380,7 +499,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else {
+        } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().eq('id', deleteItem.id);
                 if (error) {
@@ -390,6 +509,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setGidaList(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else {
+            if (supabase) {
+                const { error } = await supabase.from('elcac_areas').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting ELCAC area:", error);
+                    alert(`Failed to delete ELCAC area: ${error.message}`);
+                    return;
+                }
+            }
+            setElcacList(prev => prev.filter(i => i.id !== deleteItem.id));
         }
         setDeleteItem(null);
     };
@@ -405,7 +534,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : (activeTab === 'Commodities' ? processedCommodities : processedGida));
+        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : (activeTab === 'Commodities' ? processedCommodities : (activeTab === 'GIDA' ? processedGida : processedElcac)));
         if (e.target.checked) {
             const ids = currentList.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
@@ -432,7 +561,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else {
+        } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().in('id', selectedIds);
                 if (error) {
@@ -442,6 +571,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setGidaList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else {
+            if (supabase) {
+                const { error } = await supabase.from('elcac_areas').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting ELCAC areas:", error);
+                    alert(`Failed to delete ELCAC areas: ${error.message}`);
+                    return;
+                }
+            }
+            setElcacList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         }
         setIsMultiDeleteModalOpen(false);
         setIsSelectionMode(false);
@@ -480,7 +619,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Commodities_Template.xlsx';
-        } else {
+        } else if (activeTab === 'GIDA') {
             const headers = ['region', 'province', 'municipality', 'barangay'];
             const example = [{
                 region: 'Region I',
@@ -490,6 +629,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'GIDA_Areas_Template.xlsx';
+        } else {
+            const headers = ['region', 'province', 'municipality', 'barangay'];
+            const example = [{
+                region: 'Region I',
+                province: 'Ilocos Norte',
+                municipality: 'Adams',
+                barangay: 'Adams (Pob.)'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'ELCAC_Areas_Template.xlsx';
         }
 
         XLSX.utils.book_append_sheet(wb, ws, "Template");
@@ -573,7 +722,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setCommodityList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} commodities imported locally.`);
                     }
-                } else {
+                } else if (activeTab === 'GIDA') {
                     const newItems = jsonData.map((row: any) => ({
                         region: normalizeRegionName(row.region || ''),
                         province: row.province || '',
@@ -597,6 +746,30 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setGidaList(prev => [...localItems, ...prev]);
                         alert(`${newItems.length} GIDA areas imported locally.`);
                     }
+                } else {
+                    const newItems = jsonData.map((row: any) => ({
+                        region: normalizeRegionName(row.region || ''),
+                        province: row.province || '',
+                        municipality: row.municipality || '',
+                        barangay: row.barangay || ''
+                    })).filter(i => i.region && i.province && i.municipality && i.barangay);
+
+                    if (supabase) {
+                        const { data, error } = await supabase.from('elcac_areas').insert(newItems).select();
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            if (data) {
+                                setElcacList(prev => [...(data as ElcacArea[]), ...prev]);
+                            }
+                            alert(`${newItems.length} ELCAC areas uploaded successfully to database.`);
+                        }
+                    } else {
+                        const localItems = newItems.map(item => ({...item, id: crypto.randomUUID()}));
+                        setElcacList(prev => [...localItems, ...prev]);
+                        alert(`${newItems.length} ELCAC areas imported locally.`);
+                    }
                 }
             } catch (error: any) {
                 console.error("Error processing XLSX file:", error);
@@ -615,7 +788,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (activeTab === 'UACS') return processedUacs;
         if (activeTab === 'Items') return processedParticulars;
         if (activeTab === 'Commodities') return processedCommodities;
-        return processedGida;
+        if (activeTab === 'GIDA') return processedGida;
+        return processedElcac;
     }
 
     return (
@@ -645,7 +819,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : 'GIDA Area'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
                 )}
             </div>
@@ -684,16 +858,28 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         Commodities
                     </button>
                     {currentUser?.role === 'Administrator' && (
-                        <button
-                            onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }}
-                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                                activeTab === 'GIDA'
-                                    ? 'border-accent text-accent'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                            }`}
-                        >
-                            GIDA Areas
-                        </button>
+                        <>
+                            <button
+                                onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }}
+                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                    activeTab === 'GIDA'
+                                        ? 'border-accent text-accent'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                }`}
+                            >
+                                GIDA Areas
+                            </button>
+                            <button
+                                onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }}
+                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                    activeTab === 'ELCAC'
+                                        ? 'border-accent text-accent'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                }`}
+                            >
+                                ELCAC Areas
+                            </button>
+                        </>
                     )}
                 </nav>
             </div>
@@ -743,6 +929,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 disabled={isUploading}
                                 className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 title="Check all IPOs and update GIDA status"
+                            >
+                                Retroactive Update
+                            </button>
+                        )}
+                        {activeTab === 'ELCAC' && (
+                            <button 
+                                onClick={handleRetroactiveElcacUpdate}
+                                disabled={isUploading}
+                                className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                title="Check all IPOs and update ELCAC status"
                             >
                                 Retroactive Update
                             </button>
@@ -853,7 +1049,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </tr>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -865,7 +1061,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : 'GIDA Area'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -965,7 +1161,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         />
                                     </div>
                                 </>
-                            ) : (
+                            ) : activeTab === 'GIDA' ? (
                                 <>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
@@ -1004,6 +1200,49 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             required
                                             value={gidaForm.barangay}
                                             onChange={e => setGidaForm({...gidaForm, barangay: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Region</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={elcacForm.region}
+                                            onChange={e => setElcacForm({...elcacForm, region: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Province</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={elcacForm.province}
+                                            onChange={e => setElcacForm({...elcacForm, province: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Municipality</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={elcacForm.municipality}
+                                            onChange={e => setElcacForm({...elcacForm, municipality: e.target.value})}
+                                            className={commonInputClasses}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Barangay</label>
+                                        <input 
+                                            type="text" 
+                                            required
+                                            value={elcacForm.barangay}
+                                            onChange={e => setElcacForm({...elcacForm, barangay: e.target.value})}
                                             className={commonInputClasses}
                                         />
                                     </div>

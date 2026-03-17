@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, normalizeRegionName } from '../constants';
+import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, ElcacArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
@@ -26,6 +26,7 @@ interface IPOsProps {
     externalFilters?: { region?: string; year?: string; search?: string } | null;
     onClearExternalFilters?: () => void;
     gidaAreas: GidaArea[];
+    elcacAreas: ElcacArea[];
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -61,7 +62,7 @@ const defaultFormData = {
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
-const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas }) => {
+const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const isAdmin = currentUser?.role === 'Administrator';
@@ -520,11 +521,20 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             barangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
         );
 
+        // Auto-check ELCAC
+        const isWithinElcac = elcacAreas.some(e => 
+            e.region === region &&
+            e.province.toLowerCase() === province.toLowerCase() &&
+            e.municipality.toLowerCase() === municipality.toLowerCase() &&
+            barangays.some(b => b.toLowerCase() === e.barangay.toLowerCase())
+        );
+
         setFormData(prev => ({
             ...prev,
             location: locationString,
             region: region,
-            isWithinGida: isWithinGida || prev.isWithinGida // Keep true if already true, or set if match
+            isWithinGida: isWithinGida || prev.isWithinGida, // Keep true if already true, or set if match
+            isWithinElcac: isWithinElcac || prev.isWithinElcac
         }));
     };
     
@@ -540,10 +550,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             barangays.some(b => b.toLowerCase() === g.barangay.toLowerCase())
         );
 
+        const isWithinElcac = elcacAreas.some(e => 
+            e.region === normalized &&
+            e.province.toLowerCase() === province.toLowerCase() &&
+            e.municipality.toLowerCase() === municipality.toLowerCase() &&
+            barangays.some(b => b.toLowerCase() === e.barangay.toLowerCase())
+        );
+
         setFormData(prev => ({
             ...prev,
             region: normalized,
-            isWithinGida: isWithinGida || prev.isWithinGida
+            isWithinGida: isWithinGida || prev.isWithinGida,
+            isWithinElcac: isWithinElcac || prev.isWithinElcac
         }));
     };
 
@@ -715,7 +733,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 <>
                                     <button onClick={downloadIposTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
                                     <label htmlFor="ipo-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
-                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading, gidaAreas)} accept=".xlsx, .xls" disabled={isUploading} />
+                                    <input id="ipo-upload" type="file" className="hidden" onChange={(e) => handleIposUpload(e, ipos, setIpos, logAction, setIsUploading, gidaAreas, elcacAreas)} accept=".xlsx, .xls" disabled={isUploading} />
                                     {isAdmin && (
                                         <button
                                             onClick={handleToggleSelectionMode}

@@ -733,7 +733,8 @@ export const handleIposUpload = (
     setIpos: React.Dispatch<React.SetStateAction<IPO[]>>,
     logAction: (action: string, details: string) => void,
     setIsUploading: (val: boolean) => void,
-    gidaAreas: any[]
+    gidaAreas: any[],
+    elcacAreas: any[]
 ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -789,6 +790,15 @@ export const handleIposUpload = (
                 );
                 const isWithinGida = String(row.isWithinGida).toUpperCase() === 'TRUE' || matchedGida;
 
+                // Auto-check ELCAC status
+                const matchedElcac = elcacAreas.some(e => 
+                    e.region === region &&
+                    e.province.toLowerCase() === parsedProvince.toLowerCase() &&
+                    e.municipality.toLowerCase() === parsedMunicipality.toLowerCase() &&
+                    parsedBarangays.some(b => b.toLowerCase() === e.barangay.toLowerCase())
+                );
+                const isWithinElcac = String(row.isWithinElcac).toUpperCase() === 'TRUE' || matchedElcac;
+
                 return {
                     name: String(row.name),
                     location: locationString,
@@ -798,7 +808,7 @@ export const handleIposUpload = (
                     registeringBody: String(row.registeringBody || ''),
                     isWomenLed: String(row.isWomenLed).toUpperCase() === 'TRUE',
                     isWithinGida: isWithinGida,
-                    isWithinElcac: String(row.isWithinElcac).toUpperCase() === 'TRUE',
+                    isWithinElcac: isWithinElcac,
                     isWithScad: isWithScad,
                     contactPerson: String(row.contactPerson || ''),
                     contactNumber: String(row.contactNumber || ''),

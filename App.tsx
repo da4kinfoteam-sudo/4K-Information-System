@@ -40,7 +40,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -128,6 +128,10 @@ const AppContent: React.FC = () => {
             // Fetch GIDA Areas
             const ga = await fetchAll('gida_areas', 'id', true);
             setGidaAreas(ga as GidaArea[]);
+
+            // Fetch ELCAC Areas
+            const ea = await fetchAll('elcac_areas', 'id', true);
+            setElcacAreas(ea as ElcacArea[]);
         };
         fetchAllData();
     }, [currentUser]);
@@ -138,6 +142,7 @@ const AppContent: React.FC = () => {
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
+    const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
@@ -607,6 +612,7 @@ const AppContent: React.FC = () => {
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
                             gidaAreas={gidaAreas}
+                            elcacAreas={elcacAreas}
                         />;
             case '/references':
                 return <References 
@@ -618,6 +624,8 @@ const AppContent: React.FC = () => {
                             setCommodityList={setReferenceCommodityList}
                             gidaList={gidaAreas}
                             setGidaList={setGidaAreas}
+                            elcacList={elcacAreas}
+                            setElcacList={setElcacAreas}
                             ipos={ipos}
                             setIpos={setIpos}
                         />;
