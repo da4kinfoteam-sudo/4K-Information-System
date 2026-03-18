@@ -18,6 +18,16 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          external: ['lucide-react'],
+          output: {
+            globals: {
+              'lucide-react': 'Lucide'
+            }
+          }
+        }
       }
     };
 });
