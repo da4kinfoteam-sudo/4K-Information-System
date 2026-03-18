@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity } from '../constants';
+import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
@@ -41,6 +41,8 @@ interface ReferencesProps {
     setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
     refCommodities: RefCommodity[];
     setRefCommodities: React.Dispatch<React.SetStateAction<RefCommodity[]>>;
+    refLivestock: RefLivestock[];
+    setRefLivestock: React.Dispatch<React.SetStateAction<RefLivestock[]>>;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
     elcacList: ElcacArea[];
@@ -74,9 +76,27 @@ const CROP_TOOLTIPS = {
     target_yield_ha: "Expected output in Metric Tons per Hectare under optimal management."
 };
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, refCommodities, setRefCommodities, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
+const LIVESTOCK_TOOLTIPS = {
+    name: "The specific breed or variety (e.g. \"Native Chicken - Darag\" or \"Dairy Cow - Girolando\").",
+    category: "Broad classification of the animal (e.g. Poultry, Swine, Ruminant, or Small Livestock).",
+    breed_type: "Specific genetic line (e.g. Native, Heritage, Upgraded, or Industrial/Hybrid).",
+    min_space_sqm_per_head: "Minimum floor area required per animal for health and welfare standards.",
+    housing_type: "Recommended structure (e.g. \"Elevated Slatted Floor\", \"Free-range\", or \"Battery Cages\").",
+    min_temp_celsius: "Lowest temperature limit; below this requires brooding or heating equipment.",
+    max_temp_celsius: "Highest temperature limit; exceeding this leads to heat stress and production loss.",
+    gestation_incubation_days: "Days from conception to birth (Livestock) or from setting to hatching (Poultry).",
+    maturity_days: "Days from birth/hatch until the animal reaches target weight or begins production.",
+    productive_years: "Estimated years the animal remains profitable (applies to layers, breeders, or dairy).",
+    feed_type: "Primary nutrition required (e.g. \"Layer Pellets\", \"High-Protein Forage\", or \"TMR\").",
+    target_fcr: "Feed Conversion Ratio: Kilograms of feed needed to produce 1kg of meat or product.",
+    water_liters_per_day: "Minimum fresh water required per animal per day; critical for dairy and layers.",
+    target_weight_kg: "The ideal goal weight at the end of the maturity period for slaughter or sale.",
+    avg_eggs_per_year: "Expected total egg production per female bird per year under optimal management."
+};
+
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'Crop References' | 'GIDA' | 'ELCAC'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'Crop References' | 'Livestock References' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -134,6 +154,25 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         ph_max: 0,
         climate_type_suitability: '',
         target_yield_ha: 0
+    });
+
+    // --- Livestock References Form State ---
+    const [refLivestockForm, setRefLivestockForm] = useState({
+        name: '',
+        category: 'Poultry' as 'Poultry' | 'Ruminant' | 'Swine' | 'Small Livestock',
+        breed_type: '',
+        min_space_sqm_per_head: 0,
+        housing_type: '',
+        min_temp_celsius: 0,
+        max_temp_celsius: 0,
+        gestation_incubation_days: 0,
+        maturity_days: 0,
+        productive_years: 0,
+        feed_type: '',
+        target_fcr: 0,
+        water_liters_per_day: 0,
+        target_weight_kg: 0,
+        avg_eggs_per_year: 0
     });
 
     // --- GIDA Form State ---
@@ -375,6 +414,29 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [refCommodities, searchTerm, sortConfig]);
 
+    const processedRefLivestock = useMemo(() => {
+        let items = [...refLivestock];
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.name.toLowerCase().includes(lower) ||
+                i.category.toLowerCase().includes(lower) ||
+                i.breed_type.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [refLivestock, searchTerm, sortConfig]);
+
     const processedGida = useMemo(() => {
         let items = [...gidaList];
         // Filter
@@ -431,6 +493,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             case 'Items': return processedParticulars;
             case 'Commodities': return processedCommodities;
             case 'Crop References': return processedRefCommodities;
+            case 'Livestock References': return processedRefLivestock;
             case 'GIDA': return processedGida;
             case 'ELCAC': return processedElcac;
             default: return [];
@@ -457,6 +520,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             max_slope_percent: 0, wet_season_start: '', dry_season_start: '', recommended_soil: '',
             fertilizer_npk: '', watering_method: '', harvest_period_days: 0, ph_min: 0, ph_max: 0,
             climate_type_suitability: '', target_yield_ha: 0
+        });
+        setRefLivestockForm({
+            name: '', category: 'Poultry', breed_type: '', min_space_sqm_per_head: 0, housing_type: '',
+            min_temp_celsius: 0, max_temp_celsius: 0, gestation_incubation_days: 0, maturity_days: 0,
+            productive_years: 0, feed_type: '', target_fcr: 0, water_liters_per_day: 0, target_weight_kg: 0,
+            avg_eggs_per_year: 0
         });
         setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
         setElcacForm({ region: '', province: '', municipality: '', barangay: '' });
@@ -500,6 +569,24 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 ph_max: item.ph_max || 0,
                 climate_type_suitability: item.climate_type_suitability || '',
                 target_yield_ha: item.target_yield_ha || 0
+            });
+        } else if (activeTab === 'Livestock References') {
+            setRefLivestockForm({
+                name: item.name,
+                category: item.category,
+                breed_type: item.breed_type,
+                min_space_sqm_per_head: item.min_space_sqm_per_head,
+                housing_type: item.housing_type,
+                min_temp_celsius: item.min_temp_celsius,
+                max_temp_celsius: item.max_temp_celsius,
+                gestation_incubation_days: item.gestation_incubation_days,
+                maturity_days: item.maturity_days,
+                productive_years: item.productive_years,
+                feed_type: item.feed_type,
+                target_fcr: item.target_fcr,
+                water_liters_per_day: item.water_liters_per_day,
+                target_weight_kg: item.target_weight_kg,
+                avg_eggs_per_year: item.avg_eggs_per_year
             });
         } else if (activeTab === 'GIDA') {
             setGidaForm({
@@ -550,6 +637,35 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 setRefCommodities(prev => prev.map(i => i.id === id ? newData : i));
             } else {
                 setRefCommodities(prev => [newData, ...prev]);
+            }
+        } else if (activeTab === 'Livestock References') {
+            const newData = { id, ...refLivestockForm };
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('ref_livestock').update(refLivestockForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating Livestock reference:", error);
+                        alert(`Failed to update Livestock reference: ${error.message}`);
+                        return;
+                    }
+                    setRefLivestock(prev => prev.map(i => i.id === editingItem.id ? { ...newData, id: editingItem.id } : i));
+                } else {
+                    const { data, error } = await supabase.from('ref_livestock').insert(refLivestockForm).select();
+                    if (error) {
+                        console.error("Error inserting Livestock reference:", error);
+                        alert(`Failed to add Livestock reference: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setRefLivestock(prev => [data[0] as RefLivestock, ...prev]);
+                    }
+                }
+            } else {
+                if (editingItem) {
+                    setRefLivestock(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setRefLivestock(prev => [newData, ...prev]);
+                }
             }
         } else if (activeTab === 'GIDA') {
             if (supabase) {
@@ -624,7 +740,25 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Crop References') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_commodities').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting Crop reference:", error);
+                    alert(`Failed to delete Crop reference: ${error.message}`);
+                    return;
+                }
+            }
             setRefCommodities(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else if (activeTab === 'Livestock References') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_livestock').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting Livestock reference:", error);
+                    alert(`Failed to delete Livestock reference: ${error.message}`);
+                    return;
+                }
+            }
+            setRefLivestock(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().eq('id', deleteItem.id);
@@ -687,7 +821,25 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Crop References') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_commodities').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting Crop references:", error);
+                    alert(`Failed to delete Crop references: ${error.message}`);
+                    return;
+                }
+            }
             setRefCommodities(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else if (activeTab === 'Livestock References') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_livestock').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting Livestock references:", error);
+                    alert(`Failed to delete Livestock references: ${error.message}`);
+                    return;
+                }
+            }
+            setRefLivestock(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().in('id', selectedIds);
@@ -768,6 +920,27 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Crop_References_Template.xlsx';
+        } else if (activeTab === 'Livestock References') {
+            const headers = ['name', 'category', 'breed_type', 'min_space_sqm_per_head', 'housing_type', 'min_temp_celsius', 'max_temp_celsius', 'gestation_incubation_days', 'maturity_days', 'productive_years', 'feed_type', 'target_fcr', 'water_liters_per_day', 'target_weight_kg', 'avg_eggs_per_year'];
+            const example = [{
+                name: 'Native Chicken (Darag)',
+                category: 'Poultry',
+                breed_type: 'Native',
+                min_space_sqm_per_head: 0.15,
+                housing_type: 'Free-range / Elevated',
+                min_temp_celsius: 24,
+                max_temp_celsius: 32,
+                gestation_incubation_days: 21,
+                maturity_days: 120,
+                productive_years: 2,
+                feed_type: 'Mixed Grains / Forage',
+                target_fcr: 3.5,
+                water_liters_per_day: 0.2,
+                target_weight_kg: 1.2,
+                avg_eggs_per_year: 80
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Livestock_References_Template.xlsx';
         } else if (activeTab === 'GIDA') {
             const headers = ['region', 'province', 'municipality', 'barangay'];
             const example = [{
@@ -905,6 +1078,39 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setRefCommodities(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} crop references imported locally.`);
                     }
+                } else if (activeTab === 'Livestock References') {
+                    const newItems: RefLivestock[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        name: row.name || '',
+                        category: row.category || 'Poultry',
+                        breed_type: row.breed_type || '',
+                        min_space_sqm_per_head: Number(row.min_space_sqm_per_head) || 0,
+                        housing_type: row.housing_type || '',
+                        min_temp_celsius: Number(row.min_temp_celsius) || 0,
+                        max_temp_celsius: Number(row.max_temp_celsius) || 0,
+                        gestation_incubation_days: Number(row.gestation_incubation_days) || 0,
+                        maturity_days: Number(row.maturity_days) || 0,
+                        productive_years: Number(row.productive_years) || 0,
+                        feed_type: row.feed_type || '',
+                        target_fcr: Number(row.target_fcr) || 0,
+                        water_liters_per_day: Number(row.water_liters_per_day) || 0,
+                        target_weight_kg: Number(row.target_weight_kg) || 0,
+                        avg_eggs_per_year: Number(row.avg_eggs_per_year) || 0
+                    })).filter(i => i.name);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('ref_livestock').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setRefLivestock(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} livestock references uploaded successfully to database.`);
+                        }
+                    } else {
+                        setRefLivestock(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} livestock references imported locally.`);
+                    }
                 } else if (activeTab === 'GIDA') {
                     const newItems = jsonData.map((row: any) => ({
                         region: normalizeRegionName(row.region || ''),
@@ -994,7 +1200,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
                 )}
             </div>
@@ -1041,6 +1247,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         }`}
                     >
                         Crop References
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('Livestock References'); setSearchTerm(''); }}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'Livestock References'
+                                ? 'border-emerald-600 text-emerald-600'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        Livestock References
                     </button>
                     {currentUser?.role === 'Administrator' && (
                         <>
@@ -1169,6 +1385,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="Banner" sortKey="banner_program" tooltip={CROP_TOOLTIPS.banner_program} />
                                         <SortableHeader label="Group" sortKey="commodity_group" tooltip={CROP_TOOLTIPS.commodity_group} />
                                     </>
+                                ) : activeTab === 'Livestock References' ? (
+                                    <>
+                                        <th className="px-6 py-3 w-10"></th>
+                                        <SortableHeader label="Name" sortKey="name" tooltip={LIVESTOCK_TOOLTIPS.name} />
+                                        <SortableHeader label="Category" sortKey="category" tooltip={LIVESTOCK_TOOLTIPS.category} />
+                                        <SortableHeader label="Breed Type" sortKey="breed_type" tooltip={LIVESTOCK_TOOLTIPS.breed_type} />
+                                    </>
                                 ) : (
                                     <>
                                         <SortableHeader label="Region" sortKey="region" />
@@ -1226,6 +1449,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.banner_program}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.commodity_group}</td>
+                                                </>
+                                            ) : activeTab === 'Livestock References' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <button 
+                                                            onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                        >
+                                                            {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.category}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.breed_type}</td>
                                                 </>
                                             ) : (
                                                 <>
@@ -1322,10 +1559,49 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 </td>
                                             </tr>
                                         )}
+
+                                        {expandedRowId === item.id && activeTab === 'Livestock References' && (
+                                            <tr className="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Housing & Space</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Min Space: <span className="text-gray-900 dark:text-white font-medium">{item.min_space_sqm_per_head} sqm/head</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Housing Type: <span className="text-gray-900 dark:text-white font-medium">{item.housing_type}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Temp Range: <span className="text-gray-900 dark:text-white font-medium">{item.min_temp_celsius}°C - {item.max_temp_celsius}°C</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Growth & Production</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Gestation/Incubation: <span className="text-gray-900 dark:text-white font-medium">{item.gestation_incubation_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Maturity: <span className="text-gray-900 dark:text-white font-medium">{item.maturity_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Productive Years: <span className="text-gray-900 dark:text-white font-medium">{item.productive_years} years</span></p>
+                                                                {item.category === 'Poultry' && (
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Avg Eggs/Year: <span className="text-gray-900 dark:text-white font-medium">{item.avg_eggs_per_year}</span></p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Nutrition & Weight</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Feed Type: <span className="text-gray-900 dark:text-white font-medium">{item.feed_type}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Target FCR: <span className="text-gray-900 dark:text-white font-medium">{item.target_fcr}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Target Weight: <span className="text-gray-900 dark:text-white font-medium">{item.target_weight_kg} kg</span></p>
+                                                                {(item.category === 'Ruminant' || item.category === 'Swine') && (
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Water/Day: <span className="text-gray-900 dark:text-white font-medium">{item.water_liters_per_day} L</span></p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
                                     </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop References' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop References' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop References' || activeTab === 'Livestock References' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop References' || activeTab === 'Livestock References' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -1372,9 +1648,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             {/* Add/Edit Modal */}
             {isModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${activeTab === 'Crop References' ? 'max-w-2xl' : 'max-w-md'} w-full p-6 max-h-[90vh] overflow-y-auto`}>
+                    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${activeTab === 'Crop References' || activeTab === 'Livestock References' ? 'max-w-2xl' : 'max-w-md'} w-full p-6 max-h-[90vh] overflow-y-auto`}>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -1580,6 +1856,117 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         </label>
                                         <input type="text" required value={refCommodityForm.climate_type_suitability} onChange={e => setRefCommodityForm({...refCommodityForm, climate_type_suitability: e.target.value})} className={commonInputClasses} />
                                     </div>
+                                </div>
+                            ) : activeTab === 'Livestock References' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.name}>
+                                            Breed/Variety Name <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refLivestockForm.name} onChange={e => setRefLivestockForm({...refLivestockForm, name: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.category}>
+                                            Category <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <select 
+                                            required 
+                                            value={refLivestockForm.category} 
+                                            onChange={e => setRefLivestockForm({...refLivestockForm, category: e.target.value as any})} 
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="Poultry">Poultry</option>
+                                            <option value="Ruminant">Ruminant</option>
+                                            <option value="Swine">Swine</option>
+                                            <option value="Small Livestock">Small Livestock</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.breed_type}>
+                                            Breed Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refLivestockForm.breed_type} onChange={e => setRefLivestockForm({...refLivestockForm, breed_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.housing_type}>
+                                            Housing Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refLivestockForm.housing_type} onChange={e => setRefLivestockForm({...refLivestockForm, housing_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.min_space_sqm_per_head}>
+                                            Min Space (sqm/head) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" step="0.01" required value={refLivestockForm.min_space_sqm_per_head} onChange={e => setRefLivestockForm({...refLivestockForm, min_space_sqm_per_head: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.min_temp_celsius}>
+                                                Min Temp (°C) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" required value={refLivestockForm.min_temp_celsius} onChange={e => setRefLivestockForm({...refLivestockForm, min_temp_celsius: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.max_temp_celsius}>
+                                                Max Temp (°C) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" required value={refLivestockForm.max_temp_celsius} onChange={e => setRefLivestockForm({...refLivestockForm, max_temp_celsius: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.gestation_incubation_days}>
+                                            Gestation/Incubation (days) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refLivestockForm.gestation_incubation_days} onChange={e => setRefLivestockForm({...refLivestockForm, gestation_incubation_days: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.maturity_days}>
+                                                Maturity (days) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" required value={refLivestockForm.maturity_days} onChange={e => setRefLivestockForm({...refLivestockForm, maturity_days: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.productive_years}>
+                                                Prod. Years <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" required value={refLivestockForm.productive_years} onChange={e => setRefLivestockForm({...refLivestockForm, productive_years: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.feed_type}>
+                                            Feed Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refLivestockForm.feed_type} onChange={e => setRefLivestockForm({...refLivestockForm, feed_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.target_fcr}>
+                                            Target FCR <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" step="0.01" required value={refLivestockForm.target_fcr} onChange={e => setRefLivestockForm({...refLivestockForm, target_fcr: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.target_weight_kg}>
+                                            Target Weight (kg) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" step="0.01" required value={refLivestockForm.target_weight_kg} onChange={e => setRefLivestockForm({...refLivestockForm, target_weight_kg: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    {refLivestockForm.category === 'Poultry' && (
+                                        <div>
+                                            <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.avg_eggs_per_year}>
+                                                Avg Eggs/Year <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" required value={refLivestockForm.avg_eggs_per_year} onChange={e => setRefLivestockForm({...refLivestockForm, avg_eggs_per_year: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    )}
+                                    {(refLivestockForm.category === 'Ruminant' || refLivestockForm.category === 'Swine') && (
+                                        <div>
+                                            <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.water_liters_per_day}>
+                                                Water/Day (L) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
+                                            <input type="number" step="0.1" required value={refLivestockForm.water_liters_per_day} onChange={e => setRefLivestockForm({...refLivestockForm, water_liters_per_day: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    )}
                                 </div>
                             ) : activeTab === 'GIDA' ? (
                                 <>

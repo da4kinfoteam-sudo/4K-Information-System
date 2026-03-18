@@ -40,7 +40,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -141,6 +141,7 @@ const AppContent: React.FC = () => {
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
     const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
+    const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', []);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
@@ -625,6 +626,8 @@ const AppContent: React.FC = () => {
                             setCommodityList={setReferenceCommodityList}
                             refCommodities={refCommodities}
                             setRefCommodities={setRefCommodities}
+                            refLivestock={refLivestock}
+                            setRefLivestock={setRefLivestock}
                             gidaList={gidaAreas}
                             setGidaList={setGidaAreas}
                             elcacList={elcacAreas}

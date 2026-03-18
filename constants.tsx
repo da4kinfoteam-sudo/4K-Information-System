@@ -532,6 +532,25 @@ export interface RefCommodity {
     target_yield_ha: number;
 }
 
+export interface RefLivestock {
+    id: string;
+    name: string;
+    category: 'Poultry' | 'Ruminant' | 'Swine' | 'Small Livestock';
+    breed_type: string;
+    min_space_sqm_per_head: number;
+    housing_type: string;
+    min_temp_celsius: number;
+    max_temp_celsius: number;
+    gestation_incubation_days: number;
+    maturity_days: number;
+    productive_years: number;
+    feed_type: string;
+    target_fcr: number;
+    water_liters_per_day: number;
+    target_weight_kg: number;
+    avg_eggs_per_year: number;
+}
+
 export interface ReferenceActivity {
     id: string;
     component: string;
