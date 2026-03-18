@@ -551,6 +551,32 @@ export interface RefLivestock {
     avg_eggs_per_year: number;
 }
 
+export interface RefEquipment {
+    id: string;
+    name: string;
+    category: string;
+    equipment_type: string;
+    power_source: string;
+    capacity_rating: string;
+    fuel_consumption_rate: number;
+    estimated_useful_life_years: number;
+    unit_cost_estimate: number;
+    maintenance_interval_months: number;
+    required_operators: number;
+    safety_gear_required: string;
+}
+
+export const equipmentCategories = [
+    'Land Preparation',
+    'Crop Establishment',
+    'Crop Care & Protection',
+    'Harvesting',
+    'Post-Harvest & Processing',
+    'Transport & Logistics',
+    'Livestock & Poultry',
+    'Garden & Nursery'
+];
+
 export interface ReferenceActivity {
     id: string;
     component: string;
