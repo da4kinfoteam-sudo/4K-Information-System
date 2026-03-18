@@ -1567,8 +1567,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Housing & Space</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Min Space: <span className="text-gray-900 dark:text-white font-medium">{item.min_space_sqm_per_head} sqm/head</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Housing Type: <span className="text-gray-900 dark:text-white font-medium">{item.housing_type}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Space Requirement (sqm): <span className="text-gray-900 dark:text-white font-medium">{item.min_space_sqm_per_head} sqm/head</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Housing System: <span className="text-gray-900 dark:text-white font-medium">{item.housing_type}</span></p>
                                                                 <p className="text-xs text-gray-500 dark:text-gray-400">Temp Range: <span className="text-gray-900 dark:text-white font-medium">{item.min_temp_celsius}°C - {item.max_temp_celsius}°C</span></p>
                                                             </div>
                                                         </div>
@@ -1576,22 +1576,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Growth & Production</h4>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs text-gray-500 dark:text-gray-400">Gestation/Incubation: <span className="text-gray-900 dark:text-white font-medium">{item.gestation_incubation_days} days</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Maturity: <span className="text-gray-900 dark:text-white font-medium">{item.maturity_days} days</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Productive Years: <span className="text-gray-900 dark:text-white font-medium">{item.productive_years} years</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Market Maturity: <span className="text-gray-900 dark:text-white font-medium">{item.maturity_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Economic Lifespan: <span className="text-gray-900 dark:text-white font-medium">{item.productive_years} years</span></p>
                                                                 {item.category === 'Poultry' && (
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Avg Eggs/Year: <span className="text-gray-900 dark:text-white font-medium">{item.avg_eggs_per_year}</span></p>
+                                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Annual Egg Yield: <span className="text-gray-900 dark:text-white font-medium">{item.avg_eggs_per_year}</span></p>
                                                                 )}
                                                             </div>
                                                         </div>
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Nutrition & Weight</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Feed Type: <span className="text-gray-900 dark:text-white font-medium">{item.feed_type}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Feeding Protocol: <span className="text-gray-900 dark:text-white font-medium">{item.feed_type}</span></p>
                                                                 <p className="text-xs text-gray-500 dark:text-gray-400">Target FCR: <span className="text-gray-900 dark:text-white font-medium">{item.target_fcr}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Target Weight: <span className="text-gray-900 dark:text-white font-medium">{item.target_weight_kg} kg</span></p>
-                                                                {(item.category === 'Ruminant' || item.category === 'Swine') && (
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400">Water/Day: <span className="text-gray-900 dark:text-white font-medium">{item.water_liters_per_day} L</span></p>
-                                                                )}
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Market Weight (kg): <span className="text-gray-900 dark:text-white font-medium">{item.target_weight_kg} kg</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Daily Water (L): <span className="text-gray-900 dark:text-white font-medium">{item.water_liters_per_day} L</span></p>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1861,13 +1859,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.name}>
-                                            Breed/Variety Name <Info className="h-3 w-3 text-gray-400" />
+                                            Breed/Common Name <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refLivestockForm.name} onChange={e => setRefLivestockForm({...refLivestockForm, name: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.category}>
-                                            Category <Info className="h-3 w-3 text-gray-400" />
+                                            Livestock Type <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <select 
                                             required 
@@ -1883,19 +1881,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.breed_type}>
-                                            Breed Type <Info className="h-3 w-3 text-gray-400" />
+                                            Genetics <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refLivestockForm.breed_type} onChange={e => setRefLivestockForm({...refLivestockForm, breed_type: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.housing_type}>
-                                            Housing Type <Info className="h-3 w-3 text-gray-400" />
+                                            Housing System <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refLivestockForm.housing_type} onChange={e => setRefLivestockForm({...refLivestockForm, housing_type: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.min_space_sqm_per_head}>
-                                            Min Space (sqm/head) <Info className="h-3 w-3 text-gray-400" />
+                                            Space Requirement (sqm) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="number" step="0.01" required value={refLivestockForm.min_space_sqm_per_head} onChange={e => setRefLivestockForm({...refLivestockForm, min_space_sqm_per_head: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
@@ -1915,27 +1913,27 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.gestation_incubation_days}>
-                                            Gestation/Incubation (days) <Info className="h-3 w-3 text-gray-400" />
+                                            Gestation/Incubation <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="number" required value={refLivestockForm.gestation_incubation_days} onChange={e => setRefLivestockForm({...refLivestockForm, gestation_incubation_days: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
                                             <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.maturity_days}>
-                                                Maturity (days) <Info className="h-3 w-3 text-gray-400" />
+                                                Market Maturity <Info className="h-3 w-3 text-gray-400" />
                                             </label>
                                             <input type="number" required value={refLivestockForm.maturity_days} onChange={e => setRefLivestockForm({...refLivestockForm, maturity_days: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                         <div>
                                             <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.productive_years}>
-                                                Prod. Years <Info className="h-3 w-3 text-gray-400" />
+                                                Economic Lifespan <Info className="h-3 w-3 text-gray-400" />
                                             </label>
                                             <input type="number" required value={refLivestockForm.productive_years} onChange={e => setRefLivestockForm({...refLivestockForm, productive_years: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.feed_type}>
-                                            Feed Type <Info className="h-3 w-3 text-gray-400" />
+                                            Feeding Protocol <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refLivestockForm.feed_type} onChange={e => setRefLivestockForm({...refLivestockForm, feed_type: e.target.value})} className={commonInputClasses} />
                                     </div>
@@ -1947,24 +1945,22 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.target_weight_kg}>
-                                            Target Weight (kg) <Info className="h-3 w-3 text-gray-400" />
+                                            Market Weight (kg) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="number" step="0.01" required value={refLivestockForm.target_weight_kg} onChange={e => setRefLivestockForm({...refLivestockForm, target_weight_kg: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.water_liters_per_day}>
+                                            Daily Water (L) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" step="0.1" required value={refLivestockForm.water_liters_per_day} onChange={e => setRefLivestockForm({...refLivestockForm, water_liters_per_day: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     {refLivestockForm.category === 'Poultry' && (
                                         <div>
                                             <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.avg_eggs_per_year}>
-                                                Avg Eggs/Year <Info className="h-3 w-3 text-gray-400" />
+                                                Annual Egg Yield <Info className="h-3 w-3 text-gray-400" />
                                             </label>
                                             <input type="number" required value={refLivestockForm.avg_eggs_per_year} onChange={e => setRefLivestockForm({...refLivestockForm, avg_eggs_per_year: Number(e.target.value)})} className={commonInputClasses} />
-                                        </div>
-                                    )}
-                                    {(refLivestockForm.category === 'Ruminant' || refLivestockForm.category === 'Swine') && (
-                                        <div>
-                                            <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.water_liters_per_day}>
-                                                Water/Day (L) <Info className="h-3 w-3 text-gray-400" />
-                                            </label>
-                                            <input type="number" step="0.1" required value={refLivestockForm.water_liters_per_day} onChange={e => setRefLivestockForm({...refLivestockForm, water_liters_per_day: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                     )}
                                 </div>
