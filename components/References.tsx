@@ -1,10 +1,12 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
+import { usePagination } from './mainfunctions/TableHooks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -53,6 +55,25 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const CROP_TOOLTIPS = {
+    name: "The specific variety or common name (e.g. \"NSIC Rice Rc222\" or \"Carabao Mango\").",
+    banner_program: "The DA Banner Program managing the budget (Rice, Corn, HVCDP, or Coconut).",
+    commodity_group: "The biological or economic group (e.g. Cereal, Vegetable, Fruit, Industrial).",
+    min_elevation_masl: "Minimum altitude required in Meters Above Sea Level (MASL).",
+    max_elevation_masl: "Maximum altitude limit; exceeding this may result in poor growth or no fruiting.",
+    max_slope_percent: "Maximum terrain steepness; used to prevent erosion and ensure machinery access.",
+    ph_min: "The most acidic soil condition the crop can tolerate (Standard range: 0.0 - 14.0).",
+    ph_max: "The most alkaline soil condition allowed; critical for nutrient absorption.",
+    climate_type_suitability: "PAGASA Climate Types (I-IV) suitable for the crop based on rainfall distribution.",
+    wet_season_start: "The ideal month(s) to start planting during the rainy season.",
+    dry_season_start: "The ideal month(s) to start planting during the sunnier/drier months.",
+    harvest_period_days: "Estimated days from planting or transplanting to the first major harvest.",
+    recommended_soil: "Preferred soil type (e.g. \"Sandy Loam\", \"Clay Loam\") for optimal root development.",
+    fertilizer_npk: "Suggested Nitrogen-Phosphorus-Potassium (N-P-K) grades and application timing.",
+    watering_method: "Recommended water delivery (e.g. \"Rainfed\", \"Drip\", \"Flooded\", \"Basin\").",
+    target_yield_ha: "Expected output in Metric Tons per Hectare under optimal management."
+};
+
 const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, refCommodities, setRefCommodities, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'Crop References' | 'GIDA' | 'ELCAC'>('UACS');
@@ -70,6 +91,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
+    const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
     // Access Control: User role is Read-Only
     const canEdit = currentUser?.role !== 'User';
@@ -238,17 +260,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setSortConfig({ key, direction });
     };
 
-    const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => {
+    const SortableHeader = ({ label, sortKey, tooltip }: { label: string; sortKey: string; tooltip?: string }) => {
         const isSorted = sortConfig?.key === sortKey;
         const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
         return (
             <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group select-none"
                 onClick={() => requestSort(sortKey)}
+                title={tooltip}
             >
                 <div className="flex items-center gap-1">
                     {label}
-                    <span className={`text-xs ${isSorted ? 'text-accent opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-50'}`}>{directionIcon}</span>
+                    {tooltip && <Info className="h-3 w-3 text-gray-400 group-hover:text-emerald-500 transition-colors" />}
+                    <span className={`text-xs ${isSorted ? 'text-emerald-600 opacity-100' : 'text-gray-400 opacity-0 group-hover:opacity-50'}`}>{directionIcon}</span>
                 </div>
             </th>
         );
@@ -400,6 +424,27 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         }
         return items;
     }, [elcacList, searchTerm, sortConfig]);
+
+    const activeData = useMemo(() => {
+        switch (activeTab) {
+            case 'UACS': return processedUacs;
+            case 'Items': return processedParticulars;
+            case 'Commodities': return processedCommodities;
+            case 'Crop References': return processedRefCommodities;
+            case 'GIDA': return processedGida;
+            case 'ELCAC': return processedElcac;
+            default: return [];
+        }
+    }, [activeTab, processedUacs, processedParticulars, processedCommodities, processedRefCommodities, processedGida, processedElcac]);
+
+    const {
+        currentPage,
+        setCurrentPage,
+        itemsPerPage,
+        setItemsPerPage,
+        totalPages,
+        paginatedData
+    } = usePagination(activeData, [activeTab, searchTerm, sortConfig]);
 
     // --- Handlers ---
     const handleOpenAdd = () => {
@@ -615,12 +660,11 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const currentList = activeTab === 'UACS' ? processedUacs : (activeTab === 'Items' ? processedParticulars : (activeTab === 'Commodities' ? processedCommodities : (activeTab === 'GIDA' ? processedGida : processedElcac)));
         if (e.target.checked) {
-            const ids = currentList.map(i => i.id);
+            const ids = paginatedData.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
         } else {
-            const idsToRemove = new Set(currentList.map(i => i.id));
+            const idsToRemove = new Set(paginatedData.map(i => i.id));
             setSelectedIds(prev => prev.filter(id => !idsToRemove.has(id)));
         }
     };
@@ -921,16 +965,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         reader.readAsArrayBuffer(file);
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
-
-    const getCurrentList = () => {
-        if (activeTab === 'UACS') return processedUacs;
-        if (activeTab === 'Items') return processedParticulars;
-        if (activeTab === 'Commodities') return processedCommodities;
-        if (activeTab === 'Crop References') return processedRefCommodities;
-        if (activeTab === 'GIDA') return processedGida;
-        return processedElcac;
-    }
+    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
     return (
         <div className="space-y-6">
@@ -957,7 +992,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 {canEdit && (
                     <button 
                         onClick={handleOpenAdd}
-                        className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
                     >
                         + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
@@ -971,7 +1006,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={() => { setActiveTab('UACS'); setSearchTerm(''); }}
                         className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                             activeTab === 'UACS'
-                                ? 'border-accent text-accent'
+                                ? 'border-emerald-600 text-emerald-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                         }`}
                     >
@@ -981,7 +1016,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={() => { setActiveTab('Items'); setSearchTerm(''); }}
                         className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                             activeTab === 'Items'
-                                ? 'border-accent text-accent'
+                                ? 'border-emerald-600 text-emerald-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                         }`}
                     >
@@ -991,7 +1026,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={() => { setActiveTab('Commodities'); setSearchTerm(''); }}
                         className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                             activeTab === 'Commodities'
-                                ? 'border-accent text-accent'
+                                ? 'border-emerald-600 text-emerald-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                         }`}
                     >
@@ -1001,7 +1036,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={() => { setActiveTab('Crop References'); setSearchTerm(''); }}
                         className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                             activeTab === 'Crop References'
-                                ? 'border-accent text-accent'
+                                ? 'border-emerald-600 text-emerald-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                         }`}
                     >
@@ -1013,7 +1048,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }}
                                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                                     activeTab === 'GIDA'
-                                        ? 'border-accent text-accent'
+                                        ? 'border-emerald-600 text-emerald-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                                 }`}
                             >
@@ -1023,7 +1058,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }}
                                 className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                                     activeTab === 'ELCAC'
-                                        ? 'border-accent text-accent'
+                                        ? 'border-emerald-600 text-emerald-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                                 }`}
                             >
@@ -1042,7 +1077,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         placeholder="Search..." 
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                 </div>
                 
@@ -1061,7 +1096,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         </button>
                         <label 
                             htmlFor="ref-upload" 
-                            className={`inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-blue-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            className={`inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-emerald-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                             {isUploading ? 'Uploading...' : 'Upload XLSX'}
                         </label>
@@ -1129,16 +1164,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </>
                                 ) : activeTab === 'Crop References' ? (
                                     <>
-                                        <SortableHeader label="Name" sortKey="name" />
-                                        <SortableHeader label="Banner Program" sortKey="banner_program" />
-                                        <SortableHeader label="Group" sortKey="commodity_group" />
-                                        <SortableHeader label="Elevation (masl)" sortKey="min_elevation_masl" />
-                                        <SortableHeader label="Slope (%)" sortKey="max_slope_percent" />
-                                        <SortableHeader label="Soil" sortKey="recommended_soil" />
-                                        <SortableHeader label="Harvest (days)" sortKey="harvest_period_days" />
-                                        <SortableHeader label="pH Range" sortKey="ph_min" />
-                                        <SortableHeader label="Climate" sortKey="climate_type_suitability" />
-                                        <SortableHeader label="Yield (t/ha)" sortKey="target_yield_ha" />
+                                        <th className="px-6 py-3 w-10"></th>
+                                        <SortableHeader label="Name" sortKey="name" tooltip={CROP_TOOLTIPS.name} />
+                                        <SortableHeader label="Banner" sortKey="banner_program" tooltip={CROP_TOOLTIPS.banner_program} />
+                                        <SortableHeader label="Group" sortKey="commodity_group" tooltip={CROP_TOOLTIPS.commodity_group} />
                                     </>
                                 ) : (
                                     <>
@@ -1156,8 +1185,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 <input 
                                                     type="checkbox" 
                                                     onChange={handleSelectAll} 
-                                                    checked={getCurrentList().length > 0 && getCurrentList().every((i: any) => selectedIds.includes(i.id))}
-                                                    className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+                                                    checked={paginatedData.length > 0 && paginatedData.every((i: any) => selectedIds.includes(i.id))}
+                                                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                 />
                                             </div>
                                         ) : (
@@ -1168,74 +1197,182 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {getCurrentList().length > 0 ? (
-                                getCurrentList().map((item: any) => (
-                                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                        {activeTab === 'UACS' ? (
-                                            <>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
-                                            </>
-                                        ) : activeTab === 'Items' || activeTab === 'Commodities' ? (
-                                            <>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
-                                            </>
-                                        ) : activeTab === 'Crop References' ? (
-                                            <>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.name}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.banner_program}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.commodity_group}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.min_elevation_masl} - {item.max_elevation_masl}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.max_slope_percent}%</td>
-                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.recommended_soil}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.harvest_period_days}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.ph_min} - {item.ph_max}</td>
-                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.climate_type_suitability}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.target_yield_ha}</td>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.region}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.province}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.municipality}</td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.barangay}</td>
-                                            </>
+                            {paginatedData.length > 0 ? (
+                                paginatedData.map((item: any) => (
+                                    <React.Fragment key={item.id}>
+                                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                            {activeTab === 'UACS' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
+                                                </>
+                                            ) : activeTab === 'Items' || activeTab === 'Commodities' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
+                                                </>
+                                            ) : activeTab === 'Crop References' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedRowId(expandedRowId === item.id ? null : item.id); }}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                                                        >
+                                                            {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.banner_program}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.commodity_group}</td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.region}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.province}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.municipality}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.barangay}</td>
+                                                </>
+                                            )}
+                                            {canEdit && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    {isSelectionMode ? (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.includes(item.id)} 
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                                        />
+                                                    ) : (
+                                                        <>
+                                                            <button onClick={() => handleOpenEdit(item)} className="text-emerald-600 hover:text-emerald-900 mr-3">Edit</button>
+                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                        </>
+                                                    )}
+                                                </td>
+                                            )}
+                                        </tr>
+                                        {expandedRowId === item.id && activeTab === 'Crop References' && (
+                                            <tr className="bg-emerald-50/30 dark:bg-emerald-900/10">
+                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.min_elevation_masl + " " + CROP_TOOLTIPS.max_elevation_masl}>
+                                                                Elevation Range <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.min_elevation_masl} - {item.max_elevation_masl} masl</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.max_slope_percent}>
+                                                                Max Slope <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.max_slope_percent}%</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.wet_season_start + " " + CROP_TOOLTIPS.dry_season_start}>
+                                                                Seasonality <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">Wet: {item.wet_season_start} | Dry: {item.dry_season_start}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.recommended_soil}>
+                                                                Soil Type <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.recommended_soil}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.fertilizer_npk}>
+                                                                Fertilizer (NPK) <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.fertilizer_npk}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.watering_method}>
+                                                                Watering <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.watering_method}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.harvest_period_days}>
+                                                                Harvest Period <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.harvest_period_days} days</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.ph_min + " " + CROP_TOOLTIPS.ph_max}>
+                                                                pH Range <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.ph_min} - {item.ph_max}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.climate_type_suitability}>
+                                                                Climate Suitability <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.climate_type_suitability}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.target_yield_ha}>
+                                                                Target Yield <Info className="h-3 w-3" />
+                                                            </p>
+                                                            <p className="text-gray-900 dark:text-white">{item.target_yield_ha} t/ha</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
                                         )}
-                                        {canEdit && (
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                {isSelectionMode ? (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.includes(item.id)} 
-                                                        onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => handleOpenEdit(item)} className="text-accent hover:brightness-110 mr-3">Edit</button>
-                                                        <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
-                                                    </>
-                                                )}
-                                            </td>
-                                        )}
-                                    </tr>
+                                    </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop References' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop References' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Pagination Controls */}
+                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                        <select 
+                            value={itemsPerPage} 
+                            onChange={(e) => setItemsPerPage(Number(e.target.value))} 
+                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                        >
+                            {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
+                        </select>
+                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">
+                            Showing {activeData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, activeData.length)} of {activeData.length} entries
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                                disabled={currentPage === 1} 
+                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Previous
+                            </button>
+                            <span className="px-2 font-medium text-gray-700 dark:text-gray-300">{currentPage} / {totalPages}</span>
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                                disabled={currentPage === totalPages} 
+                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             {/* Add/Edit Modal */}
             {isModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
+                    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${activeTab === 'Crop References' ? 'max-w-2xl' : 'max-w-md'} w-full p-6 max-h-[90vh] overflow-y-auto`}>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
                             {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                         </h3>
@@ -1338,80 +1475,112 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                 </>
                             ) : activeTab === 'Crop References' ? (
-                                <>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.name}>
+                                            Name <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.name} onChange={e => setRefCommodityForm({...refCommodityForm, name: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Banner Program</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.banner_program}>
+                                            Banner Program <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.banner_program} onChange={e => setRefCommodityForm({...refCommodityForm, banner_program: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Commodity Group</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.commodity_group}>
+                                            Commodity Group <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.commodity_group} onChange={e => setRefCommodityForm({...refCommodityForm, commodity_group: e.target.value})} className={commonInputClasses} />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Min Elevation (masl)</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.min_elevation_masl}>
+                                                Min Elev (masl) <Info className="h-3 w-3 text-gray-400" />
+                                             </label>
                                             <input type="number" required value={refCommodityForm.min_elevation_masl} onChange={e => setRefCommodityForm({...refCommodityForm, min_elevation_masl: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Elevation (masl)</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.max_elevation_masl}>
+                                                Max Elev (masl) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="number" required value={refCommodityForm.max_elevation_masl} onChange={e => setRefCommodityForm({...refCommodityForm, max_elevation_masl: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Slope (%)</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.max_slope_percent}>
+                                            Max Slope (%) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="number" required value={refCommodityForm.max_slope_percent} onChange={e => setRefCommodityForm({...refCommodityForm, max_slope_percent: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Wet Season Start</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.wet_season_start}>
+                                                Wet Season Start <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="text" required value={refCommodityForm.wet_season_start} onChange={e => setRefCommodityForm({...refCommodityForm, wet_season_start: e.target.value})} className={commonInputClasses} />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Dry Season Start</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.dry_season_start}>
+                                                Dry Season Start <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="text" required value={refCommodityForm.dry_season_start} onChange={e => setRefCommodityForm({...refCommodityForm, dry_season_start: e.target.value})} className={commonInputClasses} />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Recommended Soil</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.recommended_soil}>
+                                            Recommended Soil <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.recommended_soil} onChange={e => setRefCommodityForm({...refCommodityForm, recommended_soil: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fertilizer NPK</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.fertilizer_npk}>
+                                            Fertilizer NPK <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.fertilizer_npk} onChange={e => setRefCommodityForm({...refCommodityForm, fertilizer_npk: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Watering Method</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.watering_method}>
+                                            Watering Method <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.watering_method} onChange={e => setRefCommodityForm({...refCommodityForm, watering_method: e.target.value})} className={commonInputClasses} />
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Harvest Period (days)</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.harvest_period_days}>
+                                                Harvest (days) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="number" required value={refCommodityForm.harvest_period_days} onChange={e => setRefCommodityForm({...refCommodityForm, harvest_period_days: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Yield (t/ha)</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.target_yield_ha}>
+                                                Target Yield (t/ha) <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="number" step="0.01" required value={refCommodityForm.target_yield_ha} onChange={e => setRefCommodityForm({...refCommodityForm, target_yield_ha: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">pH Min</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.ph_min}>
+                                                pH Min <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="number" step="0.1" required value={refCommodityForm.ph_min} onChange={e => setRefCommodityForm({...refCommodityForm, ph_min: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">pH Max</label>
+                                            <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.ph_max}>
+                                                pH Max <Info className="h-3 w-3 text-gray-400" />
+                                            </label>
                                             <input type="number" step="0.1" required value={refCommodityForm.ph_max} onChange={e => setRefCommodityForm({...refCommodityForm, ph_max: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Climate Suitability</label>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.climate_type_suitability}>
+                                            Climate Suitability <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
                                         <input type="text" required value={refCommodityForm.climate_type_suitability} onChange={e => setRefCommodityForm({...refCommodityForm, climate_type_suitability: e.target.value})} className={commonInputClasses} />
                                     </div>
-                                </>
+                                </div>
                             ) : activeTab === 'GIDA' ? (
                                 <>
                                     <div>
@@ -1509,7 +1678,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 </button>
                                 <button 
                                     type="submit"
-                                    className="px-4 py-2 bg-accent text-white rounded-md text-sm font-medium hover:brightness-95"
+                                    className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 transition-colors"
                                 >
                                     Save
                                 </button>
