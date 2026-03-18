@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO } from '../constants';
+import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
@@ -37,6 +37,8 @@ interface ReferencesProps {
     setParticularList: React.Dispatch<React.SetStateAction<ReferenceParticular[]>>;
     commodityList: ReferenceCommodity[];
     setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
+    refCommodities: RefCommodity[];
+    setRefCommodities: React.Dispatch<React.SetStateAction<RefCommodity[]>>;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
     elcacList: ElcacArea[];
@@ -51,9 +53,9 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, refCommodities, setRefCommodities, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'GIDA' | 'ELCAC'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'Crop References' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -90,6 +92,26 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [commodityForm, setCommodityForm] = useState({
         type: 'Crop Commodity',
         particular: ''
+    });
+
+    // --- Crop References Form State ---
+    const [refCommodityForm, setRefCommodityForm] = useState({
+        name: '',
+        banner_program: '',
+        commodity_group: '',
+        min_elevation_masl: 0,
+        max_elevation_masl: 0,
+        max_slope_percent: 0,
+        wet_season_start: '',
+        dry_season_start: '',
+        recommended_soil: '',
+        fertilizer_npk: '',
+        watering_method: '',
+        harvest_period_days: 0,
+        ph_min: 0,
+        ph_max: 0,
+        climate_type_suitability: '',
+        target_yield_ha: 0
     });
 
     // --- GIDA Form State ---
@@ -304,6 +326,31 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [commodityList, searchTerm, sortConfig]);
 
+    const processedRefCommodities = useMemo(() => {
+        let items = [...refCommodities];
+        // Filter
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                i.name.toLowerCase().includes(lower) || 
+                i.banner_program.toLowerCase().includes(lower) ||
+                i.commodity_group.toLowerCase().includes(lower) ||
+                i.recommended_soil.toLowerCase().includes(lower)
+            );
+        }
+        // Sort
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [refCommodities, searchTerm, sortConfig]);
+
     const processedGida = useMemo(() => {
         let items = [...gidaList];
         // Filter
@@ -360,6 +407,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
         setCommodityForm({ type: 'Crop Commodity', particular: '' });
+        setRefCommodityForm({
+            name: '', banner_program: '', commodity_group: '', min_elevation_masl: 0, max_elevation_masl: 0,
+            max_slope_percent: 0, wet_season_start: '', dry_season_start: '', recommended_soil: '',
+            fertilizer_npk: '', watering_method: '', harvest_period_days: 0, ph_min: 0, ph_max: 0,
+            climate_type_suitability: '', target_yield_ha: 0
+        });
         setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
         setElcacForm({ region: '', province: '', municipality: '', barangay: '' });
         setIsModalOpen(true);
@@ -383,6 +436,25 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setCommodityForm({
                 type: item.type,
                 particular: item.particular
+            });
+        } else if (activeTab === 'Crop References') {
+            setRefCommodityForm({
+                name: item.name,
+                banner_program: item.banner_program,
+                commodity_group: item.commodity_group,
+                min_elevation_masl: item.min_elevation_masl,
+                max_elevation_masl: item.max_elevation_masl,
+                max_slope_percent: item.max_slope_percent,
+                wet_season_start: item.wet_season_start,
+                dry_season_start: item.dry_season_start,
+                recommended_soil: item.recommended_soil,
+                fertilizer_npk: item.fertilizer_npk,
+                watering_method: item.watering_method,
+                harvest_period_days: item.harvest_period_days || 0,
+                ph_min: item.ph_min || 0,
+                ph_max: item.ph_max || 0,
+                climate_type_suitability: item.climate_type_suitability || '',
+                target_yield_ha: item.target_yield_ha || 0
             });
         } else if (activeTab === 'GIDA') {
             setGidaForm({
@@ -426,6 +498,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 setCommodityList(prev => prev.map(i => i.id === id ? newData : i));
             } else {
                 setCommodityList(prev => [newData, ...prev]);
+            }
+        } else if (activeTab === 'Crop References') {
+            const newData = { id, ...refCommodityForm };
+            if (editingItem) {
+                setRefCommodities(prev => prev.map(i => i.id === id ? newData : i));
+            } else {
+                setRefCommodities(prev => [newData, ...prev]);
             }
         } else if (activeTab === 'GIDA') {
             if (supabase) {
@@ -499,6 +578,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else if (activeTab === 'Crop References') {
+            setRefCommodities(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().eq('id', deleteItem.id);
@@ -561,6 +642,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Commodities') {
             setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else if (activeTab === 'Crop References') {
+            setRefCommodities(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().in('id', selectedIds);
@@ -619,6 +702,28 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Commodities_Template.xlsx';
+        } else if (activeTab === 'Crop References') {
+            const headers = ['name', 'banner_program', 'commodity_group', 'min_elevation_masl', 'max_elevation_masl', 'max_slope_percent', 'wet_season_start', 'dry_season_start', 'recommended_soil', 'fertilizer_npk', 'watering_method', 'harvest_period_days', 'ph_min', 'ph_max', 'climate_type_suitability', 'target_yield_ha'];
+            const example = [{
+                name: 'Rice (Lowland)',
+                banner_program: 'Rice',
+                commodity_group: 'Cereal',
+                min_elevation_masl: 0,
+                max_elevation_masl: 500,
+                max_slope_percent: 3,
+                wet_season_start: 'June-July',
+                dry_season_start: 'Jan-Feb',
+                recommended_soil: 'Clay Loam / Alluvial',
+                fertilizer_npk: '14-14-14 (Basal), 46-0-0 (Top-dress)',
+                watering_method: 'Continuous Flooding / AWD',
+                harvest_period_days: 120,
+                ph_min: 5.5,
+                ph_max: 7.0,
+                climate_type_suitability: 'Type I, II, III, IV',
+                target_yield_ha: 5.5
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Crop_References_Template.xlsx';
         } else if (activeTab === 'GIDA') {
             const headers = ['region', 'province', 'municipality', 'barangay'];
             const example = [{
@@ -722,6 +827,40 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setCommodityList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} commodities imported locally.`);
                     }
+                } else if (activeTab === 'Crop References') {
+                    const newItems: RefCommodity[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        name: row.name || '',
+                        banner_program: row.banner_program || '',
+                        commodity_group: row.commodity_group || '',
+                        min_elevation_masl: Number(row.min_elevation_masl) || 0,
+                        max_elevation_masl: Number(row.max_elevation_masl) || 0,
+                        max_slope_percent: Number(row.max_slope_percent) || 0,
+                        wet_season_start: row.wet_season_start || '',
+                        dry_season_start: row.dry_season_start || '',
+                        recommended_soil: row.recommended_soil || '',
+                        fertilizer_npk: row.fertilizer_npk || '',
+                        watering_method: row.watering_method || '',
+                        harvest_period_days: Number(row.harvest_period_days) || 0,
+                        ph_min: Number(row.ph_min) || 0,
+                        ph_max: Number(row.ph_max) || 0,
+                        climate_type_suitability: row.climate_type_suitability || '',
+                        target_yield_ha: Number(row.target_yield_ha) || 0
+                    })).filter(i => i.name);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('ref_commodities').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setRefCommodities(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} crop references uploaded successfully to database.`);
+                        }
+                    } else {
+                        setRefCommodities(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} crop references imported locally.`);
+                    }
                 } else if (activeTab === 'GIDA') {
                     const newItems = jsonData.map((row: any) => ({
                         region: normalizeRegionName(row.region || ''),
@@ -788,6 +927,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (activeTab === 'UACS') return processedUacs;
         if (activeTab === 'Items') return processedParticulars;
         if (activeTab === 'Commodities') return processedCommodities;
+        if (activeTab === 'Crop References') return processedRefCommodities;
         if (activeTab === 'GIDA') return processedGida;
         return processedElcac;
     }
@@ -819,7 +959,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-accent hover:brightness-95 text-white rounded-md shadow-sm text-sm font-medium"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
                 )}
             </div>
@@ -856,6 +996,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         }`}
                     >
                         Commodities
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('Crop References'); setSearchTerm(''); }}
+                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                            activeTab === 'Crop References'
+                                ? 'border-accent text-accent'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        Crop References
                     </button>
                     {currentUser?.role === 'Administrator' && (
                         <>
@@ -977,6 +1127,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="Commodity Type" sortKey="type" />
                                         <SortableHeader label="Particulars" sortKey="particular" />
                                     </>
+                                ) : activeTab === 'Crop References' ? (
+                                    <>
+                                        <SortableHeader label="Name" sortKey="name" />
+                                        <SortableHeader label="Banner Program" sortKey="banner_program" />
+                                        <SortableHeader label="Group" sortKey="commodity_group" />
+                                        <SortableHeader label="Elevation (masl)" sortKey="min_elevation_masl" />
+                                        <SortableHeader label="Slope (%)" sortKey="max_slope_percent" />
+                                        <SortableHeader label="Soil" sortKey="recommended_soil" />
+                                        <SortableHeader label="Harvest (days)" sortKey="harvest_period_days" />
+                                        <SortableHeader label="pH Range" sortKey="ph_min" />
+                                        <SortableHeader label="Climate" sortKey="climate_type_suitability" />
+                                        <SortableHeader label="Yield (t/ha)" sortKey="target_yield_ha" />
+                                    </>
                                 ) : (
                                     <>
                                         <SortableHeader label="Region" sortKey="region" />
@@ -1020,6 +1183,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
                                             </>
+                                        ) : activeTab === 'Crop References' ? (
+                                            <>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.name}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.banner_program}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.commodity_group}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.min_elevation_masl} - {item.max_elevation_masl}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.max_slope_percent}%</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.recommended_soil}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.harvest_period_days}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.ph_min} - {item.ph_max}</td>
+                                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.climate_type_suitability}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.target_yield_ha}</td>
+                                            </>
                                         ) : (
                                             <>
                                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.region}</td>
@@ -1061,7 +1237,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -1159,6 +1335,81 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             onChange={e => setCommodityForm({...commodityForm, particular: e.target.value})}
                                             className={commonInputClasses}
                                         />
+                                    </div>
+                                </>
+                            ) : activeTab === 'Crop References' ? (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
+                                        <input type="text" required value={refCommodityForm.name} onChange={e => setRefCommodityForm({...refCommodityForm, name: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Banner Program</label>
+                                        <input type="text" required value={refCommodityForm.banner_program} onChange={e => setRefCommodityForm({...refCommodityForm, banner_program: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Commodity Group</label>
+                                        <input type="text" required value={refCommodityForm.commodity_group} onChange={e => setRefCommodityForm({...refCommodityForm, commodity_group: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Min Elevation (masl)</label>
+                                            <input type="number" required value={refCommodityForm.min_elevation_masl} onChange={e => setRefCommodityForm({...refCommodityForm, min_elevation_masl: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Elevation (masl)</label>
+                                            <input type="number" required value={refCommodityForm.max_elevation_masl} onChange={e => setRefCommodityForm({...refCommodityForm, max_elevation_masl: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Max Slope (%)</label>
+                                        <input type="number" required value={refCommodityForm.max_slope_percent} onChange={e => setRefCommodityForm({...refCommodityForm, max_slope_percent: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Wet Season Start</label>
+                                            <input type="text" required value={refCommodityForm.wet_season_start} onChange={e => setRefCommodityForm({...refCommodityForm, wet_season_start: e.target.value})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Dry Season Start</label>
+                                            <input type="text" required value={refCommodityForm.dry_season_start} onChange={e => setRefCommodityForm({...refCommodityForm, dry_season_start: e.target.value})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Recommended Soil</label>
+                                        <input type="text" required value={refCommodityForm.recommended_soil} onChange={e => setRefCommodityForm({...refCommodityForm, recommended_soil: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fertilizer NPK</label>
+                                        <input type="text" required value={refCommodityForm.fertilizer_npk} onChange={e => setRefCommodityForm({...refCommodityForm, fertilizer_npk: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Watering Method</label>
+                                        <input type="text" required value={refCommodityForm.watering_method} onChange={e => setRefCommodityForm({...refCommodityForm, watering_method: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Harvest Period (days)</label>
+                                            <input type="number" required value={refCommodityForm.harvest_period_days} onChange={e => setRefCommodityForm({...refCommodityForm, harvest_period_days: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Target Yield (t/ha)</label>
+                                            <input type="number" step="0.01" required value={refCommodityForm.target_yield_ha} onChange={e => setRefCommodityForm({...refCommodityForm, target_yield_ha: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">pH Min</label>
+                                            <input type="number" step="0.1" required value={refCommodityForm.ph_min} onChange={e => setRefCommodityForm({...refCommodityForm, ph_min: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">pH Max</label>
+                                            <input type="number" step="0.1" required value={refCommodityForm.ph_max} onChange={e => setRefCommodityForm({...refCommodityForm, ph_max: Number(e.target.value)})} className={commonInputClasses} />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Climate Suitability</label>
+                                        <input type="text" required value={refCommodityForm.climate_type_suitability} onChange={e => setRefCommodityForm({...refCommodityForm, climate_type_suitability: e.target.value})} className={commonInputClasses} />
                                     </div>
                                 </>
                             ) : activeTab === 'GIDA' ? (

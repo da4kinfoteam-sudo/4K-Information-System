@@ -40,7 +40,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
@@ -140,6 +140,7 @@ const AppContent: React.FC = () => {
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
     const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
+    const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
@@ -622,6 +623,8 @@ const AppContent: React.FC = () => {
                             setParticularList={setReferenceParticularList}
                             commodityList={referenceCommodityList}
                             setCommodityList={setReferenceCommodityList}
+                            refCommodities={refCommodities}
+                            setRefCommodities={setRefCommodities}
                             gidaList={gidaAreas}
                             setGidaList={setGidaAreas}
                             elcacList={elcacAreas}

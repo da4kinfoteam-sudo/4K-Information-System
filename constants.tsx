@@ -512,6 +512,26 @@ export interface ReferenceCommodity {
     particular: string;
 }
 
+export interface RefCommodity {
+    id: string;
+    name: string;
+    banner_program: string;
+    commodity_group: string;
+    min_elevation_masl: number;
+    max_elevation_masl: number;
+    max_slope_percent: number;
+    wet_season_start: string;
+    dry_season_start: string;
+    recommended_soil: string;
+    fertilizer_npk: string;
+    watering_method: string;
+    harvest_period_days: number;
+    ph_min: number;
+    ph_max: number;
+    climate_type_suitability: string;
+    target_yield_ha: number;
+}
+
 export interface ReferenceActivity {
     id: string;
     component: string;
