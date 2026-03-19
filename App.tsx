@@ -142,7 +142,7 @@ const AppContent: React.FC = () => {
     const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
     const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', []);
     const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', []);
-    const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('ref_activities', []);
+    const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
 

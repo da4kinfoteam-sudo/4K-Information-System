@@ -221,6 +221,11 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
+        
+        if (name === 'component') {
+            setSelectedActivityType('');
+        }
+
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
             if (name === 'operatingUnit') {
@@ -228,7 +233,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 setIpoRegionFilter(mappedRegion);
                 newData.participatingIpos = [];
             }
-            if (name === 'component') setSelectedActivityType('');
             if (name === 'date' && conductType === 'Single') newData.endDate = value;
             if (name === 'actualDate' && conductType === 'Single') newData.actualEndDate = value;
             return newData;
