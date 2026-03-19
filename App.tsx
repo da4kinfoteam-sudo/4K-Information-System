@@ -8,7 +8,7 @@ import DashboardsPage from './components/DashboardsPage';
 import Subprojects from './components/Subprojects';
 import { ActivitiesComponent } from './components/Activities';
 import IPOs from './components/IPO';
-import References, { ReferenceUacs, ReferenceParticular, ReferenceCommodity } from './components/References';
+import References, { ReferenceUacs, ReferenceParticular } from './components/References';
 import Reports from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import SubprojectEdit from './components/SubprojectEdit';
@@ -43,7 +43,7 @@ import {
     Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment
 } from './constants';
 import {
-    sampleReferenceUacsList, sampleReferenceParticularList, sampleReferenceCommodityList
+    sampleReferenceUacsList, sampleReferenceParticularList
 } from './samples';
 
 // Helper to format page names for "Back to..." buttons
@@ -139,7 +139,6 @@ const AppContent: React.FC = () => {
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
-    const [referenceCommodityList, setReferenceCommodityList] = useSupabaseTable<ReferenceCommodity>('reference_commodities', sampleReferenceCommodityList);
     const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
     const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', []);
     const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', []);
@@ -277,21 +276,23 @@ const AppContent: React.FC = () => {
 
     const derivedCommodityCategories = useMemo(() => {
         const categories: { [key: string]: string[] } = {
-            'Animal Commodity': [],
-            'Crop Commodity': [],
-            'Industrial Commodity': []
+            'Livestock': [],
+            'Crop': []
         };
-        referenceCommodityList.forEach(item => {
-            if (categories[item.type]) {
-                if (!categories[item.type].includes(item.particular)) {
-                    categories[item.type].push(item.particular);
-                }
+        refCommodities.forEach(item => {
+            if (!categories['Crop'].includes(item.name)) {
+                categories['Crop'].push(item.name);
+            }
+        });
+        refLivestock.forEach(item => {
+            if (!categories['Livestock'].includes(item.name)) {
+                categories['Livestock'].push(item.name);
             }
         });
         // Sort items
         Object.keys(categories).forEach(key => categories[key].sort());
         return categories;
-    }, [referenceCommodityList]);
+    }, [refCommodities, refLivestock]);
 
     // Derived Activities
     const trainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
@@ -517,6 +518,8 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
+                            refCommodities={refCommodities}
+                            refLivestock={refLivestock}
                         />;
             case '/program-management':
                 return <ProgramManagement
@@ -623,8 +626,6 @@ const AppContent: React.FC = () => {
                             setUacsList={setReferenceUacsList}
                             particularList={referenceParticularList}
                             setParticularList={setReferenceParticularList}
-                            commodityList={referenceCommodityList}
-                            setCommodityList={setReferenceCommodityList}
                             refCommodities={refCommodities}
                             setRefCommodities={setRefCommodities}
                             refLivestock={refLivestock}
@@ -687,6 +688,8 @@ const AppContent: React.FC = () => {
                             particularTypes={derivedParticularTypes}
                             uacsCodes={derivedUacsCodes}
                             commodityCategories={derivedCommodityCategories}
+                            refCommodities={refCommodities}
+                            refLivestock={refLivestock}
                         />;
             case '/ipo-detail':
                 if (!selectedIpo) return <div>Select an IPO</div>;

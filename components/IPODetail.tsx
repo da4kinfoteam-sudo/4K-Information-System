@@ -462,7 +462,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     };
 
     const handleAddCommodity = () => {
-        const isAnimal = currentCommodity.type === 'Animal Commodity';
+        const isAnimal = currentCommodity.type === 'Livestock';
         if (!currentCommodity.type || !currentCommodity.particular || !currentCommodity.value || (!isAnimal && !currentCommodity.yield)) {
             alert(`Please fill out all commodity fields including ${isAnimal ? 'Number of Heads' : 'Area and Yield'}.`);
             return;
@@ -643,7 +643,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                             <span className="font-semibold">{commodity.particular}</span>
                                             <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                             <span>
-                                                {commodity.value.toLocaleString()} {commodity.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                                {commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                             </span>
                                             {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
@@ -682,10 +682,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                             </div>
                              <div className="flex items-end gap-2">
                                 <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Animal Commodity' ? 'Number of Heads' : 'Area (Hectares)'}</label>
+                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Area (Hectares)'}</label>
                                     <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
                                 </div>
-                                {currentCommodity.type !== 'Animal Commodity' && (
+                                {currentCommodity.type !== 'Livestock' && (
                                     <div className="flex-1">
                                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Avg Yield</label>
                                         <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
@@ -876,7 +876,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                 </div>
                                             </div>
                                             <span className="font-medium text-right">
-                                                {c.value.toLocaleString()} {c.type === 'Animal Commodity' ? 'heads' : 'ha'}
+                                                {c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {c.yield ? ` | Y: ${c.yield}` : ''}
                                             </span>
                                         </li>

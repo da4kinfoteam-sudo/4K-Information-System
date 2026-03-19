@@ -661,7 +661,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                 const totalItems = details.length;
                                 const completedItems = details.filter(d => d.actualDeliveryDate).length;
                                 const completionRate = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Animal Commodity' ? 'heads' : 'ha'})`).join(', ') : 'N/A';
+                                const commodities = s.subprojectCommodities && s.subprojectCommodities.length > 0 ? s.subprojectCommodities.map(c => `${c.name} (${c.area} ${c.typeName === 'Livestock' ? 'heads' : 'ha'})`).join(', ') : 'N/A';
 
                                 return (
                                 <React.Fragment key={s.id}>
@@ -771,7 +771,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                                 <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
                                                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-semibold uppercase">Impact</p>
                                                                     {s.subprojectCommodities.map((c, i) => (
-                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name || 'Unknown'}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Animal Commodity' ? 'heads' : 'yield'} (Actual)</span></div>
+                                                                        <div key={i} className="flex justify-between text-xs"><span>{c.name || 'Unknown'}</span><span className="font-medium">{c.actualYield ? c.actualYield : '-'} {c.typeName === 'Livestock' ? 'heads' : 'yield'} (Actual)</span></div>
                                                                     ))}
                                                                 </div>
                                                             )}

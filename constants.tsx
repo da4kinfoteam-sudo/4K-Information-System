@@ -764,9 +764,8 @@ export const ouToRegionMap: { [key: string]: string } = {
 };
 
 export const referenceCommodityTypes = [
-    'Animal Commodity',
-    'Crop Commodity',
-    'Industrial Commodity'
+    'Crop',
+    'Livestock'
 ];
 
 export const otherActivityComponents: ActivityComponentType[] = [

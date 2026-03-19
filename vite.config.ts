@@ -19,14 +19,12 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, '.'),
         }
       },
+      optimizeDeps: {
+        exclude: [],
+      },
       build: {
         rollupOptions: {
-          external: ['lucide-react'],
-          output: {
-            globals: {
-              'lucide-react': 'Lucide'
-            }
-          }
+          external: [],
         }
       }
     };

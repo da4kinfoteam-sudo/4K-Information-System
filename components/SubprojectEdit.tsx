@@ -1,6 +1,7 @@
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, referenceCommodityTypes, philippineRegions, operatingUnits, ouToRegionMap } from '../constants';
+import { Info } from 'lucide-react';
+import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
@@ -16,6 +17,8 @@ interface SubprojectEditProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
+    refCommodities: RefCommodity[];
+    refLivestock: RefLivestock[];
 }
 
 const MONTH_NAMES = [
@@ -62,7 +65,7 @@ const formatMonthYear = (dateString?: string) => {
 };
 
 const SubprojectEdit: React.FC<SubprojectEditProps> = ({ 
-    subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories 
+    subproject, ipos, setIpos, onBack, onUpdateSubproject, uacsCodes, particularTypes, commodityCategories, refCommodities, refLivestock
 }): React.ReactNode => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
@@ -305,12 +308,35 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
-        if (name === 'typeName') setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '' }));
-        else setCurrentCommodity(prev => ({ ...prev, [name]: value }));
+        if (name === 'typeName') {
+            setCurrentCommodity(prev => ({ ...prev, typeName: value, name: '', area: 0, averageYield: 0 }));
+        } else if (name === 'name') {
+            const selectedName = value;
+            let yieldVal = 0;
+            if (currentCommodity.typeName === 'Crop') {
+                const ref = refCommodities.find(c => c.name === selectedName);
+                if (ref) {
+                    yieldVal = (ref.target_yield_ha || 0) * (currentCommodity.area || 0);
+                }
+            }
+            setCurrentCommodity(prev => ({ ...prev, name: selectedName, averageYield: yieldVal }));
+        } else if (name === 'area') {
+            const areaVal = Number(value);
+            let yieldVal = currentCommodity.averageYield || 0;
+            if (currentCommodity.typeName === 'Crop') {
+                const ref = refCommodities.find(c => c.name === currentCommodity.name);
+                if (ref) {
+                    yieldVal = (ref.target_yield_ha || 0) * areaVal;
+                }
+            }
+            setCurrentCommodity(prev => ({ ...prev, area: areaVal, averageYield: yieldVal }));
+        } else {
+            setCurrentCommodity(prev => ({ ...prev, [name]: value }));
+        }
     };
 
     const handleAddCommodity = (): void => {
-        const isAnimal = currentCommodity.typeName === 'Animal Commodity';
+        const isAnimal = currentCommodity.typeName === 'Livestock';
         if (!currentCommodity.typeName || !currentCommodity.name || !currentCommodity.area) {
             alert("Please fill in required commodity fields."); return;
         }
@@ -548,37 +574,201 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         <div className="space-y-4">
                             {formData.subprojectCommodities && formData.subprojectCommodities.length > 0 ? (
                                 formData.subprojectCommodities.map((c, i) => (
-                                    <div key={i} className={`flex items-center justify-between p-2 rounded-md text-sm ${i === editingCommodityIndex ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                        <div>
-                                            <span className="font-semibold">{c.name}</span>
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
-                                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                {c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area} {c.typeName !== 'Animal Commodity' && `| Yield: ${c.averageYield}`}
+                                    <div key={i} className={`flex items-center justify-between p-4 rounded-lg text-sm ${i === editingCommodityIndex ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600'}`}>
+                                        <div className="flex-grow">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-bold text-gray-900 dark:text-white text-base">{c.name}</span>
+                                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider">{c.typeName}</span>
+                                            </div>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                                <div>
+                                                    <span className="text-gray-500 dark:text-gray-400 block mb-0.5 uppercase tracking-tighter font-semibold">{c.typeName === 'Livestock' ? 'Number of Heads' : 'Total Area'}</span>
+                                                    <span className="font-medium text-gray-900 dark:text-white">{c.area} {c.typeName === 'Livestock' ? 'Heads' : 'Hectares'}</span>
+                                                </div>
+                                                {c.typeName === 'Crop' && (
+                                                    <div>
+                                                        <span className="text-gray-500 dark:text-gray-400 block mb-0.5 uppercase tracking-tighter font-semibold">Estimated Yield</span>
+                                                        <span className="font-medium text-gray-900 dark:text-white">{c.averageYield?.toLocaleString()} Kilograms</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <button type="button" onClick={() => handleEditCommodity(i)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
+                                        <div className="flex items-center gap-3 ml-4">
+                                            <button type="button" onClick={() => handleEditCommodity(i)} className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                             </button>
-                                            <button type="button" onClick={() => handleRemoveCommodity(i)} className="text-red-500 hover:text-red-700">&times;</button>
+                                            <button type="button" onClick={() => handleRemoveCommodity(i)} className="p-2 text-gray-400 hover:text-red-600 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added.</p>
+                                <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/30 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added yet. Use the form below to add one.</p>
+                                </div>
                             )}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end border-t pt-4">
-                                <div><label className="block text-xs font-medium">Type</label><select name="typeName" value={currentCommodity.typeName} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{referenceCommodityTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium">Commodity</label><select name="name" value={currentCommodity.name} onChange={handleCommodityChange} disabled={!currentCommodity.typeName} className={commonInputClasses + " py-1.5"}><option value="">Select Commodity</option>{currentCommodity.typeName && commodityCategories[currentCommodity.typeName]?.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium">{currentCommodity.typeName === 'Animal Commodity' ? 'Number of Heads' : 'Area (Hectares)'}</label><input type="number" name="area" value={currentCommodity.area} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} /></div>
-                                <div className="flex gap-2 items-end">
-                                    {currentCommodity.typeName !== 'Animal Commodity' && (
-                                        <div className="flex-grow">
-                                            <label className="block text-xs font-medium">Yield (Kilograms/Hectares)</label>
-                                            <input type="number" name="averageYield" value={currentCommodity.averageYield} onChange={handleCommodityChange} className={commonInputClasses + " py-1.5"} />
+                            
+                            <div className="bg-gray-50 dark:bg-gray-700/30 p-6 rounded-xl border border-gray-200 dark:border-gray-700 mt-6">
+                                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2">
+                                    <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                                    {editingCommodityIndex !== null ? 'Edit Commodity' : 'Add New Commodity'}
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Commodity Type</label>
+                                        <select 
+                                            name="typeName" 
+                                            value={currentCommodity.typeName} 
+                                            onChange={handleCommodityChange} 
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="">Select Type</option>
+                                            <option value="Crop">Crop</option>
+                                            <option value="Livestock">Livestock</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Commodity Name</label>
+                                        <select 
+                                            name="name" 
+                                            value={currentCommodity.name} 
+                                            onChange={handleCommodityChange} 
+                                            disabled={!currentCommodity.typeName} 
+                                            className={commonInputClasses}
+                                        >
+                                            <option value="">Select Commodity</option>
+                                            {currentCommodity.typeName === 'Crop' && refCommodities.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                            {currentCommodity.typeName === 'Livestock' && refLivestock.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                                            {currentCommodity.typeName === 'Livestock' ? 'Number of Heads' : 'Total Area (Hectares)'}
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            name="area" 
+                                            value={currentCommodity.area} 
+                                            onChange={handleCommodityChange} 
+                                            className={commonInputClasses} 
+                                            placeholder={currentCommodity.typeName === 'Livestock' ? "Enter number of heads" : "Enter hectares"}
+                                        />
+                                    </div>
+                                </div>
+
+                                {currentCommodity.name && (
+                                    <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-emerald-100 dark:border-emerald-900/50 shadow-sm animate-fadeIn">
+                                        <h5 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-3 flex items-center gap-2">
+                                            <Info className="h-3 w-3" />
+                                            Reference Information
+                                        </h5>
+                                        {currentCommodity.typeName === 'Crop' ? (
+                                            (() => {
+                                                const ref = refCommodities.find(c => c.name === currentCommodity.name);
+                                                if (!ref) return null;
+                                                return (
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Banner Program</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.banner_program}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Commodity Group</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.commodity_group}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Elevation Range</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.min_elevation_masl} - {ref.max_elevation_masl} MASL</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Target Yield</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.target_yield_ha?.toLocaleString()} Kilograms/Hectares</span>
+                                                        </div>
+                                                        <div className="md:col-span-4 pt-2 border-t border-gray-100 dark:border-gray-700 mt-2">
+                                                            <div className="flex flex-wrap gap-4">
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-gray-500">Recommended Soil:</span>
+                                                                    <span className="font-medium">{ref.recommended_soil}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <span className="text-gray-500">Climate Type:</span>
+                                                                    <span className="font-medium">{ref.climate_type_suitability}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
+                                        ) : (
+                                            (() => {
+                                                const ref = refLivestock.find(c => c.name === currentCommodity.name);
+                                                if (!ref) return null;
+                                                return (
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Category</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.category}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Housing Type</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.housing_type}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Feed Type</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.feed_type}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block mb-1">Water Requirement</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.water_requirement_liters_day} Liters/Day</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="mt-6 flex flex-col md:flex-row gap-6 items-end">
+                                    {currentCommodity.typeName === 'Crop' && (
+                                        <div className="w-full md:w-1/3">
+                                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Auto-Computed Yield (Kilograms)</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type="number" 
+                                                    name="averageYield" 
+                                                    value={currentCommodity.averageYield} 
+                                                    readOnly
+                                                    className={commonInputClasses + " bg-gray-100 dark:bg-gray-800 font-bold text-emerald-600 dark:text-emerald-400"} 
+                                                />
+                                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                                    <span className="text-gray-400 text-xs">KG</span>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-gray-400 mt-1 italic">Calculated based on area and reference target yield.</p>
                                         </div>
                                     )}
-                                    <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 text-emerald-600 hover:bg-emerald-200">+</button>
+                                    <div className="flex-grow flex justify-end gap-3 w-full">
+                                        {editingCommodityIndex !== null && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    setEditingCommodityIndex(null);
+                                                    setCurrentCommodity({ typeName: '', name: '', area: 0, averageYield: 0 });
+                                                }} 
+                                                className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                        <button 
+                                            type="button" 
+                                            onClick={handleAddCommodity} 
+                                            className="px-8 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2"
+                                        >
+                                            {editingCommodityIndex !== null ? 'Update Commodity' : 'Add to List'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -742,7 +932,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             {formData.subprojectCommodities.map((c, i) => (
                                                 <div key={i} className="text-sm bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
                                                     <div className="font-medium">{c.name} ({c.typeName})</div>
-                                                    <div className="text-xs text-gray-500">{c.typeName === 'Animal Commodity' ? 'Heads' : 'Area'}: {c.area}</div>
+                                                    <div className="text-xs text-gray-500">{c.typeName === 'Livestock' ? 'Heads' : 'Area'}: {c.area}</div>
                                                 </div>
                                             ))}
                                         </div>

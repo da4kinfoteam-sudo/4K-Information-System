@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { objectTypes, referenceCommodityTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories } from '../constants';
+import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
@@ -26,19 +26,12 @@ export interface ReferenceParticular {
     particular: string;
 }
 
-export interface ReferenceCommodity {
-    id: string;
-    type: string;
-    particular: string;
-}
 
 interface ReferencesProps {
     uacsList: ReferenceUacs[];
     setUacsList: React.Dispatch<React.SetStateAction<ReferenceUacs[]>>;
     particularList: ReferenceParticular[];
     setParticularList: React.Dispatch<React.SetStateAction<ReferenceParticular[]>>;
-    commodityList: ReferenceCommodity[];
-    setCommodityList: React.Dispatch<React.SetStateAction<ReferenceCommodity[]>>;
     refCommodities: RefCommodity[];
     setRefCommodities: React.Dispatch<React.SetStateAction<RefCommodity[]>>;
     refLivestock: RefLivestock[];
@@ -110,9 +103,9 @@ const EQUIPMENT_TOOLTIPS = {
     safety_gear_required: "Personal Protective Equipment needed (e.g. \"Rubber Boots, Heavy Duty Gloves\")."
 };
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, commodityList, setCommodityList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Commodities' | 'Crop References' | 'Livestock References' | 'Equipment References' | 'GIDA' | 'ELCAC'>('UACS');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Crop References' | 'Livestock References' | 'Equipment References' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -143,12 +136,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     // --- Items Form State ---
     const [itemForm, setItemForm] = useState({
         type: '',
-        particular: ''
-    });
-
-    // --- Commodities Form State ---
-    const [commodityForm, setCommodityForm] = useState({
-        type: 'Crop Commodity',
         particular: ''
     });
 
@@ -397,29 +384,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         return items;
     }, [particularList, searchTerm, sortConfig]);
 
-    const processedCommodities = useMemo(() => {
-        let items = [...commodityList];
-        // Filter
-        if (searchTerm) {
-            const lower = searchTerm.toLowerCase();
-            items = items.filter(i => 
-                i.particular.toLowerCase().includes(lower) || 
-                i.type.toLowerCase().includes(lower)
-            );
-        }
-        // Sort
-        if (sortConfig) {
-            items.sort((a: any, b: any) => {
-                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
-                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
-                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
-                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
-                return 0;
-            });
-        }
-        return items;
-    }, [commodityList, searchTerm, sortConfig]);
-
     const processedRefCommodities = useMemo(() => {
         let items = [...refCommodities];
         // Filter
@@ -545,7 +509,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         switch (activeTab) {
             case 'UACS': return processedUacs;
             case 'Items': return processedParticulars;
-            case 'Commodities': return processedCommodities;
             case 'Crop References': return processedRefCommodities;
             case 'Livestock References': return processedRefLivestock;
             case 'Equipment References': return processedRefEquipment;
@@ -553,7 +516,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             case 'ELCAC': return processedElcac;
             default: return [];
         }
-    }, [activeTab, processedUacs, processedParticulars, processedCommodities, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedGida, processedElcac]);
+    }, [activeTab, processedUacs, processedParticulars, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedGida, processedElcac]);
 
     const {
         currentPage,
@@ -569,7 +532,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         setEditingItem(null);
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
-        setCommodityForm({ type: 'Crop Commodity', particular: '' });
         setRefCommodityForm({
             name: '', banner_program: '', commodity_group: '', min_elevation_masl: 0, max_elevation_masl: 0,
             max_slope_percent: 0, wet_season_start: '', dry_season_start: '', recommended_soil: '',
@@ -603,11 +565,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             });
         } else if (activeTab === 'Items') {
             setItemForm({
-                type: item.type,
-                particular: item.particular
-            });
-        } else if (activeTab === 'Commodities') {
-            setCommodityForm({
                 type: item.type,
                 particular: item.particular
             });
@@ -698,19 +655,34 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             } else {
                 setParticularList(prev => [newData, ...prev]);
             }
-        } else if (activeTab === 'Commodities') {
-            const newData = { id, ...commodityForm };
-            if (editingItem) {
-                setCommodityList(prev => prev.map(i => i.id === id ? newData : i));
-            } else {
-                setCommodityList(prev => [newData, ...prev]);
-            }
         } else if (activeTab === 'Crop References') {
             const newData = { id, ...refCommodityForm };
-            if (editingItem) {
-                setRefCommodities(prev => prev.map(i => i.id === id ? newData : i));
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('ref_commodities').update(refCommodityForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating Crop reference:", error);
+                        alert(`Failed to update Crop reference: ${error.message}`);
+                        return;
+                    }
+                    setRefCommodities(prev => prev.map(i => i.id === editingItem.id ? { ...newData, id: editingItem.id } : i));
+                } else {
+                    const { data, error } = await supabase.from('ref_commodities').insert(refCommodityForm).select();
+                    if (error) {
+                        console.error("Error inserting Crop reference:", error);
+                        alert(`Failed to add Crop reference: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setRefCommodities(prev => [data[0] as RefCommodity, ...prev]);
+                    }
+                }
             } else {
-                setRefCommodities(prev => [newData, ...prev]);
+                if (editingItem) {
+                    setRefCommodities(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setRefCommodities(prev => [newData, ...prev]);
+                }
             }
         } else if (activeTab === 'Livestock References') {
             const newData = { id, ...refLivestockForm };
@@ -840,8 +812,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else if (activeTab === 'Commodities') {
-            setCommodityList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Crop References') {
             if (supabase) {
                 const { error } = await supabase.from('ref_commodities').delete().eq('id', deleteItem.id);
@@ -931,8 +901,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else if (activeTab === 'Commodities') {
-            setCommodityList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Crop References') {
             if (supabase) {
                 const { error } = await supabase.from('ref_commodities').delete().in('id', selectedIds);
@@ -1013,14 +981,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Items_Template.xlsx';
-        } else if (activeTab === 'Commodities') {
-            const headers = ['type', 'particular'];
-            const example = [{
-                type: 'Crop Commodity',
-                particular: 'Coffee'
-            }];
-            ws = XLSX.utils.json_to_sheet(example, { header: headers });
-            filename = 'Commodities_Template.xlsx';
         } else if (activeTab === 'Crop References') {
             const headers = ['name', 'banner_program', 'commodity_group', 'min_elevation_masl', 'max_elevation_masl', 'max_slope_percent', 'wet_season_start', 'dry_season_start', 'recommended_soil', 'fertilizer_npk', 'watering_method', 'harvest_period_days', 'ph_min', 'ph_max', 'climate_type_suitability', 'target_yield_ha'];
             const example = [{
@@ -1163,26 +1123,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     } else {
                         setParticularList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} items imported locally.`);
-                    }
-                } else if (activeTab === 'Commodities') {
-                    const newItems: ReferenceCommodity[] = jsonData.map((row: any) => ({
-                        id: crypto.randomUUID(),
-                        type: row.type || 'Crop Commodity',
-                        particular: row.particular || ''
-                    })).filter(i => i.particular);
-
-                    if (supabase) {
-                        const { error } = await supabase.from('reference_commodities').insert(newItems);
-                        if (error) {
-                            console.error("Batch insert error:", error);
-                            alert(`Failed to upload to Supabase: ${error.message}`);
-                        } else {
-                            setCommodityList(prev => [...newItems, ...prev]);
-                            alert(`${newItems.length} commodities uploaded successfully to database.`);
-                        }
-                    } else {
-                        setCommodityList(prev => [...newItems, ...prev]);
-                        alert(`${newItems.length} commodities imported locally.`);
                     }
                 } else if (activeTab === 'Crop References') {
                     const newItems: RefCommodity[] = jsonData.map((row: any) => ({
@@ -1369,7 +1309,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'Equipment References' ? 'Equipment Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'Equipment References' ? 'Equipment Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
                 )}
             </div>
@@ -1396,16 +1336,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         }`}
                     >
                         Subproject Items
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('Commodities'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'Commodities'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Commodities
                     </button>
                     <button
                         onClick={() => { setActiveTab('Crop References'); setSearchTerm(''); }}
@@ -1551,11 +1481,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     <>
                                         <SortableHeader label="Item Type" sortKey="type" />
                                         <SortableHeader label="Item Particular" sortKey="particular" />
-                                    </>
-                                ) : activeTab === 'Commodities' ? (
-                                    <>
-                                        <SortableHeader label="Commodity Type" sortKey="type" />
-                                        <SortableHeader label="Particulars" sortKey="particular" />
                                     </>
                                 ) : activeTab === 'Crop References' ? (
                                     <>
@@ -1952,30 +1877,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             required
                                             value={itemForm.particular}
                                             onChange={e => setItemForm({...itemForm, particular: e.target.value})}
-                                            className={commonInputClasses}
-                                        />
-                                    </div>
-                                </>
-                            ) : activeTab === 'Commodities' ? (
-                                <>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Commodity Type</label>
-                                        <select
-                                            required
-                                            value={commodityForm.type}
-                                            onChange={e => setCommodityForm({...commodityForm, type: e.target.value})}
-                                            className={commonInputClasses}
-                                        >
-                                            {referenceCommodityTypes.map(type => <option key={type} value={type}>{type}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Particulars</label>
-                                        <input 
-                                            type="text" 
-                                            required
-                                            value={commodityForm.particular}
-                                            onChange={e => setCommodityForm({...commodityForm, particular: e.target.value})}
                                             className={commonInputClasses}
                                         />
                                     </div>

@@ -692,7 +692,7 @@ export const downloadIposTemplate = () => {
         contactPerson: 'Juan Dela Cruz',
         contactNumber: '09171234567',
         registrationDate: '2023-01-15',
-        commodities: '[{"type":"Crop Commodity","particular":"Rice Seeds","value":50,"isScad":true}]',
+        commodities: '[{"type":"Crop","particular":"Rice Seeds","value":50,"isScad":true}]',
         levelOfDevelopment: 2
     }];
 
