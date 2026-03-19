@@ -245,7 +245,44 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     const handleNumericChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+        const numValue = parseFloat(value) || 0;
+        
+        setFormData(prev => {
+            const newData = { ...prev, [name]: numValue };
+            
+            if (name === 'fundingYear') {
+                newData.expenses = newData.expenses.map(exp => {
+                    const updatedExp = { ...exp };
+                    if (updatedExp.obligationMonth) {
+                        const month = getMonthFromDateStr(updatedExp.obligationMonth);
+                        if (month !== '') {
+                            updatedExp.obligationMonth = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                        }
+                    }
+                    if (updatedExp.disbursementMonth) {
+                        const month = getMonthFromDateStr(updatedExp.disbursementMonth);
+                        if (month !== '') {
+                            updatedExp.disbursementMonth = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                        }
+                    }
+                    if (updatedExp.actualObligationDate) {
+                        const month = getMonthFromDateStr(updatedExp.actualObligationDate);
+                        if (month !== '') {
+                            updatedExp.actualObligationDate = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                        }
+                    }
+                    if (updatedExp.actualDisbursementDate) {
+                        const month = getMonthFromDateStr(updatedExp.actualDisbursementDate);
+                        if (month !== '') {
+                            updatedExp.actualDisbursementDate = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                        }
+                    }
+                    return updatedExp;
+                });
+            }
+            
+            return newData;
+        });
     };
 
     const handleActivityTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -483,15 +520,36 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 for (let i = 0; i < activitiesToSave.length; i++) {
                     const act = activitiesToSave[i];
                     const { id, participating_ipo_ids, ...payload } = act;
+                    
+                    // Sanitize date fields: convert empty strings to null
+                    const sanitizedPayload: any = { ...payload };
+                    const dateFields = ['date', 'endDate', 'newTargetDate', 'actualDate', 'actualEndDate'];
+                    dateFields.forEach(field => {
+                        if (sanitizedPayload[field] === '') {
+                            sanitizedPayload[field] = null;
+                        }
+                    });
+                    if (sanitizedPayload.expenses) {
+                        sanitizedPayload.expenses = sanitizedPayload.expenses.map((exp: any) => {
+                            const sanitizedExp = { ...exp };
+                            ['actualObligationDate', 'actualDisbursementDate'].forEach(field => {
+                                if (sanitizedExp[field] === '') {
+                                    sanitizedExp[field] = null;
+                                }
+                            });
+                            return sanitizedExp;
+                        });
+                    }
+
                     if (mode === 'create') {
-                         const { data, error } = await supabase.from('activities').insert([payload]).select();
+                         const { data, error } = await supabase.from('activities').insert([sanitizedPayload]).select();
                          if (error) throw error;
                          if (data && data.length > 0) {
                              activitiesToSave[i].id = data[0].id;
                              logAction(`Created ${act.type}`, act.name, undefined, act.type, String(data[0].id));
                          }
                     } else {
-                         const { error } = await supabase.from('activities').update(payload).eq('id', activity!.id);
+                         const { error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id);
                          if (error) throw error;
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id));
                     }

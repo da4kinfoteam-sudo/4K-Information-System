@@ -143,7 +143,28 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 newData.startDate = `${year}-01-01`;
                 if (newData.estimatedCompletionDate) {
                     const month = getMonthFromDateStr(newData.estimatedCompletionDate);
-                    newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                    if (month !== '') {
+                        newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                    }
+                }
+                
+                // Sync details if fundingYear changes
+                if (newData.details) {
+                    newData.details = newData.details.map(d => {
+                        const updateDate = (dateStr?: string) => {
+                            if (!dateStr) return dateStr;
+                            const parts = dateStr.split('-');
+                            if (parts.length > 1) return `${year}-${parts[1]}-${parts[2] || '01'}`;
+                            return dateStr;
+                        };
+                        return {
+                            ...d,
+                            obligationMonth: updateDate(d.obligationMonth) || '',
+                            disbursementMonth: updateDate(d.disbursementMonth) || '',
+                            actualObligationDate: updateDate(d.actualObligationDate),
+                            actualDisbursementDate: updateDate(d.actualDisbursementDate)
+                        };
+                    });
                 }
             }
             return newData;
@@ -222,6 +243,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             return;
         }
         const month = getMonthFromDateStr(formData.estimatedCompletionDate);
+        if (month === '') {
+            const dateStr = `${year}-01-01`;
+            setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
+            return;
+        }
         const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
         setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
     };
@@ -473,6 +499,25 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
 
         if (supabase) {
             const { id, ...dbPayload } = payload; 
+            
+            const dateFields = ['startDate', 'estimatedCompletionDate', 'actualCompletionDate'];
+            dateFields.forEach(field => {
+                if (dbPayload[field] === '') {
+                    dbPayload[field] = null;
+                }
+            });
+
+            if (dbPayload.details) {
+                dbPayload.details = dbPayload.details.map((d: any) => {
+                    const cleanD = { ...d };
+                    if (cleanD.deliveryDate === '') cleanD.deliveryDate = null;
+                    if (cleanD.actualDeliveryDate === '') cleanD.actualDeliveryDate = null;
+                    if (cleanD.obligationMonth === '') cleanD.obligationMonth = null;
+                    if (cleanD.disbursementMonth === '') cleanD.disbursementMonth = null;
+                    return cleanD;
+                });
+            }
+
             if (!subproject) {
                 const { data, error } = await supabase.from('subprojects').insert([dbPayload]).select().single();
                 if (error) { alert("Error saving: " + error.message); return; }

@@ -301,6 +301,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
         const month = getMonthFromDateStr(editedSubproject.estimatedCompletionDate);
+        if (month === '') {
+            const dateStr = `${year}-01-01`;
+            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
+            return;
+        }
         const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
         setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
     };
@@ -343,27 +348,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 const newData = { ...prev, fundingYear: year, startDate: `${year}-01-01` };
                 if (newData.estimatedCompletionDate) {
                     const month = getMonthFromDateStr(newData.estimatedCompletionDate);
-                    newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                    if (month !== '') {
+                        newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                    }
                 }
                 return newData;
             });
-        } else if (name === 'operatingUnit') {
-            const mappedRegion = ouToRegionMap[value];
-            setEditedSubproject(prev => ({
-                ...prev,
-                [name]: value,
-                // We don't have a region field on Subproject, it's derived from IPO.
-                // But we can clear the IPO if the OU changes to force them to re-select.
-                indigenousPeopleOrganization: mappedRegion ? '' : prev.indigenousPeopleOrganization
-            }));
-        } else if (name === 'fundingYear') {
+            
             // Sync details if fundingYear changes
-            const newYear = parseInt(value as string) || new Date().getFullYear();
             setDetailItems(prev => prev.map(d => {
                 const updateDate = (dateStr?: string) => {
                     if (!dateStr) return dateStr;
                     const parts = dateStr.split('-');
-                    if (parts.length > 1) return `${newYear}-${parts[1]}-${parts[2] || '01'}`;
+                    if (parts.length > 1) return `${year}-${parts[1]}-${parts[2] || '01'}`;
                     return dateStr;
                 };
                 return {
@@ -374,7 +371,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     actualDisbursementDate: updateDate(d.actualDisbursementDate)
                 };
             }));
-            setEditedSubproject(prev => ({ ...prev, [name]: newYear }));
+        } else if (name === 'operatingUnit') {
+            const mappedRegion = ouToRegionMap[value];
+            setEditedSubproject(prev => ({
+                ...prev,
+                [name]: value,
+                // We don't have a region field on Subproject, it's derived from IPO.
+                // But we can clear the IPO if the OU changes to force them to re-select.
+                indigenousPeopleOrganization: mappedRegion ? '' : prev.indigenousPeopleOrganization
+            }));
         } else {
             setEditedSubproject(prev => ({ ...prev, [name]: value }));
         }
@@ -673,10 +678,17 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
 
         // Add 'id' back to details if missing (from new adds)
-        const cleanDetails = detailItems.map((d, i) => ({ 
-            ...d, 
-            id: d.id || (Date.now() + i) // Ensure ID
-        }));
+        const cleanDetails = detailItems.map((d, i) => {
+            const cleanD = { 
+                ...d, 
+                id: d.id || (Date.now() + i) // Ensure ID
+            };
+            if (cleanD.deliveryDate === '') (cleanD as any).deliveryDate = null;
+            if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
+            if (cleanD.obligationMonth === '') (cleanD as any).obligationMonth = null;
+            if (cleanD.disbursementMonth === '') (cleanD as any).disbursementMonth = null;
+            return cleanD;
+        });
 
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
@@ -684,6 +696,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             details: cleanDetails as SubprojectDetailType[],
             history: [...(subproject.history || []), historyEntry]
         };
+        
+        const dateFields = ['startDate', 'estimatedCompletionDate', 'actualCompletionDate'];
+        dateFields.forEach(field => {
+            if (updatedSubprojectWithDetails[field as keyof Subproject] === '') {
+                (updatedSubprojectWithDetails as any)[field] = null;
+            }
+        });
+
         onUpdateSubproject(updatedSubprojectWithDetails);
         setEditMode('none');
     };

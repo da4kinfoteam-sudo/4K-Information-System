@@ -175,9 +175,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value, isLoading, allProvinces]);
 
-    const constructLocationString = (cityCode: string, provCode: string, brgys: string[]) => {
+    const constructLocationString = (cityCode: string, provCode: string, brgys: string[], regionCode: string) => {
         const city = cities.find(c => c.code === cityCode);
         const province = provinces.find(p => p.code === provCode);
+        const region = regions.find(r => r.code === regionCode);
         
         let locString = '';
         if (city) {
@@ -189,6 +190,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                 locString = `${brgyPart}${city.name}`; 
                 // Maybe append region if needed, but keeping it simple as per parse logic
             }
+        } else if (province) {
+            locString = province.name;
+        } else if (region) {
+            locString = region.name;
         }
         return locString;
     };
@@ -240,7 +245,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         } catch (err) {
             console.error("Error fetching provinces/cities", err);
         }
-        onChange('');
+        
+        const region = regions.find(r => r.code === code);
+        onChange(region ? region.name : '');
     };
 
     const handleProvinceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -253,7 +260,8 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         setSelectedBarangayNames([]);
         
         if (!code) {
-            onChange('');
+            const region = regions.find(r => r.code === selectedRegionCode);
+            onChange(region ? region.name : '');
             return;
         }
 
@@ -265,7 +273,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         } catch (err) {
             console.error("Error fetching cities", err);
         }
-        onChange('');
+        
+        const province = provinces.find(p => p.code === code);
+        onChange(province ? province.name : '');
     };
 
     const handleCityChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -276,7 +286,13 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         setSelectedBarangayNames([]);
         
         if (!code) {
-            onChange('');
+            const province = provinces.find(p => p.code === selectedProvinceCode);
+            if (province) {
+                onChange(province.name);
+            } else {
+                const region = regions.find(r => r.code === selectedRegionCode);
+                onChange(region ? region.name : '');
+            }
             return;
         }
 
@@ -289,7 +305,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
             console.error("Error fetching barangays", err);
         }
         
-        const loc = constructLocationString(code, selectedProvinceCode, []);
+        const loc = constructLocationString(code, selectedProvinceCode, [], selectedRegionCode);
         onChange(loc);
     };
 
@@ -300,7 +316,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
         if (!selectedBarangayNames.includes(name)) {
             const newBarangays = [...selectedBarangayNames, name];
             setSelectedBarangayNames(newBarangays);
-            const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays);
+            const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays, selectedRegionCode);
             onChange(loc);
         }
         // Reset select to default
@@ -310,7 +326,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
     const handleRemoveBarangay = (name: string) => {
         const newBarangays = selectedBarangayNames.filter(b => b !== name);
         setSelectedBarangayNames(newBarangays);
-        const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays);
+        const loc = constructLocationString(selectedCityCode, selectedProvinceCode, newBarangays, selectedRegionCode);
         onChange(loc);
     };
 
@@ -339,7 +355,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                         <select 
                             value={selectedProvinceCode} 
                             onChange={handleProvinceChange} 
-                            required={required && provinces.length > 0} 
                             disabled={!selectedRegionCode || provinces.length === 0} 
                             className={commonClasses}
                         >
@@ -352,7 +367,6 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onRegi
                         <select 
                             value={selectedCityCode} 
                             onChange={handleCityChange} 
-                            required={required} 
                             disabled={(!selectedProvinceCode && provinces.length > 0) || cities.length === 0} 
                             className={commonClasses}
                         >
