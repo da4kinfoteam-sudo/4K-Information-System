@@ -177,45 +177,84 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
         const processPmItem = (items: any[], packageKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
-                const objType = getObjectTypeByCode(pm.uacsCode, uacsCodes);
-                const amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
-                
-                const financialQuarter = getQuarter(pm.obligationDate);
-                const physicalQuarter = getQuarter(pm.obligationDate);
+                if (isStaff && pm.expenses && pm.expenses.length > 0) {
+                    pm.expenses.forEach((expense: any) => {
+                        const objType = getObjectTypeByCode(expense.uacsCode, uacsCodes);
+                        const amount = expense.amount || 0;
+                        
+                        const financialQuarter = getQuarter(expense.obligationDate);
+                        const physicalQuarter = getQuarter(expense.obligationDate);
+                        const physicalCount = 1; // Staffing requirement item count
 
-                const physicalCount = isOtherExpense ? 0 : (isStaff ? 1 : (pm.numberOfUnits || 1));
+                        const item = {
+                            indicator: pm.personnelPosition,
+                            totalPhysicalTarget: physicalCount,
+                            mooeCost: objType === 'MOOE' ? amount : 0,
+                            coCost: objType === 'CO' ? amount : 0,
+                            totalCost: amount,
+                            q1Physical: physicalQuarter === 1 ? physicalCount : 0,
+                            q2Physical: physicalQuarter === 2 ? physicalCount : 0,
+                            q3Physical: physicalQuarter === 3 ? physicalCount : 0,
+                            q4Physical: physicalQuarter === 4 ? physicalCount : 0,
+                            q1Financial: financialQuarter === 1 ? amount : 0,
+                            q2Financial: financialQuarter === 2 ? amount : 0,
+                            q3Financial: financialQuarter === 3 ? amount : 0,
+                            q4Financial: financialQuarter === 4 ? amount : 0,
+                        };
 
-                const item = {
-                    indicator: isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars),
-                    totalPhysicalTarget: physicalCount,
-                    mooeCost: objType === 'MOOE' ? amount : 0,
-                    coCost: objType === 'CO' ? amount : 0,
-                    totalCost: amount,
-                    q1Physical: physicalQuarter === 1 ? physicalCount : 0,
-                    q2Physical: physicalQuarter === 2 ? physicalCount : 0,
-                    q3Physical: physicalQuarter === 3 ? physicalCount : 0,
-                    q4Physical: physicalQuarter === 4 ? physicalCount : 0,
-                    q1Financial: financialQuarter === 1 ? amount : 0,
-                    q2Financial: financialQuarter === 2 ? amount : 0,
-                    q3Financial: financialQuarter === 3 ? amount : 0,
-                    q4Financial: financialQuarter === 4 ? amount : 0,
-                };
-
-                if (isStaff) {
-                    const component = pm.component || 'Program Management';
-                    if (component === 'Program Management') {
-                        addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
-                    } else if (component === 'Production and Livelihood') {
-                         if (!finalData['Production and Livelihood'].packages['Staff Requirements']) {
-                            finalData['Production and Livelihood'].packages['Staff Requirements'] = { items: [] };
-                         }
-                         addItemToGroup(finalData['Production and Livelihood'].packages['Staff Requirements'].items, item);
-                    } else if (finalData[component]) {
-                         // Social Prep or Marketing (Arrays)
-                         addItemToGroup(finalData[component], item);
-                    }
+                        const component = pm.component || 'Program Management';
+                        if (component === 'Program Management') {
+                            addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                        } else if (component === 'Production and Livelihood') {
+                             if (!finalData['Production and Livelihood'].packages['Staff Requirements']) {
+                                finalData['Production and Livelihood'].packages['Staff Requirements'] = { items: [] };
+                             }
+                             addItemToGroup(finalData['Production and Livelihood'].packages['Staff Requirements'].items, item);
+                        } else if (finalData[component]) {
+                             addItemToGroup(finalData[component], item);
+                        }
+                    });
                 } else {
-                    addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                    const objType = getObjectTypeByCode(pm.uacsCode, uacsCodes);
+                    const amount = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                    
+                    const financialQuarter = getQuarter(pm.obligationDate);
+                    const physicalQuarter = getQuarter(pm.obligationDate);
+
+                    const physicalCount = isOtherExpense ? 0 : (isStaff ? 1 : (pm.numberOfUnits || 1));
+
+                    const item = {
+                        indicator: isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars),
+                        totalPhysicalTarget: physicalCount,
+                        mooeCost: objType === 'MOOE' ? amount : 0,
+                        coCost: objType === 'CO' ? amount : 0,
+                        totalCost: amount,
+                        q1Physical: physicalQuarter === 1 ? physicalCount : 0,
+                        q2Physical: physicalQuarter === 2 ? physicalCount : 0,
+                        q3Physical: physicalQuarter === 3 ? physicalCount : 0,
+                        q4Physical: physicalQuarter === 4 ? physicalCount : 0,
+                        q1Financial: financialQuarter === 1 ? amount : 0,
+                        q2Financial: financialQuarter === 2 ? amount : 0,
+                        q3Financial: financialQuarter === 3 ? amount : 0,
+                        q4Financial: financialQuarter === 4 ? amount : 0,
+                    };
+
+                    if (isStaff) {
+                        const component = pm.component || 'Program Management';
+                        if (component === 'Program Management') {
+                            addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                        } else if (component === 'Production and Livelihood') {
+                             if (!finalData['Production and Livelihood'].packages['Staff Requirements']) {
+                                finalData['Production and Livelihood'].packages['Staff Requirements'] = { items: [] };
+                             }
+                             addItemToGroup(finalData['Production and Livelihood'].packages['Staff Requirements'].items, item);
+                        } else if (finalData[component]) {
+                             // Social Prep or Marketing (Arrays)
+                             addItemToGroup(finalData[component], item);
+                        }
+                    } else {
+                        addItemToGroup(finalData['Program Management'].packages[packageKey].items, item);
+                    }
                 }
             });
         }
