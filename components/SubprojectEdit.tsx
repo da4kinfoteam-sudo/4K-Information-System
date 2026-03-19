@@ -138,6 +138,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 const mappedRegion = ouToRegionMap[value] || '';
                 setSelectedRegion(mappedRegion);
                 newData.indigenousPeopleOrganization = '';
+            } else if (name === 'fundingYear') {
+                const year = parseInt(value) || new Date().getFullYear();
+                newData.startDate = `${year}-01-01`;
+                if (newData.estimatedCompletionDate) {
+                    const month = getMonthFromDateStr(newData.estimatedCompletionDate);
+                    newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                }
             }
             return newData;
         });
@@ -147,6 +154,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         if (!dateStr) return '';
         const parts = dateStr.split('-');
         if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
+        return '';
+    };
+
+    const getYearFromDateStr = (dateStr: string): string => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 0) return parts[0];
         return '';
     };
 
@@ -191,13 +205,25 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             return;
         }
         const mIndex = parseInt(monthIndex);
-        const year = formData.fundingYear || new Date().getFullYear();
-        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        const currentYear = getYearFromDateStr(formData.estimatedCompletionDate) || formData.fundingYear || new Date().getFullYear();
+        const dateStr = `${currentYear}-${String(mIndex + 1).padStart(2, '0')}-01`;
         setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
         
         if (!currentDetail.deliveryDate) {
             setCurrentDetail(prev => ({ ...prev, deliveryDate: dateStr }));
         }
+    };
+
+    const handleEstimatedCompletionYearChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
+        const year = e.target.value;
+        if (!formData.estimatedCompletionDate) {
+            const dateStr = `${year}-01-01`;
+            setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
+            return;
+        }
+        const month = getMonthFromDateStr(formData.estimatedCompletionDate);
+        const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+        setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
     };
 
     const availableUacsCodes = useMemo(() => {
@@ -535,16 +561,32 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium">Estimated Completion {!subproject && <span className="text-red-500">*</span>}</label>
-                                    <select 
-                                        name="estimatedCompletionDate" 
-                                        value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
-                                        onChange={handleEstimatedCompletionMonthChange}
-                                        className={`${commonInputClasses} ${missingFields.includes('estimatedCompletionDate') ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-                                        required={!subproject}
-                                    >
-                                        <option value="">Select Month</option>
-                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                    </select>
+                                    <div className="flex gap-2">
+                                        <select 
+                                            name="estimatedCompletionMonth" 
+                                            value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
+                                            onChange={handleEstimatedCompletionMonthChange}
+                                            className={`${commonInputClasses} flex-1 ${missingFields.includes('estimatedCompletionDate') ? 'border-red-500 ring-1 ring-red-500' : ''}`}
+                                            required={!subproject}
+                                        >
+                                            <option value="">Select Month</option>
+                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                        </select>
+                                        <select
+                                            name="estimatedCompletionYear"
+                                            value={getYearFromDateStr(formData.estimatedCompletionDate) || formData.fundingYear || new Date().getFullYear()}
+                                            onChange={handleEstimatedCompletionYearChange}
+                                            className={`${commonInputClasses} w-32`}
+                                        >
+                                            {Array.from({ length: 10 }, (_, i) => {
+                                                const y = (formData.fundingYear || new Date().getFullYear()) - 2 + i;
+                                                return <option key={y} value={y}>{y}</option>;
+                                            })}
+                                        </select>
+                                    </div>
+                                    {getYearFromDateStr(formData.estimatedCompletionDate) && getYearFromDateStr(formData.estimatedCompletionDate) !== (formData.fundingYear || new Date().getFullYear()).toString() && (
+                                        <p className="text-xs text-amber-600 mt-1">Note: Estimated completion year is different from the funding year.</p>
+                                    )}
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

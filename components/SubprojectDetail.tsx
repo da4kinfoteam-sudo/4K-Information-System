@@ -230,6 +230,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return '';
     };
 
+    const getYearFromDateStr = (dateStr: string | undefined) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length > 0) return parts[0];
+        return '';
+    };
+
     // Helper to update date in detail form (Budget Edit) based on month dropdown
     const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
         if (monthIndex === '') {
@@ -277,13 +284,25 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
         const mIndex = parseInt(monthIndex);
-        const year = editedSubproject.fundingYear || new Date().getFullYear();
-        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
+        const currentYear = getYearFromDateStr(editedSubproject.estimatedCompletionDate) || editedSubproject.fundingYear || new Date().getFullYear();
+        const dateStr = `${currentYear}-${String(mIndex + 1).padStart(2, '0')}-01`;
         setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
         
         if (!currentDetail.deliveryDate) {
             setCurrentDetail(prev => ({ ...prev, deliveryDate: dateStr }));
         }
+    };
+
+    const handleEstimatedCompletionYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const year = e.target.value;
+        if (!editedSubproject.estimatedCompletionDate) {
+            const dateStr = `${year}-01-01`;
+            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
+            return;
+        }
+        const month = getMonthFromDateStr(editedSubproject.estimatedCompletionDate);
+        const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+        setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
     };
 
     // Helper to update actual date in accomplishment table based on month dropdown
@@ -318,6 +337,16 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                  [name]: value,
                  location: selectedIpo ? selectedIpo.location : '' 
              }));
+        } else if (name === 'fundingYear') {
+            const year = parseInt(value) || new Date().getFullYear();
+            setEditedSubproject(prev => {
+                const newData = { ...prev, fundingYear: year, startDate: `${year}-01-01` };
+                if (newData.estimatedCompletionDate) {
+                    const month = getMonthFromDateStr(newData.estimatedCompletionDate);
+                    newData.estimatedCompletionDate = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
+                }
+                return newData;
+            });
         } else if (name === 'operatingUnit') {
             const mappedRegion = ouToRegionMap[value];
             setEditedSubproject(prev => ({
@@ -737,15 +766,28 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="block text-sm font-medium">Estimated Completion</label>
-                                                    <select 
-                                                        name="estimatedCompletionDate" 
-                                                        value={getMonthFromDateStr(editedSubproject.estimatedCompletionDate)} 
-                                                        onChange={handleEstimatedCompletionMonthChange}
-                                                        className={commonInputClasses}
-                                                    >
-                                                        <option value="">Select Month</option>
-                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                    </select>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <select 
+                                                            name="estimatedCompletionDate" 
+                                                            value={getMonthFromDateStr(editedSubproject.estimatedCompletionDate)} 
+                                                            onChange={handleEstimatedCompletionMonthChange}
+                                                            className={commonInputClasses}
+                                                        >
+                                                            <option value="">Select Month</option>
+                                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                                                        </select>
+                                                        <select
+                                                            name="estimatedCompletionYear"
+                                                            value={getYearFromDateStr(editedSubproject.estimatedCompletionDate) || editedSubproject.fundingYear || new Date().getFullYear()}
+                                                            onChange={handleEstimatedCompletionYearChange}
+                                                            className={commonInputClasses}
+                                                        >
+                                                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    {getYearFromDateStr(editedSubproject.estimatedCompletionDate) && parseInt(getYearFromDateStr(editedSubproject.estimatedCompletionDate)) !== editedSubproject.fundingYear && (
+                                                        <p className="text-xs text-amber-600 mt-1">Note: Estimated completion year is different from the funding year.</p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1078,7 +1120,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                                             <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
                                             <div><label className="block text-xs font-medium">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                            <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="lots">lots</option></select></div>
+                                            <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             
                                             {editingDetailIndex !== null ? (
                                                 <div className="flex gap-1 h-9 items-end">
