@@ -687,6 +687,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         }} />
                                     </div>
                                 </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium">Description</label>
+                                    <textarea name="description" value={formData.description} onChange={handleInputChange} className={commonInputClasses} rows={3} />
+                                </div>
                             </div>
                         </fieldset>
                         
