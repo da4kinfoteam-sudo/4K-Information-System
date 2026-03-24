@@ -73,6 +73,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<OfficeRequirement | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Filters - Persistent
@@ -186,11 +187,18 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
 
-    // --- Handlers ---
+    const getInputClasses = (fieldName: string) => {
+        const hasError = validationErrors.includes(fieldName);
+        return `${commonInputClasses} ${hasError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : ''}`;
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
+        // Clear validation error for this field
+        if (validationErrors.includes(name)) {
+            setValidationErrors(prev => prev.filter(f => f !== name));
+        }
         if (name === 'uacsCode') {
             setFormData(prev => ({ ...prev, [name]: value }));
             
@@ -237,6 +245,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setValidationErrors([]);
         
         // Validation
         const requiredFields = [
@@ -253,6 +262,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
         const missingFields = requiredFields.filter(f => !formData[f.field as keyof typeof formData]);
         if (missingFields.length > 0) {
+            setValidationErrors(missingFields.map(f => f.field));
             alert(`Please fill in the following required fields:\n${missingFields.map(f => `- ${f.label}`).join('\n')}`);
             return;
         }
@@ -508,7 +518,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                     value={formData.operatingUnit} 
                                     onChange={handleInputChange} 
                                     disabled={!canViewAll && !!currentUser} 
-                                    className={`${commonInputClasses} disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                                    className={`${getInputClasses('operatingUnit')} disabled:bg-gray-100 disabled:cursor-not-allowed`}
                                 >
                                     <option value="">Select OU</option>
                                     {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
@@ -524,7 +534,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Equipment <span className="text-red-500">*</span></label>
-                                <input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} placeholder="Enter equipment name" className={commonInputClasses} />
+                                <input type="text" name="equipment" value={formData.equipment} onChange={handleInputChange} placeholder="Enter equipment name" className={getInputClasses('equipment')} />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Specifications</label>
@@ -544,7 +554,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Year <span className="text-red-500">*</span></label>
-                                    <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} />
+                                    <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Type <span className="text-red-500">*</span></label>
@@ -592,7 +602,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                             value={formData.uacsCode} 
                                             onChange={handleInputChange} 
                                             list="uacs-codes-list"
-                                            className={`${commonInputClasses} pr-10`} 
+                                            className={`${getInputClasses('uacsCode')} pr-10`} 
                                         />
                                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                                             <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -627,31 +637,49 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Physical Delivery Month <span className="text-red-500">*</span></label>
                                 <MonthYearPicker 
                                     value={formData.physicalDeliveryDate}
-                                    onChange={(val) => setFormData(prev => ({ ...prev, physicalDeliveryDate: val }))}
+                                    onChange={(val) => {
+                                        setFormData(prev => ({ ...prev, physicalDeliveryDate: val }));
+                                        if (validationErrors.includes('physicalDeliveryDate')) {
+                                            setValidationErrors(prev => prev.filter(f => f !== 'physicalDeliveryDate'));
+                                        }
+                                    }}
+                                    className={validationErrors.includes('physicalDeliveryDate') ? 'border-red-500 ring-red-500' : ''}
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Obligation <span className="text-red-500">*</span></label>
                                 <MonthYearPicker 
                                     value={formData.obligationDate}
-                                    onChange={(val) => setFormData(prev => ({ ...prev, obligationDate: val }))}
+                                    onChange={(val) => {
+                                        setFormData(prev => ({ ...prev, obligationDate: val }));
+                                        if (validationErrors.includes('obligationDate')) {
+                                            setValidationErrors(prev => prev.filter(f => f !== 'obligationDate'));
+                                        }
+                                    }}
+                                    className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-red-500' : ''}
                                 />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Disbursement <span className="text-red-500">*</span></label>
                                 <MonthYearPicker 
                                     value={formData.disbursementDate}
-                                    onChange={(val) => setFormData(prev => ({ ...prev, disbursementDate: val }))}
+                                    onChange={(val) => {
+                                        setFormData(prev => ({ ...prev, disbursementDate: val }));
+                                        if (validationErrors.includes('disbursementDate')) {
+                                            setValidationErrors(prev => prev.filter(f => f !== 'disbursementDate'));
+                                        }
+                                    }}
+                                    className={validationErrors.includes('disbursementDate') ? 'border-red-500 ring-red-500' : ''}
                                 />
                             </div>
                             
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of Units <span className="text-red-500">*</span></label>
-                                <input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={commonInputClasses} />
+                                <input type="number" name="numberOfUnits" value={formData.numberOfUnits} onChange={handleInputChange} min="0" className={getInputClasses('numberOfUnits')} />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Price per Unit <span className="text-red-500">*</span></label>
-                                <input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={commonInputClasses} />
+                                <input type="number" name="pricePerUnit" value={formData.pricePerUnit} onChange={handleInputChange} min="0" step="0.01" className={getInputClasses('pricePerUnit')} />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Total Amount</label>
