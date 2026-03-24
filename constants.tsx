@@ -381,6 +381,7 @@ export interface OtherProgramExpense extends BaseProgramManagementItem {
     particulars: string;
     amount: number;
     obligatedAmount?: number;
+    status: 'Proposed' | 'Ongoing' | 'Completed' | 'Cancelled';
     disbursementJan?: number;
     disbursementFeb?: number;
     disbursementMar?: number;
