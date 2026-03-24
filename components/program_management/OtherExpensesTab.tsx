@@ -317,19 +317,60 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const handleDelete = async () => {
         if (!itemToDelete) return;
         if (supabase) {
-            const { error } = await supabase.from('other_program_expenses').delete().eq('id', itemToDelete.id);
-            if (error) { console.error(error); alert("Failed to delete."); return; }
+            try {
+                const { error: archiveError } = await supabase.from('trash_bin').insert([{
+                    entity_type: 'other_program_expense',
+                    original_id: itemToDelete.id,
+                    data: itemToDelete,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }]);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('other_program_expenses').delete().eq('id', itemToDelete.id);
+                if (deleteError) throw deleteError;
+
+                setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
+            } catch (error: any) {
+                console.error("Error archiving/deleting:", error);
+                alert("Failed to delete: " + error.message);
+                return;
+            }
+        } else {
+            setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
         }
-        setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
         setIsDeleteModalOpen(false); setItemToDelete(null);
     };
 
     const handleMultiDelete = async () => {
+        if (selectedIds.length === 0) return;
+        const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
+
         if (supabase) {
-            const { error } = await supabase.from('other_program_expenses').delete().in('id', selectedIds);
-            if (error) { console.error(error); alert("Failed to delete selected."); return; }
+            try {
+                const archivePayload = itemsToDelete.map(item => ({
+                    entity_type: 'other_program_expense',
+                    original_id: item.id,
+                    data: item,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }));
+
+                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('other_program_expenses').delete().in('id', selectedIds);
+                if (deleteError) throw deleteError;
+
+                setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
+            } catch (error: any) {
+                console.error("Error archiving/deleting selected:", error);
+                alert("Failed to delete selected: " + error.message);
+                return;
+            }
+        } else {
+            setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
         }
-        setItems(prev => prev.filter(i => !selectedIds.includes(i.id)));
         setIsMultiDeleteModalOpen(false); setSelectedIds([]);
     };
 

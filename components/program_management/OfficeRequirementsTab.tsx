@@ -323,17 +323,36 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         }
 
         if (supabase) {
-            const { error } = await supabase.from('office_requirements').delete().eq('id', itemToDelete.id);
-            if (error) { console.error(error); alert("Failed to delete."); return; }
+            try {
+                const { error: archiveError } = await supabase.from('trash_bin').insert([{
+                    entity_type: 'office_requirement',
+                    original_id: itemToDelete.id,
+                    data: itemToDelete,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }]);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('office_requirements').delete().eq('id', itemToDelete.id);
+                if (deleteError) throw deleteError;
+
+                setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
+            } catch (error: any) {
+                console.error("Error archiving/deleting:", error);
+                alert("Failed to delete: " + error.message);
+                return;
+            }
+        } else {
+            setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
         }
-        setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
         setIsDeleteModalOpen(false);
         setItemToDelete(null);
     };
 
     const handleMultiDelete = async () => {
         const itemsToDelete = items.filter(i => selectedIds.includes(i.id));
-        const deletableIds = itemsToDelete.filter(i => isAdmin || (canEdit && i.status === 'Proposed')).map(i => i.id);
+        const deletableItems = itemsToDelete.filter(i => isAdmin || (canEdit && i.status === 'Proposed'));
+        const deletableIds = deletableItems.map(i => i.id);
         
         if (deletableIds.length === 0) {
             alert("None of the selected items can be deleted based on their current status.");
@@ -341,10 +360,30 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         }
 
         if (supabase) {
-            const { error } = await supabase.from('office_requirements').delete().in('id', deletableIds);
-            if (error) { console.error(error); alert("Failed to delete selected."); return; }
+            try {
+                const archivePayload = deletableItems.map(item => ({
+                    entity_type: 'office_requirement',
+                    original_id: item.id,
+                    data: item,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }));
+
+                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('office_requirements').delete().in('id', deletableIds);
+                if (deleteError) throw deleteError;
+
+                setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
+            } catch (error: any) {
+                console.error("Error archiving/deleting selected:", error);
+                alert("Failed to delete selected: " + error.message);
+                return;
+            }
+        } else {
+            setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
         }
-        setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
         setIsMultiDeleteModalOpen(false);
         setSelectedIds([]);
     };

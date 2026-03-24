@@ -13,6 +13,7 @@ import SystemManagementTab from './settings/SystemManagementTab';
 import UserLogsTab from './settings/UserLogsTab';
 import DCFManagementTab from './settings/DCFManagementTab';
 import LODManagementTab from './settings/LODManagementTab';
+import ArchiveManagementTab from './settings/ArchiveManagementTab';
 
 interface SettingsProps {
     isDarkMode: boolean;
@@ -40,7 +41,7 @@ interface SettingsProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
-type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod';
+type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
 
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
@@ -95,6 +96,7 @@ const Settings: React.FC<SettingsProps> = ({
                         {isAdmin && <TabButton name="lod" label="LOD Management" />}
                         {canAccessSystem && <TabButton name="system" label="System Management" />}
                         {isAdmin && <TabButton name="logs" label="User Logs" />}
+                        {isAdmin && <TabButton name="archive" label="Archive Management" />}
                     </nav>
                 </div>
 
@@ -142,6 +144,10 @@ const Settings: React.FC<SettingsProps> = ({
                             onSelectActivity={onSelectActivity}
                             onSelectIpo={onSelectIpo}
                         />
+                    )}
+
+                    {activeTab === 'archive' && isAdmin && (
+                        <ArchiveManagementTab />
                     )}
                 </div>
              </div>

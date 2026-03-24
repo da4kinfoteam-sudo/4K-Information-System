@@ -393,21 +393,38 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         setExpandedRowId(prev => (prev === id ? null : id));
     };
 
-    const confirmMultiDelete = () => {
-        const deletedNames = subprojects.filter(s => selectedIds.includes(s.id)).map(s => s.name).join(', ');
+    const confirmMultiDelete = async () => {
+        const itemsToDelete = subprojects.filter(s => selectedIds.includes(s.id));
+        const deletedNames = itemsToDelete.map(s => s.name).join(', ');
         logAction('Deleted Subprojects', `Bulk deleted ${selectedIds.length} subprojects: ${deletedNames}`);
 
         if (supabase) {
-             supabase.from('subprojects').delete().in('id', selectedIds).then(({ error }) => {
-                if(error) {
-                    console.error("Error deleting:", error);
-                    alert("Failed to delete selected items");
-                }
-             });
+            try {
+                // Archive each item
+                const archivePayload = itemsToDelete.map(item => ({
+                    entity_type: 'subproject',
+                    original_id: item.id,
+                    data: item,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }));
+
+                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('subprojects').delete().in('id', selectedIds);
+                if (deleteError) throw deleteError;
+
+                setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
+                resetSelection();
+            } catch (error: any) {
+                console.error("Error archiving/deleting:", error);
+                alert("Failed to delete selected items: " + error.message);
+            }
+        } else {
+            setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
+            resetSelection();
         }
-        
-        setSubprojects(prev => prev.filter(s => !selectedIds.includes(s.id)));
-        resetSelection();
     };
 
     const handleClone = async () => {
@@ -497,10 +514,33 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         setIsDeleteModalOpen(true);
     };
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (subprojectToDelete) {
             logAction('Deleted Subproject', subprojectToDelete.name, subprojectToDelete.indigenousPeopleOrganization, 'Subproject', String(subprojectToDelete.id));
-            setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
+            
+            if (supabase) {
+                try {
+                    const { error: archiveError } = await supabase.from('trash_bin').insert([{
+                        entity_type: 'subproject',
+                        original_id: subprojectToDelete.id,
+                        data: subprojectToDelete,
+                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                        deleted_at: new Date().toISOString()
+                    }]);
+                    if (archiveError) throw archiveError;
+
+                    const { error: deleteError } = await supabase.from('subprojects').delete().eq('id', subprojectToDelete.id);
+                    if (deleteError) throw deleteError;
+
+                    setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
+                } catch (error: any) {
+                    console.error("Error archiving/deleting:", error);
+                    alert("Failed to delete subproject: " + error.message);
+                }
+            } else {
+                setSubprojects(prev => prev.filter(s => s.id !== subprojectToDelete.id));
+            }
+
             setIsDeleteModalOpen(false);
             setSubprojectToDelete(null);
         }

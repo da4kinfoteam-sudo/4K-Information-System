@@ -358,16 +358,30 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const confirmMultiDelete = async () => {
         if (supabase) {
-            // Log Bulk Delete
-            const deletedNames = ipos.filter(i => selectedIds.includes(i.id)).map(i => i.name).join(', ');
+            const itemsToDelete = ipos.filter(i => selectedIds.includes(i.id));
+            const deletedNames = itemsToDelete.map(i => i.name).join(', ');
             logAction('Deleted IPOs', `Bulk deleted ${selectedIds.length} IPOs: ${deletedNames}`);
 
-            const { error } = await supabase.from('ipos').delete().in('id', selectedIds);
-            if (error) {
-                console.error("Error deleting IPOs:", error);
-                alert("Failed to delete selected IPOs.");
-            } else {
+            try {
+                // Archive each item
+                const archivePayload = itemsToDelete.map(item => ({
+                    entity_type: 'ipo',
+                    original_id: item.id,
+                    data: item,
+                    deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                    deleted_at: new Date().toISOString()
+                }));
+
+                const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
+                if (archiveError) throw archiveError;
+
+                const { error: deleteError } = await supabase.from('ipos').delete().in('id', selectedIds);
+                if (deleteError) throw deleteError;
+
                 refreshData();
+            } catch (error: any) {
+                console.error("Error archiving/deleting IPOs:", error);
+                alert("Failed to delete selected IPOs: " + error.message);
             }
         } else {
             setIpos(prev => prev.filter(ipo => !selectedIds.includes(ipo.id)));
@@ -639,16 +653,26 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     const confirmDelete = async () => {
         if (ipoToDelete) {
-            // Log Delete
             logAction('Deleted IPO', ipoToDelete.name, undefined, 'IPO', String(ipoToDelete.id));
 
             if (supabase) {
-                const { error } = await supabase.from('ipos').delete().eq('id', ipoToDelete.id);
-                if (error) {
-                    console.error("Error deleting IPO:", error);
-                    alert("Failed to delete IPO.");
-                } else {
+                try {
+                    const { error: archiveError } = await supabase.from('trash_bin').insert([{
+                        entity_type: 'ipo',
+                        original_id: ipoToDelete.id,
+                        data: ipoToDelete,
+                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                        deleted_at: new Date().toISOString()
+                    }]);
+                    if (archiveError) throw archiveError;
+
+                    const { error: deleteError } = await supabase.from('ipos').delete().eq('id', ipoToDelete.id);
+                    if (deleteError) throw deleteError;
+
                     refreshData();
+                } catch (error: any) {
+                    console.error("Error archiving/deleting IPO:", error);
+                    alert("Failed to delete IPO: " + error.message);
                 }
             } else {
                 setIpos(prev => prev.filter(p => p.id !== ipoToDelete.id));

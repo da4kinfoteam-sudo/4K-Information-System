@@ -1,4 +1,13 @@
 
+export interface TrashItem {
+    id: number;
+    entity_type: string;
+    original_id: number;
+    data: any;
+    deleted_by: string;
+    deleted_at: string;
+}
+
 // Author: 4K 
 import React from 'react';
 

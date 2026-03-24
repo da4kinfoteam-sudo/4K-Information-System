@@ -381,16 +381,31 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     // ... (Deletion, Cloning, formatDate handlers remain the same)
     const confirmMultiDelete = async () => {
         if (selectedIds.length > 0) {
-            const deletedItems = activities.filter(a => selectedIds.includes(a.id)).map(a => a.name).join(', ');
+            const itemsToDelete = activities.filter(a => selectedIds.includes(a.id));
+            const deletedItems = itemsToDelete.map(a => a.name).join(', ');
             logAction('Deleted Activities', `Bulk deleted ${selectedIds.length} items: ${deletedItems}`);
 
             if (supabase) {
-                const { error } = await supabase.from('activities').delete().in('id', selectedIds);
-                if (error) {
-                    console.error("Error deleting items:", error);
-                    alert("Failed to delete selected items.");
-                } else {
-                     setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+                try {
+                    // Archive each item
+                    const archivePayload = itemsToDelete.map(item => ({
+                        entity_type: 'activity',
+                        original_id: item.id,
+                        data: item,
+                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                        deleted_at: new Date().toISOString()
+                    }));
+
+                    const { error: archiveError } = await supabase.from('trash_bin').insert(archivePayload);
+                    if (archiveError) throw archiveError;
+
+                    const { error: deleteError } = await supabase.from('activities').delete().in('id', selectedIds);
+                    if (deleteError) throw deleteError;
+
+                    setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
+                } catch (error: any) {
+                    console.error("Error archiving/deleting:", error);
+                    alert("Failed to delete selected items: " + error.message);
                 }
             } else {
                 setActivities(prev => prev.filter(a => !selectedIds.includes(a.id)));
@@ -492,12 +507,23 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             }
 
             if (supabase) {
-                const { error } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
-                if (error) {
-                    console.error("Error deleting activity:", error);
-                    alert("Failed to delete activity.");
-                } else {
-                     setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
+                try {
+                    const { error: archiveError } = await supabase.from('trash_bin').insert([{
+                        entity_type: 'activity',
+                        original_id: itemToDelete.id,
+                        data: itemToDelete,
+                        deleted_by: currentUser?.email || currentUser?.fullName || 'Unknown',
+                        deleted_at: new Date().toISOString()
+                    }]);
+                    if (archiveError) throw archiveError;
+
+                    const { error: deleteError } = await supabase.from('activities').delete().eq('id', itemToDelete.id);
+                    if (deleteError) throw deleteError;
+
+                    setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
+                } catch (error: any) {
+                    console.error("Error archiving/deleting activity:", error);
+                    alert("Failed to delete activity: " + error.message);
                 }
             } else {
                 setActivities(prev => prev.filter(p => p.id !== itemToDelete.id));
