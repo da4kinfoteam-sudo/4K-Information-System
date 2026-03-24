@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, useMemo } from 'react';
+import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,6 +106,18 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [selectedParticular, setSelectedParticular] = useState('');
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+    const getInputClasses = (fieldName: string) => {
+        const hasError = validationErrors.includes(fieldName);
+        return `${commonInputClasses} ${hasError ? 'border-red-500 ring-1 ring-red-500' : ''}`;
+    };
+
+    useEffect(() => {
+        if (formData.fundYear && !currentExpense.obligationDate && !editingExpenseId) {
+            setCurrentExpense(prev => ({ ...prev, obligationDate: `${formData.fundYear}-01-01` }));
+        }
+    }, [formData.fundYear, currentExpense.obligationDate, editingExpenseId]);
 
     const availableUacsCodes = useMemo(() => {
         const codes: { [key: string]: string } = {};
@@ -176,17 +189,32 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+        if (validationErrors.includes(name)) {
+            setValidationErrors(prev => prev.filter(err => err !== name));
+        }
     };
 
     // Expense Handlers
     const handleExpenseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setCurrentExpense(prev => ({ ...prev, [name]: value }));
+        if (validationErrors.includes(name)) {
+            setValidationErrors(prev => prev.filter(err => err !== name));
+        }
     };
 
     const handleAddExpense = () => {
-        if (!currentExpense.uacsCode || !currentExpense.amount) {
-            alert("UACS Code and Amount are required.");
+        const requiredFields = [
+            { name: 'expenseParticular', label: 'Particular' },
+            { name: 'uacsCode', label: 'UACS Code' },
+            { name: 'obligationDate', label: 'Obligation Date' },
+            { name: 'amount', label: 'Amount' }
+        ];
+
+        const missing = requiredFields.filter(f => !currentExpense[f.name as keyof typeof currentExpense]);
+        if (missing.length > 0) {
+            setValidationErrors(missing.map(f => f.name));
+            alert(`The following financial fields are missing: ${missing.map(f => f.label).join(', ')}`);
             return;
         }
         
@@ -282,6 +310,24 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         
+        const requiredFields = [
+            { name: 'operatingUnit', label: 'Operating Unit' },
+            { name: 'personnelPosition', label: 'Personnel Position' },
+            { name: 'fundYear', label: 'Fund Year' }
+        ];
+
+        const missing = requiredFields.filter(f => !formData[f.name as keyof typeof formData]);
+        if (missing.length > 0) {
+            setValidationErrors(missing.map(f => f.name));
+            alert(`The following required fields are missing: ${missing.map(f => f.label).join(', ')}`);
+            return;
+        }
+
+        if (expensesList.length === 0) {
+            alert("At least one financial requirement item is required.");
+            return;
+        }
+        
         // Aggregate totals from expensesList
         const aggregatedTotals = {
             annualSalary: 0,
@@ -368,21 +414,21 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title</label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Component</label><select name="component" value={formData.component} onChange={handleInputChange} className={commonInputClasses}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Component</label><select name="component" value={formData.component} onChange={handleInputChange} className={getInputClasses('component')}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hiring Status</label>
-                                    <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={commonInputClasses}>
+                                    <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={getInputClasses('hiringStatus')}>
                                         <option value="Proposed">Proposed</option>
                                         <option value="Filled">Filled</option>
                                         <option value="Unfilled">Unfilled</option>
                                     </select>
                                     {formData.hiringStatus === 'Filled' && <p className="text-xs text-green-600 mt-1">Status set to Filled automatically based on Date Hired.</p>}
                                 </div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={commonInputClasses}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
-                                <div className="md:col-span-1"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={commonInputClasses} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
+                                <div className="md:col-span-1"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit <span className="text-red-500">*</span></label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={getInputClasses('operatingUnit')} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
                             </div>
                         </fieldset>
 
@@ -390,9 +436,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding Source</legend>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year</label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             </div>
                         </fieldset>
 
@@ -431,11 +477,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 <h4 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 border-b border-gray-100 dark:border-gray-700 pb-2">
                                     {editingExpenseId ? 'Edit Financial Item' : 'Add Financial Item'}
                                 </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={commonInputClasses}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); }} className={commonInputClasses}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code</label>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code <span className="text-red-500">*</span></label>
                                         <input 
                                             list="uacs-codes-list-detail"
                                             name="uacsCode" 
@@ -471,8 +517,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                                 }
                                                 
                                                 setCurrentExpense(prev => ({ ...prev, uacsCode: code, expenseParticular: part }));
+                                                if (validationErrors.includes('uacsCode')) {
+                                                    setValidationErrors(prev => prev.filter(err => err !== 'uacsCode'));
+                                                }
                                             }} 
-                                            className={commonInputClasses} 
+                                            className={getInputClasses('uacsCode')} 
                                             placeholder="Search or select UACS Code"
                                         />
                                         <datalist id="uacs-codes-list-detail">
@@ -480,15 +529,33 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                                 <option key={code} value={code}>{code} - {desc}</option>
                                             ))}
                                         </datalist>
-                                        {selectedUacsDesc && (
-                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">
-                                                {selectedUacsDesc}
-                                            </p>
-                                        )}
                                     </div>
-                                    
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date</label><input type="date" name="obligationDate" value={currentExpense.obligationDate} onChange={handleExpenseChange} className={commonInputClasses} /></div>
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} min="0" /></div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
+                                        <input 
+                                            type="text" 
+                                            value={selectedUacsDesc} 
+                                            readOnly 
+                                            className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none sm:text-sm cursor-not-allowed" 
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date <span className="text-red-500">*</span></label>
+                                        <MonthYearPicker 
+                                            value={currentExpense.obligationDate} 
+                                            onChange={(val) => {
+                                                setCurrentExpense(prev => ({ ...prev, obligationDate: val }));
+                                                if (validationErrors.includes('obligationDate')) {
+                                                    setValidationErrors(prev => prev.filter(err => err !== 'obligationDate'));
+                                                }
+                                            }}
+                                            className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-1 ring-red-500' : ''}
+                                        />
+                                    </div>
+                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
                                 </div>
                                 
                                 <div className="mb-3">
