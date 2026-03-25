@@ -91,7 +91,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     // Form State
     const initialFormState: OtherProgramExpense = {
-        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', physicalDeliveryDate: '', fundType: 'Current' as FundType, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
+        id: 0, uid: '', operatingUnit: '', uacsCode: '', obligationDate: '', disbursementDate: '', fundType: 'Current' as FundType, fundYear: new Date().getFullYear(), tier: 'Tier 1' as Tier, encodedBy: '',
         particulars: '', amount: 0, obligatedAmount: 0, status: 'Proposed',
         actualDate: '', actualAmount: 0, actualObligationDate: '', actualDisbursementDate: '', actualObligationAmount: 0, actualDisbursementAmount: 0,
         // Target Schedule
@@ -295,6 +295,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         // Always remove ID from payload
         delete submissionData.id;
+        delete submissionData.physicalDeliveryDate;
 
         submissionData.uid = formData.uid || `OE-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`;
         submissionData.created_at = new Date().toISOString();
@@ -382,7 +383,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, ...rest } = item;
+            const { id, uid, created_at, updated_at, physicalDeliveryDate, ...rest } = item;
             // Generate new UID
             const newUid = `OE-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             

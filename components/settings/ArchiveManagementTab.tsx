@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../supabaseClient';
 import { TrashItem } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,6 +14,8 @@ const ArchiveManagementTab: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(10);
 
     const fetchTrashItems = async () => {
         setLoading(true);
@@ -33,6 +35,27 @@ const ArchiveManagementTab: React.FC = () => {
     useEffect(() => {
         fetchTrashItems();
     }, []);
+
+    const paginatedItems = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return items.slice(startIndex, startIndex + itemsPerPage);
+    }, [items, currentPage, itemsPerPage]);
+
+    const totalPages = Math.ceil(items.length / itemsPerPage);
+
+    const getItemName = (item: TrashItem) => {
+        const data = item.data;
+        if (!data) return 'N/A';
+        
+        switch (item.entity_type) {
+            case 'subproject': return data.name || data.uid || 'Unnamed Subproject';
+            case 'activity': return data.name || data.uid || 'Unnamed Activity';
+            case 'office_requirement': return data.equipment || data.uid || 'Unnamed Equipment';
+            case 'staffing_requirement': return data.personnelPosition || data.uid || 'Unnamed Position';
+            case 'other_program_expense': return data.particulars || data.uid || 'Unnamed Expense';
+            default: return data.name || data.title || data.uid || 'N/A';
+        }
+    };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
@@ -228,27 +251,33 @@ const ArchiveManagementTab: React.FC = () => {
                                 <th className="px-6 py-3 text-left">
                                     <input
                                         type="checkbox"
-                                        checked={selectedIds.length === items.length && items.length > 0}
-                                        onChange={handleSelectAll}
+                                        checked={selectedIds.length === paginatedItems.length && paginatedItems.length > 0}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedIds(paginatedItems.map(i => i.id));
+                                            } else {
+                                                setSelectedIds([]);
+                                            }
+                                        }}
                                         className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                     />
                                 </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name / Title</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Entity Type</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Original ID</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Deleted By</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Deleted At</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {items.length === 0 ? (
+                            {paginatedItems.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="px-6 py-10 text-center text-gray-500 dark:text-gray-400">
                                         No items in the archive.
                                     </td>
                                 </tr>
                             ) : (
-                                items.map((item) => (
+                                paginatedItems.map((item) => (
                                     <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                         <td className="px-6 py-4">
                                             <input
@@ -258,11 +287,11 @@ const ArchiveManagementTab: React.FC = () => {
                                                 className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                             />
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white capitalize">
-                                            {item.entity_type.replace(/_/g, ' ')}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                            {getItemName(item)}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                            {item.original_id}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 capitalize">
+                                            {item.entity_type.replace(/_/g, ' ')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                                             {item.deleted_by}
@@ -291,6 +320,46 @@ const ArchiveManagementTab: React.FC = () => {
                             )}
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            {/* Pagination */}
+            <div className="py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-700 dark:text-gray-300">Show</span>
+                    <select 
+                        value={itemsPerPage} 
+                        onChange={(e) => {
+                            setItemsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
+                        }} 
+                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                    >
+                        {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
+                    </select>
+                    <span className="text-gray-700 dark:text-gray-300">entries</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                    <span className="text-gray-700 dark:text-gray-300">
+                        Showing {items.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, items.length)} of {items.length} entries
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
+                            disabled={currentPage === 1} 
+                            className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <span className="px-2 font-medium text-gray-700 dark:text-gray-300">{currentPage} / {totalPages || 1}</span>
+                        <button 
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
+                            disabled={currentPage === totalPages || totalPages === 0} 
+                            className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

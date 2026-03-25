@@ -287,7 +287,7 @@ export interface BaseProgramManagementItem extends BaseEntity {
     uacsCode: string;
     obligationDate: string;
     disbursementDate: string;
-    physicalDeliveryDate: string;
+    physicalDeliveryDate?: string;
     fundType: FundType;
     fundYear: number;
     tier: Tier;
