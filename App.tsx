@@ -40,7 +40,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
-    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment
+    Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment,
+    RefInput, RefInfrastructure, RefTrainingReference
 } from './constants';
 import {
     sampleReferenceUacsList, sampleReferenceParticularList
@@ -142,6 +143,9 @@ const AppContent: React.FC = () => {
     const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
     const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', []);
     const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', []);
+    const [refInputs, setRefInputs] = useSupabaseTable<RefInput>('ref_inputs', []);
+    const [refInfrastructure, setRefInfrastructure] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', []);
+    const [refTrainings, setRefTrainings] = useSupabaseTable<RefTrainingReference>('ref_trainings', []);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
@@ -632,6 +636,12 @@ const AppContent: React.FC = () => {
                             setRefLivestock={setRefLivestock}
                             refEquipment={refEquipment}
                             setRefEquipment={setRefEquipment}
+                            refInputs={refInputs}
+                            setRefInputs={setRefInputs}
+                            refInfrastructure={refInfrastructure}
+                            setRefInfrastructure={setRefInfrastructure}
+                            refTrainings={refTrainings}
+                            setRefTrainings={setRefTrainings}
                             gidaList={gidaAreas}
                             setGidaList={setGidaAreas}
                             elcacList={elcacAreas}

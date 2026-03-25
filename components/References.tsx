@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories } from '../constants';
+import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
@@ -38,6 +38,12 @@ interface ReferencesProps {
     setRefLivestock: React.Dispatch<React.SetStateAction<RefLivestock[]>>;
     refEquipment: RefEquipment[];
     setRefEquipment: React.Dispatch<React.SetStateAction<RefEquipment[]>>;
+    refInputs: RefInput[];
+    setRefInputs: React.Dispatch<React.SetStateAction<RefInput[]>>;
+    refInfrastructure: RefInfrastructure[];
+    setRefInfrastructure: React.Dispatch<React.SetStateAction<RefInfrastructure[]>>;
+    refTrainings: RefTrainingReference[];
+    setRefTrainings: React.Dispatch<React.SetStateAction<RefTrainingReference[]>>;
     gidaList: GidaArea[];
     setGidaList: React.Dispatch<React.SetStateAction<GidaArea[]>>;
     elcacList: ElcacArea[];
@@ -103,9 +109,46 @@ const EQUIPMENT_TOOLTIPS = {
     safety_gear_required: "Personal Protective Equipment needed (e.g. \"Rubber Boots, Heavy Duty Gloves\")."
 };
 
-const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
+const INPUT_TOOLTIPS = {
+    input_type: "Broad classification of the agricultural input (e.g. Fertilizer, Seed, Pesticide).",
+    sub_type: "The specific grade of the input (e.g. 'Inorganic' for chemicals or 'Heirloom' for traditional seeds).",
+    name: "The commercial or common name of the product.",
+    standard_uom: "The standard unit used for procurement and inventory (e.g. 50kg bag; 1L bottle; or 1kg pack).",
+    avg_price_2026: "The current regional market price used for project budgeting and fund allocation.",
+    fpa_registration_no: "The mandatory regulatory code from FPA or BAI ensuring the product is safe and legal for use.",
+    shelf_life_months: "The number of months the product remains effective from the date of manufacture.",
+    application_rate_per_ha: "Recommended quantity to be used per hectare for optimal results.",
+    hazchem_rating: "Hazardous chemical classification for safety and storage handling (e.g. 'Category IV - Blue')."
+};
+
+const INFRASTRUCTURE_TOOLTIPS = {
+    infra_type: "The primary classification of the structure (e.g. Irrigation, Post-Harvest, Access Road).",
+    sub_type: "The specific design or material used (e.g. 'Concrete Lined' for canals or 'Solar-Powered' for pumps).",
+    name: "The standard name of the infrastructure project.",
+    standard_uom: "The unit of measurement for the project size (e.g. Linear Meter; Square Meter; or Unit).",
+    avg_cost_2026: "The current DPWH or DA standard cost used for feasibility and budgeting.",
+    design_life_years: "The expected number of years the structure will remain functional before major rehabilitation.",
+    maintenance_frequency: "How often technical maintenance is required (e.g. 'Annual'; 'Quarterly'; or 'Every 5 years').",
+    typical_duration_days: "Estimated number of days required for construction or installation.",
+    environmental_impact_rating: "Potential ecological effect or required mitigation (e.g. 'Low Impact' or 'Erosion Control Required')."
+};
+
+const TRAINING_TOOLTIPS = {
+    training_type: "The focus area of the training (e.g. Technical Skills, Financial Literacy, Leadership).",
+    sub_type: "The specific focus or level of the course (e.g. 'Basic'; 'Advanced'; or 'Specialized').",
+    name: "The official name of the capacity-building program or course.",
+    standard_uom: "The unit of training delivery (e.g. 'Per Pax'; 'Per Batch'; or 'Per Module').",
+    avg_cost_per_pax_2026: "The budgeted amount per person covering food; materials; and honorarium.",
+    duration_days: "The total number of days required to complete the module.",
+    min_pax: "The minimum number of attendees required to conduct the session.",
+    max_pax: "The maximum number of attendees allowed per session for quality control.",
+    certification_level: "The type of certificate issued (e.g. 'Certificate of Attendance' or 'NC II')."
+};
+
+const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Crop References' | 'Livestock References' | 'Equipment References' | 'GIDA' | 'ELCAC'>('UACS');
+    const [activeGroup, setActiveGroup] = useState<'DCF Reference' | 'Commodity References' | 'Intervention References' | 'Policy References'>('DCF Reference');
+    const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Crop Reference' | 'Livestock Reference' | 'Equipment Reference' | 'Agricultural Input Reference' | 'Infrastructure Reference' | 'Training Reference' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -191,6 +234,45 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         maintenance_interval_months: 0,
         required_operators: 1,
         safety_gear_required: ''
+    });
+
+    // --- Agricultural Input Form State ---
+    const [refInputForm, setRefInputForm] = useState({
+        input_type: '',
+        sub_type: '',
+        name: '',
+        standard_uom: '',
+        avg_price_2026: 0,
+        fpa_registration_no: '',
+        shelf_life_months: 0,
+        application_rate_per_ha: 0,
+        hazchem_rating: ''
+    });
+
+    // --- Infrastructure Form State ---
+    const [refInfrastructureForm, setRefInfrastructureForm] = useState({
+        infra_type: '',
+        sub_type: '',
+        name: '',
+        standard_uom: '',
+        avg_cost_2026: 0,
+        design_life_years: 0,
+        maintenance_frequency: '',
+        typical_duration_days: 0,
+        environmental_impact_rating: ''
+    });
+
+    // --- Trainings Form State ---
+    const [refTrainingForm, setRefTrainingForm] = useState({
+        training_type: '',
+        sub_type: '',
+        name: '',
+        standard_uom: '',
+        avg_cost_per_pax_2026: 0,
+        duration_days: 0,
+        min_pax: 0,
+        max_pax: 0,
+        certification_level: ''
     });
 
     // --- GIDA Form State ---
@@ -390,10 +472,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             items = items.filter(i => 
-                i.name.toLowerCase().includes(lower) || 
-                i.banner_program.toLowerCase().includes(lower) ||
-                i.commodity_group.toLowerCase().includes(lower) ||
-                i.recommended_soil.toLowerCase().includes(lower)
+                (i.name || '').toLowerCase().includes(lower) || 
+                (i.banner_program || '').toLowerCase().includes(lower) ||
+                (i.commodity_group || '').toLowerCase().includes(lower) ||
+                (i.recommended_soil || '').toLowerCase().includes(lower)
             );
         }
         // Sort
@@ -414,9 +496,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             items = items.filter(i => 
-                i.name.toLowerCase().includes(lower) ||
-                i.category.toLowerCase().includes(lower) ||
-                i.breed_type.toLowerCase().includes(lower)
+                (i.name || '').toLowerCase().includes(lower) ||
+                (i.category || '').toLowerCase().includes(lower) ||
+                (i.breed_type || '').toLowerCase().includes(lower)
             );
         }
         // Sort
@@ -437,9 +519,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             items = items.filter(i => 
-                i.name.toLowerCase().includes(lower) ||
-                i.category.toLowerCase().includes(lower) ||
-                i.equipment_type.toLowerCase().includes(lower)
+                (i.name || '').toLowerCase().includes(lower) ||
+                (i.category || '').toLowerCase().includes(lower) ||
+                (i.equipment_type || '').toLowerCase().includes(lower)
             );
         }
         // Sort
@@ -454,6 +536,72 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         }
         return items;
     }, [refEquipment, searchTerm, sortConfig]);
+
+    const processedRefInputs = useMemo(() => {
+        let items = [...refInputs];
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                (i.name || '').toLowerCase().includes(lower) ||
+                (i.input_type || '').toLowerCase().includes(lower) ||
+                (i.sub_type || '').toLowerCase().includes(lower)
+            );
+        }
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [refInputs, searchTerm, sortConfig]);
+
+    const processedRefInfrastructure = useMemo(() => {
+        let items = [...refInfrastructure];
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                (i.name || '').toLowerCase().includes(lower) ||
+                (i.infra_type || '').toLowerCase().includes(lower) ||
+                (i.sub_type || '').toLowerCase().includes(lower)
+            );
+        }
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [refInfrastructure, searchTerm, sortConfig]);
+
+    const processedRefTrainings = useMemo(() => {
+        let items = [...refTrainings];
+        if (searchTerm) {
+            const lower = searchTerm.toLowerCase();
+            items = items.filter(i => 
+                (i.name || '').toLowerCase().includes(lower) ||
+                (i.training_type || '').toLowerCase().includes(lower) ||
+                (i.sub_type || '').toLowerCase().includes(lower)
+            );
+        }
+        if (sortConfig) {
+            items.sort((a: any, b: any) => {
+                const aVal = (a[sortConfig.key] || '').toString().toLowerCase();
+                const bVal = (b[sortConfig.key] || '').toString().toLowerCase();
+                if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return items;
+    }, [refTrainings, searchTerm, sortConfig]);
 
     const processedGida = useMemo(() => {
         let items = [...gidaList];
@@ -509,14 +657,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         switch (activeTab) {
             case 'UACS': return processedUacs;
             case 'Items': return processedParticulars;
-            case 'Crop References': return processedRefCommodities;
-            case 'Livestock References': return processedRefLivestock;
-            case 'Equipment References': return processedRefEquipment;
+            case 'Crop Reference': return processedRefCommodities;
+            case 'Livestock Reference': return processedRefLivestock;
+            case 'Equipment Reference': return processedRefEquipment;
+            case 'Agricultural Input Reference': return processedRefInputs;
+            case 'Infrastructure Reference': return processedRefInfrastructure;
+            case 'Training Reference': return processedRefTrainings;
             case 'GIDA': return processedGida;
             case 'ELCAC': return processedElcac;
             default: return [];
         }
-    }, [activeTab, processedUacs, processedParticulars, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedGida, processedElcac]);
+    }, [activeTab, processedUacs, processedParticulars, processedRefCommodities, processedRefLivestock, processedRefEquipment, processedRefInputs, processedRefInfrastructure, processedRefTrainings, processedGida, processedElcac]);
 
     const {
         currentPage,
@@ -549,6 +700,18 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             fuel_consumption_rate: 0, estimated_useful_life_years: 0, unit_cost_estimate: 0,
             maintenance_interval_months: 0, required_operators: 1, safety_gear_required: ''
         });
+        setRefInputForm({
+            input_type: '', sub_type: '', name: '', standard_uom: '', avg_price_2026: 0,
+            fpa_registration_no: '', shelf_life_months: 0, application_rate_per_ha: 0, hazchem_rating: ''
+        });
+        setRefInfrastructureForm({
+            infra_type: '', sub_type: '', name: '', standard_uom: '', avg_cost_2026: 0,
+            design_life_years: 0, maintenance_frequency: '', typical_duration_days: 0, environmental_impact_rating: ''
+        });
+        setRefTrainingForm({
+            training_type: '', sub_type: '', name: '', standard_uom: '', avg_cost_per_pax_2026: 0,
+            duration_days: 0, min_pax: 0, max_pax: 0, certification_level: ''
+        });
         setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
         setElcacForm({ region: '', province: '', municipality: '', barangay: '' });
         setIsModalOpen(true);
@@ -568,7 +731,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 type: item.type,
                 particular: item.particular
             });
-        } else if (activeTab === 'Crop References') {
+        } else if (activeTab === 'Crop Reference') {
             setRefCommodityForm({
                 name: item.name,
                 banner_program: item.banner_program,
@@ -587,7 +750,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 climate_type_suitability: item.climate_type_suitability || '',
                 target_yield_ha: item.target_yield_ha || 0
             });
-        } else if (activeTab === 'Livestock References') {
+        } else if (activeTab === 'Livestock Reference') {
             setRefLivestockForm({
                 name: item.name,
                 category: item.category,
@@ -605,7 +768,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 target_weight_kg: item.target_weight_kg,
                 avg_eggs_per_year: item.avg_eggs_per_year
             });
-        } else if (activeTab === 'Equipment References') {
+        } else if (activeTab === 'Equipment Reference') {
             setRefEquipmentForm({
                 name: item.name,
                 category: item.category,
@@ -618,6 +781,42 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 maintenance_interval_months: item.maintenance_interval_months,
                 required_operators: item.required_operators,
                 safety_gear_required: item.safety_gear_required
+            });
+        } else if (activeTab === 'Agricultural Input Reference') {
+            setRefInputForm({
+                input_type: item.input_type,
+                sub_type: item.sub_type,
+                name: item.name,
+                standard_uom: item.standard_uom,
+                avg_price_2026: item.avg_price_2026,
+                fpa_registration_no: item.fpa_registration_no,
+                shelf_life_months: item.shelf_life_months,
+                application_rate_per_ha: item.application_rate_per_ha,
+                hazchem_rating: item.hazchem_rating
+            });
+        } else if (activeTab === 'Infrastructure Reference') {
+            setRefInfrastructureForm({
+                infra_type: item.infra_type,
+                sub_type: item.sub_type,
+                name: item.name,
+                standard_uom: item.standard_uom,
+                avg_cost_2026: item.avg_cost_2026,
+                design_life_years: item.design_life_years,
+                maintenance_frequency: item.maintenance_frequency,
+                typical_duration_days: item.typical_duration_days,
+                environmental_impact_rating: item.environmental_impact_rating
+            });
+        } else if (activeTab === 'Training Reference') {
+            setRefTrainingForm({
+                training_type: item.training_type,
+                sub_type: item.sub_type,
+                name: item.name,
+                standard_uom: item.standard_uom,
+                avg_cost_per_pax_2026: item.avg_cost_per_pax_2026,
+                duration_days: item.duration_days,
+                min_pax: item.min_pax,
+                max_pax: item.max_pax,
+                certification_level: item.certification_level
             });
         } else if (activeTab === 'GIDA') {
             setGidaForm({
@@ -655,7 +854,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             } else {
                 setParticularList(prev => [newData, ...prev]);
             }
-        } else if (activeTab === 'Crop References') {
+        } else if (activeTab === 'Crop Reference') {
             const newData = { id, ...refCommodityForm };
             if (supabase) {
                 if (editingItem) {
@@ -684,7 +883,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     setRefCommodities(prev => [newData, ...prev]);
                 }
             }
-        } else if (activeTab === 'Livestock References') {
+        } else if (activeTab === 'Livestock Reference') {
             const newData = { id, ...refLivestockForm };
             if (supabase) {
                 if (editingItem) {
@@ -713,7 +912,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     setRefLivestock(prev => [newData, ...prev]);
                 }
             }
-        } else if (activeTab === 'Equipment References') {
+        } else if (activeTab === 'Equipment Reference') {
             const newData = { id, ...refEquipmentForm };
             if (supabase) {
                 if (editingItem) {
@@ -740,6 +939,93 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     setRefEquipment(prev => prev.map(i => i.id === id ? newData : i));
                 } else {
                     setRefEquipment(prev => [newData, ...prev]);
+                }
+            }
+        } else if (activeTab === 'Agricultural Input Reference') {
+            const newData = { id, ...refInputForm };
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('ref_inputs').update(refInputForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating Input reference:", error);
+                        alert(`Failed to update Input reference: ${error.message}`);
+                        return;
+                    }
+                    setRefInputs(prev => prev.map(i => i.id === editingItem.id ? { ...newData, id: editingItem.id } : i));
+                } else {
+                    const { data, error } = await supabase.from('ref_inputs').insert(refInputForm).select();
+                    if (error) {
+                        console.error("Error inserting Input reference:", error);
+                        alert(`Failed to add Input reference: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setRefInputs(prev => [data[0] as RefInput, ...prev]);
+                    }
+                }
+            } else {
+                if (editingItem) {
+                    setRefInputs(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setRefInputs(prev => [newData, ...prev]);
+                }
+            }
+        } else if (activeTab === 'Infrastructure Reference') {
+            const newData = { id, ...refInfrastructureForm };
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('ref_infrastructure').update(refInfrastructureForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating Infrastructure reference:", error);
+                        alert(`Failed to update Infrastructure reference: ${error.message}`);
+                        return;
+                    }
+                    setRefInfrastructure(prev => prev.map(i => i.id === editingItem.id ? { ...newData, id: editingItem.id } : i));
+                } else {
+                    const { data, error } = await supabase.from('ref_infrastructure').insert(refInfrastructureForm).select();
+                    if (error) {
+                        console.error("Error inserting Infrastructure reference:", error);
+                        alert(`Failed to add Infrastructure reference: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setRefInfrastructure(prev => [data[0] as RefInfrastructure, ...prev]);
+                    }
+                }
+            } else {
+                if (editingItem) {
+                    setRefInfrastructure(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setRefInfrastructure(prev => [newData, ...prev]);
+                }
+            }
+        } else if (activeTab === 'Training Reference') {
+            const newData = { id, ...refTrainingForm };
+            if (supabase) {
+                if (editingItem) {
+                    const { error } = await supabase.from('ref_trainings').update(refTrainingForm).eq('id', editingItem.id);
+                    if (error) {
+                        console.error("Error updating Training reference:", error);
+                        alert(`Failed to update Training reference: ${error.message}`);
+                        return;
+                    }
+                    setRefTrainings(prev => prev.map(i => i.id === editingItem.id ? { ...newData, id: editingItem.id } : i));
+                } else {
+                    const { data, error } = await supabase.from('ref_trainings').insert(refTrainingForm).select();
+                    if (error) {
+                        console.error("Error inserting Training reference:", error);
+                        alert(`Failed to add Training reference: ${error.message}`);
+                        return;
+                    }
+                    if (data && data.length > 0) {
+                        setRefTrainings(prev => [data[0] as RefTrainingReference, ...prev]);
+                    }
+                }
+            } else {
+                if (editingItem) {
+                    setRefTrainings(prev => prev.map(i => i.id === id ? newData : i));
+                } else {
+                    setRefTrainings(prev => [newData, ...prev]);
                 }
             }
         } else if (activeTab === 'GIDA') {
@@ -812,7 +1098,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else if (activeTab === 'Crop References') {
+        } else if (activeTab === 'Crop Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_commodities').delete().eq('id', deleteItem.id);
                 if (error) {
@@ -822,7 +1108,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefCommodities(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else if (activeTab === 'Livestock References') {
+        } else if (activeTab === 'Livestock Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_livestock').delete().eq('id', deleteItem.id);
                 if (error) {
@@ -832,7 +1118,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefLivestock(prev => prev.filter(i => i.id !== deleteItem.id));
-        } else if (activeTab === 'Equipment References') {
+        } else if (activeTab === 'Equipment Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_equipment').delete().eq('id', deleteItem.id);
                 if (error) {
@@ -842,6 +1128,36 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefEquipment(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else if (activeTab === 'Agricultural Input Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_inputs').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting Input reference:", error);
+                    alert(`Failed to delete Input reference: ${error.message}`);
+                    return;
+                }
+            }
+            setRefInputs(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else if (activeTab === 'Infrastructure Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_infrastructure').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting Infrastructure reference:", error);
+                    alert(`Failed to delete Infrastructure reference: ${error.message}`);
+                    return;
+                }
+            }
+            setRefInfrastructure(prev => prev.filter(i => i.id !== deleteItem.id));
+        } else if (activeTab === 'Training Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_trainings').delete().eq('id', deleteItem.id);
+                if (error) {
+                    console.error("Error deleting Training reference:", error);
+                    alert(`Failed to delete Training reference: ${error.message}`);
+                    return;
+                }
+            }
+            setRefTrainings(prev => prev.filter(i => i.id !== deleteItem.id));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().eq('id', deleteItem.id);
@@ -901,7 +1217,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Items') {
             setParticularList(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else if (activeTab === 'Crop References') {
+        } else if (activeTab === 'Crop Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_commodities').delete().in('id', selectedIds);
                 if (error) {
@@ -911,7 +1227,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefCommodities(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else if (activeTab === 'Livestock References') {
+        } else if (activeTab === 'Livestock Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_livestock').delete().in('id', selectedIds);
                 if (error) {
@@ -921,7 +1237,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefLivestock(prev => prev.filter(i => !selectedIds.includes(i.id)));
-        } else if (activeTab === 'Equipment References') {
+        } else if (activeTab === 'Equipment Reference') {
             if (supabase) {
                 const { error } = await supabase.from('ref_equipment').delete().in('id', selectedIds);
                 if (error) {
@@ -931,6 +1247,36 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 }
             }
             setRefEquipment(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else if (activeTab === 'Agricultural Input Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_inputs').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting Input references:", error);
+                    alert(`Failed to delete Input references: ${error.message}`);
+                    return;
+                }
+            }
+            setRefInputs(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else if (activeTab === 'Infrastructure Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_infrastructure').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting Infrastructure references:", error);
+                    alert(`Failed to delete Infrastructure references: ${error.message}`);
+                    return;
+                }
+            }
+            setRefInfrastructure(prev => prev.filter(i => !selectedIds.includes(i.id)));
+        } else if (activeTab === 'Training Reference') {
+            if (supabase) {
+                const { error } = await supabase.from('ref_trainings').delete().in('id', selectedIds);
+                if (error) {
+                    console.error("Error deleting Training references:", error);
+                    alert(`Failed to delete Training references: ${error.message}`);
+                    return;
+                }
+            }
+            setRefTrainings(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'GIDA') {
             if (supabase) {
                 const { error } = await supabase.from('gida_areas').delete().in('id', selectedIds);
@@ -981,7 +1327,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Items_Template.xlsx';
-        } else if (activeTab === 'Crop References') {
+        } else if (activeTab === 'Crop Reference') {
             const headers = ['name', 'banner_program', 'commodity_group', 'min_elevation_masl', 'max_elevation_masl', 'max_slope_percent', 'wet_season_start', 'dry_season_start', 'recommended_soil', 'fertilizer_npk', 'watering_method', 'harvest_period_days', 'ph_min', 'ph_max', 'climate_type_suitability', 'target_yield_ha'];
             const example = [{
                 name: 'Rice (Lowland)',
@@ -1002,8 +1348,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 target_yield_ha: 5.5
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
-            filename = 'Crop_References_Template.xlsx';
-        } else if (activeTab === 'Livestock References') {
+            filename = 'Crop_Reference_Template.xlsx';
+        } else if (activeTab === 'Livestock Reference') {
             const headers = ['name', 'category', 'breed_type', 'min_space_sqm_per_head', 'housing_type', 'min_temp_celsius', 'max_temp_celsius', 'gestation_incubation_days', 'maturity_days', 'productive_years', 'feed_type', 'target_fcr', 'water_liters_per_day', 'target_weight_kg', 'avg_eggs_per_year'];
             const example = [{
                 name: 'Native Chicken (Darag)',
@@ -1023,8 +1369,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 avg_eggs_per_year: 80
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
-            filename = 'Livestock_References_Template.xlsx';
-        } else if (activeTab === 'Equipment References') {
+            filename = 'Livestock_Reference_Template.xlsx';
+        } else if (activeTab === 'Equipment Reference') {
             const headers = ['name', 'category', 'equipment_type', 'power_source', 'capacity_rating', 'fuel_consumption_rate', 'estimated_useful_life_years', 'unit_cost_estimate', 'maintenance_interval_months', 'required_operators', 'safety_gear_required'];
             const example = [{
                 name: 'Hand Tractor',
@@ -1040,7 +1386,52 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 safety_gear_required: 'Rubber Boots, Heavy Duty Gloves'
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
-            filename = 'Equipment_References_Template.xlsx';
+            filename = 'Equipment_Reference_Template.xlsx';
+        } else if (activeTab === 'Agricultural Input Reference') {
+            const headers = ['input_type', 'sub_type', 'name', 'standard_uom', 'avg_price_2026', 'fpa_registration_no', 'shelf_life_months', 'application_rate_per_ha', 'hazchem_rating'];
+            const example = [{
+                input_type: 'Fertilizer',
+                sub_type: 'Inorganic',
+                name: 'Complete (14-14-14)',
+                standard_uom: '50kg bag',
+                avg_price_2026: 2500,
+                fpa_registration_no: 'FPA-789-012',
+                shelf_life_months: 24,
+                application_rate_per_ha: 6,
+                hazchem_rating: 'Category IV - Blue'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Agricultural_Input_Reference_Template.xlsx';
+        } else if (activeTab === 'Infrastructure Reference') {
+            const headers = ['infra_type', 'sub_type', 'name', 'standard_uom', 'avg_cost_2026', 'design_life_years', 'maintenance_frequency', 'typical_duration_days', 'environmental_impact_rating'];
+            const example = [{
+                infra_type: 'Irrigation',
+                sub_type: 'Concrete Lined',
+                name: 'Communal Irrigation System',
+                standard_uom: 'Linear Meter',
+                avg_cost_2026: 15000,
+                design_life_years: 25,
+                maintenance_frequency: 'Annual',
+                typical_duration_days: 120,
+                environmental_impact_rating: 'Low Impact'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Infrastructure_Reference_Template.xlsx';
+        } else if (activeTab === 'Training Reference') {
+            const headers = ['training_type', 'sub_type', 'name', 'standard_uom', 'avg_cost_per_pax_2026', 'duration_days', 'min_pax', 'max_pax', 'certification_level'];
+            const example = [{
+                training_type: 'Technical Skills',
+                sub_type: 'Basic',
+                name: 'Organic Fertilizer Production',
+                standard_uom: 'Per Pax',
+                avg_cost_per_pax_2026: 1500,
+                duration_days: 3,
+                min_pax: 20,
+                max_pax: 30,
+                certification_level: 'Certificate of Attendance'
+            }];
+            ws = XLSX.utils.json_to_sheet(example, { header: headers });
+            filename = 'Training_Reference_Template.xlsx';
         } else if (activeTab === 'GIDA') {
             const headers = ['region', 'province', 'municipality', 'barangay'];
             const example = [{
@@ -1124,7 +1515,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setParticularList(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} items imported locally.`);
                     }
-                } else if (activeTab === 'Crop References') {
+                } else if (activeTab === 'Crop Reference') {
                     const newItems: RefCommodity[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
                         name: row.name || '',
@@ -1158,7 +1549,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setRefCommodities(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} crop references imported locally.`);
                     }
-                } else if (activeTab === 'Livestock References') {
+                } else if (activeTab === 'Livestock Reference') {
                     const newItems: RefLivestock[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
                         name: row.name || '',
@@ -1191,7 +1582,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         setRefLivestock(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} livestock references imported locally.`);
                     }
-                } else if (activeTab === 'Equipment References') {
+                } else if (activeTab === 'Equipment Reference') {
                     const newItems: RefEquipment[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
                         name: row.name || '',
@@ -1219,6 +1610,87 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                     } else {
                         setRefEquipment(prev => [...newItems, ...prev]);
                         alert(`${newItems.length} equipment references imported locally.`);
+                    }
+                } else if (activeTab === 'Agricultural Input Reference') {
+                    const newItems: RefInput[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        input_type: row.input_type || '',
+                        sub_type: row.sub_type || '',
+                        name: row.name || '',
+                        standard_uom: row.standard_uom || '',
+                        avg_price_2026: Number(row.avg_price_2026) || 0,
+                        fpa_registration_no: row.fpa_registration_no || '',
+                        shelf_life_months: Number(row.shelf_life_months) || 0,
+                        application_rate_per_ha: Number(row.application_rate_per_ha) || 0,
+                        hazchem_rating: row.hazchem_rating || ''
+                    })).filter(i => i.name);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('ref_inputs').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setRefInputs(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} input references uploaded successfully to database.`);
+                        }
+                    } else {
+                        setRefInputs(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} input references imported locally.`);
+                    }
+                } else if (activeTab === 'Infrastructure Reference') {
+                    const newItems: RefInfrastructure[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        infra_type: row.infra_type || '',
+                        sub_type: row.sub_type || '',
+                        name: row.name || '',
+                        standard_uom: row.standard_uom || '',
+                        avg_cost_2026: Number(row.avg_cost_2026) || 0,
+                        design_life_years: Number(row.design_life_years) || 0,
+                        maintenance_frequency: row.maintenance_frequency || '',
+                        typical_duration_days: Number(row.typical_duration_days) || 0,
+                        environmental_impact_rating: row.environmental_impact_rating || ''
+                    })).filter(i => i.name);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('ref_infrastructure').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setRefInfrastructure(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} infrastructure references uploaded successfully to database.`);
+                        }
+                    } else {
+                        setRefInfrastructure(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} infrastructure references imported locally.`);
+                    }
+                } else if (activeTab === 'Training Reference') {
+                    const newItems: RefTrainingReference[] = jsonData.map((row: any) => ({
+                        id: crypto.randomUUID(),
+                        training_type: row.training_type || '',
+                        sub_type: row.sub_type || '',
+                        name: row.name || '',
+                        standard_uom: row.standard_uom || '',
+                        avg_cost_per_pax_2026: Number(row.avg_cost_per_pax_2026) || 0,
+                        duration_days: Number(row.duration_days) || 0,
+                        min_pax: Number(row.min_pax) || 0,
+                        max_pax: Number(row.max_pax) || 0,
+                        certification_level: row.certification_level || ''
+                    })).filter(i => i.name);
+
+                    if (supabase) {
+                        const { error } = await supabase.from('ref_trainings').insert(newItems);
+                        if (error) {
+                            console.error("Batch insert error:", error);
+                            alert(`Failed to upload to Supabase: ${error.message}`);
+                        } else {
+                            setRefTrainings(prev => [...newItems, ...prev]);
+                            alert(`${newItems.length} training references uploaded successfully to database.`);
+                        }
+                    } else {
+                        setRefTrainings(prev => [...newItems, ...prev]);
+                        alert(`${newItems.length} training references imported locally.`);
                     }
                 } else if (activeTab === 'GIDA') {
                     const newItems = jsonData.map((row: any) => ({
@@ -1309,86 +1781,65 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         onClick={handleOpenAdd}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
                     >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'Equipment References' ? 'Equipment Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                     </button>
                 )}
             </div>
 
-            {/* Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700">
+            {/* Tab Groups */}
+            <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
                 <nav className="-mb-px flex space-x-8">
-                    <button
-                        onClick={() => { setActiveTab('UACS'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'UACS'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        UACS Codes
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('Items'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'Items'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Subproject Items
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('Crop References'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'Crop References'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Crop References
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('Livestock References'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'Livestock References'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Livestock References
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('Equipment References'); setSearchTerm(''); }}
-                        className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                            activeTab === 'Equipment References'
-                                ? 'border-emerald-600 text-emerald-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        Equipment References
-                    </button>
-                    {currentUser?.role === 'Administrator' && (
+                    {['DCF Reference', 'Commodity References', 'Intervention References', 'Policy References'].map((group) => (
+                        <button
+                            key={group}
+                            onClick={() => {
+                                setActiveGroup(group as any);
+                                // Set default tab for group
+                                if (group === 'DCF Reference') setActiveTab('UACS');
+                                else if (group === 'Commodity References') setActiveTab('Crop Reference');
+                                else if (group === 'Intervention References') setActiveTab('Agricultural Input Reference');
+                                else if (group === 'Policy References') setActiveTab('GIDA');
+                                setSearchTerm('');
+                            }}
+                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                                activeGroup === group
+                                    ? 'border-emerald-600 text-emerald-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            {group}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+
+            {/* Sub-Tabs */}
+            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
+                <nav className="-mb-px flex space-x-6">
+                    {activeGroup === 'DCF Reference' && (
                         <>
-                            <button
-                                onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }}
-                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                                    activeTab === 'GIDA'
-                                        ? 'border-emerald-600 text-emerald-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                                }`}
-                            >
-                                GIDA Areas
-                            </button>
-                            <button
-                                onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }}
-                                className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                                    activeTab === 'ELCAC'
-                                        ? 'border-emerald-600 text-emerald-600'
-                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                                }`}
-                            >
-                                ELCAC Areas
-                            </button>
+                            <button onClick={() => { setActiveTab('UACS'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'UACS' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>UACS Codes</button>
+                            <button onClick={() => { setActiveTab('Items'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Items' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Subproject Items</button>
+                        </>
+                    )}
+                    {activeGroup === 'Commodity References' && (
+                        <>
+                            <button onClick={() => { setActiveTab('Crop Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Crop Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Crop</button>
+                            <button onClick={() => { setActiveTab('Livestock Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Livestock Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Livestock</button>
+                        </>
+                    )}
+                    {activeGroup === 'Intervention References' && (
+                        <>
+                            <button onClick={() => { setActiveTab('Agricultural Input Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Agricultural Input Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Agricultural Input Reference</button>
+                            <button onClick={() => { setActiveTab('Equipment Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Equipment Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Equipment Reference</button>
+                            <button onClick={() => { setActiveTab('Infrastructure Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Infrastructure Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Infrastructure Reference</button>
+                            <button onClick={() => { setActiveTab('Training Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Training Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Training Reference</button>
+                        </>
+                    )}
+                    {activeGroup === 'Policy References' && (
+                        <>
+                            <button onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'GIDA' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>GIDA Areas</button>
+                            <button onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'ELCAC' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>ELCAC Areas</button>
                         </>
                     )}
                 </nav>
@@ -1482,26 +1933,47 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="Item Type" sortKey="type" />
                                         <SortableHeader label="Item Particular" sortKey="particular" />
                                     </>
-                                ) : activeTab === 'Crop References' ? (
+                                ) : activeTab === 'Crop Reference' ? (
                                     <>
                                         <th className="px-6 py-3 w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={CROP_TOOLTIPS.name} />
                                         <SortableHeader label="Banner" sortKey="banner_program" tooltip={CROP_TOOLTIPS.banner_program} />
                                         <SortableHeader label="Group" sortKey="commodity_group" tooltip={CROP_TOOLTIPS.commodity_group} />
                                     </>
-                                ) : activeTab === 'Livestock References' ? (
+                                ) : activeTab === 'Livestock Reference' ? (
                                     <>
                                         <th className="px-6 py-3 w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={LIVESTOCK_TOOLTIPS.name} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={LIVESTOCK_TOOLTIPS.category} />
                                         <SortableHeader label="Breed Type" sortKey="breed_type" tooltip={LIVESTOCK_TOOLTIPS.breed_type} />
                                     </>
-                                ) : activeTab === 'Equipment References' ? (
+                                ) : activeTab === 'Equipment Reference' ? (
                                     <>
                                         <th className="px-6 py-3 w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={EQUIPMENT_TOOLTIPS.name} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={EQUIPMENT_TOOLTIPS.category} />
                                         <SortableHeader label="Equipment Type" sortKey="equipment_type" tooltip={EQUIPMENT_TOOLTIPS.equipment_type} />
+                                    </>
+                                ) : activeTab === 'Agricultural Input Reference' ? (
+                                    <>
+                                        <th className="px-6 py-3 w-10"></th>
+                                        <SortableHeader label="Name" sortKey="name" tooltip={INPUT_TOOLTIPS.name} />
+                                        <SortableHeader label="Type" sortKey="input_type" tooltip={INPUT_TOOLTIPS.input_type} />
+                                        <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={INPUT_TOOLTIPS.sub_type} />
+                                    </>
+                                ) : activeTab === 'Infrastructure Reference' ? (
+                                    <>
+                                        <th className="px-6 py-3 w-10"></th>
+                                        <SortableHeader label="Name" sortKey="name" tooltip={INFRASTRUCTURE_TOOLTIPS.name} />
+                                        <SortableHeader label="Type" sortKey="infra_type" tooltip={INFRASTRUCTURE_TOOLTIPS.infra_type} />
+                                        <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={INFRASTRUCTURE_TOOLTIPS.sub_type} />
+                                    </>
+                                ) : activeTab === 'Training Reference' ? (
+                                    <>
+                                        <th className="px-6 py-3 w-10"></th>
+                                        <SortableHeader label="Title" sortKey="name" tooltip={TRAINING_TOOLTIPS.name} />
+                                        <SortableHeader label="Type" sortKey="training_type" tooltip={TRAINING_TOOLTIPS.training_type} />
+                                        <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={TRAINING_TOOLTIPS.sub_type} />
                                     </>
                                 ) : (
                                     <>
@@ -1542,12 +2014,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-300">{item.uacsCode}</td>
                                                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300">{item.description}</td>
                                                 </>
-                                            ) : activeTab === 'Items' || activeTab === 'Commodities' ? (
+                                            ) : activeTab === 'Items' ? (
                                                 <>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.type}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.particular}</td>
                                                 </>
-                                            ) : activeTab === 'Crop References' ? (
+                                            ) : activeTab === 'Crop Reference' ? (
                                                 <>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                                         <button 
@@ -1561,7 +2033,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.banner_program}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.commodity_group}</td>
                                                 </>
-                                            ) : activeTab === 'Livestock References' ? (
+                                            ) : activeTab === 'Livestock Reference' ? (
                                                 <>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
@@ -1575,7 +2047,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.category}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.breed_type}</td>
                                                 </>
-                                            ) : activeTab === 'Equipment References' ? (
+                                            ) : activeTab === 'Equipment Reference' ? (
                                                 <>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
@@ -1588,6 +2060,48 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.category}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.equipment_type}</td>
+                                                </>
+                                            ) : activeTab === 'Agricultural Input Reference' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <button 
+                                                            onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                        >
+                                                            {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.input_type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.sub_type}</td>
+                                                </>
+                                            ) : activeTab === 'Infrastructure Reference' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <button 
+                                                            onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                        >
+                                                            {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.infra_type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.sub_type}</td>
+                                                </>
+                                            ) : activeTab === 'Training Reference' ? (
+                                                <>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <button 
+                                                            onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
+                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                        >
+                                                            {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                                        </button>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.training_type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.sub_type}</td>
                                                 </>
                                             ) : (
                                                 <>
@@ -1616,7 +2130,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 </td>
                                             )}
                                         </tr>
-                                        {expandedRowId === item.id && activeTab === 'Crop References' && (
+                                        {expandedRowId === item.id && activeTab === 'Crop Reference' && (
                                             <tr className="bg-emerald-50/30 dark:bg-emerald-900/10">
                                                 <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
@@ -1685,7 +2199,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             </tr>
                                         )}
 
-                                        {expandedRowId === item.id && activeTab === 'Livestock References' && (
+                                        {expandedRowId === item.id && activeTab === 'Livestock Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
                                                 <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1722,7 +2236,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                             </tr>
                                         )}
 
-                                        {expandedRowId === item.id && activeTab === 'Equipment References' && (
+                                        {expandedRowId === item.id && activeTab === 'Equipment Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
                                                 <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1753,10 +2267,95 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 </td>
                                             </tr>
                                         )}
+
+                                        {expandedRowId === item.id && activeTab === 'Agricultural Input Reference' && (
+                                            <tr className="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Standard Unit: <span className="text-gray-900 dark:text-white font-medium">{item.standard_uom}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Shelf Life: <span className="text-gray-900 dark:text-white font-medium">{item.shelf_life_months} months</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Application Rate: <span className="text-gray-900 dark:text-white font-medium">{item.application_rate_per_ha} per ha</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Regulatory & Cost</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Price (2026): <span className="text-gray-900 dark:text-white font-medium">₱{item.avg_price_2026?.toLocaleString()}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">FPA Reg No.: <span className="text-gray-900 dark:text-white font-medium">{item.fpa_registration_no}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Safety</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Hazchem Rating: <span className="text-gray-900 dark:text-white font-medium">{item.hazchem_rating}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+
+                                        {expandedRowId === item.id && activeTab === 'Infrastructure Reference' && (
+                                            <tr className="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Standard Unit: <span className="text-gray-900 dark:text-white font-medium">{item.standard_uom}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Design Life: <span className="text-gray-900 dark:text-white font-medium">{item.design_life_years} years</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Typical Duration: <span className="text-gray-900 dark:text-white font-medium">{item.typical_duration_days} days</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Lifecycle & Cost</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Cost (2026): <span className="text-gray-900 dark:text-white font-medium">₱{item.avg_cost_2026?.toLocaleString()}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Maint. Frequency: <span className="text-gray-900 dark:text-white font-medium">{item.maintenance_frequency}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Impact</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Env. Impact Rating: <span className="text-gray-900 dark:text-white font-medium">{item.environmental_impact_rating}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+
+                                        {expandedRowId === item.id && activeTab === 'Training Reference' && (
+                                            <tr className="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Training Details</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Standard Unit: <span className="text-gray-900 dark:text-white font-medium">{item.standard_uom}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Duration: <span className="text-gray-900 dark:text-white font-medium">{item.duration_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Certification: <span className="text-gray-900 dark:text-white font-medium">{item.certification_level}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Capacity & Cost</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Cost/Pax (2026): <span className="text-gray-900 dark:text-white font-medium">₱{item.avg_cost_per_pax_2026?.toLocaleString()}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Min Pax: <span className="text-gray-900 dark:text-white font-medium">{item.min_pax}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Max Pax: <span className="text-gray-900 dark:text-white font-medium">{item.max_pax}</span></p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
                                     </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop References' || activeTab === 'Livestock References' || activeTab === 'Equipment References' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop References' || activeTab === 'Livestock References' || activeTab === 'Equipment References' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' || activeTab === 'Equipment Reference' || activeTab === 'Agricultural Input Reference' || activeTab === 'Infrastructure Reference' || activeTab === 'Training Reference' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' || activeTab === 'Equipment Reference' || activeTab === 'Agricultural Input Reference' || activeTab === 'Infrastructure Reference' || activeTab === 'Training Reference' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -1803,9 +2402,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             {/* Add/Edit Modal */}
             {isModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${activeTab === 'Crop References' || activeTab === 'Livestock References' ? 'max-w-2xl' : 'max-w-md'} w-full p-6 max-h-[90vh] overflow-y-auto`}>
+                    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-xl ${activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' ? 'max-w-2xl' : 'max-w-md'} w-full p-6 max-h-[90vh] overflow-y-auto`}>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Commodities' ? 'Commodity' : activeTab === 'Crop References' ? 'Crop Reference' : activeTab === 'Livestock References' ? 'Livestock Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                            {editingItem ? 'Edit' : 'Add New'} {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Subproject Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
                         </h3>
                         <form onSubmit={handleSave} className="space-y-4">
                             {activeTab === 'UACS' ? (
@@ -1881,7 +2480,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         />
                                     </div>
                                 </>
-                            ) : activeTab === 'Crop References' ? (
+                            ) : activeTab === 'Crop Reference' ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.name}>
@@ -1988,7 +2587,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <input type="text" required value={refCommodityForm.climate_type_suitability} onChange={e => setRefCommodityForm({...refCommodityForm, climate_type_suitability: e.target.value})} className={commonInputClasses} />
                                     </div>
                                 </div>
-                            ) : activeTab === 'Livestock References' ? (
+                            ) : activeTab === 'Livestock Reference' ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={LIVESTOCK_TOOLTIPS.name}>
@@ -2097,7 +2696,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         </div>
                                     )}
                                 </div>
-                            ) : activeTab === 'Equipment References' ? (
+                            ) : activeTab === 'Equipment Reference' ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.name}>
@@ -2109,10 +2708,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.category}>
                                             Category <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <select required value={refEquipmentForm.category} onChange={e => setRefEquipmentForm({...refEquipmentForm, category: e.target.value})} className={commonInputClasses}>
-                                            <option value="">Select Category</option>
-                                            {equipmentCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                        </select>
+                                        <input type="text" required value={refEquipmentForm.category} onChange={e => setRefEquipmentForm({...refEquipmentForm, category: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.equipment_type}>
@@ -2134,39 +2730,210 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.fuel_consumption_rate}>
-                                            Fuel Consumption (L/hr) <Info className="h-3 w-3 text-gray-400" />
+                                            Fuel Rate (L/hr) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" step="0.01" value={refEquipmentForm.fuel_consumption_rate} onChange={e => setRefEquipmentForm({...refEquipmentForm, fuel_consumption_rate: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" step="0.1" required value={refEquipmentForm.fuel_consumption_rate} onChange={e => setRefEquipmentForm({...refEquipmentForm, fuel_consumption_rate: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.estimated_useful_life_years}>
-                                            Useful Life (years) <Info className="h-3 w-3 text-gray-400" />
+                                            Useful Life (yrs) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" value={refEquipmentForm.estimated_useful_life_years} onChange={e => setRefEquipmentForm({...refEquipmentForm, estimated_useful_life_years: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refEquipmentForm.estimated_useful_life_years} onChange={e => setRefEquipmentForm({...refEquipmentForm, estimated_useful_life_years: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.unit_cost_estimate}>
-                                            Unit Cost Estimate (₱) <Info className="h-3 w-3 text-gray-400" />
+                                            Est. Unit Cost <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" value={refEquipmentForm.unit_cost_estimate} onChange={e => setRefEquipmentForm({...refEquipmentForm, unit_cost_estimate: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refEquipmentForm.unit_cost_estimate} onChange={e => setRefEquipmentForm({...refEquipmentForm, unit_cost_estimate: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.maintenance_interval_months}>
-                                            Maint. Interval (months) <Info className="h-3 w-3 text-gray-400" />
+                                            Maint. Interval (mo) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" value={refEquipmentForm.maintenance_interval_months} onChange={e => setRefEquipmentForm({...refEquipmentForm, maintenance_interval_months: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refEquipmentForm.maintenance_interval_months} onChange={e => setRefEquipmentForm({...refEquipmentForm, maintenance_interval_months: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.required_operators}>
-                                            Required Operators <Info className="h-3 w-3 text-gray-400" />
+                                            Req. Operators <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" value={refEquipmentForm.required_operators} onChange={e => setRefEquipmentForm({...refEquipmentForm, required_operators: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refEquipmentForm.required_operators} onChange={e => setRefEquipmentForm({...refEquipmentForm, required_operators: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={EQUIPMENT_TOOLTIPS.safety_gear_required}>
-                                            Safety Gear Required <Info className="h-3 w-3 text-gray-400" />
+                                            Safety Gear <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" value={refEquipmentForm.safety_gear_required} onChange={e => setRefEquipmentForm({...refEquipmentForm, safety_gear_required: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refEquipmentForm.safety_gear_required} onChange={e => setRefEquipmentForm({...refEquipmentForm, safety_gear_required: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                </div>
+                            ) : activeTab === 'Agricultural Input Reference' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.name}>
+                                            Product Name <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.name} onChange={e => setRefInputForm({...refInputForm, name: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.input_type}>
+                                            Input Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.input_type} onChange={e => setRefInputForm({...refInputForm, input_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.sub_type}>
+                                            Sub-Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.sub_type} onChange={e => setRefInputForm({...refInputForm, sub_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.standard_uom}>
+                                            Standard UOM <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.standard_uom} onChange={e => setRefInputForm({...refInputForm, standard_uom: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.avg_price_2026}>
+                                            Avg Price (2026) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInputForm.avg_price_2026} onChange={e => setRefInputForm({...refInputForm, avg_price_2026: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.fpa_registration_no}>
+                                            FPA Reg No. <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.fpa_registration_no} onChange={e => setRefInputForm({...refInputForm, fpa_registration_no: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.shelf_life_months}>
+                                            Shelf Life (mo) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInputForm.shelf_life_months} onChange={e => setRefInputForm({...refInputForm, shelf_life_months: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.application_rate_per_ha}>
+                                            App. Rate (/ha) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInputForm.application_rate_per_ha} onChange={e => setRefInputForm({...refInputForm, application_rate_per_ha: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INPUT_TOOLTIPS.hazchem_rating}>
+                                            Hazchem Rating <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInputForm.hazchem_rating} onChange={e => setRefInputForm({...refInputForm, hazchem_rating: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                </div>
+                            ) : activeTab === 'Infrastructure Reference' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.name}>
+                                            Project Name <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.name} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, name: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.infra_type}>
+                                            Infra Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.infra_type} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, infra_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.sub_type}>
+                                            Sub-Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.sub_type} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, sub_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.standard_uom}>
+                                            Standard Unit <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.standard_uom} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, standard_uom: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.avg_cost_2026}>
+                                            Avg. Cost (2026) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInfrastructureForm.avg_cost_2026} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, avg_cost_2026: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.typical_duration_days}>
+                                            Typical Duration (days) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInfrastructureForm.typical_duration_days} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, typical_duration_days: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.design_life_years}>
+                                            Design Life (yrs) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refInfrastructureForm.design_life_years} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, design_life_years: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.maintenance_frequency}>
+                                            Maint. Freq <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.maintenance_frequency} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, maintenance_frequency: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.environmental_impact_rating}>
+                                            Env. Impact <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refInfrastructureForm.environmental_impact_rating} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, environmental_impact_rating: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                </div>
+                            ) : activeTab === 'Training Reference' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.name}>
+                                            Training Title <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.name} onChange={e => setRefTrainingForm({...refTrainingForm, name: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.training_type}>
+                                            Training Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.training_type} onChange={e => setRefTrainingForm({...refTrainingForm, training_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.sub_type}>
+                                            Sub-Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.sub_type} onChange={e => setRefTrainingForm({...refTrainingForm, sub_type: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.standard_uom}>
+                                            Standard Unit <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.standard_uom} onChange={e => setRefTrainingForm({...refTrainingForm, standard_uom: e.target.value})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.duration_days}>
+                                            Duration (days) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refTrainingForm.duration_days} onChange={e => setRefTrainingForm({...refTrainingForm, duration_days: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.avg_cost_per_pax_2026}>
+                                            Avg. Cost/Pax (2026) <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refTrainingForm.avg_cost_per_pax_2026} onChange={e => setRefTrainingForm({...refTrainingForm, avg_cost_per_pax_2026: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.min_pax}>
+                                            Min Pax <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refTrainingForm.min_pax} onChange={e => setRefTrainingForm({...refTrainingForm, min_pax: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.max_pax}>
+                                            Max Pax <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="number" required value={refTrainingForm.max_pax} onChange={e => setRefTrainingForm({...refTrainingForm, max_pax: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.certification_level}>
+                                            Certification Level <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.certification_level} onChange={e => setRefTrainingForm({...refTrainingForm, certification_level: e.target.value})} className={commonInputClasses} />
                                     </div>
                                 </div>
                             ) : activeTab === 'GIDA' ? (

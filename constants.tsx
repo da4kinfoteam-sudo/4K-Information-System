@@ -577,6 +577,45 @@ export interface RefEquipment {
     safety_gear_required: string;
 }
 
+export interface RefInput {
+    id: string;
+    input_type: string;
+    sub_type: string;
+    name: string;
+    standard_uom: string;
+    avg_price_2026: number;
+    fpa_registration_no: string;
+    shelf_life_months: number;
+    application_rate_per_ha: number;
+    hazchem_rating: string;
+}
+
+export interface RefInfrastructure {
+    id: string;
+    infra_type: string;
+    sub_type: string;
+    name: string;
+    standard_uom: string;
+    avg_cost_2026: number;
+    design_life_years: number;
+    maintenance_frequency: string;
+    typical_duration_days: number;
+    environmental_impact_rating: string;
+}
+
+export interface RefTrainingReference {
+    id: string;
+    training_type: string;
+    sub_type: string;
+    name: string;
+    standard_uom: string;
+    avg_cost_per_pax_2026: number;
+    duration_days: number;
+    min_pax: number;
+    max_pax: number;
+    certification_level: string;
+}
+
 export const equipmentCategories = [
     'Land Preparation',
     'Crop Establishment',
