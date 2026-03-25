@@ -592,15 +592,14 @@ export interface RefInput {
 
 export interface RefInfrastructure {
     id: string;
-    infra_type: string;
-    sub_type: string;
     name: string;
-    standard_uom: string;
-    avg_cost_2026: number;
-    design_life_years: number;
-    maintenance_frequency: string;
-    typical_duration_days: number;
-    environmental_impact_rating: string;
+    category: string;
+    structure_type: string;
+    capacity_rating: string;
+    estimated_useful_life_years: number;
+    unit_cost_estimate: number;
+    maintenance_interval_months: number;
+    required_permits: string;
 }
 
 export interface RefTrainingReference {

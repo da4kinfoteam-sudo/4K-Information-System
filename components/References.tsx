@@ -122,15 +122,14 @@ const INPUT_TOOLTIPS = {
 };
 
 const INFRASTRUCTURE_TOOLTIPS = {
-    infra_type: "The primary classification of the structure (e.g. Irrigation, Post-Harvest, Access Road).",
-    sub_type: "The specific design or material used (e.g. 'Concrete Lined' for canals or 'Solar-Powered' for pumps).",
     name: "The standard name of the infrastructure project.",
-    standard_uom: "The unit of measurement for the project size (e.g. Linear Meter; Square Meter; or Unit).",
-    avg_cost_2026: "The current DPWH or DA standard cost used for feasibility and budgeting.",
-    design_life_years: "The expected number of years the structure will remain functional before major rehabilitation.",
-    maintenance_frequency: "How often technical maintenance is required (e.g. 'Annual'; 'Quarterly'; or 'Every 5 years').",
-    typical_duration_days: "Estimated number of days required for construction or installation.",
-    environmental_impact_rating: "Potential ecological effect or required mitigation (e.g. 'Low Impact' or 'Erosion Control Required')."
+    category: "The primary classification of the structure (e.g. Post-Harvest, Nursery, Livestock).",
+    structure_type: "The specific design or material used (e.g. 'Concrete/Steel', 'GI Pipe/Mesh').",
+    capacity_rating: "The size or output capacity (e.g. '5000 Bags', '10 Metric Tons').",
+    estimated_useful_life_years: "The expected number of years the structure will remain functional.",
+    unit_cost_estimate: "The current standard cost used for feasibility and budgeting.",
+    maintenance_interval_months: "How often technical maintenance is required in months.",
+    required_permits: "List of necessary documents (e.g. ECC, Building Permit, DAR Clearance)."
 };
 
 const TRAINING_TOOLTIPS = {
@@ -253,15 +252,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     // --- Infrastructure Form State ---
     const [refInfrastructureForm, setRefInfrastructureForm] = useState({
-        infra_type: '',
-        sub_type: '',
         name: '',
-        standard_uom: '',
-        avg_cost_2026: 0,
-        design_life_years: 0,
-        maintenance_frequency: '',
-        typical_duration_days: 0,
-        environmental_impact_rating: ''
+        category: '',
+        structure_type: '',
+        capacity_rating: '',
+        estimated_useful_life_years: 10,
+        unit_cost_estimate: 0,
+        maintenance_interval_months: 12,
+        required_permits: ''
     });
 
     // --- Trainings Form State ---
@@ -569,8 +567,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             const lower = searchTerm.toLowerCase();
             items = items.filter(i => 
                 (i.name || '').toLowerCase().includes(lower) ||
-                (i.infra_type || '').toLowerCase().includes(lower) ||
-                (i.sub_type || '').toLowerCase().includes(lower)
+                (i.category || '').toLowerCase().includes(lower) ||
+                (i.structure_type || '').toLowerCase().includes(lower)
             );
         }
         if (sortConfig) {
@@ -708,8 +706,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             fpa_registration_no: '', shelf_life_months: 0, application_rate_per_ha: 0, hazchem_rating: ''
         });
         setRefInfrastructureForm({
-            infra_type: '', sub_type: '', name: '', standard_uom: '', avg_cost_2026: 0,
-            design_life_years: 0, maintenance_frequency: '', typical_duration_days: 0, environmental_impact_rating: ''
+            name: '',
+            category: '',
+            structure_type: '',
+            capacity_rating: '',
+            estimated_useful_life_years: 10,
+            unit_cost_estimate: 0,
+            maintenance_interval_months: 12,
+            required_permits: ''
         });
         setRefTrainingForm({
             title: '',
@@ -808,15 +812,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             });
         } else if (activeTab === 'Infrastructure Reference') {
             setRefInfrastructureForm({
-                infra_type: item.infra_type,
-                sub_type: item.sub_type,
-                name: item.name,
-                standard_uom: item.standard_uom,
-                avg_cost_2026: item.avg_cost_2026,
-                design_life_years: item.design_life_years,
-                maintenance_frequency: item.maintenance_frequency,
-                typical_duration_days: item.typical_duration_days,
-                environmental_impact_rating: item.environmental_impact_rating
+                name: item.name || '',
+                category: item.category || '',
+                structure_type: item.structure_type || '',
+                capacity_rating: item.capacity_rating || '',
+                estimated_useful_life_years: item.estimated_useful_life_years || 10,
+                unit_cost_estimate: item.unit_cost_estimate || 0,
+                maintenance_interval_months: item.maintenance_interval_months || 12,
+                required_permits: item.required_permits || ''
             });
         } else if (activeTab === 'Training Reference') {
             const t = item as RefTrainingReference;
@@ -1419,17 +1422,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Agricultural_Input_Reference_Template.xlsx';
         } else if (activeTab === 'Infrastructure Reference') {
-            const headers = ['infra_type', 'sub_type', 'name', 'standard_uom', 'avg_cost_2026', 'design_life_years', 'maintenance_frequency', 'typical_duration_days', 'environmental_impact_rating'];
+            const headers = ['name', 'category', 'structure_type', 'capacity_rating', 'estimated_useful_life_years', 'unit_cost_estimate', 'maintenance_interval_months', 'required_permits'];
             const example = [{
-                infra_type: 'Irrigation',
-                sub_type: 'Concrete Lined',
                 name: 'Communal Irrigation System',
-                standard_uom: 'Linear Meter',
-                avg_cost_2026: 15000,
-                design_life_years: 25,
-                maintenance_frequency: 'Annual',
-                typical_duration_days: 120,
-                environmental_impact_rating: 'Low Impact'
+                category: 'Irrigation',
+                structure_type: 'Concrete Lined',
+                capacity_rating: '500 hectares',
+                estimated_useful_life_years: 25,
+                unit_cost_estimate: 15000,
+                maintenance_interval_months: 12,
+                required_permits: 'ECC, Water Permit'
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Infrastructure_Reference_Template.xlsx';
@@ -1659,15 +1661,14 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 } else if (activeTab === 'Infrastructure Reference') {
                     const newItems: RefInfrastructure[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
-                        infra_type: row.infra_type || '',
-                        sub_type: row.sub_type || '',
                         name: row.name || '',
-                        standard_uom: row.standard_uom || '',
-                        avg_cost_2026: Number(row.avg_cost_2026) || 0,
-                        design_life_years: Number(row.design_life_years) || 0,
-                        maintenance_frequency: row.maintenance_frequency || '',
-                        typical_duration_days: Number(row.typical_duration_days) || 0,
-                        environmental_impact_rating: row.environmental_impact_rating || ''
+                        category: row.category || '',
+                        structure_type: row.structure_type || '',
+                        capacity_rating: row.capacity_rating || '',
+                        estimated_useful_life_years: Number(row.estimated_useful_life_years) || 10,
+                        unit_cost_estimate: Number(row.unit_cost_estimate) || 0,
+                        maintenance_interval_months: Number(row.maintenance_interval_months) || 12,
+                        required_permits: row.required_permits || ''
                     })).filter(i => i.name);
 
                     if (supabase) {
@@ -1793,17 +1794,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 </div>
             )}
 
-            {/* Header with Title and Add Button */}
+            {/* Header with Title */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 className="text-3xl font-bold text-gray-800 dark:text-white">System References</h2>
-                {canEdit && (
-                    <button 
-                        onClick={handleOpenAdd}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
-                    >
-                        + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
-                    </button>
-                )}
             </div>
 
             {/* Tab Groups */}
@@ -1821,10 +1814,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 else if (group === 'Policy References') setActiveTab('GIDA');
                                 setSearchTerm('');
                             }}
-                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                            className={`whitespace-nowrap py-2 px-6 rounded-md font-medium text-sm transition-colors ${
                                 activeGroup === group
-                                    ? 'border-emerald-600 text-emerald-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                                    ? 'bg-emerald-600 text-white shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800'
                             }`}
                         >
                             {group}
@@ -1884,6 +1877,12 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
+                        <button 
+                            onClick={handleOpenAdd}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
+                        >
+                            + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                        </button>
                         <button 
                             onClick={handleDownloadTemplate}
                             className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
@@ -1985,8 +1984,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     <>
                                         <th className="px-6 py-3 w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={INFRASTRUCTURE_TOOLTIPS.name} />
-                                        <SortableHeader label="Type" sortKey="infra_type" tooltip={INFRASTRUCTURE_TOOLTIPS.infra_type} />
-                                        <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={INFRASTRUCTURE_TOOLTIPS.sub_type} />
+                                        <SortableHeader label="Category" sortKey="category" tooltip={INFRASTRUCTURE_TOOLTIPS.category} />
+                                        <SortableHeader label="Structure Type" sortKey="structure_type" tooltip={INFRASTRUCTURE_TOOLTIPS.structure_type} />
                                     </>
                                 ) : activeTab === 'Training Reference' ? (
                                     <>
@@ -2105,8 +2104,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                         </button>
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.infra_type}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.sub_type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.category}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.structure_type}</td>
                                                 </>
                                             ) : activeTab === 'Training Reference' ? (
                                                 <>
@@ -2323,22 +2322,21 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Standard Unit: <span className="text-gray-900 dark:text-white font-medium">{item.standard_uom}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Design Life: <span className="text-gray-900 dark:text-white font-medium">{item.design_life_years} years</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Typical Duration: <span className="text-gray-900 dark:text-white font-medium">{item.typical_duration_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Capacity Rating: <span className="text-gray-900 dark:text-white font-medium">{item.capacity_rating}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Estimated Useful Life: <span className="text-gray-900 dark:text-white font-medium">{item.estimated_useful_life_years} years</span></p>
                                                             </div>
                                                         </div>
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Lifecycle & Cost</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Cost (2026): <span className="text-gray-900 dark:text-white font-medium">₱{item.avg_cost_2026?.toLocaleString()}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Maint. Frequency: <span className="text-gray-900 dark:text-white font-medium">{item.maintenance_frequency}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Unit Cost Estimate: <span className="text-gray-900 dark:text-white font-medium">₱{item.unit_cost_estimate?.toLocaleString()}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Maint. Interval: <span className="text-gray-900 dark:text-white font-medium">{item.maintenance_interval_months} months</span></p>
                                                             </div>
                                                         </div>
                                                         <div className="space-y-3">
-                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Impact</h4>
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Compliance</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Env. Impact Rating: <span className="text-gray-900 dark:text-white font-medium">{item.environmental_impact_rating}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Required Permits: <span className="text-gray-900 dark:text-white font-medium">{item.required_permits}</span></p>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2856,52 +2854,46 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <input type="text" required value={refInfrastructureForm.name} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, name: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.infra_type}>
-                                            Infra Type <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.category}>
+                                            Category <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refInfrastructureForm.infra_type} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, infra_type: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refInfrastructureForm.category} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, category: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.sub_type}>
-                                            Sub-Type <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.structure_type}>
+                                            Structure Type <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refInfrastructureForm.sub_type} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, sub_type: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refInfrastructureForm.structure_type} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, structure_type: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.standard_uom}>
-                                            Standard Unit <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.capacity_rating}>
+                                            Capacity Rating <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refInfrastructureForm.standard_uom} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, standard_uom: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refInfrastructureForm.capacity_rating} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, capacity_rating: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.avg_cost_2026}>
-                                            Avg. Cost (2026) <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.unit_cost_estimate}>
+                                            Unit Cost Estimate <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refInfrastructureForm.avg_cost_2026} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, avg_cost_2026: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refInfrastructureForm.unit_cost_estimate} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, unit_cost_estimate: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.typical_duration_days}>
-                                            Typical Duration (days) <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.estimated_useful_life_years}>
+                                            Estimated Useful Life (Years) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refInfrastructureForm.typical_duration_days} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, typical_duration_days: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refInfrastructureForm.estimated_useful_life_years} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, estimated_useful_life_years: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.design_life_years}>
-                                            Design Life (yrs) <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.maintenance_interval_months}>
+                                            Maint. Interval (Months) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refInfrastructureForm.design_life_years} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, design_life_years: Number(e.target.value)})} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.maintenance_frequency}>
-                                            Maint. Freq <Info className="h-3 w-3 text-gray-400" />
-                                        </label>
-                                        <input type="text" required value={refInfrastructureForm.maintenance_frequency} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, maintenance_frequency: e.target.value})} className={commonInputClasses} />
+                                        <input type="number" required value={refInfrastructureForm.maintenance_interval_months} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, maintenance_interval_months: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.environmental_impact_rating}>
-                                            Env. Impact <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={INFRASTRUCTURE_TOOLTIPS.required_permits}>
+                                            Required Permits <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refInfrastructureForm.environmental_impact_rating} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, environmental_impact_rating: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" value={refInfrastructureForm.required_permits} onChange={e => setRefInfrastructureForm({...refInfrastructureForm, required_permits: e.target.value})} className={commonInputClasses} placeholder="e.g. ECC, Building Permit" />
                                     </div>
                                 </div>
                             ) : activeTab === 'Training Reference' ? (
