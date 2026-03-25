@@ -49,6 +49,7 @@ type MonthCalProps = {
     minDate?: Date;
     maxDate?: Date;
     disabledDates?: Date[];
+    defaultYear?: number;
 };
 
 type ButtonVariant = "default" | "outline" | "ghost" | "link" | "destructive" | "secondary" | null | undefined;
@@ -80,6 +81,7 @@ function MonthPicker({
                         minDate={minDate}
                         maxDate={maxDate}
                         disabledDates={disabledDates}
+                        defaultYear={props.defaultYear}
                     ></MonthCal>
                 </div>
             </div>
@@ -87,8 +89,8 @@ function MonthPicker({
     );
 }
 
-function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, maxDate, disabledDates, onYearBackward, onYearForward }: MonthCalProps) {
-    const [year, setYear] = React.useState<number>(selectedMonth?.getFullYear() ?? new Date().getFullYear());
+function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, maxDate, disabledDates, onYearBackward, onYearForward, defaultYear }: MonthCalProps) {
+    const [year, setYear] = React.useState<number>(selectedMonth?.getFullYear() ?? defaultYear ?? new Date().getFullYear());
     const [month, setMonth] = React.useState<number>(selectedMonth?.getMonth() ?? new Date().getMonth());
     const [menuYear, setMenuYear] = React.useState<number>(year);
 

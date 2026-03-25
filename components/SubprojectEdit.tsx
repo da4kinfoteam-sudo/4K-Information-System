@@ -1,6 +1,7 @@
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Info } from 'lucide-react';
+import { MonthYearPicker } from './ui/MonthYearPicker';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -219,39 +220,6 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setConfirmDeliveryDate(null);
     };
 
-    const handleEstimatedCompletionMonthChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-        const monthIndex = e.target.value;
-        if (monthIndex === '') {
-            setFormData(prev => ({ ...prev, estimatedCompletionDate: '' }));
-            return;
-        }
-        const mIndex = parseInt(monthIndex);
-        const currentYear = getYearFromDateStr(formData.estimatedCompletionDate) || formData.fundingYear || new Date().getFullYear();
-        const dateStr = `${currentYear}-${String(mIndex + 1).padStart(2, '0')}-01`;
-        setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-        
-        if (!currentDetail.deliveryDate) {
-            setCurrentDetail(prev => ({ ...prev, deliveryDate: dateStr }));
-        }
-    };
-
-    const handleEstimatedCompletionYearChange = (e: React.ChangeEvent<HTMLSelectElement>): void => {
-        const year = e.target.value;
-        if (!formData.estimatedCompletionDate) {
-            const dateStr = `${year}-01-01`;
-            setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-            return;
-        }
-        const month = getMonthFromDateStr(formData.estimatedCompletionDate);
-        if (month === '') {
-            const dateStr = `${year}-01-01`;
-            setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-            return;
-        }
-        const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-        setFormData(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-    };
-
     const availableUacsCodes = useMemo(() => {
         let codes: { code: string, desc: string }[] = [];
         if (currentDetail.expenseParticular) {
@@ -273,6 +241,34 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         }
         return codes;
     }, [currentDetail.expenseParticular, currentDetail.objectType, uacsCodes]);
+
+    const groupedCommodities = useMemo(() => {
+        const groups: { [key: string]: RefCommodity[] } = {};
+        refCommodities.forEach(c => {
+            const group = c.commodity_group || 'Others';
+            if (!groups[group]) groups[group] = [];
+            groups[group].push(c);
+        });
+        const sortedGroupNames = Object.keys(groups).sort();
+        sortedGroupNames.forEach(name => {
+            groups[name].sort((a, b) => a.name.localeCompare(b.name));
+        });
+        return { names: sortedGroupNames, groups };
+    }, [refCommodities]);
+
+    const groupedLivestock = useMemo(() => {
+        const groups: { [key: string]: RefLivestock[] } = {};
+        refLivestock.forEach(c => {
+            const group = c.category || 'Others';
+            if (!groups[group]) groups[group] = [];
+            groups[group].push(c);
+        });
+        const sortedGroupNames = Object.keys(groups).sort();
+        sortedGroupNames.forEach(name => {
+            groups[name].sort((a, b) => a.name.localeCompare(b.name));
+        });
+        return { names: sortedGroupNames, groups };
+    }, [refLivestock]);
 
     const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
@@ -606,29 +602,20 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium">Estimated Completion {!subproject && <span className="text-red-500">*</span>}</label>
-                                    <div className="flex gap-2">
-                                        <select 
-                                            name="estimatedCompletionMonth" 
-                                            value={getMonthFromDateStr(formData.estimatedCompletionDate)} 
-                                            onChange={handleEstimatedCompletionMonthChange}
-                                            className={`${commonInputClasses} flex-1 ${missingFields.includes('estimatedCompletionDate') ? 'border-red-500 ring-1 ring-red-500' : ''}`}
-                                            required={!subproject}
-                                        >
-                                            <option value="">Select Month</option>
-                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                        </select>
-                                        <select
-                                            name="estimatedCompletionYear"
-                                            value={getYearFromDateStr(formData.estimatedCompletionDate) || formData.fundingYear || new Date().getFullYear()}
-                                            onChange={handleEstimatedCompletionYearChange}
-                                            className={`${commonInputClasses} w-32`}
-                                        >
-                                            {Array.from({ length: 10 }, (_, i) => {
-                                                const y = (formData.fundingYear || new Date().getFullYear()) - 2 + i;
-                                                return <option key={y} value={y}>{y}</option>;
-                                            })}
-                                        </select>
-                                    </div>
+                                    <MonthYearPicker
+                                        value={formData.estimatedCompletionDate}
+                                        onChange={(val) => {
+                                            const year = parseInt(val.split('-')[0]);
+                                            if (year > (formData.fundingYear || new Date().getFullYear())) {
+                                                alert(`Estimated completion year cannot be beyond the funding year (${formData.fundingYear}).`);
+                                                return;
+                                            }
+                                            setFormData(prev => ({ ...prev, estimatedCompletionDate: val }));
+                                        }}
+                                        placeholder="Select completion date"
+                                        className={missingFields.includes('estimatedCompletionDate') ? 'border-red-500 ring-1 ring-red-500' : ''}
+                                        defaultYear={formData.fundingYear}
+                                    />
                                     {getYearFromDateStr(formData.estimatedCompletionDate) && getYearFromDateStr(formData.estimatedCompletionDate) !== (formData.fundingYear || new Date().getFullYear()).toString() && (
                                         <p className="text-xs text-amber-600 mt-1">Note: Estimated completion year is different from the funding year.</p>
                                     )}
@@ -725,8 +712,20 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             className={commonInputClasses}
                                         >
                                             <option value="">Select Commodity</option>
-                                            {currentCommodity.typeName === 'Crop' && refCommodities.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                            {currentCommodity.typeName === 'Livestock' && refLivestock.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                            {currentCommodity.typeName === 'Crop' && groupedCommodities.names.map(groupName => (
+                                                <optgroup key={groupName} label={groupName}>
+                                                    {groupedCommodities.groups[groupName].map(c => (
+                                                        <option key={c.id} value={c.name}>{c.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+                                            {currentCommodity.typeName === 'Livestock' && groupedLivestock.names.map(groupName => (
+                                                <optgroup key={groupName} label={groupName}>
+                                                    {groupedLivestock.groups[groupName].map(c => (
+                                                        <option key={c.id} value={c.name}>{c.name}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
                                         </select>
                                     </div>
                                     <div>
@@ -755,34 +754,42 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                                 const ref = refCommodities.find(c => c.name === currentCommodity.name);
                                                 if (!ref) return null;
                                                 return (
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-[10px] leading-tight">
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Banner Program</span>
-                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.banner_program}</span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-gray-500 block mb-1">Commodity Group</span>
-                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.commodity_group}</span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-gray-500 block mb-1">Elevation Range</span>
+                                                            <span className="text-gray-500 block">Elevation Range</span>
                                                             <span className="font-semibold text-gray-900 dark:text-white">{ref.min_elevation_masl} - {ref.max_elevation_masl} MASL</span>
                                                         </div>
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Target Yield</span>
-                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.target_yield_ha?.toLocaleString()} Kilograms/Hectares</span>
+                                                            <span className="text-gray-500 block">Slope</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.max_slope_percent}% Max</span>
                                                         </div>
-                                                        <div className="md:col-span-4 pt-2 border-t border-gray-100 dark:border-gray-700 mt-2">
-                                                            <div className="flex flex-wrap gap-4">
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="text-gray-500">Recommended Soil:</span>
-                                                                    <span className="font-medium">{ref.recommended_soil}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="text-gray-500">Climate Type:</span>
-                                                                    <span className="font-medium">{ref.climate_type_suitability}</span>
-                                                                </div>
-                                                            </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Seasonality</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">Wet: {ref.wet_season_start}, Dry: {ref.dry_season_start}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Soil Type</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.recommended_soil}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Fertilizer</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.fertilizer_npk}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Watering</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.watering_method}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Harvest Period</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.harvest_period_days} Days</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">pH Range</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.ph_min} - {ref.ph_max}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-gray-500 block">Climate Suitability</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.climate_type_suitability}</span>
                                                         </div>
                                                     </div>
                                                 );
@@ -792,22 +799,22 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                                 const ref = refLivestock.find(c => c.name === currentCommodity.name);
                                                 if (!ref) return null;
                                                 return (
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[10px] leading-tight">
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Category</span>
+                                                            <span className="text-gray-500 block">Category</span>
                                                             <span className="font-semibold text-gray-900 dark:text-white">{ref.category}</span>
                                                         </div>
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Housing Type</span>
+                                                            <span className="text-gray-500 block">Housing Type</span>
                                                             <span className="font-semibold text-gray-900 dark:text-white">{ref.housing_type}</span>
                                                         </div>
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Feed Type</span>
+                                                            <span className="text-gray-500 block">Feed Type</span>
                                                             <span className="font-semibold text-gray-900 dark:text-white">{ref.feed_type}</span>
                                                         </div>
                                                         <div>
-                                                            <span className="text-gray-500 block mb-1">Water Requirement</span>
-                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.water_requirement_liters_day} Liters/Day</span>
+                                                            <span className="text-gray-500 block">Water Requirement</span>
+                                                            <span className="font-semibold text-gray-900 dark:text-white">{ref.water_liters_per_day} Liters/Day</span>
                                                         </div>
                                                     </div>
                                                 );
@@ -819,7 +826,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 <div className="mt-6 flex flex-col md:flex-row gap-6 items-end">
                                     {currentCommodity.typeName === 'Crop' && (
                                         <div className="w-full md:w-1/3">
-                                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Auto-Computed Yield (Kilograms)</label>
+                                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Target Yield (Kilograms)</label>
                                             <div className="relative">
                                                 <input 
                                                     type="number" 
@@ -886,12 +893,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                              <div className="text-right font-bold text-gray-900 dark:text-white">Total: {formatCurrency(calculateTotalBudget(formData.details))}</div>
                              
                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
-                                <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                                <div className=""><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div className=""><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
                                 
-                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                                     <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType] || {}).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                </div>
+
+                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
                                         <label className="block text-xs font-medium">UACS Code</label>
                                         <input 
@@ -909,33 +919,66 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             ))}
                                         </datalist>
                                     </div>
+                                    <div>
+                                        <label className="block text-xs font-medium">Description</label>
+                                        <input 
+                                            type="text" 
+                                            value={availableUacsCodes.find(c => c.code === currentDetail.uacsCode)?.desc || ''} 
+                                            readOnly 
+                                            className={commonInputClasses + " py-1.5 bg-gray-100 dark:bg-gray-800"} 
+                                            placeholder="UACS Description"
+                                        />
+                                    </div>
                                 </div>
  
                                 <div>
                                     <label className="block text-xs font-medium">Delivery Month</label>
-                                    <select 
-                                        value={getMonthFromDateStr(currentDetail.deliveryDate)} 
-                                        onChange={(e) => updateDetailDateFromMonth('deliveryDate', e.target.value)} 
-                                        className={commonInputClasses + " py-1.5 text-sm"}
-                                    >
-                                        <option value="">Select Month</option>
-                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                    </select>
+                                    <MonthYearPicker
+                                        value={currentDetail.deliveryDate}
+                                        onChange={(val) => {
+                                            if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
+                                                alert("Delivery date cannot be beyond the estimated completion date.");
+                                                return;
+                                            }
+                                            setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
+                                        }}
+                                        placeholder="Select month"
+                                        defaultYear={formData.fundingYear}
+                                        className="h-9"
+                                    />
                                 </div>
                                 
                                 <div>
                                     <label className="block text-xs font-medium">Obligation Month</label>
-                                    <select value={getMonthFromDateStr(currentDetail.obligationMonth)} onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} className={commonInputClasses + " py-1.5 text-sm"}>
-                                        <option value="">Select Month</option>
-                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                    </select>
+                                    <MonthYearPicker
+                                        value={currentDetail.obligationMonth}
+                                        onChange={(val) => {
+                                            if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
+                                                alert("Obligation month cannot be beyond the estimated completion date.");
+                                                return;
+                                            }
+                                            setCurrentDetail(prev => ({ ...prev, obligationMonth: val }));
+                                        }}
+                                        placeholder="Select month"
+                                        defaultYear={formData.fundingYear}
+                                        className="h-9"
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-medium">Disbursement Month</label>
-                                    <select value={getMonthFromDateStr(currentDetail.disbursementMonth)} onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} className={commonInputClasses + " py-1.5 text-sm"}>
-                                        <option value="">Select Month</option>
-                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                    </select>
+                                    <MonthYearPicker
+                                        value={currentDetail.disbursementMonth}
+                                        onChange={(val) => {
+                                            if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
+                                                alert("Disbursement month cannot be beyond the estimated completion date.");
+                                                return;
+                                            }
+                                            setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }));
+                                        }}
+                                        placeholder="Select month"
+                                        defaultYear={formData.fundingYear}
+                                        className="h-9"
+                                    />
                                 </div>
                                 
                                 <div><label className="block text-xs font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>

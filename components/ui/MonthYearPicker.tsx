@@ -18,6 +18,7 @@ interface MonthYearPickerProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  defaultYear?: number;
 }
 
 export function MonthYearPicker({
@@ -26,6 +27,7 @@ export function MonthYearPicker({
   placeholder = "Select month",
   disabled = false,
   className,
+  defaultYear,
 }: MonthYearPickerProps) {
   const [date, setDate] = React.useState<Date | undefined>(
     value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
@@ -71,6 +73,7 @@ export function MonthYearPicker({
         <MonthPicker
           selectedMonth={date}
           onMonthSelect={handleSelect}
+          defaultYear={defaultYear}
         />
       </PopoverContent>
     </Popover>
