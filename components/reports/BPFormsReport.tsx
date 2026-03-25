@@ -355,69 +355,70 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         const mooeParticulars = Object.keys(headers.MOOE).sort();
         const coParticulars = Object.keys(headers.CO).sort();
 
-        // Row 1: Object Types
-        // PAP (A), MOOE (B..X), Total MOOE (Y), CO (Z..AA), Total CO (AB), Grand Total (AC)
-        
-        // Calculate dynamic spans
         const mooeSpan = mooeCodes.length;
         const coSpan = coCodes.length;
         
+        // Row 1: Object Types
         const row1: (string | null)[] = ["Program/Activity/Project"];
-        const row2: (string | null)[] = [null]; // Placeholder for PAP
-        const row3: (string | null)[] = [null]; // Placeholder for PAP
-
-        // MOOE Section
         if (mooeSpan > 0) {
             row1.push("MOOE");
             for(let i=1; i<mooeSpan; i++) row1.push(null);
         }
-        // Total MOOE Column in Row 1 (actually it sits beside MOOE cols)
         row1.push("Total MOOE");
-
-        // CO Section
         if (coSpan > 0) {
             row1.push("CO");
             for(let i=1; i<coSpan; i++) row1.push(null);
         }
-        // Total CO Column
         row1.push("Total CO");
         row1.push("Grand Total");
 
-        // Populate Rows 2 and 3
-        
-        // MOOE
+        // Row 2: Particulars
+        const row2: (string | null)[] = [null];
         mooeParticulars.forEach(part => {
             const codes = headers.MOOE[part].sort();
-            if(codes.length > 0) {
-                row2.push(part);
-                // Push nulls for span
-                for(let i=1; i<codes.length; i++) row2.push(null);
-                
-                codes.forEach(code => {
-                    row3.push(`${code} - ${getDescription('MOOE', part, code)}`);
-                });
-            }
+            row2.push(part);
+            for(let i=1; i<codes.length; i++) row2.push(null);
         });
         row2.push(null); // Under Total MOOE
-        row3.push(null); // Under Total MOOE
-
-        // CO
         coParticulars.forEach(part => {
             const codes = headers.CO[part].sort();
-            if(codes.length > 0) {
-                row2.push(part);
-                for(let i=1; i<codes.length; i++) row2.push(null);
-                
-                codes.forEach(code => {
-                    row3.push(`${code} - ${getDescription('CO', part, code)}`);
-                });
-            }
+            row2.push(part);
+            for(let i=1; i<codes.length; i++) row2.push(null);
         });
         row2.push(null); // Under Total CO
-        row3.push(null); // Under Total CO
-        
         row2.push(null); // Under Grand Total
+
+        // Row 3: Descriptions
+        const row3: (string | null)[] = [null];
+        mooeParticulars.forEach(part => {
+            const codes = headers.MOOE[part].sort();
+            codes.forEach(code => {
+                row3.push(getDescription('MOOE', part, code));
+            });
+        });
+        row3.push(null); // Under Total MOOE
+        coParticulars.forEach(part => {
+            const codes = headers.CO[part].sort();
+            codes.forEach(code => {
+                row3.push(getDescription('CO', part, code));
+            });
+        });
+        row3.push(null); // Under Total CO
         row3.push(null); // Under Grand Total
+
+        // Row 4: UACS Codes
+        const row4: (string | null)[] = [null];
+        mooeParticulars.forEach(part => {
+            const codes = headers.MOOE[part].sort();
+            codes.forEach(code => row4.push(code));
+        });
+        row4.push(null); // Under Total MOOE
+        coParticulars.forEach(part => {
+            const codes = headers.CO[part].sort();
+            codes.forEach(code => row4.push(code));
+        });
+        row4.push(null); // Under Total CO
+        row4.push(null); // Under Grand Total
 
         // Flatten Data
         const flatDataRows: any[][] = [];
@@ -426,39 +427,59 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             ...coParticulars.flatMap(p => headers.CO[p].sort())
         ];
 
-        const processRows = (items: any[], prefix: string) => {
+        const calculateSummary = (items: any[]) => {
+            return items.reduce((acc, item) => {
+                acc.totalMOOE += item.totalMOOE;
+                acc.totalCO += item.totalCO;
+                allCodesOrdered.forEach((code: string) => {
+                    acc.uacsValues[code] = (acc.uacsValues[code] || 0) + (item.uacsValues[code] || 0);
+                });
+                return acc;
+            }, { totalMOOE: 0, totalCO: 0, uacsValues: allCodesOrdered.reduce((acc: any, code: string) => ({...acc, [code]: 0}), {}) });
+        };
+
+        const addSummaryRow = (label: string, items: any[], prefix: string) => {
+            const summary = calculateSummary(items);
+            const row: (string | number | null)[] = [`${prefix}${label}`];
+            allCodesOrdered.forEach(code => {
+                row.push(summary.uacsValues[code] > 0 ? Math.ceil(summary.uacsValues[code]) : null);
+            });
+            row.push(summary.totalMOOE > 0 ? Math.ceil(summary.totalMOOE) : null);
+            row.push(summary.totalCO > 0 ? Math.ceil(summary.totalCO) : null);
+            row.push((summary.totalMOOE + summary.totalCO) > 0 ? Math.ceil(summary.totalMOOE + summary.totalCO) : null);
+            flatDataRows.push(row);
+        };
+
+        const addActivityRows = (items: any[], prefix: string) => {
             items.forEach((activity: any) => {
                 const row: (string | number | null)[] = [`${prefix}${activity.name}`];
-                
-                // Add values according to ordered codes (rounded up)
                 allCodesOrdered.forEach(code => {
-                    row.push(Math.ceil(activity.uacsValues[code] || 0));
+                    row.push(activity.uacsValues[code] > 0 ? Math.ceil(activity.uacsValues[code]) : null);
                 });
-                
-                row.push(Math.ceil(activity.totalMOOE));
-                row.push(Math.ceil(activity.totalCO));
-                row.push(Math.ceil(activity.totalMOOE + activity.totalCO));
+                row.push(activity.totalMOOE > 0 ? Math.ceil(activity.totalMOOE) : null);
+                row.push(activity.totalCO > 0 ? Math.ceil(activity.totalCO) : null);
+                row.push((activity.totalMOOE + activity.totalCO) > 0 ? Math.ceil(activity.totalMOOE + activity.totalCO) : null);
                 flatDataRows.push(row);
             });
         };
 
         Object.entries(rows).forEach(([componentName, componentData]) => {
-            if (Array.isArray(componentData) && componentData.length > 0) {
-                flatDataRows.push([componentName, ...Array(allCodesOrdered.length + 3).fill(null)]);
-                processRows(componentData, "  ");
+            const isComponentExpanded = expandedRows.has(componentName);
+            if (Array.isArray(componentData)) {
+                addSummaryRow(componentName, componentData, "");
+                if (isComponentExpanded) {
+                    addActivityRows(componentData, "  ");
+                }
             } else if ((componentData as any).isNestedExpandable) {
-                let hasData = false;
-                // Check if any package has items
-                Object.values((componentData as any).packages).forEach((pkg: any) => {
-                    if (pkg.items.length > 0) hasData = true;
-                });
-
-                if(hasData) {
-                    flatDataRows.push([componentName, ...Array(allCodesOrdered.length + 3).fill(null)]);
+                const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
+                addSummaryRow(componentName, allPackageItems, "");
+                
+                if (isComponentExpanded) {
                     Object.entries((componentData as any).packages).forEach(([pkgName, pkgData]: [string, any]) => {
-                        if (pkgData.items.length > 0) {
-                            flatDataRows.push([`  ${pkgName}`, ...Array(allCodesOrdered.length + 3).fill(null)]);
-                            processRows(pkgData.items, "    ");
+                        const isPkgExpanded = expandedRows.has(pkgName);
+                        addSummaryRow(pkgName, pkgData.items, "  ");
+                        if (isPkgExpanded) {
+                            addActivityRows(pkgData.items, "    ");
                         }
                     });
                 }
@@ -467,67 +488,82 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         // Add Grand Total Row
         const totalRow: (string | number | null)[] = ["GRAND TOTAL"];
-        allCodesOrdered.forEach(code => totalRow.push(Math.ceil(grandTotals.uacsValues[code] || 0)));
+        allCodesOrdered.forEach(code => totalRow.push(grandTotals.uacsValues[code] > 0 ? Math.ceil(grandTotals.uacsValues[code]) : null));
         totalRow.push(Math.ceil(grandTotals.totalMOOE), Math.ceil(grandTotals.totalCO), Math.ceil(grandTotals.totalMOOE + grandTotals.totalCO));
         flatDataRows.push(totalRow);
 
         // Combine all
-        const aoa = [row1, row2, row3, ...flatDataRows];
+        const aoa = [row1, row2, row3, row4, ...flatDataRows];
         const ws: any = XLSX.utils.aoa_to_sheet(aoa);
 
         // Setup Merges
         if(!ws['!merges']) ws['!merges'] = [];
         
-        let colIdx = 1; // Start after PAP
-        // Row 1 merges (Object Types)
+        // PAP Vertical Merge (Rows 0 to 3)
+        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
+
+        let colIdx = 1; 
+        // MOOE Group Merge
         if(mooeSpan > 0) {
             ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + mooeSpan - 1 } });
+            
+            // MOOE Particulars Merges
+            let partColIdx = colIdx;
+            mooeParticulars.forEach(part => {
+                const codesCount = headers.MOOE[part].length;
+                if (codesCount > 1) {
+                    ws['!merges'].push({ s: { r: 1, c: partColIdx }, e: { r: 1, c: partColIdx + codesCount - 1 } });
+                }
+                partColIdx += codesCount;
+            });
             colIdx += mooeSpan;
         }
-        colIdx++; // Total MOOE (No merge needed if just 1 cell, but rows 1-3 should likely merge vertically?)
-        // Let's merge vertical titles: Total MOOE, Total CO, Grand Total
-        ws['!merges'].push({ s: { r: 0, c: colIdx - 1 }, e: { r: 2, c: colIdx - 1 } }); // Total MOOE
+        
+        // Total MOOE Vertical Merge
+        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
+        colIdx++;
 
+        // CO Group Merge
         if(coSpan > 0) {
             ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + coSpan - 1 } });
+            
+            // CO Particulars Merges
+            let partColIdx = colIdx;
+            coParticulars.forEach(part => {
+                const codesCount = headers.CO[part].length;
+                if (codesCount > 1) {
+                    ws['!merges'].push({ s: { r: 1, c: partColIdx }, e: { r: 1, c: partColIdx + codesCount - 1 } });
+                }
+                partColIdx += codesCount;
+            });
             colIdx += coSpan;
         }
-        colIdx++; // Total CO
-        ws['!merges'].push({ s: { r: 0, c: colIdx - 1 }, e: { r: 2, c: colIdx - 1 } }); // Total CO
         
-        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 2, c: colIdx } }); // Grand Total (Last col)
+        // Total CO Vertical Merge
+        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
+        colIdx++;
+        
+        // Grand Total Vertical Merge
+        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
 
-        // PAP Vertical Merge
-        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } });
-
-        // Row 2 merges (Particulars)
-        colIdx = 1;
-        mooeParticulars.forEach(part => {
-            const count = headers.MOOE[part].length;
-            if (count > 1) {
-                ws['!merges'].push({ s: { r: 1, c: colIdx }, e: { r: 1, c: colIdx + count - 1 } });
-            }
-            colIdx += count;
-        });
-        colIdx++; // Skip Total MOOE
-        coParticulars.forEach(part => {
-            const count = headers.CO[part].length;
-            if (count > 1) {
-                ws['!merges'].push({ s: { r: 1, c: colIdx }, e: { r: 1, c: colIdx + count - 1 } });
-            }
-            colIdx += count;
-        });
-
-        // Formatting Currency
-        // Get range
+        // Apply alignment (center) to headers
         const range = XLSX.utils.decode_range(ws['!ref']);
-        for(let R = 3; R <= range.e.r; ++R) {
-            for(let C = 1; C <= range.e.c; ++C) {
+        for (let R = 0; R <= 3; ++R) {
+            for (let C = range.s.c; C <= range.e.c; ++C) {
                 const cell_address = { c: C, r: R };
                 const cell_ref = XLSX.utils.encode_cell(cell_address);
-                if(ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
-                    ws[cell_ref].t = 'n';
-                    // Whole number currency
+                if (!ws[cell_ref]) continue;
+                if (!ws[cell_ref].s) ws[cell_ref].s = {};
+                ws[cell_ref].s.alignment = { horizontal: "center", vertical: "center" };
+            }
+        }
+
+        // Apply number format to data cells
+        for (let R = 4; R <= range.e.r; ++R) {
+            for (let C = 1; C <= range.e.c; ++C) {
+                const cell_address = { c: C, r: R };
+                const cell_ref = XLSX.utils.encode_cell(cell_address);
+                if (ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
                     ws[cell_ref].z = '#,##0';
                 }
             }
@@ -577,7 +613,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
                 <div className="flex gap-2">
                     <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+                    <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700">Download XLSX</button>
                 </div>
             </div>
             <div id="bp-forms-table" className="overflow-x-auto overflow-y-auto max-h-[75vh] relative custom-scrollbar">
