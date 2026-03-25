@@ -175,18 +175,18 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         const investmentMap = new Map<string, number>();
 
         // Calculate from subprojects
-        subprojects.forEach(sp => {
+        (subprojects || []).forEach(sp => {
             if (sp.status === 'Completed') {
-                const budget = sp.details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+                const budget = (sp.details || []).reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
                 const currentInvestment = investmentMap.get(sp.indigenousPeopleOrganization) || 0;
                 investmentMap.set(sp.indigenousPeopleOrganization, currentInvestment + budget);
             }
         });
 
         // Calculate from trainings (filtered from activities)
-        activities.filter(a => a.type === 'Training' && a.status === 'Completed').forEach(t => {
-            const cost = t.expenses.reduce((s, e) => s + e.amount, 0);
-            t.participatingIpos.forEach(ipoName => {
+        (activities || []).filter(a => a.type === 'Training' && a.status === 'Completed').forEach(t => {
+            const cost = (t.expenses || []).reduce((s, e) => s + e.amount, 0);
+            (t.participatingIpos || []).forEach(ipoName => {
                 const currentInvestment = investmentMap.get(ipoName) || 0;
                 investmentMap.set(ipoName, currentInvestment + cost);
             });
@@ -199,16 +199,16 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         const allocationMap = new Map<string, number>();
 
         // Calculate from subprojects (regardless of status)
-        subprojects.forEach(sp => {
-            const budget = sp.details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+        (subprojects || []).forEach(sp => {
+            const budget = (sp.details || []).reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
             const currentAllocation = allocationMap.get(sp.indigenousPeopleOrganization) || 0;
             allocationMap.set(sp.indigenousPeopleOrganization, currentAllocation + budget);
         });
 
         // Calculate from trainings (regardless of status)
-        activities.filter(a => a.type === 'Training').forEach(t => {
-            const cost = t.expenses.reduce((s, e) => s + e.amount, 0);
-            t.participatingIpos.forEach(ipoName => {
+        (activities || []).filter(a => a.type === 'Training').forEach(t => {
+            const cost = (t.expenses || []).reduce((s, e) => s + e.amount, 0);
+            (t.participatingIpos || []).forEach(ipoName => {
                 const currentAllocation = allocationMap.get(ipoName) || 0;
                 allocationMap.set(ipoName, currentAllocation + cost);
             });
@@ -278,14 +278,14 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
         // New Filters
         if (flagFilter.withSubprojects) {
-            const iposWithSP = new Set(subprojects.map(sp => sp.indigenousPeopleOrganization));
+            const iposWithSP = new Set((subprojects || []).map(sp => sp.indigenousPeopleOrganization));
             filteredIpos = filteredIpos.filter(ipo => iposWithSP.has(ipo.name));
         }
 
         if (flagFilter.withTrainings) {
             const iposWithTr = new Set();
-            activities.filter(a => a.type === 'Training').forEach(t => {
-                t.participatingIpos.forEach(p => iposWithTr.add(p));
+            (activities || []).filter(a => a.type === 'Training').forEach(t => {
+                (t.participatingIpos || []).forEach(p => iposWithTr.add(p));
             });
             filteredIpos = filteredIpos.filter(ipo => iposWithTr.has(ipo.name));
         }
@@ -297,7 +297,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.location.toLowerCase().includes(lowercasedSearchTerm) ||
                 // Integrated Commodity Search
-                ipo.commodities.some(c => 
+                (ipo.commodities || []).some(c => 
                     c.particular.toLowerCase().includes(lowercasedSearchTerm) ||
                     c.type.toLowerCase().includes(lowercasedSearchTerm)
                 )
@@ -733,7 +733,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     }
 
     // Filter activities for display
-    const linkedTrainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
+    const linkedTrainings = useMemo(() => (activities || []).filter(a => a.type === 'Training'), [activities]);
 
     const renderListView = () => (
         <>
@@ -853,12 +853,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {paginatedIpos.map((ipo) => {
-                                const relatedSubprojects = subprojects.filter(sp => sp.indigenousPeopleOrganization === ipo.name);
+                                const relatedSubprojects = (subprojects || []).filter(sp => sp.indigenousPeopleOrganization === ipo.name);
                                 const completedSubprojects = relatedSubprojects.filter(sp => sp.status === 'Completed');
                                 const totalInvestment = calculateTotalInvestment(ipo.name);
                                 const totalAllocation = calculateTotalAllocation(ipo.name);
-                                const totalLandArea = ipo.commodities.reduce((sum, c) => sum + (Number(c.value) || 0), 0);
-                                const trainingCount = linkedTrainings.filter(t => t.participatingIpos.includes(ipo.name) && t.status === 'Completed').length;
+                                const totalLandArea = (ipo.commodities || []).reduce((sum, c) => sum + (Number(c.value) || 0), 0);
+                                const trainingCount = linkedTrainings.filter(t => (t.participatingIpos || []).includes(ipo.name) && t.status === 'Completed').length;
 
                                 return (
                                 <React.Fragment key={ipo.id}>

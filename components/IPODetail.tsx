@@ -257,39 +257,39 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     }, []);
 
     // Unique Years for Filters
-    const spYears = useMemo(() => Array.from(new Set(subprojects.map(s => s.fundingYear))).filter(Boolean).sort().reverse(), [subprojects]);
-    const trYears = useMemo(() => Array.from(new Set(trainings.map(t => t.fundingYear))).filter(Boolean).sort().reverse(), [trainings]);
+    const spYears = useMemo(() => Array.from(new Set((subprojects || []).map(s => s.fundingYear))).filter(Boolean).sort().reverse(), [subprojects]);
+    const trYears = useMemo(() => Array.from(new Set((trainings || []).map(t => t.fundingYear))).filter(Boolean).sort().reverse(), [trainings]);
 
     // Calculate Statistics for Overview
     const overviewStats = useMemo(() => {
         // 1. Completed Counts
-        const completedSubprojects = subprojects.filter(s => s.status === 'Completed');
-        const completedTrainings = trainings.filter(t => !!t.actualDate); // Assuming actualDate implies completion
+        const completedSubprojects = (subprojects || []).filter(s => s.status === 'Completed');
+        const completedTrainings = (trainings || []).filter(t => !!t.actualDate); // Assuming actualDate implies completion
 
         // 2. Investment Calculation
         const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
-            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+            return sum + (sp.details || []).reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
         }, 0);
 
         const trainingInvestment = completedTrainings.reduce((sum, t) => {
-            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+            return sum + (t.expenses || []).reduce((eSum, e) => eSum + e.amount, 0);
         }, 0);
 
         const totalInvestment = subprojectInvestment + trainingInvestment;
 
         // 4. Total Allocation (regardless of status)
-        const subprojectAllocation = subprojects.reduce((sum, sp) => {
-            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+        const subprojectAllocation = (subprojects || []).reduce((sum, sp) => {
+            return sum + (sp.details || []).reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
         }, 0);
 
-        const trainingAllocation = trainings.reduce((sum, t) => {
-            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+        const trainingAllocation = (trainings || []).reduce((sum, t) => {
+            return sum + (t.expenses || []).reduce((eSum, e) => eSum + e.amount, 0);
         }, 0);
 
         const totalAllocation = subprojectAllocation + trainingAllocation;
 
         // 5. Total Area (Crops only)
-        const totalArea = ipo.commodities?.reduce((sum, c) => {
+        const totalArea = (ipo.commodities || [])?.reduce((sum, c) => {
             if (c.type !== 'Livestock') {
                 return sum + (c.value || 0);
             }
@@ -297,7 +297,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
         }, 0) || 0;
 
         // 3. Income Calculation
-        const totalIncome = ipo.commodities?.reduce((sum, c) => sum + (c.averageIncome || 0), 0) || 0;
+        const totalIncome = (ipo.commodities || [])?.reduce((sum, c) => sum + (c.averageIncome || 0), 0) || 0;
 
         return {
             completedSPCount: completedSubprojects.length,
