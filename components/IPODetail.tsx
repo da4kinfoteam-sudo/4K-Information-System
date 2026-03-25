@@ -277,6 +277,25 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
         const totalInvestment = subprojectInvestment + trainingInvestment;
 
+        // 4. Total Allocation (regardless of status)
+        const subprojectAllocation = subprojects.reduce((sum, sp) => {
+            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+        }, 0);
+
+        const trainingAllocation = trainings.reduce((sum, t) => {
+            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+        }, 0);
+
+        const totalAllocation = subprojectAllocation + trainingAllocation;
+
+        // 5. Total Area (Crops only)
+        const totalArea = ipo.commodities?.reduce((sum, c) => {
+            if (c.type !== 'Livestock') {
+                return sum + (c.value || 0);
+            }
+            return sum;
+        }, 0) || 0;
+
         // 3. Income Calculation
         const totalIncome = ipo.commodities?.reduce((sum, c) => sum + (c.averageIncome || 0), 0) || 0;
 
@@ -284,6 +303,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
             completedSPCount: completedSubprojects.length,
             completedTRCount: completedTrainings.length,
             totalInvestment,
+            totalAllocation,
+            totalArea,
             totalIncome
         };
     }, [subprojects, trainings, ipo.commodities]);
@@ -818,10 +839,18 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Overview</h3>
                         
                         {/* New Stats Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
                             <div>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Total Investment</p>
                                 <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(overviewStats.totalInvestment)}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Allocation</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(overviewStats.totalAllocation)}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Area (Agri)</p>
+                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.totalArea.toLocaleString()} ha</p>
                             </div>
                              <div>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Annual Income</p>
