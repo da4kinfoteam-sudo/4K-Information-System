@@ -134,15 +134,17 @@ const INFRASTRUCTURE_TOOLTIPS = {
 };
 
 const TRAINING_TOOLTIPS = {
-    training_type: "The focus area of the training (e.g. Technical Skills, Financial Literacy, Leadership).",
-    sub_type: "The specific focus or level of the course (e.g. 'Basic'; 'Advanced'; or 'Specialized').",
-    name: "The official name of the capacity-building program or course.",
-    standard_uom: "The unit of training delivery (e.g. 'Per Pax'; 'Per Batch'; or 'Per Module').",
-    avg_cost_per_pax_2026: "The budgeted amount per person covering food; materials; and honorarium.",
-    duration_days: "The total number of days required to complete the module.",
-    min_pax: "The minimum number of attendees required to conduct the session.",
-    max_pax: "The maximum number of attendees allowed per session for quality control.",
-    certification_level: "The type of certificate issued (e.g. 'Certificate of Attendance' or 'NC II')."
+    title: "The official name of the training program",
+    category: "The thematic area of the training (e.g., Crops, Livestock, Institutional, Post-Harvest)",
+    standard_duration_days: "The default number of days for the training",
+    delivery_mode: "How the training is delivered (Face-to-Face, Blended, Virtual)",
+    target_audience: "The primary group the training is intended for",
+    accrediting_body: "The organization that accredits the training (default: DA-ATI)",
+    minimum_participants: "The minimum number of attendees required",
+    required_facilities: "Facilities needed for the training (e.g., Demo Farm, Training Room)",
+    key_modules: "Main topics or modules covered in the training",
+    expected_competency: "Skills or knowledge participants are expected to gain",
+    certification_type: "Type of certificate issued (e.g., Certificate of Completion, NC II)"
 };
 
 const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
@@ -263,16 +265,18 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     });
 
     // --- Trainings Form State ---
-    const [refTrainingForm, setRefTrainingForm] = useState({
-        training_type: '',
-        sub_type: '',
-        name: '',
-        standard_uom: '',
-        avg_cost_per_pax_2026: 0,
-        duration_days: 0,
-        min_pax: 0,
-        max_pax: 0,
-        certification_level: ''
+    const [refTrainingForm, setRefTrainingForm] = useState<RefTrainingReference>({
+        title: '',
+        category: '',
+        standard_duration_days: 3,
+        delivery_mode: 'Face-to-Face',
+        target_audience: '',
+        accrediting_body: 'DA-ATI',
+        minimum_participants: 15,
+        required_facilities: '',
+        key_modules: '',
+        expected_competency: '',
+        certification_type: ''
     });
 
     // --- GIDA Form State ---
@@ -586,9 +590,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             items = items.filter(i => 
-                (i.name || '').toLowerCase().includes(lower) ||
-                (i.training_type || '').toLowerCase().includes(lower) ||
-                (i.sub_type || '').toLowerCase().includes(lower)
+                (i.title || '').toLowerCase().includes(lower) ||
+                (i.category || '').toLowerCase().includes(lower)
             );
         }
         if (sortConfig) {
@@ -709,8 +712,17 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             design_life_years: 0, maintenance_frequency: '', typical_duration_days: 0, environmental_impact_rating: ''
         });
         setRefTrainingForm({
-            training_type: '', sub_type: '', name: '', standard_uom: '', avg_cost_per_pax_2026: 0,
-            duration_days: 0, min_pax: 0, max_pax: 0, certification_level: ''
+            title: '',
+            category: '',
+            standard_duration_days: 3,
+            delivery_mode: 'Face-to-Face',
+            target_audience: '',
+            accrediting_body: 'DA-ATI',
+            minimum_participants: 15,
+            required_facilities: '',
+            key_modules: '',
+            expected_competency: '',
+            certification_type: ''
         });
         setGidaForm({ region: '', province: '', municipality: '', barangay: '' });
         setElcacForm({ region: '', province: '', municipality: '', barangay: '' });
@@ -807,16 +819,20 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 environmental_impact_rating: item.environmental_impact_rating
             });
         } else if (activeTab === 'Training Reference') {
+            const t = item as RefTrainingReference;
             setRefTrainingForm({
-                training_type: item.training_type,
-                sub_type: item.sub_type,
-                name: item.name,
-                standard_uom: item.standard_uom,
-                avg_cost_per_pax_2026: item.avg_cost_per_pax_2026,
-                duration_days: item.duration_days,
-                min_pax: item.min_pax,
-                max_pax: item.max_pax,
-                certification_level: item.certification_level
+                id: t.id,
+                title: t.title || '',
+                category: t.category || '',
+                standard_duration_days: t.standard_duration_days || 3,
+                delivery_mode: t.delivery_mode || 'Face-to-Face',
+                target_audience: t.target_audience || '',
+                accrediting_body: t.accrediting_body || 'DA-ATI',
+                minimum_participants: t.minimum_participants || 15,
+                required_facilities: t.required_facilities || '',
+                key_modules: t.key_modules || '',
+                expected_competency: t.expected_competency || '',
+                certification_type: t.certification_type || ''
             });
         } else if (activeTab === 'GIDA') {
             setGidaForm({
@@ -1418,17 +1434,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Infrastructure_Reference_Template.xlsx';
         } else if (activeTab === 'Training Reference') {
-            const headers = ['training_type', 'sub_type', 'name', 'standard_uom', 'avg_cost_per_pax_2026', 'duration_days', 'min_pax', 'max_pax', 'certification_level'];
+            const headers = ['title', 'category', 'standard_duration_days', 'delivery_mode', 'target_audience', 'accrediting_body', 'minimum_participants', 'required_facilities', 'key_modules', 'expected_competency', 'certification_type'];
             const example = [{
-                training_type: 'Technical Skills',
-                sub_type: 'Basic',
-                name: 'Organic Fertilizer Production',
-                standard_uom: 'Per Pax',
-                avg_cost_per_pax_2026: 1500,
-                duration_days: 3,
-                min_pax: 20,
-                max_pax: 30,
-                certification_level: 'Certificate of Attendance'
+                title: 'Organic Fertilizer Production',
+                category: 'Crops',
+                standard_duration_days: 3,
+                delivery_mode: 'Face-to-Face',
+                target_audience: 'Farmer Leaders',
+                accrediting_body: 'DA-ATI',
+                minimum_participants: 15,
+                required_facilities: 'Demo Farm, Training Room',
+                key_modules: 'Module 1: Intro, Module 2: Composting',
+                expected_competency: 'Ability to produce organic fertilizer',
+                certification_type: 'Certificate of Completion'
             }];
             ws = XLSX.utils.json_to_sheet(example, { header: headers });
             filename = 'Training_Reference_Template.xlsx';
@@ -1668,16 +1686,18 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 } else if (activeTab === 'Training Reference') {
                     const newItems: RefTrainingReference[] = jsonData.map((row: any) => ({
                         id: crypto.randomUUID(),
-                        training_type: row.training_type || '',
-                        sub_type: row.sub_type || '',
-                        name: row.name || '',
-                        standard_uom: row.standard_uom || '',
-                        avg_cost_per_pax_2026: Number(row.avg_cost_per_pax_2026) || 0,
-                        duration_days: Number(row.duration_days) || 0,
-                        min_pax: Number(row.min_pax) || 0,
-                        max_pax: Number(row.max_pax) || 0,
-                        certification_level: row.certification_level || ''
-                    })).filter(i => i.name);
+                        title: row.title || '',
+                        category: row.category || '',
+                        standard_duration_days: Number(row.standard_duration_days) || 3,
+                        delivery_mode: row.delivery_mode || 'Face-to-Face',
+                        target_audience: row.target_audience || '',
+                        accrediting_body: row.accrediting_body || 'DA-ATI',
+                        minimum_participants: Number(row.minimum_participants) || 15,
+                        required_facilities: row.required_facilities || '',
+                        key_modules: row.key_modules || '',
+                        expected_competency: row.expected_competency || '',
+                        certification_type: row.certification_type || ''
+                    })).filter(i => i.title);
 
                     if (supabase) {
                         const { error } = await supabase.from('ref_trainings').insert(newItems);
@@ -1971,9 +1991,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 ) : activeTab === 'Training Reference' ? (
                                     <>
                                         <th className="px-6 py-3 w-10"></th>
-                                        <SortableHeader label="Title" sortKey="name" tooltip={TRAINING_TOOLTIPS.name} />
-                                        <SortableHeader label="Type" sortKey="training_type" tooltip={TRAINING_TOOLTIPS.training_type} />
-                                        <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={TRAINING_TOOLTIPS.sub_type} />
+                                        <SortableHeader label="Title" sortKey="title" tooltip={TRAINING_TOOLTIPS.title} />
+                                        <SortableHeader label="Category" sortKey="category" tooltip={TRAINING_TOOLTIPS.category} />
                                     </>
                                 ) : (
                                     <>
@@ -2099,9 +2118,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.name}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.training_type}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.sub_type}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{item.title}</td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.category}</td>
                                                 </>
                                             ) : (
                                                 <>
@@ -2327,25 +2345,32 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                 </td>
                                             </tr>
                                         )}
-
                                         {expandedRowId === item.id && activeTab === 'Training Reference' && (
-                                            <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <tr className="bg-gray-50 dark:bg-gray-800/50">
+                                                    <td colSpan={canEdit ? 5 : 3} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Training Details</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Standard Unit: <span className="text-gray-900 dark:text-white font-medium">{item.standard_uom}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Duration: <span className="text-gray-900 dark:text-white font-medium">{item.duration_days} days</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Certification: <span className="text-gray-900 dark:text-white font-medium">{item.certification_level}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Duration: <span className="text-gray-900 dark:text-white font-medium">{item.standard_duration_days} days</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Delivery Mode: <span className="text-gray-900 dark:text-white font-medium">{item.delivery_mode}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Accrediting Body: <span className="text-gray-900 dark:text-white font-medium">{item.accrediting_body}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Certification: <span className="text-gray-900 dark:text-white font-medium">{item.certification_type}</span></p>
                                                             </div>
                                                         </div>
                                                         <div className="space-y-3">
-                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Capacity & Cost</h4>
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Target & Capacity</h4>
                                                             <div className="space-y-1">
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Cost/Pax (2026): <span className="text-gray-900 dark:text-white font-medium">₱{item.avg_cost_per_pax_2026?.toLocaleString()}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Min Pax: <span className="text-gray-900 dark:text-white font-medium">{item.min_pax}</span></p>
-                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Max Pax: <span className="text-gray-900 dark:text-white font-medium">{item.max_pax}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Target Audience: <span className="text-gray-900 dark:text-white font-medium">{item.target_audience}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Min Participants: <span className="text-gray-900 dark:text-white font-medium">{item.minimum_participants}</span></p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Requirements & Content</h4>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Facilities: <span className="text-gray-900 dark:text-white font-medium">{item.required_facilities}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Key Modules: <span className="text-gray-900 dark:text-white font-medium">{item.key_modules}</span></p>
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400">Competency: <span className="text-gray-900 dark:text-white font-medium">{item.expected_competency}</span></p>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2355,7 +2380,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (activeTab === 'UACS' ? 5 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 5 : activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' || activeTab === 'Equipment Reference' || activeTab === 'Agricultural Input Reference' || activeTab === 'Infrastructure Reference' || activeTab === 'Training Reference' ? 5 : 3) : (activeTab === 'UACS' ? 4 : activeTab === 'GIDA' || activeTab === 'ELCAC' ? 4 : activeTab === 'Crop Reference' || activeTab === 'Livestock Reference' || activeTab === 'Equipment Reference' || activeTab === 'Agricultural Input Reference' || activeTab === 'Infrastructure Reference' || activeTab === 'Training Reference' ? 4 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={canEdit ? (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference', 'Training Reference'].includes(activeTab) ? 5 : 3) : (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference'].includes(activeTab) ? 4 : activeTab === 'Training Reference' ? 3 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -2882,58 +2907,74 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             ) : activeTab === 'Training Reference' ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.name}>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.title}>
                                             Training Title <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refTrainingForm.name} onChange={e => setRefTrainingForm({...refTrainingForm, name: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refTrainingForm.title} onChange={e => setRefTrainingForm({...refTrainingForm, title: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.training_type}>
-                                            Training Type <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.category}>
+                                            Category <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refTrainingForm.training_type} onChange={e => setRefTrainingForm({...refTrainingForm, training_type: e.target.value})} className={commonInputClasses} />
+                                        <input type="text" required value={refTrainingForm.category} onChange={e => setRefTrainingForm({...refTrainingForm, category: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.sub_type}>
-                                            Sub-Type <Info className="h-3 w-3 text-gray-400" />
-                                        </label>
-                                        <input type="text" required value={refTrainingForm.sub_type} onChange={e => setRefTrainingForm({...refTrainingForm, sub_type: e.target.value})} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.standard_uom}>
-                                            Standard Unit <Info className="h-3 w-3 text-gray-400" />
-                                        </label>
-                                        <input type="text" required value={refTrainingForm.standard_uom} onChange={e => setRefTrainingForm({...refTrainingForm, standard_uom: e.target.value})} className={commonInputClasses} />
-                                    </div>
-                                    <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.duration_days}>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.standard_duration_days}>
                                             Duration (days) <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refTrainingForm.duration_days} onChange={e => setRefTrainingForm({...refTrainingForm, duration_days: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refTrainingForm.standard_duration_days} onChange={e => setRefTrainingForm({...refTrainingForm, standard_duration_days: Number(e.target.value)})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.avg_cost_per_pax_2026}>
-                                            Avg. Cost/Pax (2026) <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.delivery_mode}>
+                                            Delivery Mode <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refTrainingForm.avg_cost_per_pax_2026} onChange={e => setRefTrainingForm({...refTrainingForm, avg_cost_per_pax_2026: Number(e.target.value)})} className={commonInputClasses} />
+                                        <select value={refTrainingForm.delivery_mode} onChange={e => setRefTrainingForm({...refTrainingForm, delivery_mode: e.target.value})} className={commonInputClasses}>
+                                            <option value="Face-to-Face">Face-to-Face</option>
+                                            <option value="Blended">Blended</option>
+                                            <option value="Virtual">Virtual</option>
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.min_pax}>
-                                            Min Pax <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.accrediting_body}>
+                                            Accrediting Body <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refTrainingForm.min_pax} onChange={e => setRefTrainingForm({...refTrainingForm, min_pax: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="text" required value={refTrainingForm.accrediting_body} onChange={e => setRefTrainingForm({...refTrainingForm, accrediting_body: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.max_pax}>
-                                            Max Pax <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.minimum_participants}>
+                                            Min Participants <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="number" required value={refTrainingForm.max_pax} onChange={e => setRefTrainingForm({...refTrainingForm, max_pax: Number(e.target.value)})} className={commonInputClasses} />
+                                        <input type="number" required value={refTrainingForm.minimum_participants} onChange={e => setRefTrainingForm({...refTrainingForm, minimum_participants: Number(e.target.value)})} className={commonInputClasses} />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.certification_type}>
+                                            Certification Type <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <input type="text" required value={refTrainingForm.certification_type} onChange={e => setRefTrainingForm({...refTrainingForm, certification_type: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.certification_level}>
-                                            Certification Level <Info className="h-3 w-3 text-gray-400" />
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.target_audience}>
+                                            Target Audience <Info className="h-3 w-3 text-gray-400" />
                                         </label>
-                                        <input type="text" required value={refTrainingForm.certification_level} onChange={e => setRefTrainingForm({...refTrainingForm, certification_level: e.target.value})} className={commonInputClasses} />
+                                        <textarea value={refTrainingForm.target_audience} onChange={e => setRefTrainingForm({...refTrainingForm, target_audience: e.target.value})} className={commonInputClasses} rows={2} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.required_facilities}>
+                                            Required Facilities <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <textarea value={refTrainingForm.required_facilities} onChange={e => setRefTrainingForm({...refTrainingForm, required_facilities: e.target.value})} className={commonInputClasses} rows={2} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.key_modules}>
+                                            Key Modules <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <textarea value={refTrainingForm.key_modules} onChange={e => setRefTrainingForm({...refTrainingForm, key_modules: e.target.value})} className={commonInputClasses} rows={2} />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={TRAINING_TOOLTIPS.expected_competency}>
+                                            Expected Competency <Info className="h-3 w-3 text-gray-400" />
+                                        </label>
+                                        <textarea value={refTrainingForm.expected_competency} onChange={e => setRefTrainingForm({...refTrainingForm, expected_competency: e.target.value})} className={commonInputClasses} rows={2} />
                                     </div>
                                 </div>
                             ) : activeTab === 'GIDA' ? (

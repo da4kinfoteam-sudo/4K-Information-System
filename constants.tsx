@@ -605,15 +605,17 @@ export interface RefInfrastructure {
 
 export interface RefTrainingReference {
     id: string;
-    training_type: string;
-    sub_type: string;
-    name: string;
-    standard_uom: string;
-    avg_cost_per_pax_2026: number;
-    duration_days: number;
-    min_pax: number;
-    max_pax: number;
-    certification_level: string;
+    title: string;
+    category: string;
+    standard_duration_days: number;
+    delivery_mode: string;
+    target_audience: string;
+    accrediting_body: string;
+    minimum_participants: number;
+    required_facilities: string;
+    key_modules: string;
+    expected_competency: string;
+    certification_type: string;
 }
 
 export const equipmentCategories = [
