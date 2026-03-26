@@ -207,7 +207,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 lineItems.push({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
                     objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits,
-                    particularName: d.expenseParticular
+                    particularName: d.expenseParticular,
+                    itemParticular: d.particulars
                 });
             });
         });
@@ -319,12 +320,19 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             
             if(item.uacsCode) {
                 activity.uacsValues[item.uacsCode] = (activity.uacsValues[item.uacsCode] || 0) + item.amount;
-                activity.particulars.push({
-                    name: item.particularName || item.uacsCode,
-                    uacsCode: item.uacsCode,
-                    amount: item.amount,
-                    objectType: item.objectType
-                });
+                
+                // Only add particulars if it's a subproject in Production and Livelihood under Package 1-7
+                const isPL = item.component === 'Production and Livelihood';
+                const isPackage1to7 = item.packageType && /^Package [1-7](\s|$)/i.test(item.packageType);
+                
+                if (isPL && isPackage1to7) {
+                    activity.particulars.push({
+                        name: item.itemParticular || item.particularName || item.uacsCode,
+                        uacsCode: item.uacsCode,
+                        amount: item.amount,
+                        objectType: item.objectType
+                    });
+                }
             }
 
             // Determine if MOOE or CO for Total calc
@@ -721,7 +729,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                             {/* CO Particulars */}
                             {coParticulars.map(p => <th key={`p-co-${p}`} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
                         </tr>
-                        <tr className="bg-gray-5 dark:bg-gray-700/60">
+                        <tr className="bg-gray-100 dark:bg-gray-700/60">
                             {/* MOOE Descriptions */}
                             {mooeParticulars.flatMap(p => headers.MOOE[p].sort().map(code => ({ code, p }))).map(({ code, p }) => (
                                 <th key={`desc-mooe-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
@@ -735,7 +743,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                 </th>
                             ))}
                         </tr>
-                        <tr className="bg-gray-5 dark:bg-gray-700/50">
+                        <tr className="bg-gray-100 dark:bg-gray-700/50">
                             {/* MOOE Codes */}
                             {mooeParticulars.flatMap(p => headers.MOOE[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                             {/* CO Codes */}
