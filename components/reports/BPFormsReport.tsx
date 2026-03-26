@@ -28,10 +28,22 @@ const ActivityRow: React.FC<{
     indentLevel: number;
     dataCellClass: string;
     indentClasses: string[];
-}> = ({ activity, mooeCodes, coCodes, indentLevel, dataCellClass, indentClasses }) => {
+    isExpanded?: boolean;
+    toggleRow?: (key: string) => void;
+    rowKey?: string;
+}> = ({ activity, mooeCodes, coCodes, indentLevel, dataCellClass, indentClasses, isExpanded, toggleRow, rowKey }) => {
+    const hasParticulars = activity.particulars && activity.particulars.length > 0;
+    
     return (
-        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>{activity.name}</td>
+        <tr 
+            onClick={() => hasParticulars && toggleRow && rowKey && toggleRow(rowKey)} 
+            className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${hasParticulars ? 'cursor-pointer font-semibold bg-gray-50/50 dark:bg-gray-800/50' : ''}`}
+        >
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-inherit z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
+                {hasParticulars && toggleRow && <span className="inline-block w-5 text-center text-gray-500">{isExpanded ? '−' : '+'}</span>}
+                {!hasParticulars && <span className="inline-block w-5"></span>}
+                {activity.name}
+            </td>
             
             {/* MOOE Columns */}
             {mooeCodes.map((code: string) => (
@@ -47,6 +59,46 @@ const ActivityRow: React.FC<{
             
             {/* Grand Total */}
             <td className={`${dataCellClass} font-bold bg-green-50 dark:bg-green-900/20 text-right whitespace-nowrap`}>{(activity.totalMOOE + activity.totalCO) > 0 ? formatCurrencyWhole(activity.totalMOOE + activity.totalCO) : ''}</td>
+        </tr>
+    );
+};
+
+const ParticularRow: React.FC<{
+    particular: any;
+    mooeCodes: string[];
+    coCodes: string[];
+    indentLevel: number;
+    dataCellClass: string;
+    indentClasses: string[];
+}> = ({ particular, mooeCodes, coCodes, indentLevel, dataCellClass, indentClasses }) => {
+    return (
+        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 text-[11px] italic text-gray-600 dark:text-gray-400">
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
+                <span className="inline-block w-5"></span> {particular.name}
+            </td>
+            
+            {/* MOOE Columns */}
+            {mooeCodes.map((code: string) => (
+                <td key={`mooe-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
+                    {particular.uacsCode === code && particular.amount > 0 ? formatCurrencyWhole(particular.amount) : ''}
+                </td>
+            ))}
+            <td className={`${dataCellClass} text-right whitespace-nowrap bg-blue-50/30 dark:bg-blue-900/10`}>
+                {particular.objectType !== 'CO' ? formatCurrencyWhole(particular.amount) : ''}
+            </td>
+            
+            {/* CO Columns */}
+            {coCodes.map((code: string) => (
+                <td key={`co-${code}`} className={`${dataCellClass} text-right whitespace-nowrap`}>
+                    {particular.uacsCode === code && particular.amount > 0 ? formatCurrencyWhole(particular.amount) : ''}
+                </td>
+            ))}
+            <td className={`${dataCellClass} text-right whitespace-nowrap bg-orange-50/30 dark:bg-orange-900/10`}>
+                {particular.objectType === 'CO' ? formatCurrencyWhole(particular.amount) : ''}
+            </td>
+            
+            {/* Grand Total */}
+            <td className={`${dataCellClass} bg-green-50/30 dark:bg-green-900/10 text-right whitespace-nowrap`}>{formatCurrencyWhole(particular.amount)}</td>
         </tr>
     );
 };
@@ -154,7 +206,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 ensureHeader(d.objectType, d.expenseParticular, d.uacsCode, d.pricePerUnit * d.numberOfUnits);
                 lineItems.push({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
-                    objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits
+                    objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits,
+                    particularName: d.expenseParticular
                 });
             });
         });
@@ -166,7 +219,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
                 lineItems.push({
                     component: t.component, packageType: undefined, activityName: t.name,
-                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
+                    isTraining: true, particularName: e.expenseParticular
                 });
             });
         });
@@ -177,7 +231,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 lineItems.push({
                     component: oa.component, packageType, activityName: oa.name,
-                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
+                    particularName: e.expenseParticular
                 });
             });
         });
@@ -222,9 +277,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         const initialUacsValues = [...mooeCodes, ...coCodes].reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
         
         const groupedData: { [key: string]: any } = {
-            'Social Preparation': [], 
+            'Social Preparation': { isNestedExpandable: true, packages: {} },
             'Production and Livelihood': { isNestedExpandable: true, packages: {} },
-            'Marketing and Enterprise': [], 
+            'Marketing and Enterprise': { isNestedExpandable: true, packages: {} },
             'Program Management': { 
                 isNestedExpandable: true, 
                 packages: {
@@ -239,20 +294,13 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             if (item.amount <= 0) return;
 
             let targetList;
-            if (item.component === 'Production and Livelihood') {
-                const packageKey = item.packageType || 'Trainings';
-                if (!groupedData['Production and Livelihood'].packages[packageKey]) {
-                    groupedData['Production and Livelihood'].packages[packageKey] = { items: [] };
+            const packageKey = item.packageType || (item.isTraining ? 'Trainings' : 'Activities');
+            
+            if (groupedData[item.component]) {
+                if (!groupedData[item.component].packages[packageKey]) {
+                    groupedData[item.component].packages[packageKey] = { items: [] };
                 }
-                targetList = groupedData['Production and Livelihood'].packages[packageKey].items;
-            } else if (item.component === 'Program Management') {
-                 const packageKey = item.packageType || 'Activities';
-                 if (!groupedData['Program Management'].packages[packageKey]) {
-                    groupedData['Program Management'].packages[packageKey] = { items: [] };
-                 }
-                 targetList = groupedData['Program Management'].packages[packageKey].items;
-            } else if (groupedData[item.component]) {
-                targetList = groupedData[item.component];
+                targetList = groupedData[item.component].packages[packageKey].items;
             } else {
                 return; 
             }
@@ -263,13 +311,20 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     name: item.activityName, 
                     uacsValues: { ...initialUacsValues }, 
                     totalMOOE: 0, 
-                    totalCO: 0 
+                    totalCO: 0,
+                    particulars: []
                 };
                 targetList.push(activity);
             }
             
             if(item.uacsCode) {
                 activity.uacsValues[item.uacsCode] = (activity.uacsValues[item.uacsCode] || 0) + item.amount;
+                activity.particulars.push({
+                    name: item.particularName || item.uacsCode,
+                    uacsCode: item.uacsCode,
+                    amount: item.amount,
+                    objectType: item.objectType
+                });
             }
 
             // Determine if MOOE or CO for Total calc
@@ -450,8 +505,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             flatDataRows.push(row);
         };
 
-        const addActivityRows = (items: any[], prefix: string) => {
-            items.forEach((activity: any) => {
+        const addActivityRows = (pkgName: string, items: any[], prefix: string) => {
+            items.forEach((activity: any, i: number) => {
+                const actKey = `${pkgName}-${activity.name}-${i}`;
+                const isActExpanded = expandedRows.has(actKey);
+                
                 const row: (string | number | null)[] = [`${prefix}${activity.name}`];
                 allCodesOrdered.forEach(code => {
                     row.push(activity.uacsValues[code] > 0 ? Math.ceil(activity.uacsValues[code]) : null);
@@ -460,17 +518,25 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 row.push(activity.totalCO > 0 ? Math.ceil(activity.totalCO) : null);
                 row.push((activity.totalMOOE + activity.totalCO) > 0 ? Math.ceil(activity.totalMOOE + activity.totalCO) : null);
                 flatDataRows.push(row);
+
+                if (isActExpanded && activity.particulars) {
+                    activity.particulars.forEach((part: any) => {
+                        const pRow: (string | number | null)[] = [`${prefix}  ${part.name}`];
+                        allCodesOrdered.forEach(code => {
+                            pRow.push(part.uacsCode === code && part.amount > 0 ? Math.ceil(part.amount) : null);
+                        });
+                        pRow.push(part.objectType !== 'CO' ? Math.ceil(part.amount) : null);
+                        pRow.push(part.objectType === 'CO' ? Math.ceil(part.amount) : null);
+                        pRow.push(Math.ceil(part.amount));
+                        flatDataRows.push(pRow);
+                    });
+                }
             });
         };
 
         Object.entries(rows).forEach(([componentName, componentData]) => {
             const isComponentExpanded = expandedRows.has(componentName);
-            if (Array.isArray(componentData)) {
-                addSummaryRow(componentName, componentData, "");
-                if (isComponentExpanded) {
-                    addActivityRows(componentData, "  ");
-                }
-            } else if ((componentData as any).isNestedExpandable) {
+            if ((componentData as any).isNestedExpandable) {
                 const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
                 addSummaryRow(componentName, allPackageItems, "");
                 
@@ -479,7 +545,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                         const isPkgExpanded = expandedRows.has(pkgName);
                         addSummaryRow(pkgName, pkgData.items, "  ");
                         if (isPkgExpanded) {
-                            addActivityRows(pkgData.items, "    ");
+                            addActivityRows(pkgName, pkgData.items, "    ");
                         }
                     });
                 }
@@ -546,25 +612,39 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         // Grand Total Vertical Merge
         ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
 
-        // Apply alignment (center) to headers
+        // Set column widths and alignment
         const range = XLSX.utils.decode_range(ws['!ref']);
-        for (let R = 0; R <= 3; ++R) {
+        const colWidths = [];
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+            if (C === 0) {
+                colWidths.push({ wch: 50 }); // PAP column width
+            } else {
+                colWidths.push({ wch: 15 }); // Data columns width
+            }
+        }
+        ws['!cols'] = colWidths;
+
+        // Apply alignment and wrapping
+        for (let R = range.s.r; R <= range.e.r; ++R) {
             for (let C = range.s.c; C <= range.e.c; ++C) {
                 const cell_address = { c: C, r: R };
                 const cell_ref = XLSX.utils.encode_cell(cell_address);
                 if (!ws[cell_ref]) continue;
                 if (!ws[cell_ref].s) ws[cell_ref].s = {};
-                ws[cell_ref].s.alignment = { horizontal: "center", vertical: "center" };
-            }
-        }
-
-        // Apply number format to data cells
-        for (let R = 4; R <= range.e.r; ++R) {
-            for (let C = 1; C <= range.e.c; ++C) {
-                const cell_address = { c: C, r: R };
-                const cell_ref = XLSX.utils.encode_cell(cell_address);
-                if (ws[cell_ref] && typeof ws[cell_ref].v === 'number') {
-                    ws[cell_ref].z = '#,##0';
+                
+                // Header alignment
+                if (R <= 3) {
+                    ws[cell_ref].s.alignment = { horizontal: "center", vertical: "center", wrapText: true };
+                } else {
+                    // Data alignment
+                    if (C === 0) {
+                        ws[cell_ref].s.alignment = { horizontal: "left", vertical: "center", wrapText: true };
+                    } else {
+                        ws[cell_ref].s.alignment = { horizontal: "right", vertical: "center" };
+                        if (typeof ws[cell_ref].v === 'number') {
+                            ws[cell_ref].z = '#,##0';
+                        }
+                    }
                 }
             }
         }
@@ -582,7 +662,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
     // Ensure all CO cols + 1 for Total CO
     const coSpan = coCodes.length;
 
-    const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
+    const indentClasses = ['pl-2', 'pl-6', 'pl-10', 'pl-14'];
     const borderClass = "border border-gray-300 dark:border-gray-600";
     const headerCellClass = `p-1 ${borderClass} text-center align-middle`;
     const dataCellClass = `p-1 ${borderClass}`;
@@ -665,35 +745,6 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     <tbody>
                         {Object.entries(rows).map(([componentName, componentData]) => {
                             const isComponentExpanded = expandedRows.has(componentName);
-                            if (Array.isArray(componentData)) {
-                                 return (
-                                    <React.Fragment key={componentName}>
-                                        <SummaryRow 
-                                            items={componentData}
-                                            label={componentName}
-                                            rowKey={componentName}
-                                            isExpanded={isComponentExpanded}
-                                            indentLevel={0}
-                                            mooeCodes={mooeCodes}
-                                            coCodes={coCodes}
-                                            toggleRow={toggleRow}
-                                            dataCellClass={dataCellClass}
-                                            indentClasses={indentClasses}
-                                        />
-                                        {isComponentExpanded && componentData.map((act, i) => (
-                                            <ActivityRow 
-                                                key={`${componentName}-${i}`}
-                                                activity={act}
-                                                mooeCodes={mooeCodes}
-                                                coCodes={coCodes}
-                                                indentLevel={1}
-                                                dataCellClass={dataCellClass}
-                                                indentClasses={indentClasses}
-                                            />
-                                        ))}
-                                    </React.Fragment>
-                                );
-                            }
                             if ((componentData as any).isNestedExpandable) {
                                  const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
                                  return (
@@ -726,17 +777,36 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                                         dataCellClass={dataCellClass}
                                                         indentClasses={indentClasses}
                                                     />
-                                                    {isPkgExpanded && pkgData.items.map((act: any, i: number) => (
-                                                        <ActivityRow 
-                                                            key={`${pkgName}-${i}`}
-                                                            activity={act}
-                                                            mooeCodes={mooeCodes}
-                                                            coCodes={coCodes}
-                                                            indentLevel={2}
-                                                            dataCellClass={dataCellClass}
-                                                            indentClasses={indentClasses}
-                                                        />
-                                                    ))}
+                                                    {isPkgExpanded && pkgData.items.map((act: any, i: number) => {
+                                                        const actKey = `${pkgName}-${act.name}-${i}`;
+                                                        const isActExpanded = expandedRows.has(actKey);
+                                                        return (
+                                                            <React.Fragment key={actKey}>
+                                                                <ActivityRow 
+                                                                    activity={act}
+                                                                    mooeCodes={mooeCodes}
+                                                                    coCodes={coCodes}
+                                                                    indentLevel={2}
+                                                                    dataCellClass={dataCellClass}
+                                                                    indentClasses={indentClasses}
+                                                                    isExpanded={isActExpanded}
+                                                                    toggleRow={toggleRow}
+                                                                    rowKey={actKey}
+                                                                />
+                                                                {isActExpanded && act.particulars.map((part: any, pi: number) => (
+                                                                    <ParticularRow 
+                                                                        key={`${actKey}-part-${pi}`}
+                                                                        particular={part}
+                                                                        mooeCodes={mooeCodes}
+                                                                        coCodes={coCodes}
+                                                                        indentLevel={3}
+                                                                        dataCellClass={dataCellClass}
+                                                                        indentClasses={indentClasses}
+                                                                    />
+                                                                ))}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
                                                 </React.Fragment>
                                             );
                                         })}
