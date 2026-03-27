@@ -402,6 +402,11 @@ const AppContent: React.FC = () => {
                             officeReqs={officeReqs}
                             staffingReqs={staffingReqs}
                             otherProgramExpenses={otherProgramExpenses}
+                            onSelectIpo={handleSelectIpo}
+                            onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
+                            setExternalFilters={setExternalFilters}
+                            navigateTo={navigateTo}
                         />;
             case '/subprojects':
                 return <Subprojects 

@@ -1,5 +1,6 @@
 // Author: 4K 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { 
@@ -15,6 +16,12 @@ interface PhysicalDashboardProps {
         ipos: IPO[];
     };
     setModalData: (data: { title: string; items: ModalItem[] } | null) => void;
+    selectedYear: string;
+    onSelectIpo?: (ipo: IPO) => void;
+    onSelectSubproject?: (project: Subproject) => void;
+    onSelectActivity?: (activity: Training | OtherActivity) => void;
+    setExternalFilters?: (filters: any) => void;
+    navigateTo?: (page: string) => void;
 }
 
 const formatDate = (dateString?: string) => {
@@ -35,8 +42,16 @@ const PhysicalStatCard: React.FC<{ label: string; value: string | number; gradie
     </div>
 );
 
-const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalData }) => {
+const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalData, selectedYear, onSelectIpo, onSelectSubproject, onSelectActivity, setExternalFilters, navigateTo }) => {
     
+    const [localModal, setLocalModal] = useState<{
+        title: string;
+        type: 'ipos' | 'subprojects' | 'trainings' | 'ads';
+        targets: ModalItem[];
+        accomplishments: ModalItem[];
+    } | null>(null);
+    const [modalTab, setModalTab] = useState<'targets' | 'accomplishments'>('accomplishments');
+
     const getQuarter = (date: Date): number => {
         const month = date.getMonth();
         return Math.floor(month / 3) + 1;
@@ -123,13 +138,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
     // REVISED LOGIC for Overall Performance (Accomplishment vs Target)
     const performanceStats = useMemo(() => {
-        // --- Accomplishments (Completed) ---
+        // --- Accomplishments (Completed in Selected Year) ---
         
         // 1. Total Subprojects Completed
-        const completedSubprojects = data.subprojects.filter(p => p.status === 'Completed');
+        const completedSubprojects = data.subprojects.filter(p => 
+            p.status === 'Completed' && 
+            p.actualCompletionDate && 
+            (selectedYear === 'All' || new Date(p.actualCompletionDate).getFullYear().toString() === selectedYear)
+        );
         
         // 2. Total Training (Must be completed status -> implied by presence of actualDate)
-        const completedTrainings = data.trainings.filter(t => !!t.actualDate);
+        const completedTrainings = data.trainings.filter(t => 
+            !!t.actualDate && 
+            (selectedYear === 'All' || new Date(t.actualDate).getFullYear().toString() === selectedYear)
+        );
 
         // 3. Total IPOs with Subprojects (Linked with COMPLETED subprojects)
         const iposWithCompletedSubprojects = new Set(completedSubprojects.map(p => p.indigenousPeopleOrganization));
@@ -151,26 +173,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             }
         });
 
-        // --- Targets (Total in Registry/Plan) ---
+        // --- Targets (Total in Registry/Plan for Selected Year) ---
         
-        // 1. Target Subprojects (All in list)
-        const targetSubprojectsCount = data.subprojects.length;
+        // 1. Target Subprojects (All in list - already filtered by fundingYear in DashboardsPage)
+        const targetSubprojects = data.subprojects;
 
-        // 2. Target Trainings (All in list)
-        const targetTrainingsCount = data.trainings.length;
+        // 2. Target Trainings (All in list - already filtered by fundingYear in DashboardsPage)
+        const targetTrainings = data.trainings;
 
-        // 3. Target IPOs with Subprojects (Unique IPOs in ANY subproject)
-        const targetIposWithSubprojects = new Set(data.subprojects.map(p => p.indigenousPeopleOrganization));
+        // 3. Target IPOs with Subprojects (Unique IPOs in ANY target subproject)
+        const targetIposWithSubprojects = new Set(targetSubprojects.map(p => p.indigenousPeopleOrganization));
 
-        // 4. Target IPOs Trained (Unique IPOs in ANY training)
-        const targetIposTrained = new Set(data.trainings.flatMap(t => t.participatingIpos));
+        // 4. Target IPOs Trained (Unique IPOs in ANY target training)
+        const targetIposTrained = new Set(targetTrainings.flatMap(t => t.participatingIpos));
 
         // 5. Target Total IPOs (Logic Updated: Only IPOs with linked subprojects or trainings)
         const targetTotalIposSet = new Set([
             ...targetIposWithSubprojects,
             ...targetIposTrained
         ]);
-        const targetTotalIposCount = targetTotalIposSet.size;
 
         // 6. Target ADs (Logic Updated: Unique ADs of the Target IPOs only)
         const targetAds = new Set<string>();
@@ -189,15 +210,23 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             totalTrainingsCompleted: completedTrainings,
             totalAdsAssisted: assistedDomains,
 
+            // Target Data Sets (for modals)
+            targetTotalIposSet,
+            targetIposTrained,
+            targetIposWithSubprojects,
+            targetSubprojects,
+            targetTrainings,
+            targetAds,
+
             // Display Strings (Accomplished / Target)
-            strEngagedIpos: `${allEngagedIpos.size} / ${targetTotalIposCount}`,
+            strEngagedIpos: `${allEngagedIpos.size} / ${targetTotalIposSet.size}`,
             strIposTrained: `${iposWithCompletedTrainings.size} / ${targetIposTrained.size}`,
             strIposWithSubprojects: `${iposWithCompletedSubprojects.size} / ${targetIposWithSubprojects.size}`,
-            strSubprojects: `${completedSubprojects.length} / ${targetSubprojectsCount}`,
-            strTrainings: `${completedTrainings.length} / ${targetTrainingsCount}`,
+            strSubprojects: `${completedSubprojects.length} / ${targetSubprojects.length}`,
+            strTrainings: `${completedTrainings.length} / ${targetTrainings.length}`,
             strAds: `${assistedDomains.size} / ${targetAds.size}`
         };
-    }, [data.subprojects, data.trainings, data.ipos]);
+    }, [data.subprojects, data.trainings, data.ipos, selectedYear]);
 
     const provincialComparisonData = useMemo(() => {
         const provinceMap: { [province: string]: { ipos: IPO[], trainings: Set<number>, subprojects: Subproject[] } } = {};
@@ -307,54 +336,141 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
 
     const handleShowTotalEngagedIpos = () => {
-        const items = data.ipos
+        const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalEngagedIpos.has(ipo.name))
             .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
-        setModalData({ title: 'Total IPOs (With Completed Projects/Trainings)', items });
+        
+        const targets = data.ipos
+            .filter(ipo => performanceStats.targetTotalIposSet.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+
+        setLocalModal({ title: 'Total IPOs Engaged', type: 'ipos', targets, accomplishments });
+        setModalTab('accomplishments');
     };
 
     const handleShowIposTrained = () => {
-        const items = data.ipos
+        const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalIposTrained.has(ipo.name))
             .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
-        setModalData({ title: 'IPOs Trained (Completed Trainings)', items });
+        
+        const targets = data.ipos
+            .filter(ipo => performanceStats.targetIposTrained.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+
+        setLocalModal({ title: 'IPOs Trained', type: 'ipos', targets, accomplishments });
+        setModalTab('accomplishments');
     };
 
     const handleShowIposWithSubprojects = () => {
-        const items = data.ipos
+        const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalIposWithSubprojects.has(ipo.name))
             .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
-        setModalData({ title: 'IPOs with Completed Subprojects', items });
+        
+        const targets = data.ipos
+            .filter(ipo => performanceStats.targetIposWithSubprojects.has(ipo.name))
+            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+
+        setLocalModal({ title: 'IPOs with Subprojects', type: 'ipos', targets, accomplishments });
+        setModalTab('accomplishments');
     };
 
     const handleShowCompletedSubprojects = () => {
-        const items = performanceStats.totalSubprojectsCompleted.map(p => ({ 
+        const accomplishments = performanceStats.totalSubprojectsCompleted.map(p => ({ 
             id: p.id, 
             name: p.name, 
             details: `Completed: ${formatDate(p.actualCompletionDate)} | IPO: ${p.indigenousPeopleOrganization}` 
         }));
-        setModalData({ title: 'Completed Subprojects', items });
+        
+        const targets = performanceStats.targetSubprojects.map(p => ({
+            id: p.id,
+            name: p.name,
+            details: `Target Start: ${formatDate(p.startDate)} | IPO: ${p.indigenousPeopleOrganization}`
+        }));
+
+        setLocalModal({ title: 'Subprojects Performance', type: 'subprojects', targets, accomplishments });
+        setModalTab('accomplishments');
     };
     
     const handleShowCompletedTrainings = () => {
-        const items = performanceStats.totalTrainingsCompleted.map(t => ({ 
+        const accomplishments = performanceStats.totalTrainingsCompleted.map(t => ({ 
             id: t.id, 
             name: t.name, 
             details: `Conducted: ${formatDate(t.actualDate)} | Component: ${t.component}` 
         }));
-        setModalData({ title: 'Completed Trainings', items });
+        
+        const targets = performanceStats.targetTrainings.map(t => ({
+            id: t.id,
+            name: t.name,
+            details: `Target Date: ${formatDate(t.date)} | Component: ${t.component}`
+        }));
+
+        setLocalModal({ title: 'Trainings Performance', type: 'trainings', targets, accomplishments });
+        setModalTab('accomplishments');
     };
 
     const handleShowAdsAssisted = () => {
-        const assistedAds = new Map<string, string[]>();
+        const assistedAdsMap = new Map<string, string[]>();
         data.ipos.forEach(ipo => {
             if (performanceStats.totalEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
-                if (!assistedAds.has(ipo.ancestralDomainNo)) assistedAds.set(ipo.ancestralDomainNo, []);
-                assistedAds.get(ipo.ancestralDomainNo)!.push(ipo.name);
+                if (!assistedAdsMap.has(ipo.ancestralDomainNo)) assistedAdsMap.set(ipo.ancestralDomainNo, []);
+                assistedAdsMap.get(ipo.ancestralDomainNo)!.push(ipo.name);
             }
         });
-        const items = Array.from(assistedAds.entries()).map(([adNo, ipoNames]) => ({ id: adNo, name: `AD No: ${adNo}`, details: `Assisted via IPO(s): ${ipoNames.join(', ')}` }));
-        setModalData({ title: 'Ancestral Domains Assisted', items });
+        const accomplishments = Array.from(assistedAdsMap.entries()).map(([adNo, ipoNames]) => ({ 
+            id: adNo, 
+            name: `AD No: ${adNo}`, 
+            details: `Assisted via IPO(s): ${ipoNames.join(', ')}` 
+        }));
+
+        const targetAdsMap = new Map<string, string[]>();
+        data.ipos.forEach(ipo => {
+            if (performanceStats.targetTotalIposSet.has(ipo.name) && ipo.ancestralDomainNo) {
+                if (!targetAdsMap.has(ipo.ancestralDomainNo)) targetAdsMap.set(ipo.ancestralDomainNo, []);
+                targetAdsMap.get(ipo.ancestralDomainNo)!.push(ipo.name);
+            }
+        });
+        const targets = Array.from(targetAdsMap.entries()).map(([adNo, ipoNames]) => ({
+            id: adNo,
+            name: `AD No: ${adNo}`,
+            details: `Target via IPO(s): ${ipoNames.join(', ')}`
+        }));
+
+        setLocalModal({ title: 'Ancestral Domains Performance', type: 'ads', targets, accomplishments });
+        setModalTab('accomplishments');
+    };
+
+    const handleDownloadExcel = () => {
+        if (!localModal) return;
+        const wb = XLSX.utils.book_new();
+        
+        const targetData = localModal.targets.map(item => ({ Name: item.name, Details: item.details }));
+        const accomplishmentData = localModal.accomplishments.map(item => ({ Name: item.name, Details: item.details }));
+        
+        const wsTargets = XLSX.utils.json_to_sheet(targetData);
+        const wsAccomplishments = XLSX.utils.json_to_sheet(accomplishmentData);
+        
+        XLSX.utils.book_append_sheet(wb, wsTargets, "Targets");
+        XLSX.utils.book_append_sheet(wb, wsAccomplishments, "Accomplishments");
+        
+        XLSX.writeFile(wb, `${localModal.title.replace(/\s+/g, '_')}_Report.xlsx`);
+    };
+
+    const handleItemClick = (item: ModalItem) => {
+        if (localModal?.type === 'ipos') {
+            const ipo = data.ipos.find(i => i.id === item.id);
+            if (ipo && onSelectIpo) onSelectIpo(ipo);
+        } else if (localModal?.type === 'subprojects') {
+            const sp = data.subprojects.find(p => p.id === item.id);
+            if (sp && onSelectSubproject) onSelectSubproject(sp);
+        } else if (localModal?.type === 'trainings') {
+            const tr = data.trainings.find(t => t.id === item.id);
+            if (tr && onSelectActivity) onSelectActivity(tr);
+        } else if (localModal?.type === 'ads') {
+            if (setExternalFilters && navigateTo) {
+                setExternalFilters({ search: item.id as string });
+                navigateTo('/ipo');
+            }
+        }
     };
 
 
@@ -429,6 +545,96 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                     />
                  </div>
             </section>
+
+            {/* Custom Tabbed Modal for Physical Dashboard Cards */}
+            {localModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setLocalModal(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-800 dark:text-white">{localModal.title}</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Year: {selectedYear}</p>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <button 
+                                    onClick={handleDownloadExcel}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    Excel
+                                </button>
+                                <button onClick={() => setLocalModal(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex border-b border-gray-200 dark:border-gray-700">
+                            <button
+                                onClick={() => setModalTab('targets')}
+                                className={`flex-1 py-3 text-sm font-semibold transition-colors ${modalTab === 'targets' ? 'text-accent border-b-2 border-accent' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Targets ({localModal.targets.length})
+                            </button>
+                            <button
+                                onClick={() => setModalTab('accomplishments')}
+                                className={`flex-1 py-3 text-sm font-semibold transition-colors ${modalTab === 'accomplishments' ? 'text-accent border-b-2 border-accent' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Accomplishments ({localModal.accomplishments.length})
+                            </button>
+                        </div>
+
+                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                            {modalTab === 'targets' ? (
+                                localModal.targets.length > 0 ? (
+                                    <ul className="space-y-3">
+                                        {localModal.targets.map((item, index) => (
+                                            <li 
+                                                key={index} 
+                                                className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                onClick={() => handleItemClick(item)}
+                                            >
+                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
+                                                {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                        <p>No targets found for this year.</p>
+                                    </div>
+                                )
+                            ) : (
+                                localModal.accomplishments.length > 0 ? (
+                                    <ul className="space-y-3">
+                                        {localModal.accomplishments.map((item, index) => (
+                                            <li 
+                                                key={index} 
+                                                className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                onClick={() => handleItemClick(item)}
+                                            >
+                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
+                                                {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                        <p>No accomplishments found for this year.</p>
+                                    </div>
+                                )
+                            )}
+                        </div>
+                        <div className="p-4 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 italic">
+                            Tip: Click on an item to view its profile.
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

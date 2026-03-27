@@ -20,6 +20,11 @@ export interface DashboardsPageProps {
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
+    onSelectIpo?: (ipo: IPO) => void;
+    onSelectSubproject?: (project: Subproject) => void;
+    onSelectActivity?: (activity: Training | OtherActivity) => void;
+    setExternalFilters?: (filters: any) => void;
+    navigateTo?: (page: string) => void;
 }
 
 type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
@@ -212,7 +217,18 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
 
             {/* Tab Content */}
             <div className="mt-4">
-                {activeTab === 'Physical' && <PhysicalDashboard data={filteredData} setModalData={setModalData} />}
+                {activeTab === 'Physical' && (
+                    <PhysicalDashboard 
+                        data={filteredData} 
+                        setModalData={setModalData} 
+                        selectedYear={selectedYear}
+                        onSelectIpo={props.onSelectIpo}
+                        onSelectSubproject={props.onSelectSubproject}
+                        onSelectActivity={props.onSelectActivity}
+                        setExternalFilters={props.setExternalFilters}
+                        navigateTo={props.navigateTo}
+                    />
+                )}
                 {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
                 {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
                 {activeTab === 'Agricultural Interventions' && <AgriculturalInterventionsDashboard subprojects={filteredData.subprojects} />}

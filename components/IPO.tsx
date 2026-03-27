@@ -296,6 +296,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                 ipo.name.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.contactPerson.toLowerCase().includes(lowercasedSearchTerm) ||
                 ipo.location.toLowerCase().includes(lowercasedSearchTerm) ||
+                (ipo.ancestralDomainNo || '').toLowerCase().includes(lowercasedSearchTerm) ||
                 // Integrated Commodity Search
                 (ipo.commodities || []).some(c => 
                     c.particular.toLowerCase().includes(lowercasedSearchTerm) ||
