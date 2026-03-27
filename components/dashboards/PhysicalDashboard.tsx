@@ -1,7 +1,7 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon } from '../../constants';
+import { Subproject, IPO, Training, OtherActivity, IpoIcon, ProjectsIcon, TrainingIcon, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { 
     QuarterlyBarChart, IpoEngagementChart, 
@@ -44,11 +44,19 @@ const PhysicalStatCard: React.FC<{ label: string; value: string | number; gradie
 
 const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalData, selectedYear, onSelectIpo, onSelectSubproject, onSelectActivity, setExternalFilters, navigateTo }) => {
     
+    const regionToOuMap = useMemo(() => {
+        const map: { [key: string]: string } = {};
+        Object.entries(ouToRegionMap).forEach(([ou, region]) => {
+            map[region] = ou;
+        });
+        return map;
+    }, []);
+
     const [localModal, setLocalModal] = useState<{
         title: string;
         type: 'ipos' | 'subprojects' | 'trainings' | 'ads';
-        targets: ModalItem[];
-        accomplishments: ModalItem[];
+        targets: (ModalItem & { operatingUnit?: string })[];
+        accomplishments: (ModalItem & { operatingUnit?: string })[];
     } | null>(null);
     const [modalTab, setModalTab] = useState<'targets' | 'accomplishments'>('accomplishments');
 
@@ -338,11 +346,21 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     const handleShowTotalEngagedIpos = () => {
         const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalEngagedIpos.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
         
         const targets = data.ipos
             .filter(ipo => performanceStats.targetTotalIposSet.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
 
         setLocalModal({ title: 'Total IPOs Engaged', type: 'ipos', targets, accomplishments });
         setModalTab('accomplishments');
@@ -351,11 +369,21 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     const handleShowIposTrained = () => {
         const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalIposTrained.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
         
         const targets = data.ipos
             .filter(ipo => performanceStats.targetIposTrained.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
 
         setLocalModal({ title: 'IPOs Trained', type: 'ipos', targets, accomplishments });
         setModalTab('accomplishments');
@@ -364,11 +392,21 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     const handleShowIposWithSubprojects = () => {
         const accomplishments = data.ipos
             .filter(ipo => performanceStats.totalIposWithSubprojects.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
         
         const targets = data.ipos
             .filter(ipo => performanceStats.targetIposWithSubprojects.has(ipo.name))
-            .map(ipo => ({ id: ipo.id, name: ipo.name, details: ipo.location }));
+            .map(ipo => ({ 
+                id: ipo.id, 
+                name: ipo.name, 
+                details: ipo.location,
+                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
+            }));
 
         setLocalModal({ title: 'IPOs with Subprojects', type: 'ipos', targets, accomplishments });
         setModalTab('accomplishments');
@@ -378,13 +416,15 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         const accomplishments = performanceStats.totalSubprojectsCompleted.map(p => ({ 
             id: p.id, 
             name: p.name, 
-            details: `Completed: ${formatDate(p.actualCompletionDate)} | IPO: ${p.indigenousPeopleOrganization}` 
+            details: `Completed: ${formatDate(p.actualCompletionDate)} | IPO: ${p.indigenousPeopleOrganization}`,
+            operatingUnit: p.operatingUnit
         }));
         
         const targets = performanceStats.targetSubprojects.map(p => ({
             id: p.id,
             name: p.name,
-            details: `Target Start: ${formatDate(p.startDate)} | IPO: ${p.indigenousPeopleOrganization}`
+            details: `Target Start: ${formatDate(p.startDate)} | IPO: ${p.indigenousPeopleOrganization}`,
+            operatingUnit: p.operatingUnit
         }));
 
         setLocalModal({ title: 'Subprojects Performance', type: 'subprojects', targets, accomplishments });
@@ -395,13 +435,15 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         const accomplishments = performanceStats.totalTrainingsCompleted.map(t => ({ 
             id: t.id, 
             name: t.name, 
-            details: `Conducted: ${formatDate(t.actualDate)} | Component: ${t.component}` 
+            details: `Conducted: ${formatDate(t.actualDate)} | Component: ${t.component}`,
+            operatingUnit: t.operatingUnit
         }));
         
         const targets = performanceStats.targetTrainings.map(t => ({
             id: t.id,
             name: t.name,
-            details: `Target Date: ${formatDate(t.date)} | Component: ${t.component}`
+            details: `Target Date: ${formatDate(t.date)} | Component: ${t.component}`,
+            operatingUnit: t.operatingUnit
         }));
 
         setLocalModal({ title: 'Trainings Performance', type: 'trainings', targets, accomplishments });
@@ -409,30 +451,42 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     };
 
     const handleShowAdsAssisted = () => {
-        const assistedAdsMap = new Map<string, string[]>();
+        const assistedAdsMap = new Map<string, { ipoNames: string[], ou: string }>();
         data.ipos.forEach(ipo => {
             if (performanceStats.totalEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
-                if (!assistedAdsMap.has(ipo.ancestralDomainNo)) assistedAdsMap.set(ipo.ancestralDomainNo, []);
-                assistedAdsMap.get(ipo.ancestralDomainNo)!.push(ipo.name);
+                if (!assistedAdsMap.has(ipo.ancestralDomainNo)) {
+                    assistedAdsMap.set(ipo.ancestralDomainNo, { 
+                        ipoNames: [], 
+                        ou: regionToOuMap[ipo.region] || 'Unknown OU' 
+                    });
+                }
+                assistedAdsMap.get(ipo.ancestralDomainNo)!.ipoNames.push(ipo.name);
             }
         });
-        const accomplishments = Array.from(assistedAdsMap.entries()).map(([adNo, ipoNames]) => ({ 
+        const accomplishments = Array.from(assistedAdsMap.entries()).map(([adNo, data]) => ({ 
             id: adNo, 
             name: `AD No: ${adNo}`, 
-            details: `Assisted via IPO(s): ${ipoNames.join(', ')}` 
+            details: `Assisted via IPO(s): ${data.ipoNames.join(', ')}`,
+            operatingUnit: data.ou
         }));
 
-        const targetAdsMap = new Map<string, string[]>();
+        const targetAdsMap = new Map<string, { ipoNames: string[], ou: string }>();
         data.ipos.forEach(ipo => {
             if (performanceStats.targetTotalIposSet.has(ipo.name) && ipo.ancestralDomainNo) {
-                if (!targetAdsMap.has(ipo.ancestralDomainNo)) targetAdsMap.set(ipo.ancestralDomainNo, []);
-                targetAdsMap.get(ipo.ancestralDomainNo)!.push(ipo.name);
+                if (!targetAdsMap.has(ipo.ancestralDomainNo)) {
+                    targetAdsMap.set(ipo.ancestralDomainNo, { 
+                        ipoNames: [], 
+                        ou: regionToOuMap[ipo.region] || 'Unknown OU' 
+                    });
+                }
+                targetAdsMap.get(ipo.ancestralDomainNo)!.ipoNames.push(ipo.name);
             }
         });
-        const targets = Array.from(targetAdsMap.entries()).map(([adNo, ipoNames]) => ({
+        const targets = Array.from(targetAdsMap.entries()).map(([adNo, data]) => ({
             id: adNo,
             name: `AD No: ${adNo}`,
-            details: `Target via IPO(s): ${ipoNames.join(', ')}`
+            details: `Target via IPO(s): ${data.ipoNames.join(', ')}`,
+            operatingUnit: data.ou
         }));
 
         setLocalModal({ title: 'Ancestral Domains Performance', type: 'ads', targets, accomplishments });
@@ -443,10 +497,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         if (!localModal) return;
         const wb = XLSX.utils.book_new();
         
-        const enrich = (items: ModalItem[]) => {
+        const enrich = (items: (ModalItem & { operatingUnit?: string })[]) => {
             return items.map(item => {
                 let enriched: any = { Name: item.name };
-                let region = '';
                 let province = '';
                 let municipality = '';
 
@@ -454,7 +507,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                     const ipo = data.ipos.find(i => i.id === item.id);
                     if (ipo) {
                         const loc = parseLocation(ipo.location);
-                        region = loc.region;
                         province = loc.province;
                         municipality = loc.municipality;
                     }
@@ -464,7 +516,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                         const ipo = data.ipos.find(i => i.name === sp.indigenousPeopleOrganization);
                         if (ipo) {
                             const loc = parseLocation(ipo.location);
-                            region = loc.region;
                             province = loc.province;
                             municipality = loc.municipality;
                         }
@@ -475,7 +526,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                         const ipo = data.ipos.find(i => i.name === tr.participatingIpos[0]);
                         if (ipo) {
                             const loc = parseLocation(ipo.location);
-                            region = loc.region;
                             province = loc.province;
                             municipality = loc.municipality;
                         }
@@ -484,13 +534,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                     const ipo = data.ipos.find(i => i.ancestralDomainNo === item.id);
                     if (ipo) {
                         const loc = parseLocation(ipo.location);
-                        region = loc.region;
                         province = loc.province;
                         municipality = loc.municipality;
                     }
                 }
 
-                enriched.Region = region;
+                enriched.OU = item.operatingUnit || 'Unknown OU';
                 if (localModal.type === 'ads') {
                     enriched.Province = province;
                     enriched.Municipality = municipality;
@@ -498,9 +547,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 enriched.Details = item.details;
                 return enriched;
             }).sort((a, b) => {
-                const regA = a.Region || '';
-                const regB = b.Region || '';
-                if (regA !== regB) return regA.localeCompare(regB);
+                const ouA = a.OU || '';
+                const ouB = b.OU || '';
+                if (ouA !== ouB) return ouA.localeCompare(ouB);
                 
                 if (localModal.type === 'ads') {
                     const provA = a.Province || '';
@@ -663,18 +712,35 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                         <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
                             {modalTab === 'targets' ? (
                                 localModal.targets.length > 0 ? (
-                                    <ul className="space-y-3">
-                                        {localModal.targets.map((item, index) => (
-                                            <li 
-                                                key={index} 
-                                                className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
-                                                onClick={() => handleItemClick(item)}
-                                            >
-                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
-                                                {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
-                                            </li>
+                                    <div className="space-y-6">
+                                        {Object.entries(
+                                            localModal.targets.reduce((acc, item) => {
+                                                const ou = item.operatingUnit || 'Unknown OU';
+                                                if (!acc[ou]) acc[ou] = [];
+                                                acc[ou].push(item);
+                                                return acc;
+                                            }, {} as Record<string, (ModalItem & { operatingUnit?: string })[]>)
+                                        ).sort(([ouA], [ouB]) => ouA.localeCompare(ouB)).map(([ou, items]) => (
+                                            <div key={ou} className="space-y-2">
+                                                <div className="flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-700">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-accent dark:text-green-400">{ou}</span>
+                                                    <div className="flex-grow h-px bg-gray-100 dark:bg-gray-700"></div>
+                                                </div>
+                                                <ul className="space-y-3">
+                                                    {(items as (ModalItem & { operatingUnit?: string })[]).map((item, index) => (
+                                                        <li 
+                                                            key={index} 
+                                                            className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                            onClick={() => handleItemClick(item)}
+                                                        >
+                                                            <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
+                                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
                                         ))}
-                                    </ul>
+                                    </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                                         <p>No targets found for this year.</p>
@@ -682,18 +748,35 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                                 )
                             ) : (
                                 localModal.accomplishments.length > 0 ? (
-                                    <ul className="space-y-3">
-                                        {localModal.accomplishments.map((item, index) => (
-                                            <li 
-                                                key={index} 
-                                                className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
-                                                onClick={() => handleItemClick(item)}
-                                            >
-                                                <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
-                                                {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
-                                            </li>
+                                    <div className="space-y-6">
+                                        {Object.entries(
+                                            localModal.accomplishments.reduce((acc, item) => {
+                                                const ou = item.operatingUnit || 'Unknown OU';
+                                                if (!acc[ou]) acc[ou] = [];
+                                                acc[ou].push(item);
+                                                return acc;
+                                            }, {} as Record<string, (ModalItem & { operatingUnit?: string })[]>)
+                                        ).sort(([ouA], [ouB]) => ouA.localeCompare(ouB)).map(([ou, items]) => (
+                                            <div key={ou} className="space-y-2">
+                                                <div className="flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-700">
+                                                    <span className="text-xs font-bold uppercase tracking-wider text-accent dark:text-green-400">{ou}</span>
+                                                    <div className="flex-grow h-px bg-gray-100 dark:bg-gray-700"></div>
+                                                </div>
+                                                <ul className="space-y-3">
+                                                    {(items as (ModalItem & { operatingUnit?: string })[]).map((item, index) => (
+                                                        <li 
+                                                            key={index} 
+                                                            className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                            onClick={() => handleItemClick(item)}
+                                                        >
+                                                            <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
+                                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
                                         ))}
-                                    </ul>
+                                    </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-12 text-gray-500">
                                         <p>No accomplishments found for this year.</p>
