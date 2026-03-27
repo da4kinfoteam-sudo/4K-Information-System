@@ -443,8 +443,80 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         if (!localModal) return;
         const wb = XLSX.utils.book_new();
         
-        const targetData = localModal.targets.map(item => ({ Name: item.name, Details: item.details }));
-        const accomplishmentData = localModal.accomplishments.map(item => ({ Name: item.name, Details: item.details }));
+        const enrich = (items: ModalItem[]) => {
+            return items.map(item => {
+                let enriched: any = { Name: item.name };
+                let region = '';
+                let province = '';
+                let municipality = '';
+
+                if (localModal.type === 'ipos') {
+                    const ipo = data.ipos.find(i => i.id === item.id);
+                    if (ipo) {
+                        const loc = parseLocation(ipo.location);
+                        region = loc.region;
+                        province = loc.province;
+                        municipality = loc.municipality;
+                    }
+                } else if (localModal.type === 'subprojects') {
+                    const sp = data.subprojects.find(p => p.id === item.id);
+                    if (sp) {
+                        const ipo = data.ipos.find(i => i.name === sp.indigenousPeopleOrganization);
+                        if (ipo) {
+                            const loc = parseLocation(ipo.location);
+                            region = loc.region;
+                            province = loc.province;
+                            municipality = loc.municipality;
+                        }
+                    }
+                } else if (localModal.type === 'trainings') {
+                    const tr = data.trainings.find(t => t.id === item.id);
+                    if (tr && tr.participatingIpos.length > 0) {
+                        const ipo = data.ipos.find(i => i.name === tr.participatingIpos[0]);
+                        if (ipo) {
+                            const loc = parseLocation(ipo.location);
+                            region = loc.region;
+                            province = loc.province;
+                            municipality = loc.municipality;
+                        }
+                    }
+                } else if (localModal.type === 'ads') {
+                    const ipo = data.ipos.find(i => i.ancestralDomainNo === item.id);
+                    if (ipo) {
+                        const loc = parseLocation(ipo.location);
+                        region = loc.region;
+                        province = loc.province;
+                        municipality = loc.municipality;
+                    }
+                }
+
+                enriched.Region = region;
+                if (localModal.type === 'ads') {
+                    enriched.Province = province;
+                    enriched.Municipality = municipality;
+                }
+                enriched.Details = item.details;
+                return enriched;
+            }).sort((a, b) => {
+                const regA = a.Region || '';
+                const regB = b.Region || '';
+                if (regA !== regB) return regA.localeCompare(regB);
+                
+                if (localModal.type === 'ads') {
+                    const provA = a.Province || '';
+                    const provB = b.Province || '';
+                    if (provA !== provB) return provA.localeCompare(provB);
+                    
+                    const munA = a.Municipality || '';
+                    const munB = b.Municipality || '';
+                    return munA.localeCompare(munB);
+                }
+                return 0;
+            });
+        };
+
+        const targetData = enrich(localModal.targets);
+        const accomplishmentData = enrich(localModal.accomplishments);
         
         const wsTargets = XLSX.utils.json_to_sheet(targetData);
         const wsAccomplishments = XLSX.utils.json_to_sheet(accomplishmentData);
