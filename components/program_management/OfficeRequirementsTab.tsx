@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
@@ -31,7 +31,129 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
+const FilterIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+    </svg>
+);
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+
+// --- COLUMN HEADER COMPONENT ---
+interface OfficeRequirementColumnHeaderProps {
+    label: string;
+    columnKey: keyof OfficeRequirement;
+    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
+    onSort: (key: any, direction: 'ascending' | 'descending') => void;
+    filters: string[];
+    onFilterChange: (values: string[]) => void;
+    uniqueValues: string[];
+    isNumeric?: boolean;
+}
+
+const OfficeRequirementColumnHeader: React.FC<OfficeRequirementColumnHeaderProps> = ({ 
+    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredValues = (uniqueValues || []).filter(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
+    const isSorted = sortConfig?.key === columnKey;
+    const isFiltered = filters.length > 0;
+
+    const toggleFilter = (value: string) => {
+        if (filters.includes(value)) {
+            onFilterChange(filters.filter(f => f !== value));
+        } else {
+            onFilterChange([...filters, value]);
+        }
+    };
+
+    return (
+        <th className={`px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap ${isNumeric ? 'text-right' : ''}`}>
+            <div className={`flex items-center justify-between cursor-pointer ${isNumeric ? 'flex-row-reverse' : ''}`} onClick={() => setIsOpen(!isOpen)}>
+                <div className="flex items-center gap-1">
+                    {label}
+                    {isSorted && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
+                        </span>
+                    )}
+                </div>
+                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+                    <FilterIcon />
+                </div>
+            </div>
+
+            {isOpen && (
+                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
+                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
+                        <button 
+                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▲</span> Sort Ascending
+                        </button>
+                        <button 
+                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▼</span> Sort Descending
+                        </button>
+                    </div>
+
+                    {!isNumeric && (
+                        <>
+                            <div className="p-2">
+                                <input 
+                                    type="text" 
+                                    placeholder={`Search ${label}...`}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
+                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filters.length === 0} 
+                                        onChange={() => onFilterChange([])} 
+                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="truncate italic text-gray-500">(Select All)</span>
+                                </label>
+                                {filteredValues.map(val => (
+                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filters.includes(String(val))} 
+                                            onChange={() => toggleFilter(String(val))} 
+                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <span className="truncate">{val || '(Empty)'}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </th>
+    );
+};
 
 const getStatusBadge = (status: OfficeRequirement['status']) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
@@ -77,15 +199,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
-    // Filters - Persistent
-    const [ouFilter, setOuFilter] = useLocalStorageState('office_ouFilter', 'All');
-    const [yearFilter, setYearFilter] = useLocalStorageState('office_yearFilter', 'All');
-
     // Search and Column Filtering/Sorting
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof OfficeRequirement; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
-    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
-    const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'id', direction: 'descending' });
+    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string[] }>({});
 
     // Selection Hook
     const { 
@@ -151,12 +268,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     }, [formData.uacsCode, availableUacsCodes]);
 
     // --- Effects ---
-    useEffect(() => {
-        if (currentUser && !canViewAll) {
-            setOuFilter(currentUser.operatingUnit);
-        }
-    }, [currentUser, canViewAll]);
-
     // Initialize Form
     useEffect(() => {
         if (view === 'form') {
@@ -171,88 +282,54 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     }, [view, uacsCodes, currentUser, canViewAll]);
 
     // --- Derived Data ---
-    const availableYears = useMemo(() => {
-        const years = new Set<string>();
-        items.forEach(i => {
-            if (i.fundYear) years.add(i.fundYear.toString());
+    const uniqueValues = useMemo(() => {
+        const values: { [key: string]: string[] } = {};
+        const columns: (keyof OfficeRequirement)[] = ['uid', 'operatingUnit', 'status', 'equipment', 'fundYear', 'fundType', 'tier', 'specs', 'numberOfUnits'];
+        
+        columns.forEach(col => {
+            const unique = Array.from(new Set(items.map(item => String(item[col] || ''))))
+                .filter(Boolean)
+                .sort() as string[];
+            values[col as string] = unique;
         });
-        return Array.from(years).sort().reverse();
+        
+        return values;
     }, [items]);
 
     const filteredItems = useMemo(() => {
-        let filtered = items;
+        return items.filter(item => {
+            // Global Search
+            const searchStr = `${item.uid} ${item.equipment} ${item.specs} ${item.operatingUnit}`.toLowerCase();
+            if (searchTerm && !searchStr.includes(searchTerm.toLowerCase())) return false;
 
-        // Global Search (UID or Equipment)
-        if (searchTerm) {
-            const lowSearch = searchTerm.toLowerCase();
-            filtered = filtered.filter(item => 
-                (item.uid || '').toLowerCase().includes(lowSearch) || 
-                (item.equipment || '').toLowerCase().includes(lowSearch)
-            );
-        }
-
-        // OU and Year Filters
-        if (!canViewAll && currentUser) {
-            filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
-        } else if (canViewAll && ouFilter !== 'All') {
-            filtered = filtered.filter(item => item.operatingUnit === ouFilter);
-        }
-        if (yearFilter !== 'All') {
-            filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
-        }
-
-        // Column Filters
-        Object.keys(columnFilters).forEach(key => {
-            const value = columnFilters[key];
-            if (value) {
-                const lowValue = value.toLowerCase();
-                filtered = filtered.filter(item => {
-                    const itemValue = String(item[key as keyof OfficeRequirement] || '').toLowerCase();
-                    return itemValue.includes(lowValue);
-                });
+            // Column Filters
+            for (const [key, values] of Object.entries(columnFilters)) {
+                const filterValues = values as string[];
+                if (filterValues.length > 0) {
+                    const itemValue = String(item[key as keyof OfficeRequirement] || '');
+                    if (!filterValues.includes(itemValue)) return false;
+                }
             }
-        });
 
-        // Sorting
-        return [...filtered].sort((a, b) => {
-            const aValue = a[sortConfig.key];
-            const bValue = b[sortConfig.key];
+            return true;
+        }).sort((a, b) => {
+            const aValue = a[sortConfig.key as keyof OfficeRequirement];
+            const bValue = b[sortConfig.key as keyof OfficeRequirement];
 
             if (aValue === bValue) return 0;
-            
-            // Handle null/undefined
-            if (aValue === null || aValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (bValue === null || bValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (aValue === undefined || aValue === null) return 1;
+            if (bValue === undefined || bValue === null) return -1;
 
             const comparison = aValue < bValue ? -1 : 1;
-            return sortConfig.direction === 'asc' ? comparison : -comparison;
+            return sortConfig.direction === 'ascending' ? comparison : -comparison;
         });
-    }, [items, ouFilter, yearFilter, canViewAll, currentUser, searchTerm, sortConfig, columnFilters]);
+    }, [items, searchTerm, sortConfig, columnFilters]);
 
-    const handleSort = (key: keyof OfficeRequirement) => {
-        setSortConfig(prev => ({
-            key,
-            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-        }));
+    const handleSort = (key: any, direction: 'ascending' | 'descending') => {
+        setSortConfig({ key, direction });
     };
 
-    const toggleColumnFilter = (column: string) => {
-        setActiveFilterColumn(activeFilterColumn === column ? null : column);
-    };
-
-    const handleColumnFilterChange = (column: string, value: string) => {
-        setColumnFilters(prev => ({ ...prev, [column]: value }));
-    };
-
-    const clearColumnFilter = (column: string) => {
-        setColumnFilters(prev => {
-            const next = { ...prev };
-            delete next[column];
-            return next;
-        });
-    };
-
-    const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
+    const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, []);
 
     const getInputClasses = (fieldName: string) => {
         const hasError = validationErrors.includes(fieldName);
@@ -837,7 +914,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         </span>
                         <input 
                             type="text" 
-                            placeholder="Search UID or Equipment..." 
+                            placeholder="Search Office Requirements..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all"
@@ -851,8 +928,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                             </button>
                         )}
                     </div>
-                    {canViewAll && <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className={commonInputClasses}><option value="All">All OUs</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>}
-                    <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={commonInputClasses}><option value="All">All Years</option>{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                 </div>
                 <div className="flex items-center gap-2">
                     {isSelectionMode && selectedIds.length > 0 && (
@@ -902,58 +977,89 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            {[
-                                { key: 'uid', label: 'UID' },
-                                { key: 'operatingUnit', label: 'OU' },
-                                { key: 'status', label: 'Status' },
-                                { key: 'equipment', label: 'Equipment' },
-                                { key: 'specs', label: 'Specs/Purpose' },
-                                { key: 'numberOfUnits', label: 'Units', align: 'right' },
-                                { key: 'pricePerUnit', label: 'Total Amount', align: 'right' },
-                                { key: 'fundYear', label: 'Fund' }
-                            ].map((col) => (
-                                <th key={col.key} className={`px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
-                                    <div className={`flex items-center gap-2 ${col.align === 'right' ? 'justify-end' : ''}`}>
-                                        <button 
-                                            onClick={() => handleSort(col.key as keyof OfficeRequirement)}
-                                            className="hover:text-emerald-600 transition-colors flex items-center gap-1"
-                                        >
-                                            {col.label}
-                                            {sortConfig.key === col.key ? (
-                                                sortConfig.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-                                            ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
-                                        </button>
-                                        <div className="relative">
-                                            <button 
-                                                onClick={() => toggleColumnFilter(col.key)}
-                                                className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors ${columnFilters[col.key] ? 'text-emerald-600' : 'opacity-30'}`}
-                                            >
-                                                <Filter className="h-3 w-3" />
-                                            </button>
-                                            {activeFilterColumn === col.key && (
-                                                <div className="absolute top-full left-0 mt-1 w-48 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-xl z-10">
-                                                    <input 
-                                                        type="text"
-                                                        autoFocus
-                                                        placeholder={`Filter ${col.label}...`}
-                                                        value={columnFilters[col.key] || ''}
-                                                        onChange={(e) => handleColumnFilterChange(col.key, e.target.value)}
-                                                        className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                                    />
-                                                    {columnFilters[col.key] && (
-                                                        <button 
-                                                            onClick={() => clearColumnFilter(col.key)}
-                                                            className="mt-2 text-[10px] text-red-500 hover:text-red-700 font-medium"
-                                                        >
-                                                            Clear Filter
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </th>
-                            ))}
+                            <OfficeRequirementColumnHeader 
+                                label="UID" 
+                                columnKey="uid" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['uid'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, uid: vals }))}
+                                uniqueValues={uniqueValues['uid'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="OU" 
+                                columnKey="operatingUnit" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['operatingUnit'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, operatingUnit: vals }))}
+                                uniqueValues={uniqueValues['operatingUnit'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Status" 
+                                columnKey="status" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['status'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, status: vals }))}
+                                uniqueValues={uniqueValues['status'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Equipment" 
+                                columnKey="equipment" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['equipment'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, equipment: vals }))}
+                                uniqueValues={uniqueValues['equipment'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Specs/Purpose" 
+                                columnKey="specs" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['specs'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, specs: vals }))}
+                                uniqueValues={uniqueValues['specs'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Units" 
+                                columnKey="numberOfUnits" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['numberOfUnits'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, numberOfUnits: vals }))}
+                                uniqueValues={uniqueValues['numberOfUnits'] || []}
+                                isNumeric
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Total Amount" 
+                                columnKey="pricePerUnit" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={[]}
+                                onFilterChange={() => {}}
+                                uniqueValues={[]}
+                                isNumeric
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Fund Year" 
+                                columnKey="fundYear" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['fundYear'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, fundYear: vals }))}
+                                uniqueValues={uniqueValues['fundYear'] || []}
+                            />
+                            <OfficeRequirementColumnHeader 
+                                label="Fund Type" 
+                                columnKey="fundType" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['fundType'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, fundType: vals }))}
+                                uniqueValues={uniqueValues['fundType'] || []}
+                            />
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
                     </thead>
@@ -968,14 +1074,13 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(item.status)}>{item.status}</span></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                        <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-700 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
-                                            {item.equipment}
-                                        </button>
+                                        {item.equipment}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300"><div className="truncate w-48" title={item.specs}>{item.specs}</div><div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div><div className="mt-1 text-xs font-mono">{item.uacsCode}</div></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundYear}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundType}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         {canEdit && (
                                             isSelectionMode ? 
@@ -986,7 +1091,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                                 disabled={selectionIntent === 'delete' && !canDeleteThis}
                                                 className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
                                             /> :
-                                            canDeleteThis && <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">Edit</button>
+                                                {canDeleteThis && <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>}
+                                            </div>
                                         )}
                                     </td>
                                 </tr>

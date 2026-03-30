@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
@@ -70,6 +70,129 @@ interface StaffingRequirementsTabProps {
     onSelect: (item: StaffingRequirement) => void;
 }
 
+const FilterIcon = () => (
+    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+    </svg>
+);
+
+// StaffingRequirementColumnHeader component
+interface StaffingRequirementColumnHeaderProps {
+    label: string;
+    columnKey: keyof StaffingRequirement;
+    sortConfig: { key: string; direction: 'ascending' | 'descending' } | null;
+    onSort: (key: any, direction: 'ascending' | 'descending') => void;
+    filters: string[];
+    onFilterChange: (values: string[]) => void;
+    uniqueValues: string[];
+    isNumeric?: boolean;
+}
+
+const StaffingRequirementColumnHeader: React.FC<StaffingRequirementColumnHeaderProps> = ({ 
+    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredValues = (uniqueValues || []).filter(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()));
+    const isSorted = sortConfig?.key === columnKey;
+    const isFiltered = (filters || []).length > 0;
+
+    const toggleFilter = (value: string) => {
+        const currentFilters = filters || [];
+        if (currentFilters.includes(value)) {
+            onFilterChange(currentFilters.filter(f => f !== value));
+        } else {
+            onFilterChange([...currentFilters, value]);
+        }
+    };
+
+    return (
+        <th className={`px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 relative group select-none whitespace-nowrap ${isNumeric ? 'text-right' : ''}`}>
+            <div className={`flex items-center justify-between cursor-pointer ${isNumeric ? 'flex-row-reverse' : ''}`} onClick={() => setIsOpen(!isOpen)}>
+                <div className="flex items-center gap-1">
+                    {label}
+                    {isSorted && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                            {sortConfig?.direction === 'ascending' ? '▲' : '▼'}
+                        </span>
+                    )}
+                </div>
+                <div className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 ${isFiltered ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50' : 'text-gray-400 opacity-0 group-hover:opacity-100'}`}>
+                    <FilterIcon />
+                </div>
+            </div>
+
+            {isOpen && (
+                <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
+                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
+                        <button 
+                            onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▲</span> Sort Ascending
+                        </button>
+                        <button 
+                            onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
+                            className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
+                        >
+                            <span>▼</span> Sort Descending
+                        </button>
+                    </div>
+
+                    {!isNumeric && (
+                        <>
+                            <div className="p-2">
+                                <input 
+                                    type="text" 
+                                    placeholder={`Search ${label}...`}
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-gray-50 dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
+                                <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filters.length === 0} 
+                                        onChange={() => onFilterChange([])} 
+                                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="truncate italic text-gray-500">(Select All)</span>
+                                </label>
+                                {filteredValues.map(val => (
+                                    <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={filters.includes(String(val))} 
+                                            onChange={() => toggleFilter(String(val))} 
+                                            className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <span className="truncate">{val || '(Empty)'}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </th>
+    );
+};
+
 export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = getUserPermissions(currentUser);
@@ -88,14 +211,11 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     };
 
     // Filters - Persistent
-    const [ouFilter, setOuFilter] = useLocalStorageState('staffing_ouFilter', 'All');
-    const [yearFilter, setYearFilter] = useLocalStorageState('staffing_yearFilter', 'All');
+    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string[] }>({});
 
     // Search and Column Filtering/Sorting
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof StaffingRequirement; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
-    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
-    const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'id', direction: 'descending' });
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 
@@ -160,7 +280,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     }, [currentExpense.uacsCode, availableUacsCodes]);
 
     useEffect(() => {
-        if (currentUser && !canViewAll) setOuFilter(currentUser.operatingUnit);
+        // Removed ouFilter dependency
     }, [currentUser, canViewAll]);
 
     // Initialize Form
@@ -193,68 +313,74 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             );
         }
 
-        // OU and Year Filters
+        // Permissions Filter
         if (!canViewAll && currentUser) {
             filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
-        } else if (canViewAll && ouFilter !== 'All') {
-            filtered = filtered.filter(item => item.operatingUnit === ouFilter);
-        }
-        if (yearFilter !== 'All') {
-            filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
         }
 
         // Column Filters
         Object.keys(columnFilters).forEach(key => {
-            const value = columnFilters[key];
-            if (value) {
-                const lowValue = value.toLowerCase();
+            const selectedValues = columnFilters[key];
+            if (selectedValues && selectedValues.length > 0) {
                 filtered = filtered.filter(item => {
-                    const itemValue = String(item[key as keyof StaffingRequirement] || '').toLowerCase();
-                    return itemValue.includes(lowValue);
+                    const itemValue = String(item[key as keyof StaffingRequirement] || '');
+                    return selectedValues.includes(itemValue);
                 });
             }
         });
 
         // Sorting
         return [...filtered].sort((a, b) => {
-            const aValue = a[sortConfig.key];
-            const bValue = b[sortConfig.key];
+            const aValue = a[sortConfig.key as keyof StaffingRequirement];
+            const bValue = b[sortConfig.key as keyof StaffingRequirement];
 
             if (aValue === bValue) return 0;
             
             // Handle null/undefined
-            if (aValue === null || aValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
-            if (bValue === null || bValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+            if (aValue === null || aValue === undefined) return sortConfig.direction === 'ascending' ? -1 : 1;
+            if (bValue === null || bValue === undefined) return sortConfig.direction === 'ascending' ? 1 : -1;
 
             const comparison = aValue < bValue ? -1 : 1;
-            return sortConfig.direction === 'asc' ? comparison : -comparison;
+            return sortConfig.direction === 'ascending' ? comparison : -comparison;
         });
-    }, [items, ouFilter, yearFilter, canViewAll, currentUser, searchTerm, sortConfig, columnFilters]);
+    }, [items, canViewAll, currentUser, searchTerm, sortConfig, columnFilters]);
 
-    const handleSort = (key: keyof StaffingRequirement) => {
-        setSortConfig(prev => ({
-            key,
-            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
-        }));
+    const handleSort = (key: any, direction: 'ascending' | 'descending') => {
+        setSortConfig({ key, direction });
     };
 
-    const toggleColumnFilter = (column: string) => {
-        setActiveFilterColumn(activeFilterColumn === column ? null : column);
+    const handleColumnFilterChange = (column: string, values: string[]) => {
+        setColumnFilters(prev => ({ ...prev, [column]: values }));
     };
 
-    const handleColumnFilterChange = (column: string, value: string) => {
-        setColumnFilters(prev => ({ ...prev, [column]: value }));
-    };
+    const uniqueValues = useMemo(() => {
+        const values: { [key: string]: string[] } = {
+            uid: [],
+            operatingUnit: [],
+            hiringStatus: [],
+            personnelPosition: [],
+            personnelType: [],
+            fundYear: [],
+            fundType: []
+        };
 
-    const clearColumnFilter = (column: string) => {
-        setColumnFilters(prev => {
-            const next = { ...prev };
-            delete next[column];
-            return next;
+        items.forEach(item => {
+            Object.keys(values).forEach(key => {
+                const val = String(item[key as keyof StaffingRequirement] || '');
+                if (!values[key].includes(val)) {
+                    values[key].push(val);
+                }
+            });
         });
-    };
 
-    const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
+        Object.keys(values).forEach(key => {
+            values[key].sort();
+        });
+
+        return values;
+    }, [items]);
+
+    const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -812,7 +938,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         </span>
                         <input 
                             type="text" 
-                            placeholder="Search UID or Position..." 
+                            placeholder="Search Staffing Requirements..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all"
@@ -826,8 +952,6 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             </button>
                         )}
                     </div>
-                    {canViewAll && <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className={commonInputClasses}><option value="All">All OUs</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>}
-                    <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={commonInputClasses}><option value="All">All Years</option>{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                 </div>
                 <div className="flex items-center gap-2">
                     {isSelectionMode && selectedIds.length > 0 && (
@@ -876,7 +1000,84 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
-                        <tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Position</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Annual Salary</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th></tr>
+                        <tr>
+                            <StaffingRequirementColumnHeader 
+                                label="UID" 
+                                columnKey="uid" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.uid || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('uid', val)} 
+                                uniqueValues={uniqueValues.uid} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="OU" 
+                                columnKey="operatingUnit" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.operatingUnit || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('operatingUnit', val)} 
+                                uniqueValues={uniqueValues.operatingUnit} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Status" 
+                                columnKey="hiringStatus" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.hiringStatus || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('hiringStatus', val)} 
+                                uniqueValues={uniqueValues.hiringStatus} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Position" 
+                                columnKey="personnelPosition" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.personnelPosition || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('personnelPosition', val)} 
+                                uniqueValues={uniqueValues.personnelPosition} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Type" 
+                                columnKey="personnelType" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.personnelType || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('personnelType', val)} 
+                                uniqueValues={uniqueValues.personnelType} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Annual Salary" 
+                                columnKey="annualSalary" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={[]} 
+                                onFilterChange={() => {}} 
+                                uniqueValues={[]} 
+                                isNumeric
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Fund Year" 
+                                columnKey="fundYear" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.fundYear || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('fundYear', val)} 
+                                uniqueValues={uniqueValues.fundYear} 
+                            />
+                            <StaffingRequirementColumnHeader 
+                                label="Fund Type" 
+                                columnKey="fundType" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.fundType || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('fundType', val)} 
+                                uniqueValues={uniqueValues.fundType} 
+                            />
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                {isSelectionMode ? "Select" : "Actions"}
+                            </th>
+                        </tr>
                     </thead>
                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {paginatedData.map((item) => (
@@ -885,16 +1086,24 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                    <button onClick={() => onSelect(item)} className="text-left text-emerald-600 hover:text-emerald-800 hover:underline focus:outline-none dark:text-emerald-400 dark:hover:text-emerald-300">
-                                        {item.personnelPosition}
-                                    </button>
+                                    {item.personnelPosition}
                                     <div className="text-xs text-gray-400">SG-{item.salaryGrade}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.personnelType}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.annualSalary)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div>{item.fundType} {item.fundYear}</div><div>{item.tier}</div><div className="mt-1 text-xs font-mono">{item.uacsCode}</div></td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundYear}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundType}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    {canEdit && (isSelectionMode ? <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/> : <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>)}
+                                    {isSelectionMode ? (
+                                        <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/>
+                                    ) : (
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">Edit</button>
+                                            {canEdit && (
+                                                <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
+                                            )}
+                                        </div>
+                                    )}
                                 </td>
                             </tr>
                         ))}
