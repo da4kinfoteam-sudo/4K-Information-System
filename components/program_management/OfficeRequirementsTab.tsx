@@ -10,6 +10,7 @@ import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; 
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
+import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -79,6 +80,12 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     // Filters - Persistent
     const [ouFilter, setOuFilter] = useLocalStorageState('office_ouFilter', 'All');
     const [yearFilter, setYearFilter] = useLocalStorageState('office_yearFilter', 'All');
+
+    // Search and Column Filtering/Sorting
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: keyof OfficeRequirement; direction: 'asc' | 'desc' }>({ key: 'id', direction: 'desc' });
+    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
+    const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
 
     // Selection Hook
     const { 
@@ -174,6 +181,17 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
     const filteredItems = useMemo(() => {
         let filtered = items;
+
+        // Global Search (UID or Equipment)
+        if (searchTerm) {
+            const lowSearch = searchTerm.toLowerCase();
+            filtered = filtered.filter(item => 
+                (item.uid || '').toLowerCase().includes(lowSearch) || 
+                (item.equipment || '').toLowerCase().includes(lowSearch)
+            );
+        }
+
+        // OU and Year Filters
         if (!canViewAll && currentUser) {
             filtered = filtered.filter(item => item.operatingUnit === currentUser.operatingUnit);
         } else if (canViewAll && ouFilter !== 'All') {
@@ -182,8 +200,57 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         if (yearFilter !== 'All') {
             filtered = filtered.filter(item => item.fundYear?.toString() === yearFilter);
         }
-        return filtered.sort((a,b) => b.id - a.id);
-    }, [items, ouFilter, yearFilter, canViewAll, currentUser]);
+
+        // Column Filters
+        Object.keys(columnFilters).forEach(key => {
+            const value = columnFilters[key];
+            if (value) {
+                const lowValue = value.toLowerCase();
+                filtered = filtered.filter(item => {
+                    const itemValue = String(item[key as keyof OfficeRequirement] || '').toLowerCase();
+                    return itemValue.includes(lowValue);
+                });
+            }
+        });
+
+        // Sorting
+        return [...filtered].sort((a, b) => {
+            const aValue = a[sortConfig.key];
+            const bValue = b[sortConfig.key];
+
+            if (aValue === bValue) return 0;
+            
+            // Handle null/undefined
+            if (aValue === null || aValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (bValue === null || bValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+
+            const comparison = aValue < bValue ? -1 : 1;
+            return sortConfig.direction === 'asc' ? comparison : -comparison;
+        });
+    }, [items, ouFilter, yearFilter, canViewAll, currentUser, searchTerm, sortConfig, columnFilters]);
+
+    const handleSort = (key: keyof OfficeRequirement) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const toggleColumnFilter = (column: string) => {
+        setActiveFilterColumn(activeFilterColumn === column ? null : column);
+    };
+
+    const handleColumnFilterChange = (column: string, value: string) => {
+        setColumnFilters(prev => ({ ...prev, [column]: value }));
+    };
+
+    const clearColumnFilter = (column: string) => {
+        setColumnFilters(prev => {
+            const next = { ...prev };
+            delete next[column];
+            return next;
+        });
+    };
 
     const { currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData } = usePagination(filteredItems, [ouFilter, yearFilter]);
 
@@ -763,7 +830,27 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <div className="relative flex-1 md:flex-none">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search className="h-4 w-4 text-gray-400" />
+                        </span>
+                        <input 
+                            type="text" 
+                            placeholder="Search UID or Equipment..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all"
+                        />
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
                     {canViewAll && <select value={ouFilter} onChange={e => setOuFilter(e.target.value)} className={commonInputClasses}><option value="All">All OUs</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>}
                     <select value={yearFilter} onChange={e => setYearFilter(e.target.value)} className={commonInputClasses}><option value="All">All Years</option>{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                 </div>
@@ -815,14 +902,58 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-gray-50 dark:bg-gray-700/50">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">UID</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">OU</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Equipment</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Specs/Purpose</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Units</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fund</th>
+                            {[
+                                { key: 'uid', label: 'UID' },
+                                { key: 'operatingUnit', label: 'OU' },
+                                { key: 'status', label: 'Status' },
+                                { key: 'equipment', label: 'Equipment' },
+                                { key: 'specs', label: 'Specs/Purpose' },
+                                { key: 'numberOfUnits', label: 'Units', align: 'right' },
+                                { key: 'pricePerUnit', label: 'Total Amount', align: 'right' },
+                                { key: 'fundYear', label: 'Fund' }
+                            ].map((col) => (
+                                <th key={col.key} className={`px-6 py-3 text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
+                                    <div className={`flex items-center gap-2 ${col.align === 'right' ? 'justify-end' : ''}`}>
+                                        <button 
+                                            onClick={() => handleSort(col.key as keyof OfficeRequirement)}
+                                            className="hover:text-emerald-600 transition-colors flex items-center gap-1"
+                                        >
+                                            {col.label}
+                                            {sortConfig.key === col.key ? (
+                                                sortConfig.direction === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                                            ) : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                                        </button>
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => toggleColumnFilter(col.key)}
+                                                className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors ${columnFilters[col.key] ? 'text-emerald-600' : 'opacity-30'}`}
+                                            >
+                                                <Filter className="h-3 w-3" />
+                                            </button>
+                                            {activeFilterColumn === col.key && (
+                                                <div className="absolute top-full left-0 mt-1 w-48 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-xl z-10">
+                                                    <input 
+                                                        type="text"
+                                                        autoFocus
+                                                        placeholder={`Filter ${col.label}...`}
+                                                        value={columnFilters[col.key] || ''}
+                                                        onChange={(e) => handleColumnFilterChange(col.key, e.target.value)}
+                                                        className="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                    />
+                                                    {columnFilters[col.key] && (
+                                                        <button 
+                                                            onClick={() => clearColumnFilter(col.key)}
+                                                            className="mt-2 text-[10px] text-red-500 hover:text-red-700 font-medium"
+                                                        >
+                                                            Clear Filter
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </th>
+                            ))}
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
                     </thead>

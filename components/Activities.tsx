@@ -304,7 +304,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             budget: [], // Budget is numeric
             operatingUnit: getUnique('operatingUnit'),
             component: getUnique('component'),
-            fundingYear: filterYears
+            fundingYear: filterYears,
+            fundType: fundTypes
         };
     }, [initiallyFilteredActivities]);
 
@@ -676,6 +677,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     uniqueValues={uniqueValues.fundingYear} 
                                 />
                                 <ActivityColumnHeader 
+                                    label="Fund Type" 
+                                    columnKey="fundType" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['fundType'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('fundType', v)} 
+                                    uniqueValues={uniqueValues.fundType} 
+                                />
+                                <ActivityColumnHeader 
                                     label="Status" 
                                     columnKey="status" 
                                     sortConfig={sortConfig} 
@@ -747,6 +757,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.operatingUnit}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundType || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             {new Date(activity.date).toLocaleDateString()}
@@ -773,7 +784,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     </tr>
                                      {expandedRowId === activity.id && (
                                         <tr className="bg-gray-50 dark:bg-gray-900/50">
-                                            <td colSpan={11} className="p-4">
+                                            <td colSpan={12} className="p-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     <div className="space-y-4">
                                                         <div>
