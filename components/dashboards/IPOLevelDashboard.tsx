@@ -34,8 +34,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     // Filter assessments based on the visible IPOs (which are already filtered by OU in parent)
     const filteredAssessments = useMemo(() => {
-        const ipoIds = new Set(ipos.map(i => i.id));
-        return assessments.filter(a => ipoIds.has(a.ipo_id));
+        const ipoIds = new Set((ipos || []).map(i => i.id));
+        return (assessments || []).filter(a => ipoIds.has(a.ipo_id));
     }, [assessments, ipos]);
 
     // Top Section Data: Filter by Selected Year
@@ -67,7 +67,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 return acc;
             }, {} as Record<number, LodAssessment>));
 
-        finalAssessments.forEach(a => {
+        (finalAssessments || []).forEach(a => {
             const level = a.manual_level || a.computed_level;
             if (level >= 1 && level <= 5) {
                 // @ts-ignore
@@ -83,7 +83,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         // Group by Year and Count Levels
         const yearGroups: Record<number, { year: number, level1: number, level2: number, level3: number, level4: number, level5: number }> = {};
 
-        filteredAssessments.forEach(a => {
+        (filteredAssessments || []).forEach(a => {
             if (!yearGroups[a.year]) {
                 yearGroups[a.year] = { year: a.year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0 };
             }

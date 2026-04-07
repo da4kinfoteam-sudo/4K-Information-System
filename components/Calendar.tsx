@@ -112,7 +112,7 @@ const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateC
             events[key].push(event);
         };
 
-        activities.forEach(act => {
+        (activities || []).forEach(act => {
             if (act.date) {
                 const isCompleted = act.status === 'Completed' || !!act.actualDate;
                 
@@ -149,7 +149,7 @@ const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateC
             }
         });
 
-        systemSettings.deadlines.forEach(dl => {
+        (systemSettings?.deadlines || []).forEach(dl => {
             if (dl.date) {
                 addEvent(dl.date, {
                     id: `dl-${dl.id}`,
@@ -162,7 +162,7 @@ const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateC
             }
         });
 
-        systemSettings.planningSchedules.forEach(ps => {
+        (systemSettings?.planningSchedules || []).forEach(ps => {
             if (ps.startDate && ps.endDate) {
                 let current = new Date(ps.startDate);
                 const end = new Date(ps.endDate);
@@ -182,7 +182,7 @@ const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateC
             }
         });
 
-        holidays.forEach(h => {
+        (holidays || []).forEach(h => {
             addEvent(h.date, {
                 id: `hol-${h.date}`,
                 title: h.localName,

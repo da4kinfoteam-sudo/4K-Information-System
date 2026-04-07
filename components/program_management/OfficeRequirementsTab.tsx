@@ -287,7 +287,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         const columns: (keyof OfficeRequirement)[] = ['uid', 'operatingUnit', 'status', 'equipment', 'fundYear', 'fundType', 'tier', 'specs', 'numberOfUnits'];
         
         columns.forEach(col => {
-            const unique = Array.from(new Set(items.map(item => String(item[col] || ''))))
+            const unique = Array.from(new Set((items || []).map(item => String(item[col] || ''))))
                 .filter(Boolean)
                 .sort() as string[];
             values[col as string] = unique;
@@ -297,7 +297,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     }, [items]);
 
     const filteredItems = useMemo(() => {
-        return items.filter(item => {
+        return (items || []).filter(item => {
             // Global Search
             const searchStr = `${item.uid} ${item.equipment} ${item.specs} ${item.operatingUnit}`.toLowerCase();
             if (searchTerm && !searchStr.includes(searchTerm.toLowerCase())) return false;

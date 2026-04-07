@@ -96,10 +96,9 @@ const AppContent: React.FC = () => {
     const [staffingReqs, setStaffingReqs] = useState<StaffingRequirement[]>([]);
     const [otherProgramExpenses, setOtherProgramExpenses] = useState<OtherProgramExpense[]>([]);
 
-    // System Settings States (Deadlines and Schedules)
+    // System Settings States (Deadlines)
     // Managed manually to support direct DB operations
     const [deadlines, setDeadlines] = useState<Deadline[]>([]);
-    const [planningSchedules, setPlanningSchedules] = useState<PlanningSchedule[]>([]);
     const [budgetCeilings, setBudgetCeilings] = useState<any[]>([]);
 
     // Fetch Program Management & System Settings Data on mount
@@ -118,9 +117,6 @@ const AppContent: React.FC = () => {
             // Fetch System Settings
             const dl = await fetchAll('deadlines', 'date', true);
             setDeadlines(dl as Deadline[]);
-
-            const ps = await fetchAll('planning_schedules', 'startDate', true);
-            setPlanningSchedules(ps as PlanningSchedule[]);
 
             // Fetch Budget Ceilings
             const { data: bc } = await supabase.from('budget_ceilings').select('*');
@@ -152,9 +148,8 @@ const AppContent: React.FC = () => {
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
-        deadlines,
-        planningSchedules
-    }), [deadlines, planningSchedules]);
+        deadlines
+    }), [deadlines]);
 
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
@@ -749,8 +744,6 @@ const AppContent: React.FC = () => {
                             toggleDarkMode={toggleDarkMode}
                             deadlines={deadlines}
                             setDeadlines={setDeadlines}
-                            planningSchedules={planningSchedules}
-                            setPlanningSchedules={setPlanningSchedules}
                             // Pass data for DCF Management
                             subprojects={subprojects} setSubprojects={setSubprojects}
                             activities={activities} setActivities={setActivities}

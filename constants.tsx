@@ -489,16 +489,11 @@ export interface PlanningSchedule {
 
 export interface SystemSettings {
     deadlines: Deadline[];
-    planningSchedules: PlanningSchedule[];
 }
 
 export const defaultSystemSettings: SystemSettings = {
     deadlines: [
         { id: 1, name: "Budget Proposal Submission", date: "2024-03-31" }
-    ],
-    planningSchedules: [
-        { id: 1, name: "Q1 Planning Workshop", startDate: "2024-01-15", endDate: "2024-01-20" },
-        { id: 2, name: "Mid-Year Assessment", startDate: "2024-06-15", endDate: "2024-06-20" }
     ]
 };
 

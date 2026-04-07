@@ -80,7 +80,7 @@ const SubprojectColumnHeader: React.FC<SubprojectColumnHeaderProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const filteredValues = uniqueValues.filter(v => v.toLowerCase().includes(searchTerm.toLowerCase()));
+    const filteredValues = (uniqueValues || []).filter(v => v.toLowerCase().includes(searchTerm.toLowerCase()));
     const isSorted = sortConfig?.key === columnKey;
     const isFiltered = filters.length > 0;
 
@@ -443,7 +443,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             const newUid = `SP-${currentYear}-${sequence}${index}`;
 
-            const clonedDetails = item.details.map(d => ({
+            const clonedDetails = (item.details || []).map(d => ({
                 ...d,
                 id: Date.now() + Math.random(),
                 actualDeliveryDate: '',
@@ -456,11 +456,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 isCompleted: false
             }));
 
-            const clonedCommodities = item.subprojectCommodities?.map(c => ({
+            const clonedCommodities = (item.subprojectCommodities || []).map(c => ({
                 ...c,
                 actualYield: 0,
                 income: 0
-            })) || [];
+            }));
 
             return {
                 ...rest,

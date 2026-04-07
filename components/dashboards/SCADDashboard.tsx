@@ -60,14 +60,14 @@ const SCADDashboard: React.FC<SCADDashboardProps> = ({ ipos }) => {
             return 'Others';
         };
 
-        ipos.forEach(ipo => {
+        (ipos || []).forEach(ipo => {
             if (!ipo.commodities) return;
 
             // IPOs have a specific region field selected during encoding
             const region = ipo.region; 
             const island = getIsland(region);
 
-            ipo.commodities.forEach(comm => {
+            (ipo.commodities || []).forEach(comm => {
                 if (comm.isScad) {
                     const name = comm.particular;
                     // value is Area (ha) for crops or Heads for livestock

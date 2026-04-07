@@ -20,8 +20,6 @@ interface SettingsProps {
     toggleDarkMode: () => void;
     deadlines: Deadline[];
     setDeadlines: React.Dispatch<React.SetStateAction<Deadline[]>>;
-    planningSchedules: PlanningSchedule[];
-    setPlanningSchedules: React.Dispatch<React.SetStateAction<PlanningSchedule[]>>;
     
     // Props for DCF Management
     subprojects: Subproject[];
@@ -46,7 +44,6 @@ type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod' | 'a
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
     deadlines, setDeadlines,
-    planningSchedules, setPlanningSchedules,
     subprojects, setSubprojects,
     activities, setActivities,
     ipos, setIpos,
@@ -130,8 +127,6 @@ const Settings: React.FC<SettingsProps> = ({
                         <SystemManagementTab 
                             deadlines={deadlines}
                             setDeadlines={setDeadlines}
-                            planningSchedules={planningSchedules}
-                            setPlanningSchedules={setPlanningSchedules}
                         />
                     )}
 

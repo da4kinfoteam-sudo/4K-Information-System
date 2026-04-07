@@ -75,7 +75,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             Q1: new Set(), Q2: new Set(), Q3: new Set(), Q4: new Set()
         };
 
-        data.subprojects.forEach(p => {
+        (data.subprojects || []).forEach(p => {
             if (p.startDate) {
                 const quarter = getQuarter(new Date(p.startDate));
                 if (quarter >= 1 && quarter <= 4) {
@@ -86,12 +86,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 }
             }
         });
-        data.trainings.forEach(t => {
+        (data.trainings || []).forEach(t => {
             if (t.date) {
                 const quarter = getQuarter(new Date(t.date));
                 if (quarter >= 1 && quarter <= 4) {
                     targets[`Q${quarter}`].trainings++;
-                    t.participatingIpos.forEach(ipo => targetIposByQuarter[`Q${quarter}`].add(ipo));
+                    (t.participatingIpos || []).forEach(ipo => targetIposByQuarter[`Q${quarter}`].add(ipo));
                 }
             }
         });
@@ -109,7 +109,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             Q3: { subprojects: 0, trainings: 0, ipos: 0 }, Q4: { subprojects: 0, trainings: 0, ipos: 0 },
         };
 
-        data.subprojects.forEach(p => {
+        (data.subprojects || []).forEach(p => {
             if (p.status === 'Completed' && p.actualCompletionDate) {
                 const quarter = getQuarter(new Date(p.actualCompletionDate));
                  if (quarter >= 1 && quarter <= 4) accomplishments[`Q${quarter}`].subprojects++;
@@ -118,18 +118,18 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
         const assistedIposByQuarter = new Map<number, Set<string>>();
         
-        data.trainings.forEach(t => {
+        (data.trainings || []).forEach(t => {
             // Check if training is actually completed (has actual date)
             if (t.actualDate) {
                 const quarter = getQuarter(new Date(t.actualDate));
                 if (!assistedIposByQuarter.has(quarter)) assistedIposByQuarter.set(quarter, new Set());
-                t.participatingIpos.forEach(ipoName => assistedIposByQuarter.get(quarter)!.add(ipoName));
+                (t.participatingIpos || []).forEach(ipoName => assistedIposByQuarter.get(quarter)!.add(ipoName));
 
                 if (quarter >= 1 && quarter <= 4) accomplishments[`Q${quarter}`].trainings++;
             }
         });
 
-        data.subprojects.forEach(p => {
+        (data.subprojects || []).forEach(p => {
             if (p.status === 'Completed' && p.actualCompletionDate) {
                 const quarter = getQuarter(new Date(p.actualCompletionDate));
                 if (!assistedIposByQuarter.has(quarter)) assistedIposByQuarter.set(quarter, new Set());
@@ -149,14 +149,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         // --- Accomplishments (Completed in Selected Year) ---
         
         // 1. Total Subprojects Completed
-        const completedSubprojects = data.subprojects.filter(p => 
+        const completedSubprojects = (data.subprojects || []).filter(p => 
             p.status === 'Completed' && 
             p.actualCompletionDate && 
             (selectedYear === 'All' || new Date(p.actualCompletionDate).getFullYear().toString() === selectedYear)
         );
         
         // 2. Total Training (Must be completed status -> implied by presence of actualDate)
-        const completedTrainings = data.trainings.filter(t => 
+        const completedTrainings = (data.trainings || []).filter(t => 
             !!t.actualDate && 
             (selectedYear === 'All' || new Date(t.actualDate).getFullYear().toString() === selectedYear)
         );
@@ -165,7 +165,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         const iposWithCompletedSubprojects = new Set(completedSubprojects.map(p => p.indigenousPeopleOrganization));
 
         // 4. Total IPOs trained (Linked with COMPLETED trainings)
-        const iposWithCompletedTrainings = new Set(completedTrainings.flatMap(t => t.participatingIpos));
+        const iposWithCompletedTrainings = new Set(completedTrainings.flatMap(t => t.participatingIpos || []));
 
         // 5. Total IPOs (Linked with completed trainings OR completed subprojects)
         const allEngagedIpos = new Set([
@@ -175,7 +175,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
         // Ancestral Domains Assisted (Based on the Engaged IPOs)
         const assistedDomains = new Set<string>();
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             if (allEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
                 assistedDomains.add(ipo.ancestralDomainNo);
             }
@@ -184,16 +184,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         // --- Targets (Total in Registry/Plan for Selected Year) ---
         
         // 1. Target Subprojects (All in list - already filtered by fundingYear in DashboardsPage)
-        const targetSubprojects = data.subprojects;
+        const targetSubprojects = data.subprojects || [];
 
         // 2. Target Trainings (All in list - already filtered by fundingYear in DashboardsPage)
-        const targetTrainings = data.trainings;
+        const targetTrainings = data.trainings || [];
 
         // 3. Target IPOs with Subprojects (Unique IPOs in ANY target subproject)
         const targetIposWithSubprojects = new Set(targetSubprojects.map(p => p.indigenousPeopleOrganization));
 
         // 4. Target IPOs Trained (Unique IPOs in ANY target training)
-        const targetIposTrained = new Set(targetTrainings.flatMap(t => t.participatingIpos));
+        const targetIposTrained = new Set(targetTrainings.flatMap(t => t.participatingIpos || []));
 
         // 5. Target Total IPOs (Logic Updated: Only IPOs with linked subprojects or trainings)
         const targetTotalIposSet = new Set([
@@ -203,7 +203,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
         // 6. Target ADs (Logic Updated: Unique ADs of the Target IPOs only)
         const targetAds = new Set<string>();
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             if (targetTotalIposSet.has(ipo.name) && ipo.ancestralDomainNo) {
                 targetAds.add(ipo.ancestralDomainNo);
             }
@@ -239,7 +239,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     const provincialComparisonData = useMemo(() => {
         const provinceMap: { [province: string]: { ipos: IPO[], trainings: Set<number>, subprojects: Subproject[] } } = {};
 
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             const { province } = parseLocation(ipo.location);
             if (!province) return;
             if (!provinceMap[province]) {
@@ -250,9 +250,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
         for (const province in provinceMap) {
             const provinceIpoNames = new Set(provinceMap[province].ipos.map(i => i.name));
-            provinceMap[province].subprojects = data.subprojects.filter(sp => provinceIpoNames.has(sp.indigenousPeopleOrganization));
-            data.trainings.forEach(t => {
-                if (t.participatingIpos.some(ipoName => provinceIpoNames.has(ipoName))) {
+            provinceMap[province].subprojects = (data.subprojects || []).filter(sp => provinceIpoNames.has(sp.indigenousPeopleOrganization));
+            (data.trainings || []).forEach(t => {
+                if ((t.participatingIpos || []).some(ipoName => provinceIpoNames.has(ipoName))) {
                     provinceMap[province].trainings.add(t.id);
                 }
             });
@@ -274,12 +274,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             const accomplishedSubprojects = provinceSubprojects.filter(p => p.status === 'Completed').length;
             
             // For Provincial Comparison, we assume 'accomplished' means engaged in completed activities specific to that province's IPOs
-            const completedTrainingsIds = new Set(data.trainings.filter(t => !!t.actualDate).map(t => t.id));
+            const completedTrainingsIds = new Set((data.trainings || []).filter(t => !!t.actualDate).map(t => t.id));
             const provinceCompletedTrainingIds = new Set([...provinceMap[province].trainings].filter(id => completedTrainingsIds.has(id)));
             const targetTrainingsCount = provinceMap[province].trainings.size; 
             const accomplishedTrainingsCount = provinceCompletedTrainingIds.size;
 
-            const trainedIpoNames = new Set(data.trainings.filter(t => provinceCompletedTrainingIds.has(t.id)).flatMap(t => t.participatingIpos));
+            const trainedIpoNames = new Set((data.trainings || []).filter(t => provinceCompletedTrainingIds.has(t.id)).flatMap(t => t.participatingIpos || []));
             const completedSubprojectIpoNames = new Set(provinceSubprojects.filter(p => p.status === 'Completed').map(p => p.indigenousPeopleOrganization));
             const assistedIpoNames = new Set([...trainedIpoNames, ...completedSubprojectIpoNames]);
 
@@ -312,7 +312,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             return stats[ou];
         }
 
-        data.subprojects.forEach(sp => {
+        (data.subprojects || []).forEach(sp => {
             if (sp.operatingUnit && sp.status === 'Completed') {
                 const s = ensureOu(sp.operatingUnit);
                 s.subprojects++;
@@ -320,11 +320,11 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             }
         });
 
-        data.trainings.forEach(t => {
+        (data.trainings || []).forEach(t => {
             if (t.operatingUnit && t.actualDate) {
                 const s = ensureOu(t.operatingUnit);
                 s.trainings++;
-                t.participatingIpos.forEach(ipo => s.ipos.add(ipo));
+                (t.participatingIpos || []).forEach(ipo => s.ipos.add(ipo));
             }
         });
 
@@ -344,7 +344,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
 
     const handleShowTotalEngagedIpos = () => {
-        const accomplishments = data.ipos
+        const accomplishments = (data.ipos || [])
             .filter(ipo => performanceStats.totalEngagedIpos.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -353,7 +353,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
             }));
         
-        const targets = data.ipos
+        const targets = (data.ipos || [])
             .filter(ipo => performanceStats.targetTotalIposSet.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -367,7 +367,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     };
 
     const handleShowIposTrained = () => {
-        const accomplishments = data.ipos
+        const accomplishments = (data.ipos || [])
             .filter(ipo => performanceStats.totalIposTrained.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -376,7 +376,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
             }));
         
-        const targets = data.ipos
+        const targets = (data.ipos || [])
             .filter(ipo => performanceStats.targetIposTrained.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -390,7 +390,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     };
 
     const handleShowIposWithSubprojects = () => {
-        const accomplishments = data.ipos
+        const accomplishments = (data.ipos || [])
             .filter(ipo => performanceStats.totalIposWithSubprojects.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -399,7 +399,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU'
             }));
         
-        const targets = data.ipos
+        const targets = (data.ipos || [])
             .filter(ipo => performanceStats.targetIposWithSubprojects.has(ipo.name))
             .map(ipo => ({ 
                 id: ipo.id, 
@@ -413,14 +413,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     };
 
     const handleShowCompletedSubprojects = () => {
-        const accomplishments = performanceStats.totalSubprojectsCompleted.map(p => ({ 
+        const accomplishments = (performanceStats.totalSubprojectsCompleted || []).map(p => ({ 
             id: p.id, 
             name: p.name, 
             details: `Completed: ${formatDate(p.actualCompletionDate)} | IPO: ${p.indigenousPeopleOrganization}`,
             operatingUnit: p.operatingUnit
         }));
         
-        const targets = performanceStats.targetSubprojects.map(p => ({
+        const targets = (performanceStats.targetSubprojects || []).map(p => ({
             id: p.id,
             name: p.name,
             details: `Target Start: ${formatDate(p.startDate)} | IPO: ${p.indigenousPeopleOrganization}`,
@@ -432,14 +432,14 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
     };
     
     const handleShowCompletedTrainings = () => {
-        const accomplishments = performanceStats.totalTrainingsCompleted.map(t => ({ 
+        const accomplishments = (performanceStats.totalTrainingsCompleted || []).map(t => ({ 
             id: t.id, 
             name: t.name, 
             details: `Conducted: ${formatDate(t.actualDate)} | Component: ${t.component}`,
             operatingUnit: t.operatingUnit
         }));
         
-        const targets = performanceStats.targetTrainings.map(t => ({
+        const targets = (performanceStats.targetTrainings || []).map(t => ({
             id: t.id,
             name: t.name,
             details: `Target Date: ${formatDate(t.date)} | Component: ${t.component}`,
@@ -452,7 +452,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
     const handleShowAdsAssisted = () => {
         const assistedAdsMap = new Map<string, { ipoNames: string[], ou: string }>();
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             if (performanceStats.totalEngagedIpos.has(ipo.name) && ipo.ancestralDomainNo) {
                 if (!assistedAdsMap.has(ipo.ancestralDomainNo)) {
                     assistedAdsMap.set(ipo.ancestralDomainNo, { 
@@ -471,7 +471,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         }));
 
         const targetAdsMap = new Map<string, { ipoNames: string[], ou: string }>();
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             if (performanceStats.targetTotalIposSet.has(ipo.name) && ipo.ancestralDomainNo) {
                 if (!targetAdsMap.has(ipo.ancestralDomainNo)) {
                     targetAdsMap.set(ipo.ancestralDomainNo, { 
@@ -504,16 +504,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 let municipality = '';
 
                 if (localModal.type === 'ipos') {
-                    const ipo = data.ipos.find(i => i.id === item.id);
+                    const ipo = (data.ipos || []).find(i => i.id === item.id);
                     if (ipo) {
                         const loc = parseLocation(ipo.location);
                         province = loc.province;
                         municipality = loc.municipality;
                     }
                 } else if (localModal.type === 'subprojects') {
-                    const sp = data.subprojects.find(p => p.id === item.id);
+                    const sp = (data.subprojects || []).find(p => p.id === item.id);
                     if (sp) {
-                        const ipo = data.ipos.find(i => i.name === sp.indigenousPeopleOrganization);
+                        const ipo = (data.ipos || []).find(i => i.name === sp.indigenousPeopleOrganization);
                         if (ipo) {
                             const loc = parseLocation(ipo.location);
                             province = loc.province;
@@ -521,9 +521,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                         }
                     }
                 } else if (localModal.type === 'trainings') {
-                    const tr = data.trainings.find(t => t.id === item.id);
-                    if (tr && tr.participatingIpos.length > 0) {
-                        const ipo = data.ipos.find(i => i.name === tr.participatingIpos[0]);
+                    const tr = (data.trainings || []).find(t => t.id === item.id);
+                    if (tr && (tr.participatingIpos || []).length > 0) {
+                        const ipo = (data.ipos || []).find(i => i.name === tr.participatingIpos[0]);
                         if (ipo) {
                             const loc = parseLocation(ipo.location);
                             province = loc.province;
@@ -531,7 +531,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                         }
                     }
                 } else if (localModal.type === 'ads') {
-                    const ipo = data.ipos.find(i => i.ancestralDomainNo === item.id);
+                    const ipo = (data.ipos || []).find(i => i.ancestralDomainNo === item.id);
                     if (ipo) {
                         const loc = parseLocation(ipo.location);
                         province = loc.province;
@@ -578,13 +578,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
     const handleItemClick = (item: ModalItem) => {
         if (localModal?.type === 'ipos') {
-            const ipo = data.ipos.find(i => i.id === item.id);
+            const ipo = (data.ipos || []).find(i => i.id === item.id);
             if (ipo && onSelectIpo) onSelectIpo(ipo);
         } else if (localModal?.type === 'subprojects') {
-            const sp = data.subprojects.find(p => p.id === item.id);
+            const sp = (data.subprojects || []).find(p => p.id === item.id);
             if (sp && onSelectSubproject) onSelectSubproject(sp);
         } else if (localModal?.type === 'trainings') {
-            const tr = data.trainings.find(t => t.id === item.id);
+            const tr = (data.trainings || []).find(t => t.id === item.id);
             if (tr && onSelectActivity) onSelectActivity(tr);
         } else if (localModal?.type === 'ads') {
             if (setExternalFilters && navigateTo) {

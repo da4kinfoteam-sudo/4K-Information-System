@@ -56,9 +56,9 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         // Structure: Type -> Particular (Normalized) -> Data
         const groups: Record<string, Record<string, InterventionStats>> = {};
 
-        subprojects.forEach(sp => {
+        (subprojects || []).forEach(sp => {
             if (sp.details) {
-                sp.details.forEach(d => {
+                (sp.details || []).forEach(d => {
                     const type = d.type || 'Unspecified';
                     
                     // Normalize particular name (trim and title case to merge "Okra", "okra", "OKRA")
@@ -99,10 +99,10 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         const filtered: Record<string, Record<string, InterventionStats>> = {};
         const term = searchTerm.toLowerCase().trim();
 
-        Object.entries(data).forEach(([type, particulars]) => {
+        Object.entries(data || {}).forEach(([type, particulars]) => {
             const matchingParticulars: Record<string, InterventionStats> = {};
             
-            Object.entries(particulars).forEach(([name, stats]) => {
+            Object.entries(particulars || {}).forEach(([name, stats]) => {
                 if (name.toLowerCase().includes(term) || type.toLowerCase().includes(term)) {
                     matchingParticulars[name] = stats;
                 }
@@ -125,15 +125,15 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
 
     const typeTotals = useMemo<Record<string, { target: number, actual: number, allocation: number, obligated: number, disbursed: number }>>(() => {
         const totals: Record<string, { target: number, actual: number, allocation: number, obligated: number, disbursed: number }> = {};
-        Object.keys(filteredData).forEach(type => {
+        Object.keys(filteredData || {}).forEach(type => {
             let t = 0; 
             let a = 0;
             let al = 0;
             let ob = 0;
             let di = 0;
             // Explicit cast for Object.values return because TS might infer as unknown[] in some configs
-            const items = Object.values(filteredData[type]) as InterventionStats[];
-            items.forEach((val) => {
+            const items = Object.values((filteredData || {})[type] || {}) as InterventionStats[];
+            (items || []).forEach((val) => {
                 t += val.target;
                 a += val.actual;
                 al += val.allocation;
@@ -150,8 +150,8 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
         let obligated = 0;
         let disbursed = 0;
 
-        Object.values(filteredData).forEach(particulars => {
-            Object.values(particulars).forEach(stats => {
+        Object.values(filteredData || {}).forEach(particulars => {
+            Object.values(particulars || {}).forEach(stats => {
                 allocation += stats.allocation;
                 obligated += stats.obligated;
                 disbursed += stats.disbursed;
@@ -174,8 +174,8 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
     const handleDownloadExcel = () => {
         const flatData: any[] = [];
         
-        Object.keys(filteredData).sort().forEach(type => {
-            Object.entries(filteredData[type]).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, rawStats]) => {
+        Object.keys(filteredData || {}).sort().forEach(type => {
+            Object.entries((filteredData || {})[type] || {}).sort((a, b) => a[0].localeCompare(b[0])).forEach(([name, rawStats]) => {
                 const stats = rawStats as InterventionStats;
                 const deliveryRate = stats.target > 0 ? (stats.actual / stats.target) : 0;
                 flatData.push({

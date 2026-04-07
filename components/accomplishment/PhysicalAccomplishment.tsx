@@ -111,9 +111,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         };
 
         // A. Subprojects (Parent + Children)
-        subprojects.filter(matchesFilters).forEach(sp => {
+        (subprojects || []).filter(matchesFilters).forEach(sp => {
             const parentId = `sp-${sp.id}`;
-            const children: PhysicalItem[] = sp.details.map(d => ({
+            const children: PhysicalItem[] = (sp.details || []).map(d => ({
                 uniqueId: `${parentId}-d-${d.id}`,
                 sourceType: 'Subproject',
                 sourceId: sp.id,
@@ -147,7 +147,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         });
 
         // B. Activities (Flat)
-        activities.filter(matchesFilters).forEach(act => {
+        (activities || []).filter(matchesFilters).forEach(act => {
             loadedItems.push({
                 uniqueId: `act-${act.id}`,
                 sourceType: 'Activity',
@@ -171,7 +171,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
         // C. Staffing (Grouped by Position)
         const staffingGroups: { [key: string]: StaffingRequirement[] } = {};
-        staffingReqs.filter(matchesFilters).forEach(s => {
+        (staffingReqs || []).filter(matchesFilters).forEach(s => {
             if (!staffingGroups[s.personnelPosition]) staffingGroups[s.personnelPosition] = [];
             staffingGroups[s.personnelPosition].push(s);
         });
@@ -210,7 +210,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         });
 
         // D. Office Requirements (Flat)
-        officeReqs.filter(matchesFilters).forEach(off => {
+        (officeReqs || []).filter(matchesFilters).forEach(off => {
             loadedItems.push({
                 uniqueId: `office-${off.id}`,
                 sourceType: 'Office',

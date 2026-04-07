@@ -171,8 +171,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
         };
 
         // Subprojects
-        subprojects.filter(matchesFilters).forEach(sp => {
-            sp.details.forEach(d => {
+        (subprojects || []).filter(matchesFilters).forEach(sp => {
+            (sp.details || []).forEach(d => {
                 loadedItems.push({
                     uniqueId: `sp-${sp.id}-${d.id}`,
                     sourceType: 'Subproject',
@@ -197,8 +197,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         // Activities
-        activities.filter(matchesFilters).forEach(act => {
-            act.expenses.forEach(e => {
+        (activities || []).filter(matchesFilters).forEach(act => {
+            (act.expenses || []).forEach(e => {
                 loadedItems.push({
                     uniqueId: `act-${act.id}-${e.id}`,
                     sourceType: 'Activity',
@@ -223,7 +223,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         // Office Requirements
-        officeReqs.filter(matchesFilters).forEach(o => {
+        (officeReqs || []).filter(matchesFilters).forEach(o => {
             loadedItems.push({
                 uniqueId: `office-${o.id}`,
                 sourceType: 'Office',
@@ -246,9 +246,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         // Staffing Requirements (Supports Monthly Breakdown)
-        staffingReqs.filter(matchesFilters).forEach(s => {
+        (staffingReqs || []).filter(matchesFilters).forEach(s => {
             if (s.expenses && s.expenses.length > 0) {
-                s.expenses.forEach(e => {
+                (s.expenses || []).forEach(e => {
                     const monthlyActuals: any = {};
                     SHORT_MONTHS.forEach(m => {
                         monthlyActuals[`actualDisbursement${m}`] = (e as any)[`actualDisbursement${m}`] || 0;
@@ -307,7 +307,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         // Other Program Expenses (Supports Monthly Breakdown)
-        otherProgramExpenses.filter(matchesFilters).forEach(ope => {
+        (otherProgramExpenses || []).filter(matchesFilters).forEach(ope => {
             const monthlyActuals: any = {};
              SHORT_MONTHS.forEach(m => {
                  monthlyActuals[`actualDisbursement${m}`] = (ope as any)[`actualDisbursement${m}`] || 0;

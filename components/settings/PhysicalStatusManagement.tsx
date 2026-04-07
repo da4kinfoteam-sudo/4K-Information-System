@@ -63,10 +63,10 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
     const availableYears = useMemo(() => {
         const years = new Set<string>();
         const add = (y?: number) => y && years.add(y.toString());
-        subprojects.forEach(x => add(x.fundingYear));
-        activities.forEach(x => add(x.fundingYear));
-        officeReqs.forEach(x => add(x.fundYear));
-        staffingReqs.forEach(x => add(x.fundYear));
+        (subprojects || []).forEach(x => add(x.fundingYear));
+        (activities || []).forEach(x => add(x.fundingYear));
+        (officeReqs || []).forEach(x => add(x.fundYear));
+        (staffingReqs || []).forEach(x => add(x.fundYear));
         return Array.from(years).sort().reverse();
     }, [subprojects, activities, officeReqs, staffingReqs]);
 

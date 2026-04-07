@@ -132,7 +132,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         setEditedSubproject(subproject);
         // Map details and preserve ID for tracking
-        setDetailItems(subproject.details.map(d => ({ ...d })));
+        setDetailItems((subproject.details || []).map(d => ({ ...d })));
         
         if (editMode === 'details') setActiveTab('details');
         if (editMode === 'commodity') setActiveTab('commodity');

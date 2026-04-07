@@ -162,7 +162,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         };
 
         const ipoToADMap: { [key: string]: string } = {};
-        data.ipos.forEach(ipo => {
+        (data.ipos || []).forEach(ipo => {
             ipoToADMap[ipo.name] = ipo.ancestralDomainNo || 'Unspecified AD';
         });
 
@@ -178,11 +178,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             provinceData[pKey].disb += disb;
 
             const ipos = Array.isArray(ipoName) ? ipoName : (ipoName ? [ipoName] : ['Unspecified IPO']);
-            const perIpoAlloc = alloc / ipos.length;
-            const perIpoObli = obli / ipos.length;
-            const perIpoDisb = disb / ipos.length;
+            const perIpoAlloc = alloc / (ipos.length || 1);
+            const perIpoObli = obli / (ipos.length || 1);
+            const perIpoDisb = disb / (ipos.length || 1);
 
-            ipos.forEach(ipo => {
+            (ipos || []).forEach(ipo => {
                 const adKey = ipoToADMap[ipo] || 'Unspecified AD';
                 
                 if (!provinceData[pKey].ancestralDomains[adKey]) {
@@ -202,8 +202,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         };
 
         // 1. Process Subprojects
-        data.subprojects.forEach(sp => {
-            const spBudget = sp.details.reduce((sum, d) => {
+        (data.subprojects || []).forEach(sp => {
+            const spBudget = (sp.details || []).reduce((sum, d) => {
                 const amount = d.pricePerUnit * d.numberOfUnits;
                 
                 // Monthly Targets
@@ -220,8 +220,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 return sum + amount;
             }, 0);
 
-            const spObligation = sp.details.reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
-            const spDisbursement = sp.details.reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
+            const spObligation = (sp.details || []).reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+            const spDisbursement = (sp.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
 
             components['Production and Livelihood'].target += spBudget;
             components['Production and Livelihood'].obligation += spObligation;
@@ -236,7 +236,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         // 2. Process Trainings & Activities
         const processActivity = (act: Training | OtherActivity) => {
-            const actBudget = act.expenses.reduce((sum, e) => {
+            const actBudget = (act.expenses || []).reduce((sum, e) => {
                 const targetMonth = getMonth(e.obligationMonth);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += e.amount;
 
@@ -249,8 +249,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 return sum + e.amount;
             }, 0);
 
-            const actObligation = act.expenses.reduce((sum, e) => sum + (e.actualObligationAmount || 0), 0);
-            const actDisbursement = act.expenses.reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
+            const actObligation = (act.expenses || []).reduce((sum, e) => sum + (e.actualObligationAmount || 0), 0);
+            const actDisbursement = (act.expenses || []).reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
 
             totalAllocation += actBudget;
             totalObligation += actObligation;
@@ -270,11 +270,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             addToProvince(act.location, act.participatingIpos, actBudget, actObligation, actDisbursement);
         };
 
-        data.trainings.forEach(processActivity);
-        data.otherActivities.forEach(processActivity);
+        (data.trainings || []).forEach(processActivity);
+        (data.otherActivities || []).forEach(processActivity);
 
         // 3. Process Office Requirements
-        data.officeReqs.forEach(or => {
+        (data.officeReqs || []).forEach(or => {
             const targetAmount = or.pricePerUnit * or.numberOfUnits;
             const actualOb = or.actualObligationAmount || 0;
             const actualDisb = or.actualDisbursementAmount || 0;
@@ -298,7 +298,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         });
 
         // 4. Process Staffing Requirements
-        data.staffingReqs.forEach(sr => {
+        (data.staffingReqs || []).forEach(sr => {
             const targetAmount = sr.annualSalary;
             const actualOb = sr.actualObligationAmount || 0;
             const actualDisb = sr.actualDisbursementAmount || 0;
@@ -322,7 +322,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         });
 
         // 5. Process Other Program Expenses
-        data.otherProgramExpenses.forEach(oe => {
+        (data.otherProgramExpenses || []).forEach(oe => {
             const targetAmount = oe.amount;
             const actualOb = oe.actualObligationAmount || 0;
             const actualDisb = oe.actualDisbursementAmount || 0;
@@ -369,21 +369,21 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             }
         };
 
-        data.subprojects.forEach(sp => {
-            const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = sp.details.reduce((s, d) => s + (d.actualObligationAmount || 0), 0);
-            const disb = sp.details.reduce((s, d) => s + (d.actualDisbursementAmount || 0), 0);
+        (data.subprojects || []).forEach(sp => {
+            const alloc = (sp.details || []).reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
+            const obli = (sp.details || []).reduce((s, d) => s + (d.actualObligationAmount || 0), 0);
+            const disb = (sp.details || []).reduce((s, d) => s + (d.actualDisbursementAmount || 0), 0);
             addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
         });
 
         const processAct = (act: Training | OtherActivity) => {
-            const alloc = act.expenses.reduce((s, e) => s + e.amount, 0);
-            const obli = act.expenses.reduce((s, e) => s + (e.actualObligationAmount || 0), 0);
-            const disb = act.expenses.reduce((s, e) => s + (e.actualDisbursementAmount || 0), 0);
+            const alloc = (act.expenses || []).reduce((s, e) => s + e.amount, 0);
+            const obli = (act.expenses || []).reduce((s, e) => s + (e.actualObligationAmount || 0), 0);
+            const disb = (act.expenses || []).reduce((s, e) => s + (e.actualDisbursementAmount || 0), 0);
             addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
         };
-        data.trainings.forEach(processAct);
-        data.otherActivities.forEach(processAct);
+        (data.trainings || []).forEach(processAct);
+        (data.otherActivities || []).forEach(processAct);
 
         const processPM = (item: any, isStaff = false) => {
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
@@ -391,9 +391,9 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const disb = item.actualDisbursementAmount || 0;
             addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
         };
-        data.officeReqs.forEach(item => processPM(item));
-        data.staffingReqs.forEach(item => processPM(item, true));
-        data.otherProgramExpenses.forEach(item => processPM(item));
+        (data.officeReqs || []).forEach(item => processPM(item));
+        (data.staffingReqs || []).forEach(item => processPM(item, true));
+        (data.otherProgramExpenses || []).forEach(item => processPM(item));
 
         return matrix;
     }, [data]);

@@ -133,7 +133,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
                 iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
             });
 
-            ipos.forEach(ipo => {
+            (ipos || []).forEach(ipo => {
                 let coords = resolveCoordinates(ipo.location);
                 if (!coords && ipo.region && PROVINCE_COORDINATES[ipo.region]) {
                     coords = PROVINCE_COORDINATES[ipo.region];
@@ -152,7 +152,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 
             const ipoMap = new Map<string, IPO>(ipos.map(i => [i.name, i]));
 
-            subprojects.forEach(project => {
+            (subprojects || []).forEach(project => {
                 let coords: [number, number] | null = null;
                 const linkedIpo = ipoMap.get(project.indigenousPeopleOrganization);
                 
@@ -178,7 +178,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
                 }
             });
             
-            trainings.forEach(training => {
+            (trainings || []).forEach(training => {
                 const coords = resolveCoordinates(training.location, training.operatingUnit);
 
                 if (coords) {
@@ -257,6 +257,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    const [budgetView, setBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     
     // Modal States
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
@@ -378,32 +379,32 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         // 1. Financials
         let spAlloc = 0, spObli = 0, spDisb = 0;
-        filteredData.subprojects.forEach(sp => {
-            const alloc = sp.details.reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = sp.details.reduce((acc, d) => acc + (d.actualObligationAmount || 0), 0);
-            const disb = sp.details.reduce((acc, d) => acc + (d.actualDisbursementAmount || 0), 0);
+        (filteredData.subprojects || []).forEach(sp => {
+            const alloc = (sp.details || []).reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
+            const obli = (sp.details || []).reduce((acc, d) => acc + (d.actualObligationAmount || 0), 0);
+            const disb = (sp.details || []).reduce((acc, d) => acc + (d.actualDisbursementAmount || 0), 0);
             spAlloc += alloc; spObli += obli; spDisb += disb;
         });
 
         let trAlloc = 0, trObli = 0, trDisb = 0;
-        filteredData.activities.filter(a => a.type === 'Training').forEach(t => {
-            const alloc = t.expenses.reduce((acc, e) => acc + e.amount, 0);
-            const obli = t.expenses.reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
-            const disb = t.expenses.reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
+        (filteredData.activities || []).filter(a => a.type === 'Training').forEach(t => {
+            const alloc = (t.expenses || []).reduce((acc, e) => acc + e.amount, 0);
+            const obli = (t.expenses || []).reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
+            const disb = (t.expenses || []).reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
             trAlloc += alloc; trObli += obli; trDisb += disb;
         });
 
         let oaAlloc = 0, oaObli = 0, oaDisb = 0;
-        filteredData.activities.filter(a => a.type === 'Activity').forEach(oa => {
-            const alloc = oa.expenses.reduce((acc, e) => acc + e.amount, 0);
-            const obli = oa.expenses.reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
-            const disb = oa.expenses.reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
+        (filteredData.activities || []).filter(a => a.type === 'Activity').forEach(oa => {
+            const alloc = (oa.expenses || []).reduce((acc, e) => acc + e.amount, 0);
+            const obli = (oa.expenses || []).reduce((acc, e) => acc + (e.actualObligationAmount || 0), 0);
+            const disb = (oa.expenses || []).reduce((acc, e) => acc + (e.actualDisbursementAmount || 0), 0);
             oaAlloc += alloc; oaObli += obli; oaDisb += disb;
         });
 
         let pmAlloc = 0, pmObli = 0, pmDisb = 0;
         const processPm = (items: any[], isStaff = false) => {
-            items.forEach(item => {
+            (items || []).forEach(item => {
                 const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
                 const obli = item.actualObligationAmount || 0;
                 const disb = item.actualDisbursementAmount || 0;
@@ -419,18 +420,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         const totalDisb = spDisb + trDisb + oaDisb + pmDisb;
 
         // 2. Physical Counts
-        const completedSubprojects = filteredData.subprojects.filter(sp => sp.status === 'Completed').length;
-        const totalSubprojects = filteredData.subprojects.length;
+        const completedSubprojects = (filteredData.subprojects || []).filter(sp => sp.status === 'Completed').length;
+        const totalSubprojects = (filteredData.subprojects || []).length;
 
-        const completedTrainings = filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).length;
-        const totalTrainings = filteredData.activities.filter(a => a.type === 'Training').length;
+        const completedTrainings = (filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).length;
+        const totalTrainings = (filteredData.activities || []).filter(a => a.type === 'Training').length;
 
         // 3. IPO Analysis
-        const targetIposWithSp = new Set(filteredData.subprojects.map(sp => sp.indigenousPeopleOrganization));
-        const actualIposWithSp = new Set(filteredData.subprojects.filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
+        const targetIposWithSp = new Set((filteredData.subprojects || []).map(sp => sp.indigenousPeopleOrganization));
+        const actualIposWithSp = new Set((filteredData.subprojects || []).filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
 
-        const targetIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training').flatMap(t => (t as Activity).participatingIpos)) as string[]);
-        const actualIposWithTr = new Set<string>((filteredData.activities.filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos)) as string[]);
+        const targetIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training').flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
+        const actualIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
 
         const actualIposAssisted = new Set<string>(Array.from(actualIposWithSp as Set<string>).concat(Array.from(actualIposWithTr as Set<string>)));
         const targetIposAssisted = new Set<string>(Array.from(targetIposWithSp as Set<string>).concat(Array.from(targetIposWithTr as Set<string>)));
@@ -463,7 +464,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             ...filteredData.subprojects.map(p => ({ ...p, activityType: 'Subproject' as const, activityDate: p.startDate })),
             ...filteredData.activities.map(a => ({ ...a, activityType: a.type as 'Training' | 'Activity', activityDate: a.date })),
         ];
-        return combined.sort((a, b) => new Date(b.activityDate).getTime() - new Date(a.activityDate).getTime());
+        // Sort chronologically from January to December (ascending)
+        return combined.sort((a, b) => new Date(a.activityDate).getTime() - new Date(b.activityDate).getTime());
     }, [filteredData]);
 
     const displayedActivities = useMemo(() => {
@@ -476,16 +478,36 @@ const Dashboard: React.FC<DashboardProps> = ({
         return items;
     }, [allActivities, activitiesFilter]);
 
+    // Default to current month's page
+    useEffect(() => {
+        if (displayedActivities.length > 0) {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+            
+            // Find index of first activity in current month or later
+            const targetIndex = displayedActivities.findIndex(a => {
+                const d = new Date(a.activityDate);
+                return d.getFullYear() > currentYear || (d.getFullYear() === currentYear && d.getMonth() >= currentMonth);
+            });
+
+            if (targetIndex !== -1) {
+                const targetPage = Math.floor(targetIndex / itemsPerPageActivities) + 1;
+                setActivitiesPage(targetPage);
+            } else {
+                setActivitiesPage(1);
+            }
+        } else {
+            setActivitiesPage(1);
+        }
+    }, [displayedActivities]);
+    
     const paginatedActivitiesList = useMemo(() => {
         const startIndex = (activitiesPage - 1) * itemsPerPageActivities;
         return displayedActivities.slice(startIndex, startIndex + itemsPerPageActivities);
     }, [displayedActivities, activitiesPage]);
 
     const totalActivityPages = Math.ceil(displayedActivities.length / itemsPerPageActivities);
-
-    useEffect(() => {
-        setActivitiesPage(1);
-    }, [activitiesFilter, selectedYear, selectedOu, selectedTier, selectedFundType]);
     
     const filteredIposForMap = mapFilters.ipos ? filteredData.ipos : [];
     const filteredSubprojectsForMap = mapFilters.subprojects ? filteredData.subprojects : [];
@@ -504,9 +526,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         </svg>
     );
 
-    const showTotalBudget = () => { setCardModal({ title: "Total Budget Performance", metrics: [ { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true }, { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true }, { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true }, { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" } ] }); };
-    const showSpBudget = () => { setCardModal({ title: "Subprojects Budget Performance", metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true } ] }); };
-    const showTrBudget = () => { setCardModal({ title: "Trainings Budget Performance", metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true } ] }); };
+    const showTotalBudget = () => { setCardModal({ title: `Total Budget Performance (${budgetView})`, metrics: [ { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true }, { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true }, { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true }, { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" } ] }); };
+    const showSpBudget = () => { setCardModal({ title: `Subprojects Budget Performance (${budgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true } ] }); };
+    const showTrBudget = () => { setCardModal({ title: `Trainings Budget Performance (${budgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true } ] }); };
     const showSpCount = () => { setCardModal({ title: "Subprojects Count", metrics: [ { label: "Completed Subprojects", value: dashboardStats.physical.subprojects.actual }, { label: "Total Target Subprojects", value: dashboardStats.physical.subprojects.target }, { label: "Completion Rate", value: dashboardStats.physical.subprojects.target > 0 ? `${Math.round((dashboardStats.physical.subprojects.actual / dashboardStats.physical.subprojects.target) * 100)}%` : "0%" } ] }); };
     const showTrCount = () => { setCardModal({ title: "Trainings Count", metrics: [ { label: "Completed Trainings", value: dashboardStats.physical.trainings.actual }, { label: "Total Target Trainings", value: dashboardStats.physical.trainings.target }, { label: "Completion Rate", value: dashboardStats.physical.trainings.target > 0 ? `${Math.round((dashboardStats.physical.trainings.actual / dashboardStats.physical.trainings.target) * 100)}%` : "0%" } ] }); };
     const showIposAssisted = () => { setCardModal({ title: "IPOs Assisted (Subprojects + Trainings)", metrics: [ { label: "IPOs with Completed SPs/Trainings", value: dashboardStats.physical.iposAssisted.actual }, { label: "Total Target IPOs", value: dashboardStats.physical.iposAssisted.target, subtext: "Linked to any SP/Training" } ] }); };
@@ -644,9 +666,30 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
-                <StatCard title="Total Budget (Actual Disbursed)" value={formatCurrency(dashboardStats.financials.total.disb)} icon={<FinancialsIcon />} color="text-purple-500" onClick={showTotalBudget} />
-                <StatCard title="Total Budget for Subprojects (Disbursed)" value={formatCurrency(dashboardStats.financials.subprojects.disb)} icon={<FinancialsIcon />} color="text-blue-500" onClick={showSpBudget} />
-                <StatCard title="Total Budget for Trainings (Disbursed)" value={formatCurrency(dashboardStats.financials.trainings.disb)} icon={<FinancialsIcon />} color="text-green-500" onClick={showTrBudget} />
+                <StatCard 
+                    title={`Total Budget (${budgetView})`} 
+                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.total.obli : dashboardStats.financials.total.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-purple-500" 
+                    onClick={showTotalBudget}
+                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                />
+                <StatCard 
+                    title={`Total Budget for Subprojects (${budgetView})`} 
+                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.subprojects.obli : dashboardStats.financials.subprojects.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-blue-500" 
+                    onClick={showSpBudget}
+                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                />
+                <StatCard 
+                    title={`Total Budget for Trainings (${budgetView})`} 
+                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.trainings.obli : dashboardStats.financials.trainings.disb)} 
+                    icon={<FinancialsIcon />} 
+                    color="text-green-500" 
+                    onClick={showTrBudget}
+                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                />
                 <StatCard title="Number of Subprojects (Completed)" value={dashboardStats.physical.subprojects.actual.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-600" onClick={showSpCount} />
                 <StatCard title="Number of Trainings (Completed)" value={dashboardStats.physical.trainings.actual.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" onClick={showTrCount} />
                 <StatCard title="Number of IPOs assisted" value={dashboardStats.physical.iposAssisted.actual.toString()} icon={<IpoIcon className="h-8 w-8" />} color="text-yellow-500" onClick={showIposAssisted} />
@@ -662,27 +705,35 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <h4 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase mb-2 tracking-wider">Upcoming Deadlines</h4>
                         {systemSettings.deadlines.length > 0 ? (
                             <ul className="space-y-2">
-                                {systemSettings.deadlines.map(d => (
-                                    <li key={d.id} className="flex justify-between border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-r text-sm">
-                                        <span className="font-medium text-gray-800 dark:text-gray-200">{d.name}</span>
-                                        <span className="text-red-600 dark:text-red-400 font-bold">{formatDate(d.date)}</span>
-                                    </li>
-                                ))}
+                                {systemSettings.deadlines
+                                    .filter(d => new Date(d.date) >= new Date(new Date().setHours(0,0,0,0)))
+                                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                    .slice(0, 5)
+                                    .map(d => (
+                                        <li key={d.id} className="flex justify-between border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-r text-sm">
+                                            <span className="font-medium text-gray-800 dark:text-gray-200">{d.name}</span>
+                                            <span className="text-red-600 dark:text-red-400 font-bold">{formatDate(d.date)}</span>
+                                        </li>
+                                    ))}
                             </ul>
                         ) : <p className="text-sm text-gray-500 italic">No upcoming deadlines.</p>}
                     </div>
                     <div>
-                        <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase mb-2 tracking-wider">Planning Schedules</h4>
-                        {systemSettings.planningSchedules.length > 0 ? (
+                        <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase mb-2 tracking-wider">NPMO Schedules</h4>
+                        {activities.filter(a => a.operatingUnit === 'NPMO').length > 0 ? (
                             <ul className="space-y-2">
-                                {systemSettings.planningSchedules.map(s => (
-                                    <li key={s.id} className="flex justify-between border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm">
-                                        <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
-                                        <span className="text-gray-600 dark:text-gray-300 text-xs">{formatDate(s.startDate)} - {formatDate(s.endDate)}</span>
-                                    </li>
-                                ))}
+                                {activities
+                                    .filter(a => a.operatingUnit === 'NPMO' && new Date(a.date) >= new Date(new Date().setHours(0,0,0,0)))
+                                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                    .slice(0, 5)
+                                    .map(s => (
+                                        <li key={s.id} className="flex justify-between border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm">
+                                            <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
+                                            <span className="text-gray-600 dark:text-gray-300 text-xs">{formatDate(s.date)}</span>
+                                        </li>
+                                    ))}
                             </ul>
-                        ) : <p className="text-sm text-gray-500 italic">No active planning schedules.</p>}
+                        ) : <p className="text-sm text-gray-500 italic">No active NPMO schedules.</p>}
                     </div>
                 </div>
             </div>

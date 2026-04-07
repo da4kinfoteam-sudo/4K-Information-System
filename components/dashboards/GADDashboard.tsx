@@ -18,7 +18,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
         let actualMale = 0;
         let actualFemale = 0;
 
-        trainings.forEach(t => {
+        (trainings || []).forEach(t => {
             targetMale += (t.participantsMale || 0);
             targetFemale += (t.participantsFemale || 0);
             actualMale += (t.actualParticipantsMale || 0);
@@ -38,27 +38,27 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
     const womenLedStats = useMemo(() => {
         // 1. Identify all Women-Led IPO names from the master list (ipos prop)
         // Note: The ipos prop passed here contains the registry needed for metadata lookup.
-        const womenLedIpoNames = new Set(ipos.filter(ipo => ipo.isWomenLed).map(ipo => ipo.name));
+        const womenLedIpoNames = new Set((ipos || []).filter(ipo => ipo.isWomenLed).map(ipo => ipo.name));
 
         // 2. Identify Subprojects linked to WL IPOs
         // Note: 'subprojects' prop is already filtered by the selected Year/FundYear in the parent component
-        const linkedSubprojects = subprojects.filter(sp => womenLedIpoNames.has(sp.indigenousPeopleOrganization));
+        const linkedSubprojects = (subprojects || []).filter(sp => womenLedIpoNames.has(sp.indigenousPeopleOrganization));
 
         // 3. Identify Trainings linked to WL IPOs
         // Note: 'trainings' prop is already filtered by the selected Year/FundYear in the parent component
-        const linkedTrainings = trainings.filter(t => 
-            t.participatingIpos.some(ipoName => womenLedIpoNames.has(ipoName))
+        const linkedTrainings = (trainings || []).filter(t => 
+            (t.participatingIpos || []).some(ipoName => womenLedIpoNames.has(ipoName))
         );
 
         // 4. Calculate Total Allocation
         // Sum of subproject budgets (price * units)
         const subprojectAllocation = linkedSubprojects.reduce((sum, sp) => {
-            return sum + sp.details.reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+            return sum + (sp.details || []).reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
         }, 0);
 
         // Sum of training expenses
         const trainingAllocation = linkedTrainings.reduce((sum, t) => {
-            return sum + t.expenses.reduce((eSum, e) => eSum + e.amount, 0);
+            return sum + (t.expenses || []).reduce((eSum, e) => eSum + e.amount, 0);
         }, 0);
 
         // 5. Count "Total Women-led IPOs" (Engaged)
@@ -70,7 +70,7 @@ const GADDashboard: React.FC<GADDashboardProps> = ({ trainings, ipos, subproject
         
         // Add from Trainings
         linkedTrainings.forEach(t => {
-            t.participatingIpos.forEach(ipo => {
+            (t.participatingIpos || []).forEach(ipo => {
                 if (womenLedIpoNames.has(ipo)) {
                     engagedWomenLedIPOs.add(ipo);
                 }
