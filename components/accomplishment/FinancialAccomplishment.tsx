@@ -720,7 +720,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
         if (!canEdit || changedItems.size === 0) return;
         setIsSavingAll(true);
         try {
-            const promises = Array.from(changedItems.values()).map(item => saveItemToDB(item));
+            const promises = Array.from(changedItems.values()).map((item: FinancialItem) => saveItemToDB(item));
             await Promise.all(promises);
             
             // Mark all as confirmed and clear changes
@@ -1015,7 +1015,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             )}
                                                                         </td>
                                                                         <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
-                                                                            {item.status === 'Proposed' ? (
+                                                                            {item.targetObligationMonth === 'Monthly' ? (
+                                                                                'Monthly'
+                                                                            ) : item.status === 'Proposed' ? (
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetObligationMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetObligationMonth: val })}
@@ -1063,7 +1065,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             )}
                                                                         </td>
                                                                         <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
-                                                                            {item.status === 'Proposed' ? (
+                                                                            {item.targetDisbursementMonth === 'Monthly' ? (
+                                                                                'Monthly'
+                                                                            ) : item.status === 'Proposed' ? (
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetDisbursementMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetDisbursementMonth: val })}

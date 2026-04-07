@@ -29,16 +29,20 @@ export function MonthYearPicker({
   className,
   defaultYear,
 }: MonthYearPickerProps) {
-  const [date, setDate] = React.useState<Date | undefined>(
-    value ? parse(value, "yyyy-MM-dd", new Date()) : undefined
-  );
+  const [date, setDate] = React.useState<Date | undefined>(() => {
+    if (!value) return undefined;
+    const parsed = parse(value, "yyyy-MM-dd", new Date());
+    return isNaN(parsed.getTime()) ? undefined : parsed;
+  });
   const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (value) {
       const parsedDate = parse(value, "yyyy-MM-dd", new Date());
-      if (parsedDate.getTime() !== date?.getTime()) {
+      if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() !== date?.getTime()) {
         setDate(parsedDate);
+      } else if (isNaN(parsedDate.getTime())) {
+        setDate(undefined);
       }
     } else {
       setDate(undefined);
