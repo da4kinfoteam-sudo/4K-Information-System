@@ -257,7 +257,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
-    const [budgetView, setBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
+    const [totalBudgetView, setTotalBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
+    const [spBudgetView, setSpBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
+    const [trBudgetView, setTrBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     
     // Modal States
     const [modalData, setModalData] = useState<ActivityItem | null>(null);
@@ -526,9 +528,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         </svg>
     );
 
-    const showTotalBudget = () => { setCardModal({ title: `Total Budget Performance (${budgetView})`, metrics: [ { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true }, { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true }, { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true }, { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" } ] }); };
-    const showSpBudget = () => { setCardModal({ title: `Subprojects Budget Performance (${budgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true } ] }); };
-    const showTrBudget = () => { setCardModal({ title: `Trainings Budget Performance (${budgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true } ] }); };
+    const showTotalBudget = () => { setCardModal({ title: `Total Budget Performance (${totalBudgetView})`, metrics: [ { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true }, { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true }, { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true }, { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" } ] }); };
+    const showSpBudget = () => { setCardModal({ title: `Subprojects Budget Performance (${spBudgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true } ] }); };
+    const showTrBudget = () => { setCardModal({ title: `Trainings Budget Performance (${trBudgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true } ] }); };
     const showSpCount = () => { setCardModal({ title: "Subprojects Count", metrics: [ { label: "Completed Subprojects", value: dashboardStats.physical.subprojects.actual }, { label: "Total Target Subprojects", value: dashboardStats.physical.subprojects.target }, { label: "Completion Rate", value: dashboardStats.physical.subprojects.target > 0 ? `${Math.round((dashboardStats.physical.subprojects.actual / dashboardStats.physical.subprojects.target) * 100)}%` : "0%" } ] }); };
     const showTrCount = () => { setCardModal({ title: "Trainings Count", metrics: [ { label: "Completed Trainings", value: dashboardStats.physical.trainings.actual }, { label: "Total Target Trainings", value: dashboardStats.physical.trainings.target }, { label: "Completion Rate", value: dashboardStats.physical.trainings.target > 0 ? `${Math.round((dashboardStats.physical.trainings.actual / dashboardStats.physical.trainings.target) * 100)}%` : "0%" } ] }); };
     const showIposAssisted = () => { setCardModal({ title: "IPOs Assisted (Subprojects + Trainings)", metrics: [ { label: "IPOs with Completed SPs/Trainings", value: dashboardStats.physical.iposAssisted.actual }, { label: "Total Target IPOs", value: dashboardStats.physical.iposAssisted.target, subtext: "Linked to any SP/Training" } ] }); };
@@ -667,28 +669,28 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
                 <StatCard 
-                    title={`Total Budget (${budgetView})`} 
-                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.total.obli : dashboardStats.financials.total.disb)} 
+                    title={`Total Budget (${totalBudgetView})`} 
+                    value={formatCurrency(totalBudgetView === 'Obligated' ? dashboardStats.financials.total.obli : dashboardStats.financials.total.disb)} 
                     icon={<FinancialsIcon />} 
                     color="text-purple-500" 
                     onClick={showTotalBudget}
-                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    onToggle={() => setTotalBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
                 />
                 <StatCard 
-                    title={`Total Budget for Subprojects (${budgetView})`} 
-                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.subprojects.obli : dashboardStats.financials.subprojects.disb)} 
+                    title={`Total Budget for Subprojects (${spBudgetView})`} 
+                    value={formatCurrency(spBudgetView === 'Obligated' ? dashboardStats.financials.subprojects.obli : dashboardStats.financials.subprojects.disb)} 
                     icon={<FinancialsIcon />} 
                     color="text-blue-500" 
                     onClick={showSpBudget}
-                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    onToggle={() => setSpBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
                 />
                 <StatCard 
-                    title={`Total Budget for Trainings (${budgetView})`} 
-                    value={formatCurrency(budgetView === 'Obligated' ? dashboardStats.financials.trainings.obli : dashboardStats.financials.trainings.disb)} 
+                    title={`Total Budget for Trainings (${trBudgetView})`} 
+                    value={formatCurrency(trBudgetView === 'Obligated' ? dashboardStats.financials.trainings.obli : dashboardStats.financials.trainings.disb)} 
                     icon={<FinancialsIcon />} 
                     color="text-green-500" 
                     onClick={showTrBudget}
-                    onToggle={() => setBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
+                    onToggle={() => setTrBudgetView(prev => prev === 'Obligated' ? 'Disbursed' : 'Obligated')}
                 />
                 <StatCard title="Number of Subprojects (Completed)" value={dashboardStats.physical.subprojects.actual.toString()} icon={<ProjectsIcon className="h-8 w-8" />} color="text-blue-600" onClick={showSpCount} />
                 <StatCard title="Number of Trainings (Completed)" value={dashboardStats.physical.trainings.actual.toString()} icon={<TrainingIcon className="h-8 w-8" />} color="text-green-600" onClick={showTrCount} />
