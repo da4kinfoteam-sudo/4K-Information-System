@@ -1,12 +1,12 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-// Fixed: Removed non-existent FinancialItem and added missing OtherProgramExpense
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
+import { MonthYearPicker } from '../ui/MonthYearPicker';
 
 interface Props {
     subprojects: Subproject[];
@@ -66,6 +66,7 @@ interface FinancialItem {
     actualDisbursementNov: number;
     actualDisbursementDec: number;
 
+    status: string; // Added status field
     isConfirmed: boolean; // Just a UI state for this session (or could map to 'status')
 }
 
@@ -126,6 +127,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
     
     const [items, setItems] = useState<FinancialItem[]>([]);
+    const [changedItems, setChangedItems] = useState<Map<string, FinancialItem>>(new Map());
+    const [isSavingAll, setIsSavingAll] = useState(false);
     
     // Persistent Expansion States (Stored as Arrays in localStorage)
     const [expandedObjectTypes, setExpandedObjectTypes] = useLocalStorageState<string[]>('fin_expandedObjectTypes', ['MOOE', 'CO']);
@@ -190,6 +193,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: d.actualObligationAmount || 0,
                     actualDisbursementMonth: d.actualDisbursementDate || '',
                     actualDisbursementAmount: d.actualDisbursementAmount || 0,
+                    status: sp.status,
                     ...defaultMonthly, // Not used for SP currently
                     isConfirmed: false
                 });
@@ -216,6 +220,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: e.actualObligationAmount || 0,
                     actualDisbursementMonth: e.actualDisbursementDate || '',
                     actualDisbursementAmount: e.actualDisbursementAmount || 0,
+                    status: act.status,
                     ...defaultMonthly,
                     isConfirmed: false
                 });
@@ -240,6 +245,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualObligationAmount: o.actualObligationAmount || 0,
                 actualDisbursementMonth: o.actualDisbursementDate || '',
                 actualDisbursementAmount: o.actualDisbursementAmount || 0,
+                status: o.status,
                 ...defaultMonthly,
                 isConfirmed: false
             });
@@ -271,6 +277,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         actualObligationAmount: e.actualObligationAmount || 0,
                         actualDisbursementMonth: e.actualDisbursementDate || '',
                         actualDisbursementAmount: e.actualDisbursementAmount || 0,
+                        status: s.hiringStatus,
                         ...defaultMonthly,
                         ...monthlyActuals,
                         isConfirmed: false
@@ -299,6 +306,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: s.actualObligationAmount || 0,
                     actualDisbursementMonth: s.actualDisbursementDate || '',
                     actualDisbursementAmount: s.actualDisbursementAmount || 0,
+                    status: s.hiringStatus,
                     ...defaultMonthly, // Default
                     ...monthlyActuals, // Overwrite
                     isConfirmed: false
@@ -329,6 +337,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualObligationAmount: ope.actualObligationAmount || 0,
                 actualDisbursementMonth: ope.actualDisbursementDate || '',
                 actualDisbursementAmount: ope.actualDisbursementAmount || 0,
+                status: ope.status,
                 ...defaultMonthly,
                 ...monthlyActuals,
                 isConfirmed: false
@@ -452,7 +461,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     // Update Local State for any field
     const updateLocalItem = (uniqueId: string, updates: Partial<FinancialItem>) => {
-        setItems(prev => prev.map(item => item.uniqueId === uniqueId ? { ...item, ...updates } : item));
+        setItems(prev => prev.map(item => {
+            if (item.uniqueId === uniqueId) {
+                const newItem = { ...item, ...updates };
+                setChangedItems(prevMap => {
+                    const newMap = new Map(prevMap);
+                    newMap.set(uniqueId, newItem);
+                    return newMap;
+                });
+                return newItem;
+            }
+            return item;
+        }));
     };
 
     // Special handler for monthly disbursement updates to auto-sum total
@@ -467,6 +487,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     total += (newItem[`actualDisbursement${m}`] || 0);
                 });
                 newItem.actualDisbursementAmount = total;
+                
+                setChangedItems(prevMap => {
+                    const newMap = new Map(prevMap);
+                    newMap.set(uniqueId, newItem);
+                    return newMap;
+                });
+                
                 return newItem;
             }
             return item;
@@ -474,9 +501,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     };
 
     // Group level month update
-    const handleGroupMonthChange = (groupKey: string, field: 'actualObligationMonth' | 'actualDisbursementMonth', monthIndex: string) => {
-        const newDateStr = monthIndex === '' ? '' : `${selectedYear}-${String(parseInt(monthIndex) + 1).padStart(2, '0')}-01`;
-        
+    const handleGroupMonthChange = (groupKey: string, field: 'actualObligationMonth' | 'actualDisbursementMonth', dateStr: string) => {
         let targetGroupItems: FinancialItem[] = [];
         for (const typeGroup of groupedItems) {
             const found = typeGroup.uacsGroups.find(ug => ug.key === groupKey);
@@ -489,7 +514,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
         setItems(prev => prev.map(item => {
             if (targetGroupItems.some(gi => gi.uniqueId === item.uniqueId)) {
-                return { ...item, [field]: newDateStr };
+                const updated = { ...item, [field]: dateStr };
+                setChangedItems(prevMap => {
+                    const newMap = new Map(prevMap);
+                    newMap.set(item.uniqueId, updated);
+                    return newMap;
+                });
+                return updated;
             }
             return item;
         }));
@@ -514,140 +545,213 @@ const FinancialAccomplishment: React.FC<Props> = ({
         }
     };
 
-    // Save Logic (Commit to DB)
-    const handleConfirmItem = async (item: FinancialItem) => {
-        if (!canEdit) return;
-
-        try {
-            if (item.sourceType === 'Subproject') {
-                const sp = subprojects.find(s => s.id === item.sourceId);
-                if (!sp) throw new Error("Subproject not found");
-                
-                const updatedDetails = sp.details.map(d => {
-                    if (d.id === item.detailId) {
-                        return { 
-                            ...d, 
-                            actualObligationDate: item.actualObligationMonth,
-                            actualObligationAmount: item.actualObligationAmount,
-                            actualDisbursementDate: item.actualDisbursementMonth,
-                            actualDisbursementAmount: item.actualDisbursementAmount
-                        };
+    const saveItemToDB = async (item: FinancialItem) => {
+        if (item.sourceType === 'Subproject') {
+            const sp = subprojects.find(s => s.id === item.sourceId);
+            if (!sp) throw new Error("Subproject not found");
+            
+            const updatedDetails = sp.details.map(d => {
+                if (d.id === item.detailId) {
+                    const updated = { 
+                        ...d, 
+                        actualObligationDate: item.actualObligationMonth,
+                        actualObligationAmount: item.actualObligationAmount,
+                        actualDisbursementDate: item.actualDisbursementMonth,
+                        actualDisbursementAmount: item.actualDisbursementAmount
+                    };
+                    // Update targets if Proposed
+                    if (item.status === 'Proposed') {
+                        updated.obligationMonth = item.targetObligationMonth;
+                        updated.disbursementMonth = item.targetDisbursementMonth;
+                        updated.pricePerUnit = item.targetObligationAmount;
+                        updated.numberOfUnits = 1;
                     }
-                    return d;
-                });
-                
-                if (supabase) await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
-                setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
+                    return updated;
+                }
+                return d;
+            });
+            
+            if (supabase) await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
+            setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
 
-            } else if (item.sourceType === 'Activity') {
-                const act = activities.find(a => a.id === item.sourceId);
-                if (!act) throw new Error("Activity not found");
+        } else if (item.sourceType === 'Activity') {
+            const act = activities.find(a => a.id === item.sourceId);
+            if (!act) throw new Error("Activity not found");
 
-                const updatedExpenses = act.expenses.map(e => {
-                     if (e.id === item.detailId) {
-                        return { 
-                            ...e, 
+            const updatedExpenses = act.expenses.map(e => {
+                 if (e.id === item.detailId) {
+                    const updated = { 
+                        ...e, 
+                        actualObligationDate: item.actualObligationMonth,
+                        actualObligationAmount: item.actualObligationAmount,
+                        actualDisbursementDate: item.actualDisbursementMonth,
+                        actualDisbursementAmount: item.actualDisbursementAmount
+                    };
+                    // Update targets if Proposed
+                    if (item.status === 'Proposed') {
+                        updated.obligationMonth = item.targetObligationMonth;
+                        updated.disbursementMonth = item.targetDisbursementMonth;
+                        updated.amount = item.targetObligationAmount;
+                    }
+                    return updated;
+                }
+                return e;
+            });
+
+            if (supabase) await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
+            setActivities(prev => prev.map(a => a.id === act.id ? { ...a, expenses: updatedExpenses } : a));
+
+        } else if (item.sourceType === 'Staffing') {
+            const s = staffingReqs.find(req => req.id === item.sourceId);
+            if (!s) throw new Error("Staffing Requirement not found");
+
+            let payload: any = {};
+            let updatedExpenses = s.expenses || [];
+
+            if (item.detailId) {
+                updatedExpenses = updatedExpenses.map(e => {
+                    if (e.id === item.detailId) {
+                        const updatedExpense: any = {
+                            ...e,
                             actualObligationDate: item.actualObligationMonth,
                             actualObligationAmount: item.actualObligationAmount,
                             actualDisbursementDate: item.actualDisbursementMonth,
                             actualDisbursementAmount: item.actualDisbursementAmount
                         };
+                        SHORT_MONTHS.forEach(m => {
+                            updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                        });
+                        // Update targets if Proposed
+                        if (item.status === 'Proposed') {
+                            updatedExpense.obligationDate = item.targetObligationMonth;
+                            updatedExpense.amount = item.targetObligationAmount;
+                        }
+                        return updatedExpense;
                     }
                     return e;
                 });
 
-                if (supabase) await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
-                setActivities(prev => prev.map(a => a.id === act.id ? { ...a, expenses: updatedExpenses } : a));
+                // Aggregate totals for the root
+                let totalActualObli = 0;
+                let totalActualDisb = 0;
+                const monthlyTotals: any = {};
+                SHORT_MONTHS.forEach(m => monthlyTotals[`actualDisbursement${m}`] = 0);
 
-            } else if (item.sourceType === 'Staffing') {
-                const s = staffingReqs.find(req => req.id === item.sourceId);
-                if (!s) throw new Error("Staffing Requirement not found");
-
-                let payload: any = {};
-                let updatedExpenses = s.expenses || [];
-
-                if (item.detailId) {
-                    updatedExpenses = updatedExpenses.map(e => {
-                        if (e.id === item.detailId) {
-                            const updatedExpense: any = {
-                                ...e,
-                                actualObligationDate: item.actualObligationMonth,
-                                actualObligationAmount: item.actualObligationAmount,
-                                actualDisbursementDate: item.actualDisbursementMonth,
-                                actualDisbursementAmount: item.actualDisbursementAmount
-                            };
-                            SHORT_MONTHS.forEach(m => {
-                                updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
-                            });
-                            return updatedExpense;
-                        }
-                        return e;
-                    });
-
-                    // Aggregate totals for the root
-                    let totalActualObli = 0;
-                    let totalActualDisb = 0;
-                    const monthlyTotals: any = {};
-                    SHORT_MONTHS.forEach(m => monthlyTotals[`actualDisbursement${m}`] = 0);
-
-                    updatedExpenses.forEach(e => {
-                        totalActualObli += (e.actualObligationAmount || 0);
-                        totalActualDisb += (e.actualDisbursementAmount || 0);
-                        SHORT_MONTHS.forEach(m => {
-                            monthlyTotals[`actualDisbursement${m}`] += (e as any)[`actualDisbursement${m}`] || 0;
-                        });
-                    });
-
-                    payload = {
-                        expenses: updatedExpenses,
-                        actualObligationAmount: totalActualObli,
-                        actualDisbursementAmount: totalActualDisb,
-                        ...monthlyTotals
-                    };
-                    
-                    if (item.actualObligationMonth && !s.actualObligationDate) {
-                        payload.actualObligationDate = item.actualObligationMonth;
-                    }
-
-                } else {
-                    payload = {
-                         actualObligationDate: item.actualObligationMonth,
-                         actualObligationAmount: item.actualObligationAmount,
-                         actualDisbursementAmount: item.actualDisbursementAmount,
-                    };
+                updatedExpenses.forEach(e => {
+                    totalActualObli += (e.actualObligationAmount || 0);
+                    totalActualDisb += (e.actualDisbursementAmount || 0);
                     SHORT_MONTHS.forEach(m => {
-                        payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                        monthlyTotals[`actualDisbursement${m}`] += (e as any)[`actualDisbursement${m}`] || 0;
                     });
+                });
+
+                payload = {
+                    expenses: updatedExpenses,
+                    actualObligationAmount: totalActualObli,
+                    actualDisbursementAmount: totalActualDisb,
+                    ...monthlyTotals
+                };
+                
+                if (item.actualObligationMonth && !s.actualObligationDate) {
+                    payload.actualObligationDate = item.actualObligationMonth;
                 }
 
-                if (supabase) await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
-                setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
+                if (item.status === 'Proposed') {
+                    payload.obligationDate = item.targetObligationMonth;
+                    payload.annualSalary = item.targetObligationAmount;
+                }
 
-            } else if (item.sourceType === 'Other') {
-                const payload: any = {
+            } else {
+                payload = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
                      actualDisbursementAmount: item.actualDisbursementAmount,
                 };
-                
                 SHORT_MONTHS.forEach(m => {
                     payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
                 });
-
-                if (supabase) await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
-                setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
-            } else if (item.sourceType === 'Office') {
-                const payload = {
-                     actualObligationDate: item.actualObligationMonth,
-                     actualObligationAmount: item.actualObligationAmount,
-                     actualDisbursementDate: item.actualDisbursementMonth,
-                     actualDisbursementAmount: item.actualDisbursementAmount
-                };
-                if (supabase) await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
-                setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
+                if (item.status === 'Proposed') {
+                    payload.obligationDate = item.targetObligationMonth;
+                    payload.annualSalary = item.targetObligationAmount;
+                }
             }
+
+            if (supabase) await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
+            setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
+
+        } else if (item.sourceType === 'Other') {
+            const payload: any = {
+                 actualObligationDate: item.actualObligationMonth,
+                 actualObligationAmount: item.actualObligationAmount,
+                 actualDisbursementAmount: item.actualDisbursementAmount,
+            };
+            
+            SHORT_MONTHS.forEach(m => {
+                payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+            });
+
+            if (item.status === 'Proposed') {
+                payload.obligationDate = item.targetObligationMonth;
+                payload.disbursementDate = item.targetDisbursementMonth;
+                payload.amount = item.targetObligationAmount;
+            }
+
+            if (supabase) await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
+            setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
+        } else if (item.sourceType === 'Office') {
+            const payload: any = {
+                 actualObligationDate: item.actualObligationMonth,
+                 actualObligationAmount: item.actualObligationAmount,
+                 actualDisbursementDate: item.actualDisbursementMonth,
+                 actualDisbursementAmount: item.actualDisbursementAmount
+            };
+            if (item.status === 'Proposed') {
+                payload.obligationDate = item.targetObligationMonth;
+                payload.disbursementDate = item.targetDisbursementMonth;
+                payload.pricePerUnit = item.targetObligationAmount;
+                payload.numberOfUnits = 1;
+            }
+            if (supabase) await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
+            setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
+        }
+    };
+
+    const handleSaveAll = async () => {
+        if (!canEdit || changedItems.size === 0) return;
+        setIsSavingAll(true);
+        try {
+            const promises = Array.from(changedItems.values()).map(item => saveItemToDB(item));
+            await Promise.all(promises);
+            
+            // Mark all as confirmed and clear changes
+            setItems(prev => prev.map(item => {
+                if (changedItems.has(item.uniqueId)) {
+                    return { ...item, isConfirmed: true };
+                }
+                return item;
+            }));
+            setChangedItems(new Map());
+            alert("All changes saved successfully!");
+        } catch (error: any) {
+            console.error("Error saving all changes:", error);
+            alert("Failed to save some changes. " + error.message);
+        } finally {
+            setIsSavingAll(false);
+        }
+    };
+
+    const handleConfirmItem = async (item: FinancialItem) => {
+        if (!canEdit) return;
+
+        try {
+            await saveItemToDB(item);
             
             updateLocalItem(item.uniqueId, { isConfirmed: true });
+            setChangedItems(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(item.uniqueId);
+                return newMap;
+            });
 
         } catch (error: any) {
             console.error("Error saving accomplishment:", error);
@@ -825,14 +929,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                     </td>
                                                     <td className="px-4 py-3 text-center bg-emerald-50/50 dark:bg-emerald-900/10">
                                                         {isExpanded && canEdit && (
-                                                            <select 
-                                                                value={getMonthFromDateStr(commonObliMonth)} 
-                                                                onChange={(e) => handleGroupMonthChange(group.key, 'actualObligationMonth', e.target.value)}
-                                                                className="text-[10px] p-1 border rounded bg-white dark:bg-gray-700 dark:border-gray-600 w-full"
-                                                            >
-                                                                <option value="">{commonObliMonth ? 'Mixed' : 'Batch Set...'}</option>
-                                                                {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                            </select>
+                                                            <MonthYearPicker 
+                                                                value={commonObliMonth} 
+                                                                onChange={(val) => handleGroupMonthChange(group.key, 'actualObligationMonth', val)}
+                                                                disabled={!canEdit}
+                                                                className="h-7 text-[10px] py-0"
+                                                                placeholder={commonObliMonth ? 'Mixed' : 'Batch Set...'}
+                                                            />
                                                         )}
                                                     </td>
                                                     
@@ -844,14 +947,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                     <td className="px-4 py-3 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10">-</td>
                                                     <td className="px-4 py-3 text-center bg-emerald-50/50 dark:bg-emerald-900/10">
                                                         {isExpanded && canEdit && (
-                                                            <select 
-                                                                value={getMonthFromDateStr(commonDisbMonth)} 
-                                                                onChange={(e) => handleGroupMonthChange(group.key, 'actualDisbursementMonth', e.target.value)}
-                                                                className="text-[10px] p-1 border rounded bg-white dark:bg-gray-700 dark:border-gray-600 w-full"
-                                                            >
-                                                                <option value="">{commonDisbMonth ? 'Mixed' : 'Batch Set...'}</option>
-                                                                {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                            </select>
+                                                            <MonthYearPicker 
+                                                                value={commonDisbMonth} 
+                                                                onChange={(val) => handleGroupMonthChange(group.key, 'actualDisbursementMonth', val)}
+                                                                disabled={!canEdit}
+                                                                className="h-7 text-[10px] py-0"
+                                                                placeholder={commonDisbMonth ? 'Mixed' : 'Batch Set...'}
+                                                            />
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3"></td>
@@ -880,32 +982,53 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                             {isSubExpanded && subGroupItems.map(item => {
                                                                 const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
                                                                 const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
+                                                                const isChanged = changedItems.has(item.uniqueId);
 
                                                                 return (
                                                                 <React.Fragment key={item.uniqueId}>
-                                                                    <tr className="hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800">
-                                                                        <td className="px-4 py-2 pl-16 text-sm text-gray-700 dark:text-gray-300">
+                                                                    <tr className={`hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                                        <td className="px-3 py-1.5 pl-16 text-sm text-gray-700 dark:text-gray-300">
                                                                             <button onClick={() => handleTitleClick(item)} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
                                                                                 {item.sourceName}
                                                                             </button>
                                                                             {/* Breakdown Toggle */}
                                                                             {supportsMonthly && (
-                                                                                <button onClick={() => toggleRowExpansion(item.uniqueId)} className="ml-2 text-xs text-emerald-500 hover:text-emerald-700">
+                                                                                <button onClick={() => toggleRowExpansion(item.uniqueId)} className="ml-2 text-[10px] text-emerald-500 hover:text-emerald-700">
                                                                                     {isBreakdownExpanded ? '(Hide Monthly)' : '(Show Monthly)'}
                                                                                 </button>
                                                                             )}
                                                                         </td>
                                                                         
                                                                         {/* Target Obli */}
-                                                                        <td className="px-2 py-2 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
-                                                                            {formatCurrency(item.targetObligationAmount)}
+                                                                        <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                            {item.status === 'Proposed' ? (
+                                                                                <input 
+                                                                                    type="number" 
+                                                                                    value={item.targetObligationAmount || ''} 
+                                                                                    onChange={(e) => updateLocalItem(item.uniqueId, { targetObligationAmount: parseFloat(e.target.value) || 0 })}
+                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
+                                                                                    placeholder="0"
+                                                                                />
+                                                                            ) : (
+                                                                                formatCurrency(item.targetObligationAmount)
+                                                                            )}
                                                                         </td>
-                                                                        <td className="px-2 py-2 text-center text-[10px] text-gray-400">
-                                                                            {item.targetObligationMonth ? new Date(item.targetObligationMonth).toLocaleDateString(undefined, {month:'short'}) : '-'}
+                                                                        <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                            {item.status === 'Proposed' ? (
+                                                                                <MonthYearPicker 
+                                                                                    value={item.targetObligationMonth} 
+                                                                                    onChange={(val) => updateLocalItem(item.uniqueId, { targetObligationMonth: val })}
+                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    className="h-7 text-[10px] py-0"
+                                                                                />
+                                                                            ) : (
+                                                                                item.targetObligationMonth ? new Date(item.targetObligationMonth).toLocaleDateString(undefined, {month:'long', year:'numeric'}) : '-'
+                                                                            )}
                                                                         </td>
 
                                                                         {/* Actual Obli */}
-                                                                        <td className="px-2 py-2 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
                                                                             <input 
                                                                                 type="number" 
                                                                                 value={item.actualObligationAmount || ''} 
@@ -915,32 +1038,45 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 placeholder="0"
                                                                             />
                                                                         </td>
-                                                                        <td className="px-2 py-2 bg-emerald-50/30 dark:bg-emerald-900/5">
-                                                                            <select 
-                                                                                value={getMonthFromDateStr(item.actualObligationMonth)} 
-                                                                                onChange={(e) => {
-                                                                                    const val = e.target.value;
-                                                                                    const dateStr = val ? `${selectedYear}-${String(parseInt(val) + 1).padStart(2, '0')}-01` : '';
-                                                                                    updateLocalItem(item.uniqueId, { actualObligationMonth: dateStr });
-                                                                                }}
+                                                                        <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                            <MonthYearPicker 
+                                                                                value={item.actualObligationMonth} 
+                                                                                onChange={(val) => updateLocalItem(item.uniqueId, { actualObligationMonth: val })}
                                                                                 disabled={!canEdit || item.isConfirmed}
-                                                                                className="w-full text-[10px] p-1 border rounded dark:bg-gray-700 dark:border-gray-600"
-                                                                            >
-                                                                                <option value="">Month</option>
-                                                                                {SHORT_MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                                            </select>
+                                                                                className="h-7 text-[10px] py-0"
+                                                                            />
                                                                         </td>
 
                                                                         {/* Target Disb */}
-                                                                        <td className="px-2 py-2 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
-                                                                            {formatCurrency(item.targetDisbursementAmount)}
+                                                                        <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                            {item.status === 'Proposed' ? (
+                                                                                <input 
+                                                                                    type="number" 
+                                                                                    value={item.targetDisbursementAmount || ''} 
+                                                                                    onChange={(e) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: parseFloat(e.target.value) || 0 })}
+                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
+                                                                                    placeholder="0"
+                                                                                />
+                                                                            ) : (
+                                                                                formatCurrency(item.targetDisbursementAmount)
+                                                                            )}
                                                                         </td>
-                                                                        <td className="px-2 py-2 text-center text-[10px] text-gray-400">
-                                                                            {item.targetDisbursementMonth ? (item.targetDisbursementMonth.includes('-') ? new Date(item.targetDisbursementMonth).toLocaleDateString(undefined, {month:'short'}) : 'Sched') : '-'}
+                                                                        <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                            {item.status === 'Proposed' ? (
+                                                                                <MonthYearPicker 
+                                                                                    value={item.targetDisbursementMonth} 
+                                                                                    onChange={(val) => updateLocalItem(item.uniqueId, { targetDisbursementMonth: val })}
+                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    className="h-7 text-[10px] py-0"
+                                                                                />
+                                                                            ) : (
+                                                                                item.targetDisbursementMonth ? (item.targetDisbursementMonth.includes('-') ? new Date(item.targetDisbursementMonth).toLocaleDateString(undefined, {month:'long', year:'numeric'}) : item.targetDisbursementMonth) : '-'
+                                                                            )}
                                                                         </td>
 
                                                                         {/* Actual Disb */}
-                                                                        <td className="px-2 py-2 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
                                                                             {supportsMonthly ? (
                                                                                  <span className="block text-right text-xs font-semibold px-2">{formatCurrency(item.actualDisbursementAmount)}</span>
                                                                             ) : (
@@ -954,27 +1090,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 />
                                                                             )}
                                                                         </td>
-                                                                        <td className="px-2 py-2 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                        <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">
                                                                             {supportsMonthly ? (
                                                                                 <span className="block text-center text-[10px] text-gray-500">See below</span>
                                                                             ) : (
-                                                                                <select 
-                                                                                    value={getMonthFromDateStr(item.actualDisbursementMonth)} 
-                                                                                    onChange={(e) => {
-                                                                                        const val = e.target.value;
-                                                                                        const dateStr = val ? `${selectedYear}-${String(parseInt(val) + 1).padStart(2, '0')}-01` : '';
-                                                                                        updateLocalItem(item.uniqueId, { actualDisbursementMonth: dateStr });
-                                                                                    }}
+                                                                                <MonthYearPicker 
+                                                                                    value={item.actualDisbursementMonth} 
+                                                                                    onChange={(val) => updateLocalItem(item.uniqueId, { actualDisbursementMonth: val })}
                                                                                     disabled={!canEdit || item.isConfirmed}
-                                                                                    className="w-full text-[10px] p-1 border rounded dark:bg-gray-700 dark:border-gray-600"
-                                                                                >
-                                                                                    <option value="">Month</option>
-                                                                                    {SHORT_MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                                                </select>
+                                                                                    className="h-7 text-[10px] py-0"
+                                                                                />
                                                                             )}
                                                                         </td>
 
-                                                                        <td className="px-4 py-2 text-right">
+                                                                        <td className="px-4 py-1.5 text-right">
                                                                             {canEdit && (
                                                                                 <button 
                                                                                     onClick={() => handleConfirmItem(item)}
@@ -1053,6 +1182,48 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     </tfoot>
                 </table>
             </div>
+
+            {/* Global Save Bar */}
+            {changedItems.size > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-4 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40 flex justify-between items-center animate-in slide-in-from-bottom duration-300">
+                    <div className="flex items-center gap-4 ml-64"> {/* ml-64 to account for sidebar if present */}
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
+                            <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 px-2.5 py-1 rounded-full text-xs font-bold mr-3">
+                                {changedItems.size}
+                            </span>
+                            Unsaved changes in financial accomplishments
+                        </span>
+                    </div>
+                    <div className="flex gap-3 mr-8">
+                        <button 
+                            onClick={() => {
+                                setChangedItems(new Map());
+                                // We don't reload items here to avoid losing all progress, 
+                                // but we clear the highlight
+                                setItems(prev => prev.map(item => ({ ...item }))); 
+                            }}
+                            className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                        >
+                            Discard Changes
+                        </button>
+                        <button 
+                            onClick={handleSaveAll}
+                            disabled={isSavingAll}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isSavingAll ? (
+                                <>
+                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Saving Changes...
+                                </>
+                            ) : 'Save All Changes'}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
