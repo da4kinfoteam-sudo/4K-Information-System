@@ -977,7 +977,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                         <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"/>
                                     ) : (
                                         <div className="flex justify-end gap-3">
-                                            <button onClick={() => { setEditingItem(item); setView('form'); }} className="text-emerald-600 hover:text-emerald-900">Edit</button>
+                                            <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">View</button>
                                             <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
                                         </div>
                                     ))}

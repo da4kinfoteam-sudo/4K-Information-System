@@ -1092,7 +1092,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                                 className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
                                             /> :
                                             <div className="flex justify-end gap-2">
-                                                <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">Edit</button>
+                                                <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">View</button>
                                                 {canDeleteThis && <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>}
                                             </div>
                                         )}

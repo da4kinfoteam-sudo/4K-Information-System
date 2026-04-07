@@ -1098,7 +1098,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                         <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} className="mr-3 h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"/>
                                     ) : (
                                         <div className="flex justify-end gap-3">
-                                            <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">Edit</button>
+                                            <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">View</button>
                                             {canEdit && (
                                                 <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>
                                             )}
