@@ -7,6 +7,7 @@ import { supabase } from '../../supabaseClient';
 import { getUserPermissions } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
+import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 
 interface Props {
     subprojects: Subproject[];
@@ -126,9 +127,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // Only open modal if no year is selected (first load or cleared)
     const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
     
+    const [isLoading, setIsLoading] = useState(false);
+    const [originalItems, setOriginalItems] = useState<FinancialItem[]>([]);
     const [items, setItems] = useState<FinancialItem[]>([]);
     const [changedItems, setChangedItems] = useState<Map<string, FinancialItem>>(new Map());
     const [isSavingAll, setIsSavingAll] = useState(false);
+    const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
+    const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+    
+    type SortKey = 'targetObligationAmount' | 'targetObligationMonth' | 'actualObligationAmount' | 'actualObligationMonth' | 'targetDisbursementAmount' | 'targetDisbursementMonth' | 'actualDisbursementAmount' | 'actualDisbursementMonth';
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
     
     // Persistent Expansion States (Stored as Arrays in localStorage)
     const [expandedObjectTypes, setExpandedObjectTypes] = useLocalStorageState<string[]>('fin_expandedObjectTypes', ['MOOE', 'CO']);
@@ -147,10 +155,12 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // --- 1. Load and Normalize Data ---
     useEffect(() => {
         if (!selectedYear) return;
+        setIsLoading(true);
 
-        const loadedItems: FinancialItem[] = [];
+        const timer = setTimeout(() => {
+            const loadedItems: FinancialItem[] = [];
 
-        // Helper for default monthly object
+            // Helper for default monthly object
         const defaultMonthly = {
              actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0,
              actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
@@ -345,6 +355,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         setItems(loadedItems);
+        setOriginalItems(loadedItems);
+        setIsLoading(false);
+        }, 10);
+        return () => clearTimeout(timer);
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses]);
 
 
@@ -387,6 +401,30 @@ const FinancialAccomplishment: React.FC<Props> = ({
         });
 
         // Convert to array structure for rendering
+        const groupItemsBySource = (items: FinancialItem[]) => {
+            const map = new Map<number, { sourceId: number, sourceName: string, items: FinancialItem[], targetObligationAmount: number, actualObligationAmount: number, targetDisbursementAmount: number, actualDisbursementAmount: number }>();
+            items.forEach(item => {
+                if (!map.has(item.sourceId)) {
+                    map.set(item.sourceId, {
+                        sourceId: item.sourceId,
+                        sourceName: item.sourceName,
+                        items: [],
+                        targetObligationAmount: 0,
+                        actualObligationAmount: 0,
+                        targetDisbursementAmount: 0,
+                        actualDisbursementAmount: 0,
+                    });
+                }
+                const g = map.get(item.sourceId)!;
+                g.items.push(item);
+                g.targetObligationAmount += item.targetObligationAmount || 0;
+                g.actualObligationAmount += item.actualObligationAmount || 0;
+                g.targetDisbursementAmount += item.targetDisbursementAmount || 0;
+                g.actualDisbursementAmount += item.actualDisbursementAmount || 0;
+            });
+            return Array.from(map.values());
+        };
+
         return Object.entries(typeGroups).map(([type, data]) => ({
             objectType: type,
             uacsGroups: Object.entries(data.uacsMap).map(([code, groupData]) => ({
@@ -397,9 +435,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 totalTargetObli: groupData.totalTargetObli,
                 totalActualObli: groupData.totalActualObli,
                 subGroups: {
-                    'Subprojects': groupData.items.filter(i => i.sourceType === 'Subproject'),
-                    'Activities': groupData.items.filter(i => i.sourceType === 'Activity'),
-                    'Program Management': groupData.items.filter(i => ['Office', 'Staffing', 'Other'].includes(i.sourceType))
+                    'Subprojects': groupItemsBySource(groupData.items.filter(i => i.sourceType === 'Subproject')),
+                    'Activities': groupItemsBySource(groupData.items.filter(i => i.sourceType === 'Activity')),
+                    'Program Management': groupItemsBySource(groupData.items.filter(i => ['Office', 'Staffing', 'Other'].includes(i.sourceType)))
                 }
             })).sort((a, b) => a.uacsCode.localeCompare(b.uacsCode))
         })).sort((a, b) => a.objectType.localeCompare(b.objectType));
@@ -716,8 +754,40 @@ const FinancialAccomplishment: React.FC<Props> = ({
         }
     };
 
-    const handleSaveAll = async () => {
+    const undoLocalItem = (uniqueId: string) => {
+        const original = originalItems.find(i => i.uniqueId === uniqueId);
+        if (original) {
+            setItems(prev => prev.map(item => item.uniqueId === uniqueId ? original : item));
+            setChangedItems(prev => {
+                const next = new Map(prev);
+                next.delete(uniqueId);
+                return next;
+            });
+        }
+    };
+
+    const handleSort = (key: SortKey) => {
+        setSortConfig(prev => {
+            if (prev?.key === key) {
+                if (prev.direction === 'asc') return { key, direction: 'desc' };
+                return null; // clear sort
+            }
+            return { key, direction: 'asc' };
+        });
+    };
+
+    const SortIcon = (key: SortKey) => {
+        if (sortConfig?.key !== key) return <ArrowUpDown className="inline-block w-3 h-3 ml-1 text-gray-400" />;
+        return sortConfig.direction === 'asc' ? <ArrowUp className="inline-block w-3 h-3 ml-1 text-emerald-500" /> : <ArrowDown className="inline-block w-3 h-3 ml-1 text-emerald-500" />;
+    };
+
+    const handleSaveAllClick = () => {
         if (!canEdit || changedItems.size === 0) return;
+        setIsSaveConfirmOpen(true);
+    };
+
+    const confirmSaveAll = async () => {
+        setIsSaveConfirmOpen(false);
         setIsSavingAll(true);
         try {
             const promises = Array.from(changedItems.values()).map((item: FinancialItem) => saveItemToDB(item));
@@ -731,7 +801,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 return item;
             }));
             setChangedItems(new Map());
-            alert("All changes saved successfully!");
+            setSaveSuccessMessage('Changes saved successfully!');
+            setTimeout(() => setSaveSuccessMessage(''), 3000);
         } catch (error: any) {
             console.error("Error saving all changes:", error);
             alert("Failed to save some changes. " + error.message);
@@ -856,28 +927,63 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 <button onClick={() => setIsYearModalOpen(true)} className="text-sm text-gray-500 hover:text-emerald-600 underline">Change Filter</button>
             </div>
 
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-24">
+                    <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">Loading financial data...</p>
+                </div>
+            ) : (
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                     <thead className="bg-emerald-50 dark:bg-emerald-900/20">
                         <tr>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider w-1/4">Particulars / UACS</th>
+                            <th rowSpan={2} className="px-4 py-3 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider w-1/4 align-bottom">Particulars / UACS</th>
                             {/* Target Obligation */}
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700">Target Obli (Amt)</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target Obli (Mo)</th>
+                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Obligation</th>
                             
                             {/* Actual Obligation */}
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Obli (Amt)</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider bg-emerald-100/50 dark:bg-emerald-800/30">Actual Obli (Mo)</th>
+                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Obligation</th>
                             
                             {/* Target Disbursement */}
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700">Target Disb (Amt)</th>
-                             <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target Disb (Mo)</th>
+                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Disbursement</th>
                             
                             {/* Actual Disbursement */}
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Disb (Amt)</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider bg-emerald-100/50 dark:bg-emerald-800/30">Actual Disb (Mo)</th>
+                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Disbursement</th>
                             
-                            <th className="px-4 py-3 text-right text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Action</th>
+                            <th rowSpan={2} className="px-4 py-3 text-right text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider align-bottom">Action</th>
+                        </tr>
+                        <tr>
+                            {/* Target Obligation */}
+                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationAmount')}>
+                                Amount {SortIcon('targetObligationAmount')}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationMonth')}>
+                                Date {SortIcon('targetObligationMonth')}
+                            </th>
+                            
+                            {/* Actual Obligation */}
+                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualObligationAmount')}>
+                                Amount {SortIcon('actualObligationAmount')}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualObligationMonth')}>
+                                Date {SortIcon('actualObligationMonth')}
+                            </th>
+                            
+                            {/* Target Disbursement */}
+                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementAmount')}>
+                                Amount {SortIcon('targetDisbursementAmount')}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementMonth')}>
+                                Date {SortIcon('targetDisbursementMonth')}
+                            </th>
+                            
+                            {/* Actual Disbursement */}
+                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualDisbursementAmount')}>
+                                Amount {SortIcon('actualDisbursementAmount')}
+                            </th>
+                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualDisbursementMonth')}>
+                                Date {SortIcon('actualDisbursementMonth')}
+                            </th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -960,10 +1066,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                 </tr>
 
                                                 {/* Expanded Content (Subgroups) */}
-                                                {isExpanded && Object.entries(group.subGroups).map(([subKey, items]) => {
+                                                {isExpanded && Object.entries(group.subGroups).map(([subKey, sourceGroups]) => {
                                                     // Fix: Explicitly cast items to FinancialItem[] to resolve unknown type errors (length, map, etc.)
-                                                    const subGroupItems = items as FinancialItem[];
-                                                    if (subGroupItems.length === 0) return null;
+                                                    const typedSourceGroups = sourceGroups as { sourceId: number, sourceName: string, items: FinancialItem[], targetObligationAmount: number, actualObligationAmount: number, targetDisbursementAmount: number, actualDisbursementAmount: number }[];
+                                                    if (typedSourceGroups.length === 0) return null;
                                                     const subId = `${group.key}-${subKey}`;
                                                     const isSubExpanded = expandedSubGroups.includes(subId);
 
@@ -975,29 +1081,65 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-200 ${isSubExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                                                         </svg>
-                                                                        {subKey} ({subGroupItems.length})
+                                                                        {subKey} ({typedSourceGroups.length})
                                                                     </button>
                                                                 </td>
                                                             </tr>
-                                                            {isSubExpanded && subGroupItems.map(item => {
-                                                                const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
-                                                                const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
-                                                                const isChanged = changedItems.has(item.uniqueId);
+                                                            {isSubExpanded && typedSourceGroups.map(sourceGroup => {
+                                                                const sourceId = `${subId}-${sourceGroup.sourceId}`;
+                                                                const isSourceExpanded = expandedRows.includes(sourceId);
+                                                                
+                                                                const sortedItems = sortConfig ? [...sourceGroup.items].sort((a, b) => {
+                                                                    let valA = a[sortConfig.key];
+                                                                    let valB = b[sortConfig.key];
+                                                                    if (valA === valB) return 0;
+                                                                    if (valA === undefined || valA === null) return 1;
+                                                                    if (valB === undefined || valB === null) return -1;
+                                                                    if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+                                                                    if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+                                                                    return 0;
+                                                                }) : sourceGroup.items;
 
                                                                 return (
-                                                                <React.Fragment key={item.uniqueId}>
-                                                                    <tr className={`hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
-                                                                        <td className="px-3 py-1.5 pl-16 text-sm text-gray-700 dark:text-gray-300">
-                                                                            <button onClick={() => handleTitleClick(item)} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
-                                                                                {item.sourceName}
-                                                                            </button>
-                                                                            {/* Breakdown Toggle */}
-                                                                            {supportsMonthly && (
-                                                                                <button onClick={() => toggleRowExpansion(item.uniqueId)} className="ml-2 text-[10px] text-emerald-500 hover:text-emerald-700">
-                                                                                    {isBreakdownExpanded ? '(Hide Monthly)' : '(Show Monthly)'}
+                                                                    <React.Fragment key={sourceId}>
+                                                                        <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                                                                            <td className="px-3 py-1.5 pl-16 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                                                <button onClick={() => toggleRowExpansion(sourceId)} className="flex items-center gap-2 hover:text-emerald-600 focus:outline-none">
+                                                                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-200 ${isSourceExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                                                    </svg>
+                                                                                    {sourceGroup.sourceName}
                                                                                 </button>
-                                                                            )}
-                                                                        </td>
+                                                                            </td>
+                                                                            <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetObligationAmount)}</td>
+                                                                            <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                                                            <td className="px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">{formatCurrency(sourceGroup.actualObligationAmount)}</td>
+                                                                            <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">-</td>
+                                                                            <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetDisbursementAmount)}</td>
+                                                                            <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                                                            <td className="px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">{formatCurrency(sourceGroup.actualDisbursementAmount)}</td>
+                                                                            <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">-</td>
+                                                                            <td className="px-4 py-1.5 text-right"></td>
+                                                                        </tr>
+                                                                        {isSourceExpanded && sortedItems.map(item => {
+                                                                            const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
+                                                                            const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
+                                                                            const isChanged = changedItems.has(item.uniqueId);
+
+                                                                            return (
+                                                                            <React.Fragment key={item.uniqueId}>
+                                                                                <tr className={`hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                                                    <td className="px-3 py-1.5 pl-24 text-sm text-gray-600 dark:text-gray-400">
+                                                                                        <button onClick={() => handleTitleClick(item)} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
+                                                                                            {item.expenseParticular}
+                                                                                        </button>
+                                                                                        {/* Breakdown Toggle */}
+                                                                                        {supportsMonthly && (
+                                                                                            <button onClick={() => toggleRowExpansion(item.uniqueId)} className="ml-2 text-[10px] text-emerald-500 hover:text-emerald-700">
+                                                                                                {isBreakdownExpanded ? '(Hide Monthly)' : '(Show Monthly)'}
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </td>
                                                                         
                                                                         {/* Target Obli */}
                                                                         <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
@@ -1109,24 +1251,33 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                                                                         <td className="px-4 py-1.5 text-right">
                                                                             {canEdit && (
-                                                                                <button 
-                                                                                    onClick={() => handleConfirmItem(item)}
-                                                                                    disabled={item.isConfirmed}
-                                                                                    className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 w-full ${
-                                                                                        item.isConfirmed 
-                                                                                            ? 'bg-gray-100 text-gray-500 cursor-not-allowed border border-gray-300' 
-                                                                                            : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                                                                                    }`}
-                                                                                >
-                                                                                    {item.isConfirmed ? (
-                                                                                        <>
-                                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                                                                            </svg>
-                                                                                            Saved
-                                                                                        </>
-                                                                                    ) : 'Save'}
-                                                                                </button>
+                                                                                <div className="flex items-center gap-1 justify-end">
+                                                                                    {isChanged && (
+                                                                                        <button
+                                                                                            onClick={() => undoLocalItem(item.uniqueId)}
+                                                                                            className="p-1.5 rounded text-gray-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+                                                                                            title="Undo changes"
+                                                                                        >
+                                                                                            <Undo2 className="w-4 h-4" />
+                                                                                        </button>
+                                                                                    )}
+                                                                                    <button 
+                                                                                        onClick={() => handleConfirmItem(item)}
+                                                                                        disabled={item.isConfirmed}
+                                                                                        className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                                                                                            item.isConfirmed 
+                                                                                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border border-gray-300' 
+                                                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
+                                                                                        }`}
+                                                                                    >
+                                                                                        {item.isConfirmed ? (
+                                                                                            <>
+                                                                                                <CheckCircle className="w-3 h-3" />
+                                                                                                Saved
+                                                                                            </>
+                                                                                        ) : 'Save'}
+                                                                                    </button>
+                                                                                </div>
                                                                             )}
                                                                         </td>
                                                                     </tr>
@@ -1154,7 +1305,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </tr>
                                                                     )}
                                                                 </React.Fragment>
-                                                            )})}
+                                                                );
+                                                            })}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
                                                         </React.Fragment>
                                                     );
                                                 })}
@@ -1186,6 +1341,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     </tfoot>
                 </table>
             </div>
+            )}
 
             {/* Global Save Bar */}
             {changedItems.size > 0 && (
@@ -1211,7 +1367,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             Discard Changes
                         </button>
                         <button 
-                            onClick={handleSaveAll}
+                            onClick={handleSaveAllClick}
                             disabled={isSavingAll}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-2.5 rounded-lg text-sm font-bold shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -1226,6 +1382,40 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             ) : 'Save All Changes'}
                         </button>
                     </div>
+                </div>
+            )}
+
+            {/* Save Confirmation Modal */}
+            {isSaveConfirmOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 animate-in fade-in zoom-in duration-200">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Confirm Save</h3>
+                        <p className="text-gray-600 dark:text-gray-400 mb-6">
+                            Are you sure you want to save {changedItems.size} changes? This action will update the database.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setIsSaveConfirmOpen(false)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmSaveAll}
+                                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors"
+                            >
+                                Yes, Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Success Message Toast */}
+            {saveSuccessMessage && (
+                <div className="fixed bottom-24 right-8 bg-emerald-100 border border-emerald-200 text-emerald-800 dark:bg-emerald-900/50 dark:border-emerald-800 dark:text-emerald-300 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="font-medium">{saveSuccessMessage}</span>
                 </div>
             )}
         </div>
