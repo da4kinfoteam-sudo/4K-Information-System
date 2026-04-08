@@ -113,19 +113,18 @@ const Calendar: React.FC<CalendarProps> = ({ activities, systemSettings, onDateC
         };
 
         (activities || []).forEach(act => {
-            if (act.date) {
-                const isCompleted = act.status === 'Completed' || !!act.actualDate;
-                
-                const [startY, startM, startD] = act.date.split('-').map(Number);
+            const isCompleted = act.status === 'Completed' || !!act.actualDate;
+            const startDate = (isCompleted && act.actualDate) ? act.actualDate : act.date;
+            const endDate = (isCompleted && act.actualDate) ? (act.actualEndDate || act.actualDate) : (act.endDate || act.date);
+
+            if (startDate) {
+                const [startY, startM, startD] = startDate.split('-').map(Number);
                 let currentLoopDate = new Date(startY, startM - 1, startD);
                 
-                let endLoopDate = new Date(startY, startM - 1, startD);
-                if (act.endDate && act.endDate !== act.date) {
-                     const [endY, endM, endD] = act.endDate.split('-').map(Number);
-                     endLoopDate = new Date(endY, endM - 1, endD);
-                }
+                const [endY, endM, endD] = endDate.split('-').map(Number);
+                let endLoopDate = new Date(endY, endM - 1, endD);
 
-                const effectiveEndDateStr = act.endDate || act.date;
+                const effectiveEndDateStr = endDate;
                 const styles = getStatusStyles(isCompleted, effectiveEndDateStr, 'border-green-500');
 
                 while (currentLoopDate <= endLoopDate) {

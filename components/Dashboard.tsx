@@ -596,7 +596,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     className={`p-3 rounded-lg border-l-4 ${event.borderColor} bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${event.originalData ? 'cursor-pointer' : ''}`}
                                 >
                                     <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{event.title}</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 uppercase tracking-wide">{event.type}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{event.type}</p>
+                                        {event.originalData?.operatingUnit && (
+                                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                                                {event.originalData.operatingUnit}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {event.originalData?.description && (
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2 italic border-t border-gray-100 dark:border-gray-700 pt-2">
+                                            {event.originalData.description}
+                                        </p>
+                                    )}
                                 </div>
                             ))}
                         </div>
