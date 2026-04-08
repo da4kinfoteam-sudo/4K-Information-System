@@ -265,15 +265,18 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             });
         });
 
-        // Derive flat lists of codes for rendering columns, sorting them
+        // Derive flat lists of codes for rendering columns, sorting them in ascending order
         const mooeCodes: string[] = [];
-        Object.keys(headers.MOOE).sort().forEach(part => {
-            headers.MOOE[part].sort().forEach(c => { if (!mooeCodes.includes(c)) mooeCodes.push(c); });
+        Object.keys(headers.MOOE).forEach(part => {
+            headers.MOOE[part].forEach(c => { if (!mooeCodes.includes(c)) mooeCodes.push(c); });
         });
+        mooeCodes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
         const coCodes: string[] = [];
-        Object.keys(headers.CO).sort().forEach(part => {
-            headers.CO[part].sort().forEach(c => { if (!coCodes.includes(c)) coCodes.push(c); });
+        Object.keys(headers.CO).forEach(part => {
+            headers.CO[part].forEach(c => { if (!coCodes.includes(c)) coCodes.push(c); });
         });
+        coCodes.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
         const initialUacsValues = [...mooeCodes, ...coCodes].reduce((acc, code) => ({ ...acc, [code]: 0 }), {});
         
@@ -415,11 +418,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     const handleDownloadBpFormsXlsx = () => {
         // Construct grouped headers for XLSX
-        const mooeParticulars = Object.keys(headers.MOOE).sort();
-        const coParticulars = Object.keys(headers.CO).sort();
+        const mooeCodesSorted = [...mooeCodes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const coCodesSorted = [...coCodes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-        const mooeSpan = mooeCodes.length;
-        const coSpan = coCodes.length;
+        const mooeSpan = mooeCodesSorted.length;
+        const coSpan = coCodesSorted.length;
         
         // Row 1: Object Types
         const row1: (string | null)[] = ["Program/Activity/Project"];
@@ -435,60 +438,70 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         row1.push("Total CO");
         row1.push("Grand Total");
 
-        // Row 2: Particulars
+        // Row 2: Particulars (Merged cells will handle the grouping visually)
         const row2: (string | null)[] = [null];
-        mooeParticulars.forEach(part => {
-            const codes = headers.MOOE[part].sort();
-            row2.push(part);
-            for(let i=1; i<codes.length; i++) row2.push(null);
+        mooeCodesSorted.forEach(code => {
+            // Find which particular this code belongs to
+            let partName = "Other Expenses";
+            for (const p in headers.MOOE) {
+                if (headers.MOOE[p].includes(code)) {
+                    partName = p;
+                    break;
+                }
+            }
+            row2.push(partName);
         });
         row2.push(null); // Under Total MOOE
-        coParticulars.forEach(part => {
-            const codes = headers.CO[part].sort();
-            row2.push(part);
-            for(let i=1; i<codes.length; i++) row2.push(null);
+        coCodesSorted.forEach(code => {
+            let partName = "Other Expenses";
+            for (const p in headers.CO) {
+                if (headers.CO[p].includes(code)) {
+                    partName = p;
+                    break;
+                }
+            }
+            row2.push(partName);
         });
         row2.push(null); // Under Total CO
         row2.push(null); // Under Grand Total
 
         // Row 3: Descriptions
         const row3: (string | null)[] = [null];
-        mooeParticulars.forEach(part => {
-            const codes = headers.MOOE[part].sort();
-            codes.forEach(code => {
-                row3.push(getDescription('MOOE', part, code));
-            });
+        mooeCodesSorted.forEach(code => {
+            let partName = "Other Expenses";
+            for (const p in headers.MOOE) {
+                if (headers.MOOE[p].includes(code)) {
+                    partName = p;
+                    break;
+                }
+            }
+            row3.push(getDescription('MOOE', partName, code));
         });
         row3.push(null); // Under Total MOOE
-        coParticulars.forEach(part => {
-            const codes = headers.CO[part].sort();
-            codes.forEach(code => {
-                row3.push(getDescription('CO', part, code));
-            });
+        coCodesSorted.forEach(code => {
+            let partName = "Other Expenses";
+            for (const p in headers.CO) {
+                if (headers.CO[p].includes(code)) {
+                    partName = p;
+                    break;
+                }
+            }
+            row3.push(getDescription('CO', partName, code));
         });
         row3.push(null); // Under Total CO
         row3.push(null); // Under Grand Total
 
         // Row 4: UACS Codes
         const row4: (string | null)[] = [null];
-        mooeParticulars.forEach(part => {
-            const codes = headers.MOOE[part].sort();
-            codes.forEach(code => row4.push(code));
-        });
+        mooeCodesSorted.forEach(code => row4.push(code));
         row4.push(null); // Under Total MOOE
-        coParticulars.forEach(part => {
-            const codes = headers.CO[part].sort();
-            codes.forEach(code => row4.push(code));
-        });
+        coCodesSorted.forEach(code => row4.push(code));
         row4.push(null); // Under Total CO
         row4.push(null); // Under Grand Total
 
         // Flatten Data
         const flatDataRows: any[][] = [];
-        const allCodesOrdered = [
-            ...mooeParticulars.flatMap(p => headers.MOOE[p].sort()),
-            ...coParticulars.flatMap(p => headers.CO[p].sort())
-        ];
+        const allCodesOrdered = [...mooeCodesSorted, ...coCodesSorted];
 
         const calculateSummary = (items: any[]) => {
             return items.reduce((acc, item) => {
@@ -581,15 +594,20 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         if(mooeSpan > 0) {
             ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + mooeSpan - 1 } });
             
-            // MOOE Particulars Merges
-            let partColIdx = colIdx;
-            mooeParticulars.forEach(part => {
-                const codesCount = headers.MOOE[part].length;
-                if (codesCount > 1) {
-                    ws['!merges'].push({ s: { r: 1, c: partColIdx }, e: { r: 1, c: partColIdx + codesCount - 1 } });
+            // MOOE Particulars Merges (Group consecutive same particulars)
+            let startCol = colIdx;
+            for (let i = 0; i < mooeCodesSorted.length; i++) {
+                const currentPart = row2[startCol];
+                let endCol = startCol;
+                while (endCol + 1 < colIdx + mooeCodesSorted.length && row2[endCol + 1] === currentPart) {
+                    endCol++;
                 }
-                partColIdx += codesCount;
-            });
+                if (endCol > startCol) {
+                    ws['!merges'].push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
+                }
+                i += (endCol - startCol);
+                startCol = endCol + 1;
+            }
             colIdx += mooeSpan;
         }
         
@@ -601,15 +619,20 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         if(coSpan > 0) {
             ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + coSpan - 1 } });
             
-            // CO Particulars Merges
-            let partColIdx = colIdx;
-            coParticulars.forEach(part => {
-                const codesCount = headers.CO[part].length;
-                if (codesCount > 1) {
-                    ws['!merges'].push({ s: { r: 1, c: partColIdx }, e: { r: 1, c: partColIdx + codesCount - 1 } });
+            // CO Particulars Merges (Group consecutive same particulars)
+            let startCol = colIdx;
+            for (let i = 0; i < coCodesSorted.length; i++) {
+                const currentPart = row2[startCol];
+                let endCol = startCol;
+                while (endCol + 1 < colIdx + coCodesSorted.length && row2[endCol + 1] === currentPart) {
+                    endCol++;
                 }
-                partColIdx += codesCount;
-            });
+                if (endCol > startCol) {
+                    ws['!merges'].push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
+                }
+                i += (endCol - startCol);
+                startCol = endCol + 1;
+            }
             colIdx += coSpan;
         }
         
@@ -723,31 +746,124 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                             <th rowSpan={4} className={`${headerCellClass} bg-green-100 dark:bg-green-900/40 min-w-[100px]`}>Grand Total</th>
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/80">
-                            {/* MOOE Particulars */}
-                            {mooeParticulars.map(p => <th key={`p-mooe-${p}`} colSpan={headers.MOOE[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                            {/* MOOE Particulars (Dynamic grouping) */}
+                            {mooeCodes.map((code, idx) => {
+                                // Find particular for this code
+                                let partName = "Other Expenses";
+                                for (const p in headers.MOOE) {
+                                    if (headers.MOOE[p].includes(code)) {
+                                        partName = p;
+                                        break;
+                                    }
+                                }
+                                
+                                // Check if this is the start of a group
+                                const prevCode = idx > 0 ? mooeCodes[idx-1] : null;
+                                let prevPart = null;
+                                if (prevCode) {
+                                    for (const p in headers.MOOE) {
+                                        if (headers.MOOE[p].includes(prevCode)) {
+                                            prevPart = p;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (partName === prevPart) return null;
+                                
+                                // Calculate span
+                                let span = 1;
+                                for (let i = idx + 1; i < mooeCodes.length; i++) {
+                                    let nextPart = null;
+                                    for (const p in headers.MOOE) {
+                                        if (headers.MOOE[p].includes(mooeCodes[i])) {
+                                            nextPart = p;
+                                            break;
+                                        }
+                                    }
+                                    if (nextPart === partName) span++;
+                                    else break;
+                                }
+                                
+                                return <th key={`p-mooe-${code}`} colSpan={span} className={`${headerCellClass}`}>{partName}</th>;
+                            })}
                             
-                            {/* CO Particulars */}
-                            {coParticulars.map(p => <th key={`p-co-${p}`} colSpan={headers.CO[p].length} className={`${headerCellClass}`}>{p}</th>)}
+                            {/* CO Particulars (Dynamic grouping) */}
+                            {coCodes.map((code, idx) => {
+                                let partName = "Other Expenses";
+                                for (const p in headers.CO) {
+                                    if (headers.CO[p].includes(code)) {
+                                        partName = p;
+                                        break;
+                                    }
+                                }
+                                
+                                const prevCode = idx > 0 ? coCodes[idx-1] : null;
+                                let prevPart = null;
+                                if (prevCode) {
+                                    for (const p in headers.CO) {
+                                        if (headers.CO[p].includes(prevCode)) {
+                                            prevPart = p;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (partName === prevPart) return null;
+                                
+                                let span = 1;
+                                for (let i = idx + 1; i < coCodes.length; i++) {
+                                    let nextPart = null;
+                                    for (const p in headers.CO) {
+                                        if (headers.CO[p].includes(coCodes[i])) {
+                                            nextPart = p;
+                                            break;
+                                        }
+                                    }
+                                    if (nextPart === partName) span++;
+                                    else break;
+                                }
+                                
+                                return <th key={`p-co-${code}`} colSpan={span} className={`${headerCellClass}`}>{partName}</th>;
+                            })}
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/60">
                             {/* MOOE Descriptions */}
-                            {mooeParticulars.flatMap(p => headers.MOOE[p].sort().map(code => ({ code, p }))).map(({ code, p }) => (
-                                <th key={`desc-mooe-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
-                                    {getDescription('MOOE', p, code)}
-                                </th>
-                            ))}
+                            {mooeCodes.map(code => {
+                                let partName = "Other Expenses";
+                                for (const p in headers.MOOE) {
+                                    if (headers.MOOE[p].includes(code)) {
+                                        partName = p;
+                                        break;
+                                    }
+                                }
+                                return (
+                                    <th key={`desc-mooe-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                        {getDescription('MOOE', partName, code)}
+                                    </th>
+                                );
+                            })}
                             {/* CO Descriptions */}
-                            {coParticulars.flatMap(p => headers.CO[p].sort().map(code => ({ code, p }))).map(({ code, p }) => (
-                                <th key={`desc-co-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
-                                    {getDescription('CO', p, code)}
-                                </th>
-                            ))}
+                            {coCodes.map(code => {
+                                let partName = "Other Expenses";
+                                for (const p in headers.CO) {
+                                    if (headers.CO[p].includes(code)) {
+                                        partName = p;
+                                        break;
+                                    }
+                                }
+                                return (
+                                    <th key={`desc-co-${code}`} className={`${headerCellClass} text-[10px] italic font-normal max-w-[150px] whitespace-normal`}>
+                                        {getDescription('CO', partName, code)}
+                                    </th>
+                                );
+                            })}
                         </tr>
                         <tr className="bg-gray-100 dark:bg-gray-700/50">
                             {/* MOOE Codes */}
-                            {mooeParticulars.flatMap(p => headers.MOOE[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                            {mooeCodes.map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                             {/* CO Codes */}
-                            {coParticulars.flatMap(p => headers.CO[p].sort()).map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
+                            {coCodes.map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                         </tr>
                     </thead>
                     <tbody>
