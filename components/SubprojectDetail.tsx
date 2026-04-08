@@ -6,6 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { getUserPermissions } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
+import { MonthYearPicker } from './ui/MonthYearPicker';
 import { supabase } from '../supabaseClient';
 import { Info } from 'lucide-react';
 
@@ -237,30 +238,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return '';
     };
 
-    // Helper to update date in detail form (Budget Edit) based on month dropdown
-    const updateDetailDateFromMonth = (field: string, monthIndex: string) => {
-        if (monthIndex === '') {
-            setCurrentDetail(prev => ({ ...prev, [field]: '' }));
-            return;
-        }
-        const mIndex = parseInt(monthIndex);
-        const year = editedSubproject.fundingYear || new Date().getFullYear();
-        // Construct date as YYYY-MM-01
-        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
-        
-        if (field === 'deliveryDate' && editedSubproject.estimatedCompletionDate) {
-            const estCompDate = new Date(editedSubproject.estimatedCompletionDate);
-            const selectedDate = new Date(dateStr);
-            if (selectedDate.getFullYear() > estCompDate.getFullYear() || 
-                (selectedDate.getFullYear() === estCompDate.getFullYear() && selectedDate.getMonth() > estCompDate.getMonth())) {
-                setConfirmDeliveryDate({ field, dateStr });
-                return;
-            }
-        }
-        
-        setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
-    }
-
     const handleConfirmDeliveryDate = () => {
         if (confirmDeliveryDate) {
             setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: confirmDeliveryDate.dateStr }));
@@ -275,47 +252,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     const handleCancelDeliveryDate = () => {
         setConfirmDeliveryDate(null);
-    };
-
-    const handleEstimatedCompletionMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const monthIndex = e.target.value;
-        if (monthIndex === '') {
-            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: '' }));
-            return;
-        }
-        const mIndex = parseInt(monthIndex);
-        const currentYear = getYearFromDateStr(editedSubproject.estimatedCompletionDate) || editedSubproject.fundingYear || new Date().getFullYear();
-        const dateStr = `${currentYear}-${String(mIndex + 1).padStart(2, '0')}-01`;
-        setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-        
-        if (!currentDetail.deliveryDate) {
-            setCurrentDetail(prev => ({ ...prev, deliveryDate: dateStr }));
-        }
-    };
-
-    const handleEstimatedCompletionYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const year = e.target.value;
-        if (!editedSubproject.estimatedCompletionDate) {
-            const dateStr = `${year}-01-01`;
-            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-            return;
-        }
-        const month = getMonthFromDateStr(editedSubproject.estimatedCompletionDate);
-        if (month === '') {
-            const dateStr = `${year}-01-01`;
-            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-            return;
-        }
-        const dateStr = `${year}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-        setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: dateStr }));
-    };
-
-    // Helper to update actual date in accomplishment table based on month dropdown
-    const updateDetailActualDateFromMonth = (index: number, field: keyof SubprojectDetailInput, monthIndex: string) => {
-        const mIndex = parseInt(monthIndex);
-        const year = editedSubproject.fundingYear || new Date().getFullYear();
-        const newValue = monthIndex !== '' ? `${year}-${String(mIndex + 1).padStart(2, '0')}-01` : '';
-        handleDetailAccomplishmentChange(index, field, newValue);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -786,25 +722,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
                                                     <label className="block text-sm font-medium">Estimated Completion</label>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        <select 
-                                                            name="estimatedCompletionDate" 
-                                                            value={getMonthFromDateStr(editedSubproject.estimatedCompletionDate)} 
-                                                            onChange={handleEstimatedCompletionMonthChange}
-                                                            className={commonInputClasses}
-                                                        >
-                                                            <option value="">Select Month</option>
-                                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                        </select>
-                                                        <select
-                                                            name="estimatedCompletionYear"
-                                                            value={getYearFromDateStr(editedSubproject.estimatedCompletionDate) || editedSubproject.fundingYear || new Date().getFullYear()}
-                                                            onChange={handleEstimatedCompletionYearChange}
-                                                            className={commonInputClasses}
-                                                        >
-                                                            {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-                                                        </select>
-                                                    </div>
+                                                    <MonthYearPicker
+                                                        value={editedSubproject.estimatedCompletionDate}
+                                                        onChange={(val) => {
+                                                            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: val }));
+                                                            if (!currentDetail.deliveryDate) {
+                                                                setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
+                                                            }
+                                                        }}
+                                                        placeholder="Select month"
+                                                        defaultYear={editedSubproject.fundingYear}
+                                                        className="h-10"
+                                                    />
                                                     {getYearFromDateStr(editedSubproject.estimatedCompletionDate) && parseInt(getYearFromDateStr(editedSubproject.estimatedCompletionDate)) !== editedSubproject.fundingYear && (
                                                         <p className="text-xs text-amber-600 mt-1">Note: Estimated completion year is different from the funding year.</p>
                                                     )}
@@ -1105,37 +1034,40 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                                             <div>
                                                 <label className="block text-xs font-medium">Delivery Month</label>
-                                                <select 
-                                                    value={getMonthFromDateStr(currentDetail.deliveryDate)} 
-                                                    onChange={(e) => updateDetailDateFromMonth('deliveryDate', e.target.value)} 
-                                                    className={commonInputClasses + " py-1.5 text-sm"}
-                                                >
-                                                    <option value="">Select Month</option>
-                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                </select>
+                                                <MonthYearPicker
+                                                    value={currentDetail.deliveryDate}
+                                                    onChange={(val) => {
+                                                        if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
+                                                            setConfirmDeliveryDate({ field: 'deliveryDate', dateStr: val });
+                                                            return;
+                                                        }
+                                                        setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
+                                                    }}
+                                                    placeholder="Select month"
+                                                    defaultYear={editedSubproject.fundingYear}
+                                                    className="h-9"
+                                                />
                                             </div>
                                             
                                             <div>
                                                 <label className="block text-xs font-medium">Obligation Month</label>
-                                                <select 
-                                                    value={getMonthFromDateStr(currentDetail.obligationMonth)} 
-                                                    onChange={(e) => updateDetailDateFromMonth('obligationMonth', e.target.value)} 
-                                                    className={commonInputClasses + " py-1.5 text-sm"}
-                                                >
-                                                    <option value="">Select Month</option>
-                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                </select>
+                                                <MonthYearPicker
+                                                    value={currentDetail.obligationMonth}
+                                                    onChange={(val) => setCurrentDetail(prev => ({ ...prev, obligationMonth: val }))}
+                                                    placeholder="Select month"
+                                                    defaultYear={editedSubproject.fundingYear}
+                                                    className="h-9"
+                                                />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium">Disbursement Month</label>
-                                                <select 
-                                                    value={getMonthFromDateStr(currentDetail.disbursementMonth)} 
-                                                    onChange={(e) => updateDetailDateFromMonth('disbursementMonth', e.target.value)} 
-                                                    className={commonInputClasses + " py-1.5 text-sm"}
-                                                >
-                                                    <option value="">Select Month</option>
-                                                    {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                </select>
+                                                <MonthYearPicker
+                                                    value={currentDetail.disbursementMonth}
+                                                    onChange={(val) => setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }))}
+                                                    placeholder="Select month"
+                                                    defaultYear={editedSubproject.fundingYear}
+                                                    className="h-9"
+                                                />
                                             </div>
 
                                             <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
@@ -1214,26 +1146,24 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <select 
-                                                                        value={getMonthFromDateStr((detail as any).actualDeliveryDate)} 
-                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualDeliveryDate', e.target.value)} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
-                                                                        disabled={isLocked(originalDetail?.actualDeliveryDate)} 
-                                                                    >
-                                                                        <option value="">Select Month</option>
-                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                                    </select>
+                                                                    <MonthYearPicker
+                                                                        value={(detail as any).actualDeliveryDate}
+                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', val)}
+                                                                        placeholder="Select month"
+                                                                        defaultYear={editedSubproject.fundingYear}
+                                                                        className="h-8 text-xs"
+                                                                        disabled={isLocked(originalDetail?.actualDeliveryDate)}
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <select 
-                                                                        value={getMonthFromDateStr(detail.actualObligationDate)} 
-                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualObligationDate', e.target.value)}
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                    <MonthYearPicker
+                                                                        value={detail.actualObligationDate}
+                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', val)}
+                                                                        placeholder="Select month"
+                                                                        defaultYear={editedSubproject.fundingYear}
+                                                                        className="h-8 text-xs"
                                                                         disabled={isLocked(originalDetail?.actualObligationDate)}
-                                                                    >
-                                                                        <option value="">Select Month</option>
-                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                                    </select>
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <input 
@@ -1246,15 +1176,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
-                                                                    <select 
-                                                                        value={getMonthFromDateStr(detail.actualDisbursementDate)} 
-                                                                        onChange={(e) => updateDetailActualDateFromMonth(idx, 'actualDisbursementDate', e.target.value)}
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
+                                                                    <MonthYearPicker
+                                                                        value={detail.actualDisbursementDate}
+                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', val)}
+                                                                        placeholder="Select month"
+                                                                        defaultYear={editedSubproject.fundingYear}
+                                                                        className="h-8 text-xs"
                                                                         disabled={isLocked(originalDetail?.actualDisbursementDate)}
-                                                                    >
-                                                                        <option value="">Select Month</option>
-                                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                                    </select>
+                                                                    />
                                                                 </td>
                                                                 <td className="px-3 py-2">
                                                                     <input 
@@ -1388,40 +1317,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Target Completion Date</label>
-                                                    <div className="flex gap-2">
-                                                        <select
-                                                            value={editedSubproject.newTargetCompletionDate ? new Date(editedSubproject.newTargetCompletionDate).getMonth() : ''}
-                                                            onChange={(e) => {
-                                                                const month = parseInt(e.target.value);
-                                                                const current = new Date(editedSubproject.newTargetCompletionDate || new Date());
-                                                                current.setDate(1); // Ensure day is 1 to avoid overflow
-                                                                current.setMonth(month);
-                                                                const year = current.getFullYear();
-                                                                const newDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-                                                                setEditedSubproject({...editedSubproject, newTargetCompletionDate: newDate});
-                                                            }}
-                                                            className={commonInputClasses}
-                                                        >
-                                                            <option value="" disabled>Select Month</option>
-                                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                        </select>
-                                                        <select
-                                                            value={editedSubproject.newTargetCompletionDate ? new Date(editedSubproject.newTargetCompletionDate).getFullYear() : ''}
-                                                            onChange={(e) => {
-                                                                const year = parseInt(e.target.value);
-                                                                const current = new Date(editedSubproject.newTargetCompletionDate || new Date());
-                                                                current.setDate(1); // Ensure day is 1 to avoid overflow
-                                                                current.setFullYear(year);
-                                                                const month = current.getMonth();
-                                                                const newDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-                                                                setEditedSubproject({...editedSubproject, newTargetCompletionDate: newDate});
-                                                            }}
-                                                            className={commonInputClasses}
-                                                        >
-                                                            <option value="" disabled>Select Year</option>
-                                                            {filterYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                                        </select>
-                                                    </div>
+                                                    <MonthYearPicker
+                                                        value={editedSubproject.newTargetCompletionDate}
+                                                        onChange={(val) => setEditedSubproject({...editedSubproject, newTargetCompletionDate: val})}
+                                                        placeholder="Select month"
+                                                        defaultYear={new Date().getFullYear()}
+                                                        className="h-10"
+                                                    />
                                                 </div>
                                             </div>
                                         </fieldset>
