@@ -1,5 +1,6 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, tiers, fundTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
@@ -51,6 +52,7 @@ interface PhysicalItem {
     // Meta
     isParent: boolean;
     isLocked: boolean; 
+    status: string;
     children?: PhysicalItem[];
 }
 
@@ -80,9 +82,17 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [formTier, setFormTier] = useState<string>(selectedTier);
     const [formFundType, setFormFundType] = useState<string>(selectedFundType);
     const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
+    const [isLoading, setIsLoading] = useState(false);
 
     // Local Data State
     const [items, setItems] = useState<PhysicalItem[]>([]);
+    const [originalItems, setOriginalItems] = useState<PhysicalItem[]>([]);
+    const [changedItems, setChangedItems] = useState<Map<string, Partial<PhysicalItem>>>(new Map());
+    
+    // Save State
+    const [isSavingAll, setIsSavingAll] = useState(false);
+    const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
+    const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
     
     // Expansion State
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
@@ -99,134 +109,148 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     // --- 1. Load Data ---
     useEffect(() => {
         if (!selectedYear) return;
+        setIsLoading(true);
 
-        const loadedItems: PhysicalItem[] = [];
-        const matchesFilters = (item: any) => {
-            const y = item.fundingYear || item.fundYear;
-            if (y !== selectedYear) return false;
-            if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
-            if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-            if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
-            return true;
-        };
+        const timer = setTimeout(() => {
+            const loadedItems: PhysicalItem[] = [];
+            const matchesFilters = (item: any) => {
+                const y = item.fundingYear || item.fundYear;
+                if (y !== selectedYear) return false;
+                if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
+                if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+                if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+                return true;
+            };
 
-        // A. Subprojects (Parent + Children)
-        (subprojects || []).filter(matchesFilters).forEach(sp => {
-            const parentId = `sp-${sp.id}`;
-            const children: PhysicalItem[] = (sp.details || []).map(d => ({
-                uniqueId: `${parentId}-d-${d.id}`,
-                sourceType: 'Subproject',
-                sourceId: sp.id,
-                parentId: parentId,
-                detailId: d.id,
-                name: d.particulars,
-                targetDateStart: d.deliveryDate,
-                targetQty: d.numberOfUnits,
-                unitOfMeasure: d.unitOfMeasure,
-                actualDateStart: d.actualDeliveryDate || '',
-                actualQty: d.actualNumberOfUnits || 0,
-                isParent: false,
-                isLocked: false // Individual items editable
-            }));
+            // A. Subprojects (Parent + Children)
+            (subprojects || []).filter(matchesFilters).forEach(sp => {
+                const parentId = `sp-${sp.id}`;
+                const children: PhysicalItem[] = (sp.details || []).map(d => ({
+                    uniqueId: `${parentId}-d-${d.id}`,
+                    sourceType: 'Subproject',
+                    sourceId: sp.id,
+                    parentId: parentId,
+                    detailId: d.id,
+                    name: d.particulars,
+                    targetDateStart: d.deliveryDate,
+                    targetQty: d.numberOfUnits,
+                    unitOfMeasure: d.unitOfMeasure,
+                    actualDateStart: d.actualDeliveryDate || '',
+                    actualQty: d.actualNumberOfUnits || 0,
+                    isParent: false,
+                    isLocked: false, // Individual items editable
+                    status: sp.status
+                }));
 
-            loadedItems.push({
-                uniqueId: parentId,
-                sourceType: 'Subproject',
-                sourceId: sp.id,
-                name: sp.name,
-                location: sp.location,
-                targetDateStart: sp.estimatedCompletionDate,
-                targetQty: 0,
-                unitOfMeasure: 'Project',
-                actualDateStart: sp.actualCompletionDate || '',
-                actualQty: 0,
-                isParent: true,
-                isLocked: false,
-                children: children
+                loadedItems.push({
+                    uniqueId: parentId,
+                    sourceType: 'Subproject',
+                    sourceId: sp.id,
+                    name: sp.name,
+                    location: sp.location,
+                    targetDateStart: sp.estimatedCompletionDate,
+                    targetQty: 0,
+                    unitOfMeasure: 'Project',
+                    actualDateStart: sp.actualCompletionDate || '',
+                    actualQty: 0,
+                    isParent: true,
+                    isLocked: false,
+                    status: sp.status,
+                    children: children
+                });
             });
-        });
 
-        // B. Activities (Flat)
-        (activities || []).filter(matchesFilters).forEach(act => {
-            loadedItems.push({
-                uniqueId: `act-${act.id}`,
-                sourceType: 'Activity',
-                sourceId: act.id,
-                name: act.name,
-                subName: act.type,
-                targetDateStart: act.date,
-                targetDateEnd: act.endDate !== act.date ? act.endDate : undefined,
-                targetQty: (act.participantsMale || 0) + (act.participantsFemale || 0),
-                targetMale: act.participantsMale,
-                targetFemale: act.participantsFemale,
-                unitOfMeasure: 'Pax',
-                actualDateStart: act.actualDate || '',
-                actualQty: (act.actualParticipantsMale || 0) + (act.actualParticipantsFemale || 0),
-                actualMale: act.actualParticipantsMale || 0,
-                actualFemale: act.actualParticipantsFemale || 0,
-                isParent: false,
-                isLocked: !!act.actualDate
+            // B. Activities (Flat)
+            (activities || []).filter(matchesFilters).forEach(act => {
+                loadedItems.push({
+                    uniqueId: `act-${act.id}`,
+                    sourceType: 'Activity',
+                    sourceId: act.id,
+                    name: act.name,
+                    subName: act.type,
+                    targetDateStart: act.date,
+                    targetDateEnd: act.endDate !== act.date ? act.endDate : undefined,
+                    targetQty: (act.participantsMale || 0) + (act.participantsFemale || 0),
+                    targetMale: act.participantsMale,
+                    targetFemale: act.participantsFemale,
+                    unitOfMeasure: 'Pax',
+                    actualDateStart: act.actualDate || '',
+                    actualQty: (act.actualParticipantsMale || 0) + (act.actualParticipantsFemale || 0),
+                    actualMale: act.actualParticipantsMale || 0,
+                    actualFemale: act.actualParticipantsFemale || 0,
+                    isParent: false,
+                    isLocked: !!act.actualDate,
+                    status: act.status
+                });
             });
-        });
 
-        // C. Staffing (Grouped by Position)
-        const staffingGroups: { [key: string]: StaffingRequirement[] } = {};
-        (staffingReqs || []).filter(matchesFilters).forEach(s => {
-            if (!staffingGroups[s.personnelPosition]) staffingGroups[s.personnelPosition] = [];
-            staffingGroups[s.personnelPosition].push(s);
-        });
-
-        Object.entries(staffingGroups).forEach(([position, groupItems], idx) => {
-            const parentId = `staff-group-${idx}`;
-            const children: PhysicalItem[] = groupItems.map(s => ({
-                uniqueId: `staff-${s.id}`,
-                sourceType: 'Staffing',
-                sourceId: s.id,
-                parentId: parentId,
-                name: `${s.personnelPosition} (${s.operatingUnit})`,
-                targetDateStart: s.obligationDate,
-                targetQty: 1,
-                unitOfMeasure: 'Head',
-                actualDateStart: s.actualObligationDate || '', // Date Hired
-                actualQty: s.actualObligationDate ? 1 : 0,
-                isParent: false,
-                isLocked: false
-            }));
-
-            loadedItems.push({
-                uniqueId: parentId,
-                sourceType: 'Staffing',
-                sourceId: 0, // Virtual ID
-                name: position,
-                targetDateStart: '',
-                targetQty: groupItems.length,
-                unitOfMeasure: 'Heads',
-                actualDateStart: '',
-                actualQty: children.filter(c => c.actualDateStart).length,
-                isParent: true,
-                isLocked: true, 
-                children: children
+            // C. Staffing (Grouped by Position)
+            const staffingGroups: { [key: string]: StaffingRequirement[] } = {};
+            (staffingReqs || []).filter(matchesFilters).forEach(s => {
+                if (!staffingGroups[s.personnelPosition]) staffingGroups[s.personnelPosition] = [];
+                staffingGroups[s.personnelPosition].push(s);
             });
-        });
 
-        // D. Office Requirements (Flat)
-        (officeReqs || []).filter(matchesFilters).forEach(off => {
-            loadedItems.push({
-                uniqueId: `office-${off.id}`,
-                sourceType: 'Office',
-                sourceId: off.id,
-                name: off.equipment,
-                targetDateStart: off.obligationDate,
-                targetQty: off.numberOfUnits,
-                unitOfMeasure: 'Units',
-                actualDateStart: off.actualObligationDate || '', // Use obligation date as delivery proxy
-                actualQty: off.actualObligationDate ? off.numberOfUnits : 0, 
-                isParent: false,
-                isLocked: false
+            Object.entries(staffingGroups).forEach(([position, groupItems], idx) => {
+                const parentId = `staff-group-${idx}`;
+                const children: PhysicalItem[] = groupItems.map(s => ({
+                    uniqueId: `staff-${s.id}`,
+                    sourceType: 'Staffing',
+                    sourceId: s.id,
+                    parentId: parentId,
+                    name: `${s.personnelPosition} (${s.operatingUnit})`,
+                    targetDateStart: s.obligationDate,
+                    targetQty: 1,
+                    unitOfMeasure: 'Personnel',
+                    actualDateStart: s.actualObligationDate || '', // Date Hired
+                    actualQty: s.actualObligationDate ? 1 : 0,
+                    isParent: false,
+                    isLocked: false,
+                    status: s.status
+                }));
+
+                loadedItems.push({
+                    uniqueId: parentId,
+                    sourceType: 'Staffing',
+                    sourceId: 0, // Virtual ID
+                    name: position,
+                    targetDateStart: '',
+                    targetQty: groupItems.length,
+                    unitOfMeasure: 'Personnel',
+                    actualDateStart: '',
+                    actualQty: children.filter(c => c.actualDateStart).length,
+                    isParent: true,
+                    isLocked: true, 
+                    status: groupItems[0]?.status || 'Proposed', // Assuming same status for group
+                    children: children
+                });
             });
-        });
 
-        setItems(loadedItems);
+            // D. Office Requirements (Flat)
+            (officeReqs || []).filter(matchesFilters).forEach(off => {
+                loadedItems.push({
+                    uniqueId: `office-${off.id}`,
+                    sourceType: 'Office',
+                    sourceId: off.id,
+                    name: off.equipment,
+                    targetDateStart: off.obligationDate,
+                    targetQty: off.numberOfUnits,
+                    unitOfMeasure: 'Units',
+                    actualDateStart: off.actualObligationDate || '', // Use obligation date as delivery proxy
+                    actualQty: off.actualObligationDate ? off.numberOfUnits : 0, 
+                    isParent: false,
+                    isLocked: false,
+                    status: off.status
+                });
+            });
+
+            setItems(loadedItems);
+            setOriginalItems(JSON.parse(JSON.stringify(loadedItems)));
+            setChangedItems(new Map());
+            setIsLoading(false);
+        }, 500);
+
+        return () => clearTimeout(timer);
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, staffingReqs, officeReqs]);
 
     // --- 2. Grouping for Display ---
@@ -310,10 +334,17 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             updateNode(newItems);
             return newItems;
         });
+
+        setChangedItems(prev => {
+            const newMap = new Map(prev);
+            const existing = newMap.get(uniqueId) || {};
+            newMap.set(uniqueId, Object.assign({}, existing, updates));
+            return newMap;
+        });
     };
 
     // Save Logic
-    const handleSaveItem = async (item: PhysicalItem) => {
+    const saveItemToDB = async (item: PhysicalItem) => {
         if (!canEdit) return;
 
         try {
@@ -332,7 +363,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             return {
                                 ...d,
                                 actualDeliveryDate: childState.actualDateStart,
-                                actualNumberOfUnits: childState.actualQty
+                                actualNumberOfUnits: childState.actualQty,
+                                deliveryDate: childState.targetDateStart,
+                                numberOfUnits: childState.targetQty
                             };
                         }
                         return d;
@@ -341,13 +374,14 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     if (supabase) {
                         await supabase.from('subprojects').update({
                             actualCompletionDate: item.actualDateStart || null,
+                            estimatedCompletionDate: item.targetDateStart || null,
                             status: newStatus,
                             details: updatedDetails
                         }).eq('id', sp.id);
                     }
 
                     // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, status: newStatus, details: updatedDetails } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails } : s));
 
                 } else {
                     // Save Individual Child Row
@@ -358,7 +392,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
                     const updatedDetails = sp.details.map(d => {
                         if (d.id === item.detailId) {
-                            return { ...d, actualDeliveryDate: item.actualDateStart, actualNumberOfUnits: item.actualQty };
+                            return { 
+                                ...d, 
+                                actualDeliveryDate: item.actualDateStart, 
+                                actualNumberOfUnits: item.actualQty,
+                                deliveryDate: item.targetDateStart,
+                                numberOfUnits: item.targetQty
+                            };
                         }
                         return d;
                     });
@@ -378,6 +418,10 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     actualDate: item.actualDateStart,
                     actualParticipantsMale: item.actualMale,
                     actualParticipantsFemale: item.actualFemale,
+                    date: item.targetDateStart,
+                    endDate: item.targetDateEnd || item.targetDateStart,
+                    participantsMale: item.targetMale,
+                    participantsFemale: item.targetFemale,
                     status: newStatus
                 };
 
@@ -387,16 +431,23 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 setActivities(prev => prev.map(a => a.id === act.id ? { ...a, ...payload } : a));
 
             } else if (item.sourceType === 'Staffing') {
-                 // Update Date Hired
-                 const payload = { actualObligationDate: item.actualDateStart };
+                 // Update Date Hired and Target Date
+                 const payload = { 
+                     actualObligationDate: item.actualDateStart,
+                     obligationDate: item.targetDateStart
+                 };
                  if (supabase) {
                     await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
                  }
                  setStaffingReqs(prev => prev.map(s => s.id === item.sourceId ? { ...s, ...payload } : s));
 
             } else if (item.sourceType === 'Office') {
-                // Update Actual Date
-                const payload = { actualObligationDate: item.actualDateStart }; 
+                // Update Actual Date and Target Date
+                const payload = { 
+                    actualObligationDate: item.actualDateStart,
+                    obligationDate: item.targetDateStart,
+                    numberOfUnits: item.targetQty
+                }; 
                 if (supabase) {
                     await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
                 }
@@ -407,7 +458,77 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
         } catch (error: any) {
             console.error("Save error:", error);
-            alert("Failed to save: " + error.message);
+            throw error;
+        }
+    };
+
+    const handleSaveAllClick = () => {
+        setIsSaveConfirmOpen(true);
+    };
+
+    const confirmSaveAll = async () => {
+        setIsSaveConfirmOpen(false);
+        setIsSavingAll(true);
+        try {
+            // Find all items that have changes
+            const itemsToSave: PhysicalItem[] = [];
+            
+            const findChangedItems = (nodes: PhysicalItem[]) => {
+                nodes.forEach(node => {
+                    if (changedItems.has(node.uniqueId)) {
+                        itemsToSave.push(node);
+                    }
+                    if (node.children) {
+                        findChangedItems(node.children);
+                    }
+                });
+            };
+            
+            findChangedItems(items);
+
+            const promises = itemsToSave.map(item => saveItemToDB(item));
+            await Promise.all(promises);
+            
+            setChangedItems(new Map());
+            setOriginalItems(JSON.parse(JSON.stringify(items)));
+            
+            setSaveSuccessMessage('All changes saved successfully!');
+            setTimeout(() => setSaveSuccessMessage(''), 3000);
+        } catch (error: any) {
+            console.error("Save all error:", error);
+            alert("Failed to save some items: " + error.message);
+        } finally {
+            setIsSavingAll(false);
+        }
+    };
+
+    const undoLocalItem = (uniqueId: string) => {
+        const originalItem = originalItems.find(i => i.uniqueId === uniqueId) || 
+                             originalItems.flatMap(i => i.children || []).find(c => c.uniqueId === uniqueId);
+        if (originalItem) {
+            setItems(prev => {
+                const newItems = [...prev];
+                const updateNode = (nodes: PhysicalItem[]): boolean => {
+                    for (let i = 0; i < nodes.length; i++) {
+                        if (nodes[i].uniqueId === uniqueId) {
+                            nodes[i] = { ...originalItem };
+                            return true;
+                        }
+                        if (nodes[i].children) {
+                            if (updateNode(nodes[i].children!)) return true;
+                        }
+                    }
+                    return false;
+                };
+                updateNode(newItems);
+                return newItems;
+            });
+            
+            setChangedItems(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(uniqueId);
+                return newMap;
+            });
         }
     };
 
@@ -432,9 +553,19 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         />
     );
 
-    const getCompletionRate = (actual: number, target: number) => {
-        if (!target) return 0;
-        return Math.min(100, Math.round((actual / target) * 100));
+    const getCompletionRate = (item: PhysicalItem) => {
+        if (item.sourceType === 'Activity') {
+            return item.actualDateStart ? 100 : 0;
+        }
+        if (!item.targetQty) return 0;
+        return Math.min(100, Math.round((item.actualQty / item.targetQty) * 100));
+    };
+
+    const canEditTarget = (item: PhysicalItem) => {
+        if (!canEdit) return false;
+        if (currentUser?.role === 'Administrator') return true;
+        if (currentUser?.role === 'User' && item.status === 'Proposed') return true;
+        return false;
     };
 
     return (
@@ -504,172 +635,284 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 <button onClick={() => setIsYearModalOpen(true)} className="text-sm text-gray-500 hover:text-emerald-600 underline">Change Filter</button>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-emerald-50 dark:bg-emerald-900/20">
-                        <tr>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase w-1/3">Particulars / Activity</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Date</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Units</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30 border-l border-emerald-200">Actual Date</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30">Actual Units</th>
-                            <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">% Comp</th>
-                            <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
-                        {/* Group Render Logic */}
-                        {['Subprojects', 'Activities', 'Program Management'].map(groupKey => {
-                            // @ts-ignore
-                            const groupItems: PhysicalItem[] = groupedDisplay[groupKey] || [];
-                            if (groupItems.length === 0) return null;
-                            const isGroupExpanded = expandedGroups.includes(groupKey);
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-24">
+                    <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">Loading physical data...</p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-emerald-50 dark:bg-emerald-900/20">
+                            <tr>
+                                <th className="px-4 py-2 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase w-1/3">Particulars / Activity</th>
+                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Date</th>
+                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Units</th>
+                                <th className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30 border-l border-emerald-200">Actual Date</th>
+                                <th className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30">Actual Units</th>
+                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">% Comp</th>
+                                <th className="px-4 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                            {/* Group Render Logic */}
+                            {['Subprojects', 'Activities', 'Program Management'].map(groupKey => {
+                                // @ts-ignore
+                                const groupItems: PhysicalItem[] = groupedDisplay[groupKey] || [];
+                                if (groupItems.length === 0) return null;
+                                const isGroupExpanded = expandedGroups.includes(groupKey);
 
-                            return (
-                                <React.Fragment key={groupKey}>
-                                    {/* Level 1 Group Header */}
-                                    <tr className="bg-emerald-200/50 dark:bg-gray-700 border-y border-emerald-300 dark:border-gray-600">
-                                        <td colSpan={7} className="px-4 py-2">
-                                            <button onClick={() => toggleGroup(groupKey)} className="flex items-center gap-2 font-bold text-emerald-900 dark:text-white w-full text-left focus:outline-none">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isGroupExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                                {groupKey}
-                                            </button>
-                                        </td>
-                                    </tr>
-                                    
-                                    {isGroupExpanded && groupItems.map(item => {
-                                        const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
-                                        // Specific render logic based on type
+                                return (
+                                    <React.Fragment key={groupKey}>
+                                        {/* Level 1 Group Header */}
+                                        <tr className="bg-emerald-200/50 dark:bg-gray-700 border-y border-emerald-300 dark:border-gray-600">
+                                            <td colSpan={7} className="px-4 py-2">
+                                                <button onClick={() => toggleGroup(groupKey)} className="flex items-center gap-2 font-bold text-emerald-900 dark:text-white w-full text-left focus:outline-none">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isGroupExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                                    {groupKey}
+                                                </button>
+                                            </td>
+                                        </tr>
                                         
-                                        const completionRate = getCompletionRate(item.actualQty, item.targetQty);
-                                        const isLocked = !canEdit || (item.isLocked && currentUser?.role !== 'Administrator');
+                                        {isGroupExpanded && groupItems.map(item => {
+                                            const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
+                                            // Specific render logic based on type
+                                            
+                                            const completionRate = getCompletionRate(item);
+                                            const isLocked = !canEdit || (item.isLocked && currentUser?.role !== 'Administrator');
+                                            const isTargetEditable = canEditTarget(item);
+                                            const isChanged = changedItems.has(item.uniqueId);
 
-                                        return (
-                                            <React.Fragment key={item.uniqueId}>
-                                                {/* Parent / Main Item Row */}
-                                                <tr className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${item.isParent ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''}`}>
-                                                    <td className="px-4 py-3 pl-8">
-                                                        <div className="flex items-center gap-2">
-                                                            {item.isParent && (
-                                                                <button onClick={() => toggleParent(item.uniqueId)} className="text-gray-500 focus:outline-none">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isParentExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                            return (
+                                                <React.Fragment key={item.uniqueId}>
+                                                    {/* Parent / Main Item Row */}
+                                                    <tr className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${item.isParent ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''} ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                        <td className="px-4 py-2 pl-8">
+                                                            <div className="flex items-center gap-2">
+                                                                {item.isParent && (
+                                                                    <button onClick={() => toggleParent(item.uniqueId)} className="text-gray-500 focus:outline-none">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isParentExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                                                    </button>
+                                                                )}
+                                                                <div>
+                                                                    <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
+                                                                        {item.name}
+                                                                    </button>
+                                                                    {item.subName && <div className="text-xs text-gray-500">{item.subName}</div>}
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        
+                                                        {/* Target Date */}
+                                                        <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
+                                                            {isTargetEditable && !(item.sourceType === 'Staffing' && item.isParent) ? (
+                                                                <div className="space-y-1">
+                                                                    {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false)}
+                                                                    {item.sourceType === 'Activity' && (
+                                                                        renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false)
+                                                                    )}
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    {item.targetDateStart || '-'} 
+                                                                    {item.targetDateEnd ? ` to ${item.targetDateEnd}` : ''}
+                                                                </>
+                                                            )}
+                                                        </td>
+
+                                                        {/* Target Units */}
+                                                        <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
+                                                            {item.sourceType === 'Activity' ? (
+                                                                isTargetEditable ? (
+                                                                    <div className="flex gap-1 justify-center">
+                                                                        <input type="number" placeholder="M" value={item.targetMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetMale: parseFloat(e.target.value) || 0, targetQty: (parseFloat(e.target.value) || 0) + (item.targetFemale || 0) })} className={`${commonInputClasses} w-12`} />
+                                                                        <input type="number" placeholder="F" value={item.targetFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetFemale: parseFloat(e.target.value) || 0, targetQty: (item.targetMale || 0) + (parseFloat(e.target.value) || 0) })} className={`${commonInputClasses} w-12`} />
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex flex-col">
+                                                                        <span>{item.targetQty} Pax</span>
+                                                                        <span className="text-[10px] text-gray-400">M:{item.targetMale} F:{item.targetFemale}</span>
+                                                                    </div>
+                                                                )
+                                                            ) : (
+                                                                 item.isParent && item.sourceType === 'Subproject' ? '-' : (
+                                                                     isTargetEditable && !item.isParent ? (
+                                                                         renderNumberInput(item.targetQty, (val) => updateLocalItem(item.uniqueId, { targetQty: val }), false)
+                                                                     ) : (
+                                                                         `${item.targetQty} ${item.unitOfMeasure}`
+                                                                     )
+                                                                 )
+                                                            )}
+                                                        </td>
+
+                                                        {/* Actual Date */}
+                                                        <td className="px-4 py-2 bg-emerald-50/20 dark:bg-emerald-900/10 border-l border-emerald-100 dark:border-emerald-800">
+                                                            {/* For Staffing Groups, no date on parent */}
+                                                            {!(item.sourceType === 'Staffing' && item.isParent) && (
+                                                                <div className="space-y-1">
+                                                                    {renderDateInput(item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateStart: val }), isLocked)}
+                                                                    {item.sourceType === 'Activity' && item.targetDateEnd && (
+                                                                         renderDateInput(item.actualDateEnd || item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateEnd: val }), isLocked)
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+
+                                                        {/* Actual Units */}
+                                                        <td className="px-4 py-2 bg-emerald-50/20 dark:bg-emerald-900/10 text-center">
+                                                            {item.sourceType === 'Activity' ? (
+                                                                <div className="flex gap-1 justify-center">
+                                                                    <input type="number" placeholder="M" value={item.actualMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualMale: parseFloat(e.target.value) || 0, actualQty: (parseFloat(e.target.value) || 0) + (item.actualFemale || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
+                                                                    <input type="number" placeholder="F" value={item.actualFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualFemale: parseFloat(e.target.value) || 0, actualQty: (item.actualMale || 0) + (parseFloat(e.target.value) || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
+                                                                </div>
+                                                            ) : (
+                                                                item.isParent && item.sourceType === 'Subproject' ? '-' 
+                                                                : (item.sourceType === 'Staffing' && item.isParent ? <span className="text-xs font-bold">{item.actualQty} / {item.targetQty}</span>
+                                                                    : renderNumberInput(item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
+                                                            )}
+                                                        </td>
+                                                        
+                                                        {/* % Comp */}
+                                                        <td className="px-4 py-2 text-center text-xs font-bold text-emerald-600">
+                                                            {/* Hide for SP Parents and Staffing Parents */}
+                                                            {item.isParent ? '-' : `${completionRate}%`}
+                                                        </td>
+
+                                                        {/* Action */}
+                                                        <td className="px-4 py-2 text-right">
+                                                            {isChanged && (
+                                                                <button onClick={() => undoLocalItem(item.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                                                    </svg>
                                                                 </button>
                                                             )}
-                                                            <div>
-                                                                <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
-                                                                    {item.name}
-                                                                </button>
-                                                                {item.subName && <div className="text-xs text-gray-500">{item.subName}</div>}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    
-                                                    {/* Target Date */}
-                                                    <td className="px-4 py-3 text-center text-xs text-gray-600 dark:text-gray-400">
-                                                        {item.targetDateStart || '-'} 
-                                                        {item.targetDateEnd ? ` to ${item.targetDateEnd}` : ''}
-                                                    </td>
+                                                        </td>
+                                                    </tr>
 
-                                                    {/* Target Units */}
-                                                    <td className="px-4 py-3 text-center text-xs text-gray-600 dark:text-gray-400">
-                                                        {item.sourceType === 'Activity' ? (
-                                                            <div className="flex flex-col">
-                                                                <span>{item.targetQty} Pax</span>
-                                                                <span className="text-[10px] text-gray-400">M:{item.targetMale} F:{item.targetFemale}</span>
-                                                            </div>
-                                                        ) : (
-                                                             item.isParent && item.sourceType === 'Subproject' ? '-' : `${item.targetQty} ${item.unitOfMeasure}`
-                                                        )}
-                                                    </td>
+                                                    {/* Child Rows (Subproject Details or Individual Staff) */}
+                                                    {item.isParent && isParentExpanded && item.children?.map(child => {
+                                                         const childRate = getCompletionRate(child);
+                                                         const childLocked = !canEdit || (child.isLocked && currentUser?.role !== 'Administrator');
+                                                         const isChildTargetEditable = canEditTarget(child);
+                                                         const isChildChanged = changedItems.has(child.uniqueId);
+                                                         
+                                                         return (
+                                                            <tr key={child.uniqueId} className={`border-b border-gray-100 dark:border-gray-800 ${isChildChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-white dark:bg-gray-800'}`}>
+                                                                <td className="px-4 py-2 pl-16 text-xs text-gray-600 dark:text-gray-300 flex items-center">
+                                                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mr-2"></span>
+                                                                    {child.name}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center text-xs text-gray-500">
+                                                                    {isChildTargetEditable ? (
+                                                                        renderDateInput(child.targetDateStart || '', (val) => updateLocalItem(child.uniqueId, { targetDateStart: val }), false)
+                                                                    ) : (
+                                                                        child.targetDateStart
+                                                                    )}
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center text-xs text-gray-500">
+                                                                    {isChildTargetEditable ? (
+                                                                        renderNumberInput(child.targetQty, (val) => updateLocalItem(child.uniqueId, { targetQty: val }), false)
+                                                                    ) : (
+                                                                        `${child.targetQty} ${child.unitOfMeasure}`
+                                                                    )}
+                                                                </td>
+                                                                
+                                                                <td className="px-4 py-2 border-l border-gray-100 dark:border-gray-700">
+                                                                     {renderDateInput(child.actualDateStart, (val) => updateLocalItem(child.uniqueId, { actualDateStart: val }), childLocked)}
+                                                                </td>
+                                                                <td className="px-4 py-2">
+                                                                    {/* Staffing Children are Binary (Hired or Not, essentially count 1) */}
+                                                                    {child.sourceType === 'Staffing' 
+                                                                        ? (child.actualDateStart ? <span className="text-xs text-green-600 font-bold block text-center">Hired</span> : <span className="text-xs text-gray-400 block text-center">Vacant</span>)
+                                                                        : renderNumberInput(child.actualQty, (val) => updateLocalItem(child.uniqueId, { actualQty: val }), childLocked)
+                                                                    }
+                                                                </td>
+                                                                <td className="px-4 py-2 text-center text-xs text-emerald-600 font-medium">{childRate}%</td>
+                                                                <td className="px-4 py-2 text-right">
+                                                                    {isChildChanged && (
+                                                                        <button onClick={() => undoLocalItem(child.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                                                            </svg>
+                                                                        </button>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                         )
+                                                    })}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </React.Fragment>
+                                );
+                            })}
+                            {items.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-gray-500">No data available for the selected filters.</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
-                                                    {/* Actual Date */}
-                                                    <td className="px-4 py-3 bg-emerald-50/20 dark:bg-emerald-900/10 border-l border-emerald-100 dark:border-emerald-800">
-                                                        {/* For Staffing Groups, no date on parent */}
-                                                        {!(item.sourceType === 'Staffing' && item.isParent) && (
-                                                            <div className="space-y-1">
-                                                                {renderDateInput(item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateStart: val }), isLocked)}
-                                                                {item.sourceType === 'Activity' && item.targetDateEnd && (
-                                                                     renderDateInput(item.actualDateEnd || item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateEnd: val }), isLocked)
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </td>
+            {/* Global Save Bar */}
+            {changedItems.size > 0 && (
+                <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-40 flex justify-between items-center px-8">
+                    <div className="flex items-center gap-4">
+                        <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 px-3 py-1 rounded-full text-sm font-medium">
+                            {changedItems.size} unsaved change{changedItems.size > 1 ? 's' : ''}
+                        </span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            Please save your changes before leaving this page.
+                        </span>
+                    </div>
+                    <button
+                        onClick={handleSaveAllClick}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg font-medium shadow-sm transition-colors flex items-center gap-2"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                        </svg>
+                        Save All Changes
+                    </button>
+                </div>
+            )}
 
-                                                    {/* Actual Units */}
-                                                    <td className="px-4 py-3 bg-emerald-50/20 dark:bg-emerald-900/10 text-center">
-                                                        {item.sourceType === 'Activity' ? (
-                                                            <div className="flex gap-1">
-                                                                <input type="number" placeholder="M" value={item.actualMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualMale: parseFloat(e.target.value) || 0, actualQty: (parseFloat(e.target.value) || 0) + (item.actualFemale || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
-                                                                <input type="number" placeholder="F" value={item.actualFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualFemale: parseFloat(e.target.value) || 0, actualQty: (item.actualMale || 0) + (parseFloat(e.target.value) || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
-                                                            </div>
-                                                        ) : (
-                                                            item.isParent && item.sourceType === 'Subproject' ? '-' 
-                                                            : (item.sourceType === 'Staffing' && item.isParent ? <span className="text-xs font-bold">{item.actualQty} / {item.targetQty}</span>
-                                                                : renderNumberInput(item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
-                                                        )}
-                                                    </td>
-                                                    
-                                                    {/* % Comp */}
-                                                    <td className="px-4 py-3 text-center text-xs font-bold text-emerald-600">
-                                                        {/* Hide for SP Parents and Staffing Parents */}
-                                                        {item.isParent ? '-' : `${completionRate}%`}
-                                                    </td>
+            {/* Save Confirmation Modal */}
+            {isSaveConfirmOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl max-w-sm w-full">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Confirm Save</h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">
+                            Are you sure you want to save {changedItems.size} change{changedItems.size > 1 ? 's' : ''}?
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button 
+                                onClick={() => setIsSaveConfirmOpen(false)}
+                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                                disabled={isSavingAll}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={confirmSaveAll}
+                                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-2"
+                                disabled={isSavingAll}
+                            >
+                                {isSavingAll ? 'Saving...' : 'Confirm Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                                                    {/* Action */}
-                                                    <td className="px-4 py-3 text-right">
-                                                        {canEdit && !item.isParent && (
-                                                            <button onClick={() => handleSaveItem(item)} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700">Save</button>
-                                                        )}
-                                                        {/* Allow saving Subproject Parent Date */}
-                                                        {canEdit && item.sourceType === 'Subproject' && item.isParent && (
-                                                             <button onClick={() => handleSaveItem(item)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Set Date</button>
-                                                        )}
-                                                    </td>
-                                                </tr>
-
-                                                {/* Child Rows (Subproject Details or Individual Staff) */}
-                                                {item.isParent && isParentExpanded && item.children?.map(child => {
-                                                     const childRate = getCompletionRate(child.actualQty, child.targetQty);
-                                                     const childLocked = !canEdit || (child.isLocked && currentUser?.role !== 'Administrator');
-                                                     
-                                                     return (
-                                                        <tr key={child.uniqueId} className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-800">
-                                                            <td className="px-4 py-2 pl-16 text-xs text-gray-600 dark:text-gray-300 flex items-center">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mr-2"></span>
-                                                                {child.name}
-                                                            </td>
-                                                            <td className="px-4 py-2 text-center text-xs text-gray-500">{child.targetDateStart}</td>
-                                                            <td className="px-4 py-2 text-center text-xs text-gray-500">{child.targetQty} {child.unitOfMeasure}</td>
-                                                            
-                                                            <td className="px-4 py-2 border-l border-gray-100 dark:border-gray-700">
-                                                                 {renderDateInput(child.actualDateStart, (val) => updateLocalItem(child.uniqueId, { actualDateStart: val }), childLocked)}
-                                                            </td>
-                                                            <td className="px-4 py-2">
-                                                                {/* Staffing Children are Binary (Hired or Not, essentially count 1) */}
-                                                                {child.sourceType === 'Staffing' 
-                                                                    ? (child.actualDateStart ? <span className="text-xs text-green-600 font-bold block text-center">Hired</span> : <span className="text-xs text-gray-400 block text-center">Vacant</span>)
-                                                                    : renderNumberInput(child.actualQty, (val) => updateLocalItem(child.uniqueId, { actualQty: val }), childLocked)
-                                                                }
-                                                            </td>
-                                                            <td className="px-4 py-2 text-center text-xs text-emerald-600 font-medium">{childRate}%</td>
-                                                            <td className="px-4 py-2 text-right">
-                                                                {canEdit && (
-                                                                     <button onClick={() => handleSaveItem(child)} className="text-xs text-emerald-600 hover:underline">Save Item</button>
-                                                                )}
-                                                            </td>
-                                                        </tr>
-                                                     )
-                                                })}
-                                            </React.Fragment>
-                                        );
-                                    })}
-                                </React.Fragment>
-                            );
-                        })}
-                        {items.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-gray-500">No data available for the selected filters.</td></tr>}
-                    </tbody>
-                </table>
-            </div>
+            {/* Success Toast */}
+            {saveSuccessMessage && (
+                <div className="fixed bottom-24 right-8 bg-emerald-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fadeIn z-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    {saveSuccessMessage}
+                </div>
+            )}
         </div>
     );
 };
