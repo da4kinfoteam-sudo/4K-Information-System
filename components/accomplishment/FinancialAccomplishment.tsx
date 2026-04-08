@@ -41,6 +41,7 @@ interface FinancialItem {
     
     // Display Info
     sourceName: string; // Project Name, Activity Name, etc.
+    budgetParticular?: string; // For subprojects, the specific item name
     
     // Financials
     targetObligationMonth: string;
@@ -195,6 +196,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     objectType: d.objectType || 'MOOE',
                     expenseParticular: d.expenseParticular || 'Unspecified',
                     sourceName: sp.name,
+                    budgetParticular: d.particulars,
                     targetObligationMonth: d.obligationMonth,
                     targetObligationAmount: d.pricePerUnit * d.numberOfUnits,
                     targetDisbursementMonth: d.disbursementMonth,
@@ -1131,7 +1133,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <tr className={`hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
                                                                                     <td className="px-3 py-1.5 pl-24 text-sm text-gray-600 dark:text-gray-400">
                                                                                         <button onClick={() => handleTitleClick(item)} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
-                                                                                            {item.expenseParticular}
+                                                                                            {item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}
                                                                                         </button>
                                                                                         {/* Breakdown Toggle */}
                                                                                         {supportsMonthly && (
