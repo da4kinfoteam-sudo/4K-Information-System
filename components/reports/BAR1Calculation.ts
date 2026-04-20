@@ -209,66 +209,191 @@ export const calculateBAR1ReportData = (data: {
         });
     });
 
-    // Social Prep, Marketing and Enterprise
-    const activityGroups = {
-        'Social Preparation': finalData['Social Preparation'],
-        'Marketing and Enterprise': finalData['Marketing and Enterprise'],
-        'Production and Livelihood': finalData['Production and Livelihood'].packages // Note: Activities also go in packages here? 
-        // Based on original logic, activities go into Component groups.
+    // Trainings
+    const processTrainings = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
+        const relevantTrainings = data.trainings.filter(t => t.component === componentName);
+        if (relevantTrainings.length === 0 && !isPackage) return; // Skip empty groups? Original didn't skip, but it keeps it clean. Wait, original didn't skip.
+
+        const getTargetDate = (t: Training) => t.endDate || t.date;
+        const getActualDate = (t: Training) => t.actualDate;
+        const targetTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
+        const actualTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getActualDate(t) }));
+        const targetIPOs: { id: string, label: string, date?: string }[] = [];
+        const actualIPOs: { id: string, label: string, date?: string }[] = [];
+        
+        relevantTrainings.forEach(t => {
+            const tDate = getTargetDate(t);
+            const aDate = getActualDate(t);
+            (t.participatingIpos || []).forEach(ipo => {
+                targetIPOs.push({ id: ipo, label: ipo, date: tDate });
+                if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate });
+            });
+        });
+
+        const targetPax = relevantTrainings.map(t => ({ 
+            val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
+            label: t.name,
+            date: getTargetDate(t) 
+        }));
+        const actualPax = relevantTrainings.map(t => ({ 
+            val: (t.actualParticipantsMale || 0) + (t.actualParticipantsFemale || 0), 
+            label: t.name,
+            date: getActualDate(t) 
+        }));
+
+        const trainingGroup = {
+            indicator: "Trainings",
+            isExpandable: true,
+            items: [
+                {
+                    indicator: "Number of Trainings conducted",
+                    target: calculateSumOverTime(targetTrainings),
+                    actual: calculateSumOverTime(actualTrainings)
+                },
+                {
+                    indicator: "Number of IPOs trained",
+                    target: calculateFirstEncounter(targetIPOs),
+                    actual: calculateFirstEncounter(actualIPOs)
+                },
+                {
+                    indicator: "Number of Participants",
+                    target: calculateSumOverTime(targetPax),
+                    actual: calculateSumOverTime(actualPax)
+                }
+            ]
+        };
+
+        if (isPackage) {
+            if (!finalData['Production and Livelihood'].packages['Trainings']) {
+                finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
+            }
+            finalData['Production and Livelihood'].packages['Trainings'].items.push(...trainingGroup.items);
+        } else {
+            targetContainer.push(trainingGroup);
+        }
     };
 
-    [...data.trainings, ...data.otherActivities].forEach(act => {
-        const targetIPOs = (act.participatingIpos || []).map(ipo => ({ id: ipo, label: ipo, date: act.date }));
-        const actualIPOs = (act.participatingIpos || []).map(ipo => ({ id: ipo, label: ipo, date: act.actualDate }));
+    const processOtherActivities = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
+        const relevantActivities = data.otherActivities.filter(a => a.component === componentName);
+        
+        // Group by name
+        const groups: { [name: string]: OtherActivity[] } = {};
+        relevantActivities.forEach(a => {
+            if (!groups[a.name]) groups[a.name] = [];
+            groups[a.name].push(a);
+        });
 
-        let group: any;
-        if (act.component === 'Production and Livelihood') {
-            if (!finalData['Production and Livelihood'].packages['Activities']) {
-                finalData['Production and Livelihood'].packages['Activities'] = { items: [] };
-            }
-            group = finalData['Production and Livelihood'].packages['Activities'].items;
-        } else if (finalData[act.component]) {
-            group = finalData[act.component];
-        }
+        Object.entries(groups).forEach(([name, activities]) => {
+            const targetConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
+            const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.actualDate }));
 
-        if (group) {
-            const newItemIPOs = {
-                indicator: `Number of IPOs (${act.name})`,
-                target: calculateFirstEncounter(targetIPOs),
-                actual: calculateFirstEncounter(actualIPOs)
-            };
-            const newItemParticipants = {
-                indicator: `Number of participants Male (${act.name})`,
-                target: calculateSumOverTime([{ val: act.participantsMale || 0, date: act.date, label: act.name }]),
-                actual: calculateSumOverTime([{ val: act.actualParticipantsMale || 0, date: act.actualDate, label: act.name }])
-            };
-            const newItemParticipantsF = {
-                indicator: `Number of participants Female (${act.name})`,
-                target: calculateSumOverTime([{ val: act.participantsFemale || 0, date: act.date, label: act.name }]),
-                actual: calculateSumOverTime([{ val: act.actualParticipantsFemale || 0, date: act.actualDate, label: act.name }])
-            };
+            const targetIPOs: { id: string, label: string, date?: string }[] = [];
+            const actualIPOs: { id: string, label: string, date?: string }[] = [];
             
-            // Deduplicate indicators if needed or just push
-            group.push(newItemIPOs, newItemParticipants, newItemParticipantsF);
+            activities.forEach(a => {
+                if (a.participatingIpos) {
+                    a.participatingIpos.forEach(ipo => {
+                        targetIPOs.push({ id: ipo, label: ipo, date: a.date });
+                        if (a.actualDate) actualIPOs.push({ id: ipo, label: ipo, date: a.actualDate });
+                    });
+                }
+            });
+
+            let activityGroup: any;
+
+            if (componentName === 'Program Management') {
+                activityGroup = {
+                    indicator: name,
+                    target: calculateSumOverTime(targetConducted),
+                    actual: calculateSumOverTime(actualConducted)
+                };
+            } else {
+                activityGroup = {
+                    indicator: name,
+                    isExpandable: true,
+                    items: [
+                        {
+                            indicator: `Number of ${name} conducted`,
+                            target: calculateSumOverTime(targetConducted),
+                            actual: calculateSumOverTime(actualConducted)
+                        },
+                        {
+                            indicator: `Number of IPOs assisted in ${name}`,
+                            target: calculateFirstEncounter(targetIPOs),
+                            actual: calculateFirstEncounter(actualIPOs)
+                        }
+                    ]
+                };
+            }
+
+            if (isPackage) {
+                 if (finalData['Program Management'].packages['Activities']) {
+                    finalData['Program Management'].packages['Activities'].items.push(activityGroup);
+                 }
+            } else {
+                targetContainer.push(activityGroup);
+            }
+        });
+    };
+
+    processTrainings('Social Preparation', finalData['Social Preparation']);
+    processTrainings('Marketing and Enterprise', finalData['Marketing and Enterprise']);
+    processTrainings('Production and Livelihood', [], true);
+
+    processOtherActivities('Social Preparation', finalData['Social Preparation']);
+    processOtherActivities('Marketing and Enterprise', finalData['Marketing and Enterprise']);
+    processOtherActivities('Program Management', [], true);
+
+    const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string, itemName?: string) => {
+        const item: any = {
+            indicator,
+            target: initializeCounter(),
+            actual: initializeCounter()
+        };
+        incrementCounter(item.target, targetDate, physicalCount, itemName);
+        incrementCounter(item.actual, actualDate, physicalCount, itemName);
+        return item;
+    };
+
+    const addItemToGroup = (list: any[], newItem: any) => {
+        const existing = list.find(i => i.indicator === newItem.indicator);
+        if (existing) {
+            for (const key in newItem.target) {
+                if (key.endsWith('_items')) {
+                    existing.target[key] = [...(existing.target[key] || []), ...((newItem.target[key] as any) || [])];
+                } else {
+                    (existing.target as any)[key] += (newItem.target as any)[key];
+                }
+            }
+            for (const key in newItem.actual) {
+                if (key.endsWith('_items')) {
+                    existing.actual[key] = [...(existing.actual[key] || []), ...((newItem.actual[key] as any) || [])];
+                } else {
+                    (existing.actual as any)[key] += (newItem.actual as any)[key];
+                }
+            }
+        } else {
+            list.push(newItem);
         }
-    });
+    };
 
-    // Program Management
-    data.staffingReqs.forEach(sr => {
-        finalData['Program Management'].packages['Staff Requirements'].items.push({
-            indicator: `${sr.uid} - ${sr.uacsCode}`,
-            target: calculateSumOverTime([{ val: 1, date: sr.obligationDate, label: sr.uid }]),
-            actual: calculateSumOverTime([{ val: sr.actualObligationDate ? 1 : 0, date: sr.actualObligationDate, label: sr.uid }])
+    const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
+        items.forEach(pm => {
+            if (isOtherExpense) return; 
+            const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
+            const count = isStaff ? 1 : (pm.numberOfUnits || 1);
+            const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
+            const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate, itemName);
+            addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
         });
-    });
+    }
+    processPm(data.staffingReqs || [], 'Staff Requirements', true);
+    processPm(data.officeReqs || [], 'Office Requirements');
 
-    data.officeReqs.forEach(or => {
-        finalData['Program Management'].packages['Office Requirements'].items.push({
-            indicator: `${or.uid} - ${or.uacsCode}`,
-            target: calculateSumOverTime([{ val: 1, date: or.obligationDate, label: or.uid }]),
-            actual: calculateSumOverTime([{ val: or.actualObligationDate ? 1 : 0, date: or.actualObligationDate, label: or.uid }])
-        });
-    });
+    const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages).sort();
+    const sortedPLPackageData: { [key: string]: any } = {};
+    for (const key of plPackageKeys) sortedPLPackageData[key] = finalData['Production and Livelihood'].packages[key];
+    finalData['Production and Livelihood'].packages = sortedPLPackageData;
 
     return finalData;
 };
