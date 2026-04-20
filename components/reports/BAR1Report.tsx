@@ -1,8 +1,10 @@
 
 // Author: 4K 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
-import { getObjectTypeByCode, XLSX } from './ReportUtils';
+import { XLSX } from './ReportUtils';
+import { calculateBAR1ReportData } from './BAR1Calculation';
+import { supabase } from '../../supabaseClient';
 
 interface DetailPopup {
     indicator: string;
@@ -24,11 +26,80 @@ interface BAR1ReportProps {
     uacsCodes: any;
     selectedYear: string;
     selectedOu: string;
+    selectedTier: string;
+    selectedFundType: string;
 }
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
+
+    // Snapshot States
+    const [selectedSnapshotDate, setSelectedSnapshotDate] = useState<string>('live');
+    const [availableSnapshotDates, setAvailableSnapshotDates] = useState<string[]>([]);
+    const [snapshotData, setSnapshotData] = useState<any>(null);
+    const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
+
+    // Fetch available snapshot dates when filters change
+    useEffect(() => {
+        if (!supabase) return;
+        
+        async function fetchAvailableDates() {
+            const { data: snapshots, error } = await supabase
+                .from('bar1_report_snapshots')
+                .select('snapshot_date')
+                .eq('operating_unit', selectedOu)
+                .eq('fund_year', parseInt(selectedYear))
+                .eq('fund_type', selectedFundType)
+                .eq('tier', selectedTier)
+                .order('snapshot_date', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching snapshot dates:', error);
+                return;
+            }
+
+            const dates = snapshots.map(s => s.snapshot_date);
+            setAvailableSnapshotDates(dates);
+            
+            // If the currently selected snapshot date is no longer in the list, reset to live
+            if (selectedSnapshotDate !== 'live' && !dates.includes(selectedSnapshotDate)) {
+                setSelectedSnapshotDate('live');
+            }
+        }
+
+        fetchAvailableDates();
+    }, [selectedOu, selectedYear, selectedFundType, selectedTier]);
+
+    // Fetch specific snapshot data when selected
+    useEffect(() => {
+        if (selectedSnapshotDate === 'live' || !supabase) {
+            setSnapshotData(null);
+            return;
+        }
+
+        async function fetchSnapshot() {
+            setIsLoadingSnapshot(true);
+            const { data: snapshot, error } = await supabase
+                .from('bar1_report_snapshots')
+                .select('report_data')
+                .eq('operating_unit', selectedOu)
+                .eq('fund_year', parseInt(selectedYear))
+                .eq('fund_type', selectedFundType)
+                .eq('tier', selectedTier)
+                .eq('snapshot_date', selectedSnapshotDate)
+                .single();
+
+            if (error) {
+                console.error('Error fetching snapshot data:', error);
+            } else {
+                setSnapshotData(snapshot.report_data);
+            }
+            setIsLoadingSnapshot(false);
+        }
+
+        fetchSnapshot();
+    }, [selectedSnapshotDate, selectedOu, selectedYear, selectedFundType, selectedTier]);
 
     const toggleRow = (key: string) => {
         setExpandedRows(prev => {
@@ -42,389 +113,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
 
     const bar1Data = useMemo(() => {
-        const getMonthIndex = (dateStr?: string): number => {
-            if (!dateStr) return -1;
-            const d = new Date(dateStr + 'T00:00:00Z');
-            return d.getUTCMonth(); // 0-11
-        };
-
-        const finalData: { [key: string]: any } = {
-            'Social Preparation': [],
-            'Production and Livelihood': { isNestedExpandable: true, packages: {} },
-            'Marketing and Enterprise': [], 
-            'Program Management': { 
-                isNestedExpandable: true, 
-                packages: {
-                    'Staff Requirements': { items: [] },
-                    'Office Requirements': { items: [] },
-                    'Activities': { items: [] }
-                } 
-            }
-        };
-
-        const initializeCounter = () => ({
-            m1: 0, m2: 0, m3: 0, q1: 0,
-            m4: 0, m5: 0, m6: 0, q2: 0,
-            m7: 0, m8: 0, m9: 0, q3: 0,
-            m10: 0, m11: 0, m12: 0, q4: 0,
-            total: 0,
-            m1_items: [] as string[], m2_items: [] as string[], m3_items: [] as string[],
-            m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
-            m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
-            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[]
-        });
-
-        const addItemToGroup = (list: any[], newItem: any) => {
-            const existing = list.find(i => i.indicator === newItem.indicator);
-            if (existing) {
-                for (const key in newItem.target) {
-                    if (key.endsWith('_items')) {
-                        existing.target[key] = [...(existing.target[key] || []), ...(newItem.target[key] || [])];
-                    } else {
-                        existing.target[key] += newItem.target[key];
-                    }
-                }
-                for (const key in newItem.actual) {
-                    if (key.endsWith('_items')) {
-                        existing.actual[key] = [...(existing.actual[key] || []), ...(newItem.actual[key] || [])];
-                    } else {
-                        existing.actual[key] += newItem.actual[key];
-                    }
-                }
-            } else {
-                list.push(newItem);
-            }
-        };
-
-        const incrementCounter = (counter: any, dateStr?: string, count: number = 1, itemName?: string) => {
-            const monthIdx = getMonthIndex(dateStr);
-            if (monthIdx !== -1) {
-                const monthKey = `m${monthIdx + 1}`;
-                counter[monthKey] += count;
-                
-                if (itemName) {
-                    const itemsKey = `${monthKey}_items`;
-                    if (!counter[itemsKey].includes(itemName)) {
-                        counter[itemsKey].push(itemName);
-                    }
-                }
-
-                if (monthIdx < 3) counter.q1 += count;
-                else if (monthIdx < 6) counter.q2 += count;
-                else if (monthIdx < 9) counter.q3 += count;
-                else counter.q4 += count;
-                
-                counter.total += count;
-            }
-        };
-
-        const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string, itemName?: string) => {
-            const item: any = {
-                indicator,
-                target: initializeCounter(),
-                actual: initializeCounter()
-            };
-            incrementCounter(item.target, targetDate, physicalCount, itemName);
-            incrementCounter(item.actual, actualDate, physicalCount, itemName);
-            return item;
-        };
-
-        const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string }[]) => {
-            const counter = initializeCounter();
-            const validEntries = entries
-                .filter(e => e.date)
-                .map(e => ({ ...e, d: new Date(e.date + 'T00:00:00Z') }))
-                .sort((a, b) => a.d.getTime() - b.d.getTime());
-
-            const seen = new Set<string>();
-
-            validEntries.forEach(entry => {
-                if (!seen.has(entry.id)) {
-                    seen.add(entry.id);
-                    incrementCounter(counter, entry.date, 1, entry.label || entry.id);
-                }
-            });
-            return counter;
-        };
-
-        const calculateSumOverTime = (entries: { val: number; date?: string; label?: string }[]) => {
-            const counter = initializeCounter();
-            entries.forEach(e => {
-                if (e.date) {
-                    incrementCounter(counter, e.date, e.val, e.label);
-                }
-            });
-            return counter;
+        if (selectedSnapshotDate !== 'live' && snapshotData) {
+            return snapshotData;
         }
-
-        const ipoAdMap = new Map<string, string>();
-        data.ipos.forEach(ipo => {
-            if (ipo.ancestralDomainNo) ipoAdMap.set(ipo.name, ipo.ancestralDomainNo);
-        });
-
-        const allTargetADs = data.subprojects.map(sp => ({
-            id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            date: sp.estimatedCompletionDate
-        })).filter(x => x.id);
-        const allActualADs = data.subprojects.map(sp => ({
-            id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            date: sp.actualCompletionDate
-        })).filter(x => x.id);
-
-        const allTargetIPOs = data.subprojects.map(sp => ({
-            id: sp.indigenousPeopleOrganization,
-            label: sp.indigenousPeopleOrganization,
-            date: sp.estimatedCompletionDate
-        }));
-        const allActualIPOs = data.subprojects.map(sp => ({
-            id: sp.indigenousPeopleOrganization,
-            label: sp.indigenousPeopleOrganization,
-            date: sp.actualCompletionDate
-        }));
-
-        finalData['Production and Livelihood'].packages['Subproject Reach'] = {
-            items: [
-                {
-                    indicator: "Number of Ancestral Domains covered",
-                    target: calculateFirstEncounter(allTargetADs),
-                    actual: calculateFirstEncounter(allActualADs)
-                },
-                {
-                    indicator: "Number of IPOs with subprojects",
-                    target: calculateFirstEncounter(allTargetIPOs),
-                    actual: calculateFirstEncounter(allActualIPOs)
-                }
-            ]
-        };
-
-        const packages: Record<string, Subproject[]> = {};
-        data.subprojects.forEach(sp => {
-            const pkg = sp.packageType || 'Other';
-            if (!packages[pkg]) packages[pkg] = [];
-            packages[pkg].push(sp);
-        });
-
-        Object.entries(packages).forEach(([pkgName, subprojects]) => {
-            if (!finalData['Production and Livelihood'].packages[pkgName]) {
-                finalData['Production and Livelihood'].packages[pkgName] = { items: [] };
-            }
-            const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
-
-            const targetADs = subprojects.map(sp => ({
-                id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-                label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-                date: sp.estimatedCompletionDate 
-            })).filter(x => x.id); 
-            const actualADs = subprojects.map(sp => ({
-                id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-                label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-                date: sp.actualCompletionDate
-            })).filter(x => x.id);
-
-            pkgItems.push({
-                indicator: "Number of Ancestral Domains covered",
-                target: calculateFirstEncounter(targetADs),
-                actual: calculateFirstEncounter(actualADs)
-            });
-
-            const targetIPOs = subprojects.map(sp => ({
-                id: sp.indigenousPeopleOrganization,
-                label: sp.indigenousPeopleOrganization,
-                date: sp.estimatedCompletionDate
-            }));
-            const actualIPOs = subprojects.map(sp => ({
-                id: sp.indigenousPeopleOrganization,
-                label: sp.indigenousPeopleOrganization,
-                date: sp.actualCompletionDate
-            }));
-
-            pkgItems.push({
-                indicator: "Number of IPOs",
-                target: calculateFirstEncounter(targetIPOs),
-                actual: calculateFirstEncounter(actualIPOs)
-            });
-
-            const targetSPs = subprojects.map(sp => ({
-                val: 1,
-                label: sp.name,
-                date: sp.estimatedCompletionDate
-            }));
-            const actualSPs = subprojects.map(sp => ({
-                val: 1,
-                label: sp.name,
-                date: sp.actualCompletionDate
-            }));
-            
-            pkgItems.push({
-                indicator: "Number of subprojects delivered",
-                target: calculateSumOverTime(targetSPs),
-                actual: calculateSumOverTime(actualSPs)
-            });
-        });
-
-        const processTrainings = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-            const relevantTrainings = data.trainings.filter(t => t.component === componentName);
-            const getTargetDate = (t: Training) => t.endDate || t.date;
-            const getActualDate = (t: Training) => t.actualDate;
-            const targetTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
-            const actualTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getActualDate(t) }));
-            const targetIPOs: { id: string, label: string, date?: string }[] = [];
-            const actualIPOs: { id: string, label: string, date?: string }[] = [];
-            
-            relevantTrainings.forEach(t => {
-                const tDate = getTargetDate(t);
-                const aDate = getActualDate(t);
-                t.participatingIpos.forEach(ipo => {
-                    targetIPOs.push({ id: ipo, label: ipo, date: tDate });
-                    if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate });
-                });
-            });
-
-            const targetPax = relevantTrainings.map(t => ({ 
-                val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
-                label: t.name,
-                date: getTargetDate(t) 
-            }));
-            const actualPax = relevantTrainings.map(t => ({ 
-                val: (t.actualParticipantsMale || 0) + (t.actualParticipantsFemale || 0), 
-                label: t.name,
-                date: getActualDate(t) 
-            }));
-
-            const trainingGroup = {
-                indicator: "Trainings",
-                isExpandable: true,
-                items: [
-                    {
-                        indicator: "Number of Trainings conducted",
-                        target: calculateSumOverTime(targetTrainings),
-                        actual: calculateSumOverTime(actualTrainings)
-                    },
-                    {
-                        indicator: "Number of IPOs trained",
-                        target: calculateFirstEncounter(targetIPOs),
-                        actual: calculateFirstEncounter(actualIPOs)
-                    },
-                    {
-                        indicator: "Number of Participants",
-                        target: calculateSumOverTime(targetPax),
-                        actual: calculateSumOverTime(actualPax)
-                    }
-                ]
-            };
-
-            if (isPackage) {
-                if (!finalData['Production and Livelihood'].packages['Trainings']) {
-                    finalData['Production and Livelihood'].packages['Trainings'] = { items: [] };
-                }
-                trainingGroup.items.forEach(i => finalData['Production and Livelihood'].packages['Trainings'].items.push(i));
-            } else {
-                targetContainer.push(trainingGroup);
-            }
-        };
-
-        const processOtherActivities = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-            const relevantActivities = data.otherActivities.filter(a => a.component === componentName);
-            
-            // Group by name
-            const groups: { [name: string]: OtherActivity[] } = {};
-            relevantActivities.forEach(a => {
-                if (!groups[a.name]) groups[a.name] = [];
-                groups[a.name].push(a);
-            });
-
-            Object.entries(groups).forEach(([name, activities]) => {
-                const targetConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
-                const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.actualDate }));
-
-                const targetIPOs: { id: string, label: string, date?: string }[] = [];
-                const actualIPOs: { id: string, label: string, date?: string }[] = [];
-                
-                activities.forEach(a => {
-                    if (a.participatingIpos) {
-                        a.participatingIpos.forEach(ipo => {
-                            targetIPOs.push({ id: ipo, label: ipo, date: a.date });
-                            if (a.actualDate) actualIPOs.push({ id: ipo, label: ipo, date: a.actualDate });
-                        });
-                    }
-                });
-
-                let activityGroup: any;
-
-                if (componentName === 'Program Management') {
-                    activityGroup = {
-                        indicator: name,
-                        target: calculateSumOverTime(targetConducted),
-                        actual: calculateSumOverTime(actualConducted)
-                    };
-                } else {
-                    activityGroup = {
-                        indicator: name,
-                        isExpandable: true,
-                        items: [
-                            {
-                                indicator: `Number of ${name} conducted`,
-                                target: calculateSumOverTime(targetConducted),
-                                actual: calculateSumOverTime(actualConducted)
-                            },
-                            {
-                                indicator: `Number of IPOs assisted in ${name}`,
-                                target: calculateFirstEncounter(targetIPOs),
-                                actual: calculateFirstEncounter(actualIPOs)
-                            }
-                        ]
-                    };
-                }
-
-                if (isPackage) {
-                     // For Program Management, we add to the 'Activities' package
-                     if (finalData['Program Management'].packages['Activities']) {
-                        finalData['Program Management'].packages['Activities'].items.push(activityGroup);
-                     }
-                } else {
-                    targetContainer.push(activityGroup);
-                }
-            });
-        };
-
-        processTrainings('Social Preparation', finalData['Social Preparation']);
-        processTrainings('Marketing and Enterprise', finalData['Marketing and Enterprise']);
-        processTrainings('Production and Livelihood', [], true);
-
-        processOtherActivities('Social Preparation', finalData['Social Preparation']);
-        processOtherActivities('Marketing and Enterprise', finalData['Marketing and Enterprise']);
-        // Production and Livelihood activities are not explicitly handled in original code for 'OtherActivity' type, 
-        // but if they exist, they should probably go somewhere. 
-        // However, based on 'otherActivityComponents', PL is a valid component.
-        // If I follow the pattern, PL is nested. 
-        // But PL structure in finalData has specific packages: 'Subproject Reach', 'Trainings', and packages from subprojects.
-        // It doesn't seem to have a generic 'Activities' package.
-        // I will skip PL OtherActivities for now to match original behavior unless user complains.
-        
-        processOtherActivities('Program Management', [], true);
-
-        const processPm = (items: any[], pkgKey: string, isStaff = false, isOtherExpense = false) => {
-            items.forEach(pm => {
-                if (isOtherExpense) return; 
-                const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
-                const count = isStaff ? 1 : (pm.numberOfUnits || 1);
-                const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
-                const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate, itemName);
-                addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
-            });
-        }
-        processPm(data.staffingReqs, 'Staff Requirements', true);
-        processPm(data.officeReqs, 'Office Requirements');
-
-        const plPackageKeys = Object.keys(finalData['Production and Livelihood'].packages).sort();
-        const sortedPLPackageData: { [key: string]: any } = {};
-        for (const key of plPackageKeys) sortedPLPackageData[key] = finalData['Production and Livelihood'].packages[key];
-        finalData['Production and Livelihood'].packages = sortedPLPackageData;
-
-        return finalData;
-    }, [data]);
+        return calculateBAR1ReportData(data, selectedYear, selectedOu);
+    }, [data, selectedSnapshotDate, snapshotData, selectedYear, selectedOu]);
 
     const calculateTotals = (items: any[]) => {
         const initial = {
@@ -902,12 +595,49 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     </div>
                 </div>
             )}
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
-                <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 hover:brightness-95 transition-all flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    Download Excel
-                </button>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 print-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
+                    
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 rounded-lg shadow-sm">
+                        <label htmlFor="snapshot-date" className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap">View Date:</label>
+                        <select
+                            id="snapshot-date"
+                            value={selectedSnapshotDate}
+                            onChange={(e) => setSelectedSnapshotDate(e.target.value)}
+                            className="bg-transparent border-none text-xs font-bold text-emerald-900 dark:text-white focus:ring-0 cursor-pointer p-0 pr-6"
+                        >
+                            <option value="live" className="text-gray-900 dark:text-white dark:bg-gray-800">Current Live Data</option>
+                            {availableSnapshotDates.map(date => (
+                                <option key={date} value={date} className="text-gray-900 dark:text-white dark:bg-gray-800">
+                                    Snapshot: {new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                                </option>
+                            ))}
+                        </select>
+                        {isLoadingSnapshot && (
+                            <svg className="animate-spin h-3 w-3 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        )}
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 hover:brightness-95 transition-all flex items-center gap-2 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Download Excel
+                    </button>
+                    <button 
+                        onClick={() => window.print()}
+                        className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md font-semibold hover:bg-gray-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 shadow-sm"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                        </svg>
+                        Print
+                    </button>
+                </div>
             </div>
             <div id="bar1-report" className="overflow-x-auto shadow-md rounded-lg">
                 <table className="min-w-full border-collapse text-[10px] text-gray-900 dark:text-gray-200 whitespace-nowrap">

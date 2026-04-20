@@ -24,6 +24,8 @@ interface ReportsProps {
 
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix';
 
+import { generateBar1Snapshots } from '../services/snapshotService';
+
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const { currentUser } = useAuth();
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
@@ -32,6 +34,30 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     const [selectedOu, setSelectedOu] = useState<string>('All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    
+    // Snapshot Management
+    const [isGeneratingSnapshots, setIsGeneratingSnapshots] = useState(false);
+    const [snapshotStatus, setSnapshotStatus] = useState<{success?: boolean, error?: string, count?: number} | null>(null);
+
+    const handleGenerateSnapshots = async () => {
+        setIsGeneratingSnapshots(true);
+        setSnapshotStatus(null);
+        const result = await generateBar1Snapshots();
+        setSnapshotStatus(result);
+        setIsGeneratingSnapshots(false);
+    };
+
+    // Auto-capture logic: Run once a day if Admin is viewing reports
+    useEffect(() => {
+        const lastCapture = localStorage.getItem('last_bar1_snapshot_capture');
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (currentUser?.role === 'Administrator' && lastCapture !== today && activeTab === 'BAR1') {
+            handleGenerateSnapshots().then(() => {
+                localStorage.setItem('last_bar1_snapshot_capture', today);
+            });
+        }
+    }, [currentUser, activeTab]);
 
     // Enforce User OU restriction on mount/change
     useEffect(() => {
@@ -160,7 +186,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             case 'PICS':
                 return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BAR1':
-                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
             case 'Budget Utilization Report':
                 return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Monthly Matrix':
@@ -233,6 +259,45 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                     </div>
                 </div>
             </div>
+
+            {currentUser?.role === 'Administrator' && activeTab === 'BAR1' && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-800 p-4 rounded-lg flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-full text-emerald-600 dark:text-emerald-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Historical Snapshots</p>
+                            <p className="text-xs text-emerald-700 dark:text-emerald-400">Daily snapshots allow you to review previous report data. The system captures these automatically once a day.</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {snapshotStatus && (
+                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${snapshotStatus.success ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                {snapshotStatus.success ? `Success: ${snapshotStatus.count} snapshots saved` : `Error: ${snapshotStatus.error}`}
+                            </span>
+                        )}
+                        <button
+                            onClick={handleGenerateSnapshots}
+                            disabled={isGeneratingSnapshots}
+                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        >
+                            {isGeneratingSnapshots ? (
+                                <>
+                                    <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Capturing...
+                                </>
+                            ) : 'Capture Daily Snapshot Now'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md print-hidden">
                 <div className="border-b border-gray-200 dark:border-gray-700">

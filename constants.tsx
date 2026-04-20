@@ -954,3 +954,14 @@ export interface LodAnswer {
     specific_answer_value?: string | null;
     updated_at?: string;
 }
+
+export interface BAR1Snapshot {
+    id: string;
+    operating_unit: string;
+    fund_year: number;
+    fund_type: string;
+    tier: string;
+    snapshot_date: string;
+    report_data: any;
+    created_at?: string;
+}
