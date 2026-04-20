@@ -44,8 +44,8 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const { currentUser } = useAuth();
     const { canEdit } = getUserPermissions(currentUser);
     const isAdmin = currentUser?.role === 'Administrator';
-    const canEditDetails = isAdmin || (item.status === 'Proposed' && canEdit);
-    const canEditAccomplishment = isAdmin || (item.status === 'Ongoing' && canEdit);
+    const canEditDetails = canEdit;
+    const canEditAccomplishment = canEdit;
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OfficeRequirement>(item);
@@ -120,14 +120,6 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         return `${MONTH_NAMES[monthIndex]} ${year}`;
     };
 
-    // Locking Logic check
-    // Locked if field HAD a value initially (saved in DB) unless Admin
-    const isFieldLocked = (fieldName: keyof OfficeRequirement) => {
-        if (isAdmin) return false;
-        const val = item[fieldName];
-        // If value exists and is not null/undefined/empty string/0, it is locked
-        return val !== null && val !== undefined && val !== '' && val !== 0;
-    };
 
     // Status Automation Effect
     useEffect(() => {
@@ -403,12 +395,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <MonthYearPicker 
                                         value={formData.actualDate}
                                         onChange={(val) => setFormData(prev => ({ ...prev, actualDate: val }))}
-                                        disabled={isFieldLocked('actualDate')}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Amount (Misc)</label>
-                                    <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" disabled={isFieldLocked('actualAmount')} />
+                                    <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" />
                                 </div>
                                 
                                 <div>
@@ -416,12 +407,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <MonthYearPicker 
                                         value={formData.actualObligationDate}
                                         onChange={(val) => setFormData(prev => ({ ...prev, actualObligationDate: val }))}
-                                        disabled={isFieldLocked('actualObligationDate')}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
-                                    <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} />
+                                    <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} />
                                 </div>
                                 
                                 <div>
@@ -429,12 +419,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <MonthYearPicker 
                                         value={formData.actualDisbursementDate}
                                         onChange={(val) => setFormData(prev => ({ ...prev, actualDisbursementDate: val }))}
-                                        disabled={isFieldLocked('actualDisbursementDate')}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Disbursement Amount</label>
-                                    <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualDisbursementAmount')} />
+                                    <input type="number" name="actualDisbursementAmount" value={formData.actualDisbursementAmount} onChange={handleInputChange} className={commonInputClasses} />
                                 </div>
                             </div>
                         </fieldset>

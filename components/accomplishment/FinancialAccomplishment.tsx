@@ -795,10 +795,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
             const promises = Array.from(changedItems.values()).map((item: FinancialItem) => saveItemToDB(item));
             await Promise.all(promises);
             
-            // Mark all as confirmed and clear changes
+            // Mark as saved and clear changes (but don't lock)
             setItems(prev => prev.map(item => {
                 if (changedItems.has(item.uniqueId)) {
-                    return { ...item, isConfirmed: true };
+                    return { ...item, isConfirmed: false };
                 }
                 return item;
             }));
@@ -819,7 +819,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
         try {
             await saveItemToDB(item);
             
-            updateLocalItem(item.uniqueId, { isConfirmed: true });
+            updateLocalItem(item.uniqueId, { isConfirmed: false });
             setChangedItems(prev => {
                 const newMap = new Map(prev);
                 newMap.delete(item.uniqueId);
@@ -1150,7 +1150,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     type="number" 
                                                                                     value={item.targetObligationAmount || ''} 
                                                                                     onChange={(e) => updateLocalItem(item.uniqueId, { targetObligationAmount: parseFloat(e.target.value) || 0 })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                     placeholder="0"
                                                                                 />
@@ -1165,7 +1165,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetObligationMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetObligationMonth: val })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="h-7 text-[10px] py-0"
                                                                                 />
                                                                             ) : (
@@ -1179,7 +1179,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 type="number" 
                                                                                 value={item.actualObligationAmount || ''} 
                                                                                 onChange={(e) => updateLocalItem(item.uniqueId, { actualObligationAmount: parseFloat(e.target.value) || 0 })}
-                                                                                disabled={!canEdit || item.isConfirmed}
+                                                                                disabled={!canEdit}
                                                                                 className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                 placeholder="0"
                                                                             />
@@ -1188,7 +1188,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             <MonthYearPicker 
                                                                                 value={item.actualObligationMonth} 
                                                                                 onChange={(val) => updateLocalItem(item.uniqueId, { actualObligationMonth: val })}
-                                                                                disabled={!canEdit || item.isConfirmed}
+                                                                                disabled={!canEdit}
                                                                                 className="h-7 text-[10px] py-0"
                                                                             />
                                                                         </td>
@@ -1200,7 +1200,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     type="number" 
                                                                                     value={item.targetDisbursementAmount || ''} 
                                                                                     onChange={(e) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: parseFloat(e.target.value) || 0 })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                     placeholder="0"
                                                                                 />
@@ -1215,7 +1215,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <MonthYearPicker 
                                                                                     value={item.targetDisbursementMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { targetDisbursementMonth: val })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="h-7 text-[10px] py-0"
                                                                                 />
                                                                             ) : (
@@ -1232,7 +1232,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     type="number" 
                                                                                     value={item.actualDisbursementAmount || ''} 
                                                                                     onChange={(e) => updateLocalItem(item.uniqueId, { actualDisbursementAmount: parseFloat(e.target.value) || 0 })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
                                                                                     placeholder="0"
                                                                                 />
@@ -1245,7 +1245,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 <MonthYearPicker 
                                                                                     value={item.actualDisbursementMonth} 
                                                                                     onChange={(val) => updateLocalItem(item.uniqueId, { actualDisbursementMonth: val })}
-                                                                                    disabled={!canEdit || item.isConfirmed}
+                                                                                    disabled={!canEdit}
                                                                                     className="h-7 text-[10px] py-0"
                                                                                 />
                                                                             )}
@@ -1265,19 +1265,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     )}
                                                                                     <button 
                                                                                         onClick={() => handleConfirmItem(item)}
-                                                                                        disabled={item.isConfirmed}
-                                                                                        className={`px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 ${
-                                                                                            item.isConfirmed 
-                                                                                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border border-gray-300' 
-                                                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                                                                                        }`}
+                                                                                        className="px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
                                                                                     >
-                                                                                        {item.isConfirmed ? (
-                                                                                            <>
-                                                                                                <CheckCircle className="w-3 h-3" />
-                                                                                                Saved
-                                                                                            </>
-                                                                                        ) : 'Save'}
+                                                                                        Save
                                                                                     </button>
                                                                                 </div>
                                                                             )}
@@ -1296,7 +1286,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                                 // @ts-ignore
                                                                                                 value={item[`actualDisbursement${m}`] || ''}
                                                                                                 onChange={(e) => updateLocalMonthly(item.uniqueId, m, parseFloat(e.target.value) || 0)}
-                                                                                                disabled={!canEdit || item.isConfirmed}
+                                                                                                disabled={!canEdit}
                                                                                                 className="w-full text-xs p-1 border border-emerald-200 dark:border-emerald-800 rounded focus:ring-emerald-500"
                                                                                                 placeholder="0"
                                                                                             />

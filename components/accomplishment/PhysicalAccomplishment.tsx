@@ -179,7 +179,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     actualMale: act.actualParticipantsMale || 0,
                     actualFemale: act.actualParticipantsFemale || 0,
                     isParent: false,
-                    isLocked: !!act.actualDate,
+                    isLocked: false,
                     status: act.status
                 });
             });
@@ -454,7 +454,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
             }
 
-            updateLocalItem(item.uniqueId, { isLocked: true });
+            updateLocalItem(item.uniqueId, { isLocked: false });
 
         } catch (error: any) {
             console.error("Save error:", error);
@@ -679,7 +679,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                             // Specific render logic based on type
                                             
                                             const completionRate = getCompletionRate(item);
-                                            const isLocked = !canEdit || (item.isLocked && currentUser?.role !== 'Administrator');
+                                            const isLocked = !canEdit;
                                             const isTargetEditable = canEditTarget(item);
                                             const isChanged = changedItems.has(item.uniqueId);
 
@@ -793,7 +793,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                     {/* Child Rows (Subproject Details or Individual Staff) */}
                                                     {item.isParent && isParentExpanded && item.children?.map(child => {
                                                          const childRate = getCompletionRate(child);
-                                                         const childLocked = !canEdit || (child.isLocked && currentUser?.role !== 'Administrator');
+                                                         const childLocked = !canEdit;
                                                          const isChildTargetEditable = canEditTarget(child);
                                                          const isChildChanged = changedItems.has(child.uniqueId);
                                                          

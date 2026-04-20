@@ -187,35 +187,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     // Status Logic
     const availableStatuses = useMemo(() => {
-        if (isAdmin) return ['Proposed', 'Ongoing', 'Completed', 'Cancelled'];
-        
-        // User Role Logic
-        const currentStatus = initialActivity.status;
-        if (mode === 'create') return ['Proposed'];
-        
-        if (currentStatus === 'Proposed') return ['Proposed', 'Ongoing', 'Cancelled'];
-        if (currentStatus === 'Ongoing') return ['Ongoing', 'Cancelled'];
-        if (currentStatus === 'Cancelled') return ['Cancelled'];
-        if (currentStatus === 'Completed') return ['Completed']; 
-        
-        return [currentStatus];
-    }, [isAdmin, initialActivity.status, mode]);
+        return ['Proposed', 'Ongoing', 'Completed', 'Cancelled'];
+    }, []);
 
     const isDetailsLocked = useMemo(() => {
-        if (isAdmin) return false;
-        if (mode === 'create') return false;
-        // User cannot edit details/expenses if status is Ongoing, Completed or Cancelled (except Admin)
-        return ['Ongoing', 'Completed', 'Cancelled'].includes(initialActivity.status);
-    }, [isAdmin, initialActivity.status, mode]);
-
-    // Locking Logic for Accomplishment Fields
-    // Locked if field HAD a value initially (saved in DB)
-    const isFieldLocked = (fieldName: keyof Activity | keyof ActivityExpense, obj: any = initialActivity) => {
-        if (isAdmin) return false;
-        const val = obj[fieldName];
-        // If value exists and is not null/undefined/empty string/0, it is locked
-        return val !== null && val !== undefined && val !== '' && val !== 0;
-    };
+        return false;
+    }, []);
 
     // --- Handlers ---
 
@@ -878,16 +855,16 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium">Actual Start Date</label>
-                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualDate')} />
+                                    <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                                 </div>
                                 {conductType === 'Multi-day' && (
                                     <div>
                                         <label className="block text-sm font-medium">Actual End Date</label>
-                                        <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualEndDate')} />
+                                        <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                                     </div>
                                 )}
-                                <div><label className="block text-sm font-medium">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualParticipantsMale')} /></div>
-                                <div><label className="block text-sm font-medium">Actual Female</label><input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualParticipantsFemale')} /></div>
+                                <div><label className="block text-sm font-medium">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} /></div>
+                                <div><label className="block text-sm font-medium">Actual Female</label><input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale} onChange={handleNumericChange} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
                         
@@ -911,7 +888,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                     <select 
                                                         value={getMonthFromDateStr(exp.actualObligationDate)} 
                                                         onChange={(e) => updateActualDateFromMonth(exp.id, 'actualObligationDate', e.target.value)} 
-                                                        disabled={isFieldLocked('actualObligationDate', initialActivity.expenses.find(ie => ie.id === exp.id))}
                                                         className={commonInputClasses}
                                                     >
                                                         <option value="">Select</option>
@@ -924,7 +900,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                         type="number" 
                                                         value={exp.actualObligationAmount || ''} 
                                                         onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', parseFloat(e.target.value))}
-                                                        disabled={isFieldLocked('actualObligationAmount', initialActivity.expenses.find(ie => ie.id === exp.id))}
                                                         className={commonInputClasses} 
                                                     />
                                                 </div>
@@ -940,7 +915,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                     <select 
                                                         value={getMonthFromDateStr(exp.actualDisbursementDate)} 
                                                         onChange={(e) => updateActualDateFromMonth(exp.id, 'actualDisbursementDate', e.target.value)} 
-                                                        disabled={isFieldLocked('actualDisbursementDate', initialActivity.expenses.find(ie => ie.id === exp.id))}
                                                         className={commonInputClasses}
                                                     >
                                                         <option value="">Select</option>
@@ -953,7 +927,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                                         type="number" 
                                                         value={exp.actualDisbursementAmount || ''} 
                                                         onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', parseFloat(e.target.value))}
-                                                        disabled={isFieldLocked('actualDisbursementAmount', initialActivity.expenses.find(ie => ie.id === exp.id))}
                                                         className={commonInputClasses} 
                                                     />
                                                 </div>
@@ -968,12 +941,12 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Gender and Inclusivity</legend>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label><input type="number" name="actualPWD" value={formData.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualPWD')} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label><input type="number" name="actualMuslim" value={formData.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualMuslim')} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label><input type="number" name="actualLGBTQ" value={formData.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualLGBTQ')} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label><input type="number" name="actualSoloParent" value={formData.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualSoloParent')} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label><input type="number" name="actualSenior" value={formData.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualSenior')} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label><input type="number" name="actualYouth" value={formData.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isFieldLocked('actualYouth')} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label><input type="number" name="actualPWD" value={formData.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label><input type="number" name="actualMuslim" value={formData.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label><input type="number" name="actualLGBTQ" value={formData.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label><input type="number" name="actualSoloParent" value={formData.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label><input type="number" name="actualSenior" value={formData.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label><input type="number" name="actualYouth" value={formData.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
                             </div>
                         </fieldset>
                      </div>

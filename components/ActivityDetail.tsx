@@ -75,12 +75,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     
     // User Role Permission Logic
     // Details & Expenses: Editable if Proposed. Read-only if Ongoing/Completed/Cancelled (unless Admin).
-    const canEditDetails = isAdmin || (canEdit && !isCompleted && !isCancelled && !isOngoing);
-    const canEditExpenses = isAdmin || (canEdit && !isCompleted && !isCancelled && !isOngoing);
+    const canEditDetails = canEdit;
+    const canEditExpenses = canEdit;
     
     // Accomplishment: Editable if Ongoing/Completed (to update blank fields) or Proposed (though weird).
     // Basically always editable for User unless Cancelled, but fields inside will be locked if filled.
-    const canEditAccomplishment = isAdmin || (canEdit && !isCancelled);
+    const canEditAccomplishment = canEdit;
 
     const totalBudget = useMemo(() => {
        return activity.expenses.reduce((acc, item) => acc + item.amount, 0);

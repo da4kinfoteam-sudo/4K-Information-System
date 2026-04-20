@@ -115,10 +115,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const isUserRole = currentUser?.role === 'User';
 
     // Toggle Flags for Edit Buttons (Role Based access)
-    const canEditProjectDetails = isAdmin || (isUserRole && subproject.status === 'Proposed');
-    const canEditCommodity = isAdmin || (isUserRole && subproject.status === 'Proposed');
-    const canEditBudget = isAdmin || (isUserRole && subproject.status === 'Proposed');
-    const canEditAccomplishment = isAdmin || (isUserRole && ['Ongoing', 'Completed'].includes(subproject.status));
+    const canEditProjectDetails = canEdit;
+    const canEditCommodity = canEdit;
+    const canEditBudget = canEdit;
+    const canEditAccomplishment = canEdit;
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {
@@ -192,14 +192,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const calculateTotalBudget = (details: SubprojectDetailType[]) => {
         return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
     }
-
-    // Helper to check if a field is locked
-    const isLocked = (value: any) => {
-        if (isAdmin) return false;
-        // If value exists (non-null/empty/zero), it's locked for regular users
-        if (value !== undefined && value !== null && value !== '' && value !== 0) return true;
-        return false;
-    };
 
     // Helper to get month index from YYYY-MM-DD string
     const availableUacsCodes = useMemo(() => {
@@ -1117,8 +1109,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                         const wasCompleted = originalDetail?.isCompleted || false;
                                                         const hasDeliveryDate = !!detail.actualDeliveryDate;
                                                         
-                                                        // Checkbox disabled if no delivery date OR if locked and user is not admin
-                                                        const isCheckboxDisabled = !hasDeliveryDate || (wasCompleted && !isAdmin);
+                                                        // Checkbox disabled if no delivery date
+                                                        const isCheckboxDisabled = !hasDeliveryDate;
 
                                                         return (
                                                             <tr key={idx} className={wasCompleted ? 'bg-gray-100 dark:bg-gray-700/50 opacity-75' : ''}>
@@ -1142,7 +1134,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualNumberOfUnits', parseFloat(e.target.value))} 
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         placeholder={`0 ${detail.unitOfMeasure}`}
-                                                                        disabled={isLocked(originalDetail?.actualNumberOfUnits)}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1152,7 +1143,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="h-8 text-xs"
-                                                                        disabled={isLocked(originalDetail?.actualDeliveryDate)}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1162,7 +1152,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="h-8 text-xs"
-                                                                        disabled={isLocked(originalDetail?.actualObligationDate)}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1172,7 +1161,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationAmount', parseFloat(e.target.value))} 
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         placeholder="0.00" 
-                                                                        disabled={isLocked(originalDetail?.actualObligationAmount)} 
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1182,7 +1170,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="h-8 text-xs"
-                                                                        disabled={isLocked(originalDetail?.actualDisbursementDate)}
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">
@@ -1192,7 +1179,6 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', parseFloat(e.target.value))} 
                                                                         className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
                                                                         placeholder="0.00" 
-                                                                        disabled={isLocked(originalDetail?.actualDisbursementAmount)} 
                                                                     />
                                                                 </td>
                                                             </tr>
@@ -1215,27 +1201,27 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label>
-                                                <input type="number" name="actualPWD" value={editedSubproject.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualPWD)} placeholder="0" />
+                                                <input type="number" name="actualPWD" value={editedSubproject.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label>
-                                                <input type="number" name="actualMuslim" value={editedSubproject.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualMuslim)} placeholder="0" />
+                                                <input type="number" name="actualMuslim" value={editedSubproject.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label>
-                                                <input type="number" name="actualLGBTQ" value={editedSubproject.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualLGBTQ)} placeholder="0" />
+                                                <input type="number" name="actualLGBTQ" value={editedSubproject.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label>
-                                                <input type="number" name="actualSoloParent" value={editedSubproject.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualSoloParent)} placeholder="0" />
+                                                <input type="number" name="actualSoloParent" value={editedSubproject.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label>
-                                                <input type="number" name="actualSenior" value={editedSubproject.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualSenior)} placeholder="0" />
+                                                <input type="number" name="actualSenior" value={editedSubproject.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label>
-                                                <input type="number" name="actualYouth" value={editedSubproject.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} disabled={isLocked(subproject.actualYouth)} placeholder="0" />
+                                                <input type="number" name="actualYouth" value={editedSubproject.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" />
                                             </div>
                                         </div>
                                     </fieldset>

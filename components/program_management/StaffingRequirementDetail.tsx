@@ -295,17 +295,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         });
     };
 
-    // Locking Logic
-    const isFieldLocked = (fieldName: string) => {
-        // If user is admin, never locked
-        if (isAdmin) return false;
-        // If user is 'User' role, check if value exists in DB
-        const value = (item as any)[fieldName];
-        if (value !== undefined && value !== null && value !== '' && value !== 0) {
-            return true;
-        }
-        return false;
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -611,7 +600,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
 
@@ -624,11 +613,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
-                                            <input type="number" value={expense.actualObligationAmount || 0} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', Number(e.target.value))} className={commonInputClasses} disabled={isFieldLocked('actualObligationAmount')} />
+                                            <input type="number" value={expense.actualObligationAmount || 0} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', Number(e.target.value))} className={commonInputClasses} />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
-                                            <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className={commonInputClasses} disabled={isFieldLocked('actualObligationDate')} />
+                                            <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className={commonInputClasses} />
                                         </div>
                                     </div>
 
@@ -643,7 +632,6 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                                         onChange={(e) => handleExpenseAccomplishmentChange(expense.id, `actualDisbursement${month}` as keyof StaffingExpense, Number(e.target.value))} 
                                                         min="0" step="0.01" 
                                                         className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed" 
-                                                        disabled={isFieldLocked(`actualDisbursement${month}`)} 
                                                     />
                                                 </div>
                                             ))}

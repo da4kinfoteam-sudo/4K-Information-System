@@ -2507,19 +2507,19 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="md:col-span-2">
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.name}>
-                                            Name <Info className="h-3 w-3 text-gray-400" />
+                                            Commodities <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refCommodityForm.name} onChange={e => setRefCommodityForm({...refCommodityForm, name: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.banner_program}>
-                                            Banner Program <Info className="h-3 w-3 text-gray-400" />
+                                            Program Support <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refCommodityForm.banner_program} onChange={e => setRefCommodityForm({...refCommodityForm, banner_program: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.commodity_group}>
-                                            Commodity Group <Info className="h-3 w-3 text-gray-400" />
+                                            Commodity Classification <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refCommodityForm.commodity_group} onChange={e => setRefCommodityForm({...refCommodityForm, commodity_group: e.target.value})} className={commonInputClasses} />
                                     </div>
@@ -2559,13 +2559,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.recommended_soil}>
-                                            Recommended Soil <Info className="h-3 w-3 text-gray-400" />
+                                            Soil Suitability <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refCommodityForm.recommended_soil} onChange={e => setRefCommodityForm({...refCommodityForm, recommended_soil: e.target.value})} className={commonInputClasses} />
                                     </div>
                                     <div>
                                         <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.fertilizer_npk}>
-                                            Fertilizer NPK <Info className="h-3 w-3 text-gray-400" />
+                                            Recommended Fertilizer <Info className="h-3 w-3 text-gray-400" />
                                         </label>
                                         <input type="text" required value={refCommodityForm.fertilizer_npk} onChange={e => setRefCommodityForm({...refCommodityForm, fertilizer_npk: e.target.value})} className={commonInputClasses} />
                                     </div>
@@ -2578,13 +2578,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
                                             <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.harvest_period_days}>
-                                                Harvest (days) <Info className="h-3 w-3 text-gray-400" />
+                                                Maturity Period (days) <Info className="h-3 w-3 text-gray-400" />
                                             </label>
                                             <input type="number" required value={refCommodityForm.harvest_period_days} onChange={e => setRefCommodityForm({...refCommodityForm, harvest_period_days: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
                                         <div>
                                             <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300" title={CROP_TOOLTIPS.target_yield_ha}>
-                                                Target Yield (t/ha) <Info className="h-3 w-3 text-gray-400" />
+                                                Yield Capacity (t/ha) <Info className="h-3 w-3 text-gray-400" />
                                             </label>
                                             <input type="number" step="0.01" required value={refCommodityForm.target_yield_ha} onChange={e => setRefCommodityForm({...refCommodityForm, target_yield_ha: Number(e.target.value)})} className={commonInputClasses} />
                                         </div>
