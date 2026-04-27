@@ -132,7 +132,7 @@ const Login: React.FC = () => {
                         username: 'admin',
                         fullName: 'System Administrator',
                         email: 'admin@offline.local',
-                        role: 'Administrator',
+                        role: 'Super Admin',
                         operatingUnit: 'NPMO',
                         password: 'admin'
                     };
