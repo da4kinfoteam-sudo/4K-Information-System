@@ -55,14 +55,17 @@ const Settings: React.FC<SettingsProps> = ({
     onSelectActivity,
     onSelectIpo
 }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasAccess } = useAuth();
     const [activeTab, setActiveTab] = useState<TabName>('profile');
     
     if (!currentUser) return null;
 
+    // We keep these legacy admin checks as absolute fallbacks for settings only
     const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
     const isSuperAdmin = currentUser?.role === 'Super Admin';
-    const canAccessSystem = isAdmin || currentUser?.role === 'Management';
+    
+    // Use granular rules from user overrides/roles config where applicable
+    const canAccessSystem = hasAccess('System Management', 'view') || isAdmin;
 
     const TabButton: React.FC<{ name: TabName; label: string }> = ({ name, label }) => {
         const isActive = activeTab === name;

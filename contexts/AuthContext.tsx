@@ -1,6 +1,6 @@
 // Author: 4K 
-import React, { createContext, useContext, ReactNode, useEffect } from 'react';
-import { User } from '../constants';
+import React, { createContext, useContext, ReactNode, useEffect, useState } from 'react';
+import { User, RoleConfig } from '../constants';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { useSupabaseTable } from '../hooks/useSupabaseTable';
 import { supabase } from '../supabaseClient';
@@ -11,6 +11,8 @@ interface AuthContextType {
     logout: () => void;
     usersList: User[];
     setUsersList: React.Dispatch<React.SetStateAction<User[]>>;
+    rolesConfigs: RoleConfig[];
+    hasAccess: (module: string, action: 'view' | 'edit' | 'delete') => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Centralized user list management synced with Supabase 'users' table
     // Initialized with empty array to rely on database fetching
     const [usersList, setUsersList] = useSupabaseTable<User>('users', []);
+    
+    const [rolesConfigs, setRolesConfigs] = useState<RoleConfig[]>([]);
+
+    useEffect(() => {
+        if (!supabase) return;
+        supabase.from('roles_config').select('*').then(({ data, error }) => {
+            if (data) setRolesConfigs(data);
+            if (error) console.error("Error fetching roles configs:", error);
+        });
+    }, []);
 
     // Phase 3: Supabase Auth Session Listener
     useEffect(() => {
@@ -109,8 +121,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentUser(null);
     };
 
+    // Phase 5: Implementation of Priority Logic
+    const hasAccess = (module: string, action: 'view' | 'edit' | 'delete'): boolean => {
+        if (!currentUser) return false;
+
+        // "White-Screen Prevention" Safety Profile for Super Admins
+        // We ensure that super admins cannot be easily locked out of System Management
+        if (currentUser.role === 'Super Admin' && module === 'System Management') {
+            return true;
+        }
+
+        // Priority 1: User-Level Override (Surgical Control)
+        if (currentUser.permissions_override && typeof currentUser.permissions_override === 'object') {
+            const moduleOverride = currentUser.permissions_override[module];
+            if (moduleOverride && typeof moduleOverride[`can_${action}`] === 'boolean') {
+                return moduleOverride[`can_${action}`];
+            }
+        }
+
+        // Priority 2: Role Defaults (Global Matrix)
+        if (rolesConfigs && rolesConfigs.length > 0) {
+            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
+            if (roleDef) {
+                return !!roleDef[`can_${action}`];
+            }
+        }
+
+        // Priority 3: Fallback Behavior (Maintain legacy logic if unconfigured)
+        if (['Super Admin', 'Administrator'].includes(currentUser.role)) return true;
+        if (action === 'view') return true; 
+        // Note: For other modules, 'view' defaults to true, 'edit' defaults to false for common users.
+        return false;
+    };
+
     return (
-        <AuthContext.Provider value={{ currentUser, login, logout, usersList, setUsersList }}>
+        <AuthContext.Provider value={{ currentUser, login, logout, usersList, setUsersList, rolesConfigs, hasAccess }}>
             {children}
         </AuthContext.Provider>
     );

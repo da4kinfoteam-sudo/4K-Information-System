@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, currentPage, setCurrentPage }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasAccess } = useAuth();
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
     // Auto-expand groups based on current page
@@ -61,10 +61,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
     );
 
     const renderNavItem = (item: NavItem) => {
-        // Permission Check
+        // Legacy Permission Check
         if (item.hiddenFor && currentUser && item.hiddenFor.includes(currentUser.role)) {
             return null;
         }
+
+        // Granular Management checks based on modules
+        if (item.name === 'Reports & Dashboards' && !hasAccess('Reports & Dashboards', 'view')) return null;
+        if ((item.name === 'Data Collection Forms') && !hasAccess('Data Collection Forms (Activities, Subprojects)', 'view')) return null;
+        if ((item.name === 'Accomplishment Forms') && !hasAccess('Accomplishment Forms (Financial, Physical)', 'view')) return null;
+        if (item.name === 'Program Management' && !hasAccess('Program Management', 'view')) return null;
+        if (item.name === 'IPO Management' && !hasAccess('IPO Management', 'view')) return null;
+        if (item.name === 'Resources' && !hasAccess('Resources (Marketing, LOD, Comm. Mapping)', 'view')) return null;
 
         const isGroup = !!item.children;
         const isExpanded = expandedGroups.has(item.name);
