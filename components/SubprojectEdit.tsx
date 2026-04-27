@@ -489,6 +489,13 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             payload.created_at = timestamp;
             payload.uid = formData.uid || `SP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
             payload.history = [historyEntry];
+            
+            // Phase 2: Workflow Logic
+            if (currentUser?.role === 'RFO - User') {
+                payload.workflow_status = 'PENDING';
+            } else {
+                payload.workflow_status = 'APPROVED';
+            }
         } else {
             payload.history = [...(subproject.history || []), historyEntry];
         }

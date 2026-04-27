@@ -447,6 +447,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         let activitiesToSave: Activity[] = [];
         const currentYear = new Date().getFullYear();
         const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
 
         if (mode === 'create') {
              if (conductType === 'Repeating') {
@@ -460,6 +461,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     participatingIpos: entry.participatingIpos,
                     expenses: formData.expenses.map((exp, eIdx) => ({ ...exp, id: Date.now() + Math.random() + eIdx })), 
                     id: 0,
+                    workflow_status,
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                     history: [{ date: new Date().toISOString(), event: "Created (Repeating)", user: currentUser?.fullName || "System" }]
@@ -469,6 +471,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                      ...formData,
                      uid: `${prefix}-${currentYear}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
                      id: 0,
+                     workflow_status,
                      created_at: new Date().toISOString(),
                      updated_at: new Date().toISOString(),
                      history: [{ date: new Date().toISOString(), event: "Created", user: currentUser?.fullName || "System" }]

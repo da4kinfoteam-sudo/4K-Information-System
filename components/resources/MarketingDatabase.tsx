@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
+import { Check, X } from 'lucide-react';
 import { MarketingPartner, philippineRegions, CommodityNeed, referenceCommodityTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePagination, useSelection } from '../mainfunctions/TableHooks';
@@ -231,9 +232,12 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             user: currentUser?.fullName || 'System'
         };
 
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+
         const newPartnerPayload = {
             ...formData,
             uid,
+            workflow_status,
             history: [historyEntry],
             created_at: new Date().toISOString()
         };
@@ -285,6 +289,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 const newPartners = jsonData.map((row: any, index: number) => {
                     const uid = `MP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
                     const { region } = parseLocation(row.location || '');
+                    const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
                     return {
                         uid,
                         companyName: String(row.companyName || 'Unnamed Partner'),
@@ -298,6 +303,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         commodityNeeds: row.commodityNeeds ? JSON.parse(row.commodityNeeds) : [],
                         linkedIpoNames: [],
                         marketingLinkages: [],
+                        workflow_status,
                         history: [{ date: new Date().toISOString(), event: 'Imported from Excel', user: currentUser?.fullName || 'System' }],
                         encodedBy: currentUser?.fullName || 'Excel Import',
                         created_at: new Date().toISOString()
@@ -314,6 +320,57 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             } catch (err: any) { alert("Import failed: " + err.message); } finally { setIsUploading(false); if (e.target) e.target.value = ''; }
         };
         reader.readAsArrayBuffer(file);
+    };
+
+    const getWorkflowStatusBadge = (status?: string) => {
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        switch (status) {
+            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
+            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
+            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
+            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+            default: return null;
+        }
+    };
+
+    const canApprove = (role?: string) => {
+        return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
+    };
+
+    const handleApprove = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to approve this partner?')) return;
+        
+        if (supabase) {
+            const { error } = await supabase.from('marketing_partners').update({ workflow_status: 'APPROVED' }).eq('id', id);
+            if (error) {
+                alert('Failed to approve: ' + error.message);
+            } else {
+                setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            }
+        } else {
+            setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        }
+    };
+
+    const handleReject = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (reason === null) return;
+
+        if (supabase) {
+            const { error } = await supabase.from('marketing_partners').update({ 
+                workflow_status: 'REJECTED',
+                remarks: reason ? `REJECTED: ${reason}` : undefined
+            }).eq('id', id);
+            if (error) {
+                alert('Failed to reject: ' + error.message);
+            } else {
+                setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            }
+        } else {
+            setPartners(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        }
     };
 
     if (view === 'add') {
@@ -496,6 +553,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                             <tr>
                                 {isSelectionMode && <th className="px-6 py-3 text-left w-10"><input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(p => selectedIds.includes(p.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></th>}
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Company Name</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodity Needs</th>
@@ -507,6 +565,29 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <tr key={partner.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.includes(partner.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
                                     {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></td>}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-medium">{partner.region || 'N/A'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex flex-col gap-1">
+                                            {getWorkflowStatusBadge(partner.workflow_status)}
+                                            {partner.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
+                                                <div className="flex gap-1 mt-1">
+                                                    <button 
+                                                        onClick={(e) => handleApprove(partner.id, e)} 
+                                                        className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                        title="Approve"
+                                                    >
+                                                        <Check className="h-3 w-3" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => handleReject(partner.id, e)} 
+                                                        className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                        title="Reject"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="text-emerald-600 hover:text-emerald-700 hover:underline dark:text-emerald-400">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-0.5 rounded-full font-bold ${partner.buyerType === 'Government' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{partner.buyerType || 'Private'}</span></td>
                                     <td className="px-6 py-4">

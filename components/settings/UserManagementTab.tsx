@@ -180,8 +180,12 @@ const UserManagementTab: React.FC = () => {
                              <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
                                 <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as any})} className={commonInputClasses}>
+                                    <option value="Super Admin">Super Admin</option>
                                     <option value="Administrator">Administrator</option>
+                                    <option value="Focal - User">Focal - User</option>
+                                    <option value="RFO - User">RFO - User</option>
                                     <option value="User">User</option>
+                                    <option value="Guest">Guest</option>
                                     <option value="Management">Management</option>
                                 </select>
                             </div>

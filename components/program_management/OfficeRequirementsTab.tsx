@@ -10,7 +10,7 @@ import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; 
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -418,6 +418,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             return;
         }
 
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+
         const submissionData: any = {
             ...formData,
             numberOfUnits: Number(formData.numberOfUnits),
@@ -429,6 +431,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             actualDisbursementAmount: 0,
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System',
             status: formData.status || 'Proposed',
+            workflow_status,
             updated_at: new Date().toISOString()
         };
 
@@ -538,6 +541,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
         if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} office requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
 
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, ...rest } = item;
@@ -553,11 +557,13 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 actualDisbursementAmount: 0,
                 status: 'Proposed'
             };
+            const item_workflow_status = workflow_status;
 
             return {
                 ...rest,
                 ...resetActuals,
                 uid: newUid,
+                workflow_status: item_workflow_status,
                 encodedBy: currentUser?.fullName || 'System Clone',
                 created_at: currentTimestamp,
                 updated_at: currentTimestamp,
@@ -589,6 +595,57 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         } else {
             setSelectionIntent(intent);
             toggleSelectionMode(); // Toggle on
+        }
+    };
+
+    const getWorkflowStatusBadge = (status?: string) => {
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        switch (status) {
+            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
+            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
+            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
+            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+            default: return null;
+        }
+    };
+
+    const canApprove = (role?: string) => {
+        return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
+    };
+
+    const handleApprove = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to approve this requirement?')) return;
+        
+        if (supabase) {
+            const { error } = await supabase.from('office_requirements').update({ workflow_status: 'APPROVED' }).eq('id', id);
+            if (error) {
+                alert('Failed to approve: ' + error.message);
+            } else {
+                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            }
+        } else {
+            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        }
+    };
+
+    const handleReject = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (reason === null) return;
+
+        if (supabase) {
+            const { error } = await supabase.from('office_requirements').update({ 
+                workflow_status: 'REJECTED',
+                remarks: reason ? `REJECTED: ${reason}` : undefined
+            }).eq('id', id);
+            if (error) {
+                alert('Failed to reject: ' + error.message);
+            } else {
+                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            }
+        } else {
+            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
         }
     };
 
@@ -641,6 +698,8 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as any[];
                 
                 const currentTimestamp = new Date().toISOString();
+                const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
                     const uid = `OR-${fundYear}-${Date.now().toString().slice(-4)}${index}`;
@@ -657,6 +716,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                         uacsCode: row.uacsCode || '',
                         encodedBy: currentUser?.fullName || 'Upload',
                         status: row.status || 'Proposed',
+                        workflow_status,
                         created_at: currentTimestamp,
                         updated_at: currentTimestamp
                     });
@@ -995,6 +1055,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, operatingUnit: vals }))}
                                 uniqueValues={uniqueValues['operatingUnit'] || []}
                             />
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Workflow</th>
                             <OfficeRequirementColumnHeader 
                                 label="Status" 
                                 columnKey="status" 
@@ -1072,6 +1133,29 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-xs">
+                                        <div className="flex flex-col gap-1">
+                                            {getWorkflowStatusBadge(item.workflow_status)}
+                                            {item.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
+                                                <div className="flex gap-1 mt-1">
+                                                    <button 
+                                                        onClick={(e) => handleApprove(item.id, e)} 
+                                                        className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                        title="Approve"
+                                                    >
+                                                        <Check className="h-3 w-3" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => handleReject(item.id, e)} 
+                                                        className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                        title="Reject"
+                                                    >
+                                                        <X className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(item.status)}>{item.status}</span></td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                         {item.equipment}

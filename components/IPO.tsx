@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
+import { Check, X } from 'lucide-react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, ElcacArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
@@ -611,10 +612,12 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             return;
         }
         
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
         const submissionData = { 
             ...formData, 
             registeringBody: finalRegisteringBody,
             registrationDate: formData.registrationDate || null,
+            workflow_status,
             updated_at: new Date().toISOString()
         };
 
@@ -736,6 +739,57 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     // Filter activities for display
     const linkedTrainings = useMemo(() => (activities || []).filter(a => a.type === 'Training'), [activities]);
 
+    const getWorkflowStatusBadge = (status?: string) => {
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        switch (status) {
+            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
+            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
+            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
+            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+            default: return null;
+        }
+    };
+
+    const canApprove = (role?: string) => {
+        return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
+    };
+
+    const handleApprove = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to approve this IPO?')) return;
+        
+        if (supabase) {
+            const { error } = await supabase.from('ipos').update({ workflow_status: 'APPROVED' }).eq('id', id);
+            if (error) {
+                alert('Failed to approve: ' + error.message);
+            } else {
+                setIpos(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            }
+        } else {
+            setIpos(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        }
+    };
+
+    const handleReject = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (reason === null) return;
+
+        if (supabase) {
+            const { error } = await supabase.from('ipos').update({ 
+                workflow_status: 'REJECTED',
+                remarks: reason ? `REJECTED: ${reason}` : undefined
+            }).eq('id', id);
+            if (error) {
+                alert('Failed to reject: ' + error.message);
+            } else {
+                setIpos(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            }
+        } else {
+            setIpos(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        }
+    };
+
     const renderListView = () => (
         <>
             <div className="flex justify-between items-center mb-6">
@@ -829,6 +883,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             <tr>
                                 <th className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
                                 <SortableHeader sortKey="name" label="IPO Name" className="min-w-[200px]" />
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                                 <SortableHeader sortKey="location" label="Location" />
                                 <SortableHeader sortKey="contactPerson" label="Contact" />
                                 <SortableHeader sortKey="registrationDate" label="Registered" />
@@ -873,6 +928,29 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                             <button onClick={(e) => { e.stopPropagation(); onSelectIpo(ipo); }} className="text-left hover:text-emerald-600 hover:underline">
                                                 {ipo.name}
                                             </button>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex flex-col gap-1">
+                                                {getWorkflowStatusBadge(ipo.workflow_status)}
+                                                {ipo.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
+                                                    <div className="flex gap-1 mt-1">
+                                                        <button 
+                                                            onClick={(e) => handleApprove(ipo.id, e)} 
+                                                            className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                            title="Approve"
+                                                        >
+                                                            <Check className="h-3 w-3" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => handleReject(ipo.id, e)} 
+                                                            className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                            title="Reject"
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             {ipo.location.split(',').slice(1).join(',').trim() || ipo.location}

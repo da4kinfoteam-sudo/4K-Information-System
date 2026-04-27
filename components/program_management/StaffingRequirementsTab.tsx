@@ -9,7 +9,7 @@ import { useSelection, getUserPermissions, usePagination } from '../mainfunction
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -480,6 +480,8 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             });
         });
 
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+
         const submissionData: any = {
             ...formData,
             ...aggregatedTotals,
@@ -491,6 +493,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             actualAmount: 0, actualObligationAmount: 0, actualDisbursementAmount: 0,
             hiringStatus: formData.hiringStatus || 'Proposed',
             encodedBy: formData.encodedBy || currentUser?.fullName || 'System', 
+            workflow_status,
             updated_at: new Date().toISOString()
         };
 
@@ -580,6 +583,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
         if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} staffing requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
 
+        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, ...rest } = item;
@@ -618,6 +622,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 ...resetActuals,
                 uid: newUid,
                 expenses: clonedExpenses,
+                workflow_status,
                 encodedBy: currentUser?.fullName || 'System Clone',
                 created_at: currentTimestamp,
                 updated_at: currentTimestamp,
@@ -653,6 +658,57 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     };
 
     // Import/Export
+    const getWorkflowStatusBadge = (status?: string) => {
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        switch (status) {
+            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
+            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
+            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
+            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+            default: return null;
+        }
+    };
+
+    const canApprove = (role?: string) => {
+        return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
+    };
+
+    const handleApprove = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to approve this staffing requirement?')) return;
+        
+        if (supabase) {
+            const { error } = await supabase.from('staffing_requirements').update({ workflow_status: 'APPROVED' }).eq('id', id);
+            if (error) {
+                alert('Failed to approve: ' + error.message);
+            } else {
+                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            }
+        } else {
+            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        }
+    };
+
+    const handleReject = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (reason === null) return;
+
+        if (supabase) {
+            const { error } = await supabase.from('staffing_requirements').update({ 
+                workflow_status: 'REJECTED',
+                remarks: reason ? `REJECTED: ${reason}` : undefined
+            }).eq('id', id);
+            if (error) {
+                alert('Failed to reject: ' + error.message);
+            } else {
+                setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            }
+        } else {
+            setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        }
+    };
+
     const handleDownloadReport = () => {
         const data = filteredItems.map(item => ({
             UID: item.uid, OU: item.operatingUnit, Position: item.personnelPosition, HiringStatus: item.hiringStatus, EmploymentStatus: item.status, 'Salary Grade': item.salaryGrade, 'Annual Salary': item.annualSalary, Type: item.personnelType, 'Fund Type': item.fundType, 'Fund Year': item.fundYear, Tier: item.tier, 'Obligation Date': item.obligationDate
@@ -675,6 +731,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const data = event.target?.result; const workbook = XLSX.read(data, { type: 'array' });
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
+                const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
                 
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();
@@ -692,6 +749,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         disbursementDate: '', 
                         uacsCode: row.uacsCode || '', 
                         encodedBy: currentUser?.fullName || 'Upload', 
+                        workflow_status,
                         created_at: currentTimestamp, 
                         updated_at: currentTimestamp
                     });
@@ -1028,6 +1086,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 onFilterChange={(val) => handleColumnFilterChange('hiringStatus', val)} 
                                 uniqueValues={uniqueValues.hiringStatus} 
                             />
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow</th>
                             <StaffingRequirementColumnHeader 
                                 label="Position" 
                                 columnKey="personnelPosition" 
@@ -1085,6 +1144,29 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span></td>
+                                <td className="px-6 py-4 whitespace-nowrap text-xs">
+                                    <div className="flex flex-col gap-1">
+                                        {getWorkflowStatusBadge(item.workflow_status)}
+                                        {item.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
+                                            <div className="flex gap-1 mt-1">
+                                                <button 
+                                                    onClick={(e) => handleApprove(item.id, e)} 
+                                                    className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                    title="Approve"
+                                                >
+                                                    <Check className="h-3 w-3" />
+                                                </button>
+                                                <button 
+                                                    onClick={(e) => handleReject(item.id, e)} 
+                                                    className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                    title="Reject"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                     {item.personnelPosition}
                                     <div className="text-xs text-gray-400">SG-{item.salaryGrade}</div>

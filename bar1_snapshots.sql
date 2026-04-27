@@ -20,3 +20,41 @@ CREATE INDEX IF NOT EXISTS idx_bar1_snapshots_year ON bar1_report_snapshots(fund
 CREATE INDEX IF NOT EXISTS idx_bar1_snapshots_date ON bar1_report_snapshots(snapshot_date);
 
 COMMENT ON TABLE bar1_report_snapshots IS 'Stores daily snapshots of the BAR 1 report for historical review.';
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE bar1_report_snapshots ENABLE ROW LEVEL SECURITY;
+
+-- Create policies to allow access to anyone (since custom AuthContext uses anon role)
+CREATE POLICY "Allow read access to anyone" 
+ON bar1_report_snapshots 
+FOR SELECT 
+USING (true);
+
+CREATE POLICY "Allow insert access to anyone" 
+ON bar1_report_snapshots 
+FOR INSERT 
+WITH CHECK (true);
+
+CREATE POLICY "Allow update access to anyone" 
+ON bar1_report_snapshots 
+FOR UPDATE 
+USING (true);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE bar1_report_snapshots ENABLE ROW LEVEL SECURITY;
+
+-- Create policies to allow access to anyone (since custom AuthContext uses anon role)
+CREATE POLICY "Allow read access to anyone" 
+ON bar1_report_snapshots 
+FOR SELECT 
+USING (true);
+
+CREATE POLICY "Allow insert access to anyone" 
+ON bar1_report_snapshots 
+FOR INSERT 
+WITH CHECK (true);
+
+CREATE POLICY "Allow update access to anyone" 
+ON bar1_report_snapshots 
+FOR UPDATE 
+USING (true);

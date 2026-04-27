@@ -64,6 +64,7 @@ export const AccomplishmentIcon = (props: React.SVGProps<SVGSVGElement>) => (
 // Types
 export interface BaseEntity {
     id: number;
+    workflow_status?: WorkflowStatus;
     created_at?: string;
     updated_at?: string;
     deleted_at?: string; // For soft deletes
@@ -83,12 +84,19 @@ export interface NavItem {
     icon?: React.ReactNode;
 }
 
+export type UserRole = 'Super Admin' | 'Administrator' | 'Guest' | 'Focal - User' | 'RFO - User' | 'User' | 'Management';
+export type VisibilityScope = 'All OUs' | 'Own OU';
+export type WorkflowStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface User extends BaseEntity {
     username: string;
     fullName: string;
     email: string;
-    role: 'Administrator' | 'User' | 'Management';
+    role: UserRole;
     operatingUnit: string;
+    visibility_scope?: VisibilityScope;
+    assigned_focal_id?: number | string;
+    permissions_override?: any; // JSONB toggles
     password?: string;
 }
 
@@ -965,3 +973,6 @@ export interface BAR1Snapshot {
     report_data: any;
     created_at?: string;
 }
+
+// Author: 4K 
+// --- End of constants.tsx ---

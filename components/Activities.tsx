@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Check, X } from 'lucide-react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
@@ -539,6 +540,57 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
 
+    const getWorkflowStatusBadge = (status?: string) => {
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        switch (status) {
+            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
+            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
+            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
+            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+            default: return null;
+        }
+    };
+
+    const canApprove = (role?: string) => {
+        return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
+    };
+
+    const handleApprove = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!window.confirm('Are you sure you want to approve this activity?')) return;
+        
+        if (supabase) {
+            const { error } = await supabase.from('activities').update({ workflow_status: 'APPROVED' }).eq('id', id);
+            if (error) {
+                alert('Failed to approve: ' + error.message);
+            } else {
+                setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+            }
+        } else {
+            setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+        }
+    };
+
+    const handleReject = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const reason = window.prompt('Please provide a reason for rejection:');
+        if (reason === null) return;
+
+        if (supabase) {
+            const { error } = await supabase.from('activities').update({ 
+                workflow_status: 'REJECTED',
+                remarks: reason ? `REJECTED: ${reason}` : undefined
+            }).eq('id', id);
+            if (error) {
+                alert('Failed to reject: ' + error.message);
+            } else {
+                setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+            }
+        } else {
+            setActivities(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'REJECTED', remarks: reason ? `REJECTED: ${reason}` : s.remarks } : s));
+        }
+    };
+
     return (
         <div>
             {isDeleteModalOpen && (
@@ -685,8 +737,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     onFilterChange={(v) => handleColumnFilterChange('fundType', v)} 
                                     uniqueValues={uniqueValues.fundType} 
                                 />
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Status</th>
                                 <ActivityColumnHeader 
-                                    label="Status" 
+                                    label="Project Status" 
                                     columnKey="status" 
                                     sortConfig={sortConfig} 
                                     onSort={handleSort} 
@@ -758,6 +811,29 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundType || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex flex-col gap-1">
+                                                {getWorkflowStatusBadge(activity.workflow_status)}
+                                                {activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
+                                                    <div className="flex gap-1 mt-1">
+                                                        <button 
+                                                            onClick={(e) => handleApprove(activity.id, e)} 
+                                                            className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                            title="Approve"
+                                                        >
+                                                            <Check className="h-3 w-3" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => handleReject(activity.id, e)} 
+                                                            className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                            title="Reject"
+                                                        >
+                                                            <X className="h-3 w-3" />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             {new Date(activity.date).toLocaleDateString()}

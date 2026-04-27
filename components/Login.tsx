@@ -35,8 +35,41 @@ const Login: React.FC = () => {
             let user = null;
             let isPasswordInvalid = false;
 
-            // 1. Attempt Direct Database Authentication
-            // We attempt this regardless of the initial dbStatus check to ensure we try even if connection was flaky at mount.
+            // 1. Attempt Native Supabase Auth (Phase 3 Core Migration)
+            if (supabase) {
+                try {
+                     // Try to match email if username was provided
+                     let loginEmail = identifier;
+                     if (!identifier.includes('@')) {
+                         const matchedUser = await supabase.from('users').select('email').eq('username', identifier).maybeSingle();
+                         if (matchedUser.data?.email) {
+                             loginEmail = matchedUser.data.email;
+                         } else {
+                             const ctxMatch = usersList.find(u => u.username === identifier);
+                             if (ctxMatch?.email) loginEmail = ctxMatch.email;
+                         }
+                     }
+
+                     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                         email: loginEmail,
+                         password: password
+                     });
+
+                     if (!authError && authData.user) {
+                         // Successfully logged in via native auth!
+                         // AuthContext's listener will catch this and update state.
+                         return;
+                     } else if (authError && authError.message.includes('Invalid login credentials')) {
+                         // Wait, might be wrong native credentials, but let's check if the user is just
+                         // not migrated to auth.users yet (fallback to old plain-text logic)
+                         console.warn("Native auth failed. Attempting legacy plaintext fallback...", authError);
+                     }
+                } catch (e) {
+                     console.warn("Supabase native auth exception:", e);
+                }
+            }
+
+            // 2. Fallback: Legacy Plaintext Database Authentication (For Pre-Migrated Data)
             if (supabase) {
                 try {
                     // Try finding by username first
