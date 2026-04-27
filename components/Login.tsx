@@ -41,9 +41,9 @@ const Login: React.FC = () => {
                      // Try to match email if username was provided
                      let loginEmail = identifier;
                      if (!identifier.includes('@')) {
-                         const matchedUser = await supabase.from('users').select('email').eq('username', identifier).maybeSingle();
-                         if (matchedUser.data?.email) {
-                             loginEmail = matchedUser.data.email;
+                         const matchedUser = await supabase.from('users').select('email').eq('username', identifier).limit(1);
+                         if (matchedUser.data && matchedUser.data.length > 0 && matchedUser.data[0].email) {
+                             loginEmail = matchedUser.data[0].email;
                          } else {
                              const ctxMatch = usersList.find(u => u.username === identifier);
                              if (ctxMatch?.email) loginEmail = ctxMatch.email;
@@ -77,26 +77,26 @@ const Login: React.FC = () => {
                         .from('users')
                         .select('*')
                         .eq('username', identifier)
-                        .maybeSingle();
+                        .limit(1);
 
                     if (error) console.warn('Supabase Login Query Error (Username):', error);
 
                     // If not found, try finding by email
-                    if (!data) {
+                    if (!data || data.length === 0) {
                         const result = await supabase
                             .from('users')
                             .select('*')
                             .eq('email', identifier)
-                            .maybeSingle();
+                            .limit(1);
                         data = result.data;
                         if (result.error) console.warn('Supabase Login Query Error (Email):', result.error);
                     }
 
-                    if (data) {
+                    if (data && data.length > 0) {
                         // User found in DB
                         // Verify password (plaintext comparison as per current schema)
-                        if (data.password === password) {
-                            user = data;
+                        if (data[0].password === password) {
+                            user = data[0];
                         } else {
                             isPasswordInvalid = true;
                         }

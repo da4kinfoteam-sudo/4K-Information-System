@@ -29,14 +29,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_IN' && session?.user) {
                 // Fetch full User profile from public.users table mapping by email
-                const { data } = await supabase
+                // Use limit(1) instead of maybeSingle to avoid errors if there are duplicate emails
+                const { data, error } = await supabase
                     .from('users')
                     .select('*')
                     .eq('email', session.user.email)
-                    .maybeSingle();
+                    .limit(1);
                 
-                if (data) {
-                    setCurrentUser(data as User);
+                if (error) {
+                    console.error("Error fetching user profile after sign in:", error);
+                }
+                
+                if (data && data.length > 0) {
+                    setCurrentUser(data[0] as User);
+                } else {
+                    console.warn("User profile not found in public.users for email:", session.user.email);
                 }
             } else if (event === 'SIGNED_OUT') {
                 setCurrentUser(null);
@@ -47,8 +54,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // Initial session check
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session?.user && !currentUser) {
-                supabase.from('users').select('*').eq('email', session.user.email).maybeSingle().then(({ data }) => {
-                    if (data) setCurrentUser(data as User);
+                supabase.from('users').select('*').eq('email', session.user.email).limit(1).then(({ data, error }) => {
+                    if (error) console.error("Initial session check error:", error);
+                    if (data && data.length > 0) setCurrentUser(data[0] as User);
                 });
             }
         });
@@ -62,12 +70,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async () => {
-        if (supabase) {
-            await supabase.auth.signOut().catch(console.error);
-        }
-        // Clear all local storage items to reset persistency of filters and states
+        // Clear all local storage items to reset persistency of filters and states immediately
         localStorage.clear();
         setCurrentUser(null);
+        
+        if (supabase) {
+            // Do not block UI if network is down
+            supabase.auth.signOut().catch(console.error);
+        }
     };
 
     return (
