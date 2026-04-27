@@ -44,6 +44,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     setCurrentUser(data[0] as User);
                 } else {
                     console.warn("User profile not found in public.users for email:", session.user.email);
+                    // Temporary fallback: construct a basic user object so they are not stuck
+                    // Ideally, fix_orphans.sql should be run to synchronize auth.users and public.users
+                    const fallbackUser: User = {
+                        id: Date.now(), 
+                        username: session.user.email.split('@')[0],
+                        email: session.user.email,
+                        fullName: session.user.user_metadata?.full_name || 'Mapped User',
+                        role: session.user.user_metadata?.role || 'User',
+                        operatingUnit: session.user.user_metadata?.operatingUnit || 'NPMO',
+                        password: ''
+                    };
+                    setCurrentUser(fallbackUser);
                 }
             } else if (event === 'SIGNED_OUT') {
                 setCurrentUser(null);
@@ -56,7 +68,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (session?.user && !currentUser) {
                 supabase.from('users').select('*').eq('email', session.user.email).limit(1).then(({ data, error }) => {
                     if (error) console.error("Initial session check error:", error);
-                    if (data && data.length > 0) setCurrentUser(data[0] as User);
+                    if (data && data.length > 0) {
+                        setCurrentUser(data[0] as User);
+                    } else if (session.user) {
+                        const fallbackUser: User = {
+                            id: Date.now(), 
+                            username: session.user.email?.split('@')[0] || 'user',
+                            email: session.user.email || '',
+                            fullName: session.user.user_metadata?.full_name || 'Mapped User',
+                            role: session.user.user_metadata?.role || 'User',
+                            operatingUnit: session.user.user_metadata?.operatingUnit || 'NPMO',
+                            password: ''
+                        };
+                        setCurrentUser(fallbackUser);
+                    }
                 });
             }
         });
@@ -70,14 +95,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async () => {
-        // Clear all local storage items to reset persistency of filters and states immediately
+        if (supabase) {
+            try {
+                await supabase.auth.signOut();
+            } catch (err) {
+                console.error("Sign out error", err);
+            }
+        }
+        
+        // Clear local storage EXCEPT for supabase auth token if somehow it was needed, 
+        // though signOut should have cleared it.
         localStorage.clear();
         setCurrentUser(null);
-        
-        if (supabase) {
-            // Do not block UI if network is down
-            supabase.auth.signOut().catch(console.error);
-        }
     };
 
     return (

@@ -579,14 +579,15 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -732,11 +733,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                 <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
                                 <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundingYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
                                 <SubprojectColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundType'] || []} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues.fundType} />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Status</th>
                                 <SubprojectColumnHeader label="Project Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
                                 <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <SubprojectColumnHeader label="Completion rate" columnKey="completionRate" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Workflow Status</th>
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
@@ -772,8 +773,19 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundType || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div className="flex items-center">
+                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
+                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
+                                                </div>
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-start">
                                                 {getWorkflowStatusBadge(s.workflow_status)}
                                                 {s.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                     <div className="flex gap-1 mt-1">
@@ -793,17 +805,6 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                         </button>
                                                     </div>
                                                 )}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div className="flex items-center">
-                                                <span className="mr-2 text-xs font-medium">{completionRate}%</span>
-                                                <div className="w-20 bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
-                                                    <div className={`h-1.5 rounded-full ${completionRate === 100 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${completionRate}%` }}></div>
-                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">

@@ -740,14 +740,15 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
     const linkedTrainings = useMemo(() => (activities || []).filter(a => a.type === 'Training'), [activities]);
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -883,13 +884,13 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             <tr>
                                 <th className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
                                 <SortableHeader sortKey="name" label="IPO Name" className="min-w-[200px]" />
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                                 <SortableHeader sortKey="location" label="Location" />
                                 <SortableHeader sortKey="contactPerson" label="Contact" />
                                 <SortableHeader sortKey="registrationDate" label="Registered" />
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Flags</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodities</th>
                                 <SortableHeader sortKey="levelOfDevelopment" label="Level" />
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                                 {isAdmin && (
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                         {isSelectionMode ? (
@@ -929,8 +930,28 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                                 {ipo.name}
                                             </button>
                                         </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            {ipo.location.split(',').slice(1).join(',').trim() || ipo.location}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div>{ipo.contactPerson}</div>
+                                            <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                                {ipo.isWomenLed && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-pink-100 text-pink-800 rounded-full" title="Women-Led">WL</span>}
+                                                {ipo.isWithinGida && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded-full" title="GIDA">GIDA</span>}
+                                                {ipo.isWithinElcac && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full" title="ELCAC">ELCAC</span>}
+                                                {ipo.isWithScad && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800 rounded-full" title="SCAD">SCAD</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 max-w-[200px]">
+                                            {ipo.commodities.map(c => c.particular).join(', ')}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-start">
                                                 {getWorkflowStatusBadge(ipo.workflow_status)}
                                                 {ipo.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                     <div className="flex gap-1 mt-1">
@@ -952,26 +973,6 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            {ipo.location.split(',').slice(1).join(',').trim() || ipo.location}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div>{ipo.contactPerson}</div>
-                                            <div className="text-xs text-gray-400">{ipo.contactNumber}</div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(ipo.registrationDate)}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                                {ipo.isWomenLed && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-pink-100 text-pink-800 rounded-full" title="Women-Led">WL</span>}
-                                                {ipo.isWithinGida && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded-full" title="GIDA">GIDA</span>}
-                                                {ipo.isWithinElcac && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-orange-100 text-orange-800 rounded-full" title="ELCAC">ELCAC</span>}
-                                                {ipo.isWithScad && <span className="inline-block px-2 py-0.5 text-xs font-medium bg-cyan-100 text-cyan-800 rounded-full" title="SCAD">SCAD</span>}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 max-w-[200px]">
-                                            {ipo.commodities.map(c => c.particular).join(', ')}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 rounded-md mx-auto block w-10">{latestLevels[ipo.id] || ipo.levelOfDevelopment || '-'}</td>
                                         {isAdmin && (
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                                 <div className="flex items-center justify-end">

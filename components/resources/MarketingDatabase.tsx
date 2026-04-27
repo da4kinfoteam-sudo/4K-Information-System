@@ -323,14 +323,15 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -553,11 +554,11 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                             <tr>
                                 {isSelectionMode && <th className="px-6 py-3 text-left w-10"><input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(p => selectedIds.includes(p.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></th>}
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Company Name</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodity Needs</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Owner / Contact</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -565,8 +566,20 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <tr key={partner.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.includes(partner.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
                                     {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></td>}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-medium">{partner.region || 'N/A'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="text-emerald-600 hover:text-emerald-700 hover:underline dark:text-emerald-400">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-0.5 rounded-full font-bold ${partner.buyerType === 'Government' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{partner.buyerType || 'Private'}</span></td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-wrap gap-1">
+                                            {partner.commodityNeeds?.slice(0, 3).map((c, i) => (
+                                                <span key={i} className="px-2 py-0.5 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-md text-[10px] font-bold border border-teal-100 dark:border-teal-800 uppercase">{c.name}</span>
+                                            ))}
+                                            {(partner.commodityNeeds?.length || 0) > 3 && <span className="text-[10px] text-gray-400 font-bold">+{partner.commodityNeeds.length - 3} more</span>}
+                                            {(!partner.commodityNeeds || partner.commodityNeeds.length === 0) && <span className="text-gray-400 text-xs italic">Unspecified</span>}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div className="font-bold text-gray-700 dark:text-gray-300">{partner.ownerName}</div><div>{partner.contactNumber}</div></td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex flex-col gap-1">
+                                        <div className="flex flex-col gap-1 items-start">
                                             {getWorkflowStatusBadge(partner.workflow_status)}
                                             {partner.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                 <div className="flex gap-1 mt-1">
@@ -588,18 +601,6 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                             )}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="text-emerald-600 hover:text-emerald-700 hover:underline dark:text-emerald-400">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-0.5 rounded-full font-bold ${partner.buyerType === 'Government' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{partner.buyerType || 'Private'}</span></td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-wrap gap-1">
-                                            {partner.commodityNeeds?.slice(0, 3).map((c, i) => (
-                                                <span key={i} className="px-2 py-0.5 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 rounded-md text-[10px] font-bold border border-teal-100 dark:border-teal-800 uppercase">{c.name}</span>
-                                            ))}
-                                            {(partner.commodityNeeds?.length || 0) > 3 && <span className="text-[10px] text-gray-400 font-bold">+{partner.commodityNeeds.length - 3} more</span>}
-                                            {(!partner.commodityNeeds || partner.commodityNeeds.length === 0) && <span className="text-gray-400 text-xs italic">Unspecified</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div className="font-bold text-gray-700 dark:text-gray-300">{partner.ownerName}</div><div>{partner.contactNumber}</div></td>
                                 </tr>
                             ))}
                         </tbody>

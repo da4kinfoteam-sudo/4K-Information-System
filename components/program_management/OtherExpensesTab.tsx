@@ -631,14 +631,15 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -997,13 +998,13 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         <tr>
                             <OtherExpenseColumnHeader label="UID" columnKey="uid" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['uid'] || []} onFilterChange={(v) => handleColumnFilterChange('uid', v)} uniqueValues={uniqueValues['uid']} />
                             <OtherExpenseColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['operatingUnit'] || []} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues['operatingUnit']} />
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow</th>
                             <OtherExpenseColumnHeader label="Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues['status']} />
                             <OtherExpenseColumnHeader label="UACS Code" columnKey="uacsCode" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['uacsCode'] || []} onFilterChange={(v) => handleColumnFilterChange('uacsCode', v)} uniqueValues={uniqueValues['uacsCode']} />
                             <OtherExpenseColumnHeader label="Particulars" columnKey="particulars" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['particulars'] || []} onFilterChange={(v) => handleColumnFilterChange('particulars', v)} uniqueValues={uniqueValues['particulars']} />
                             <OtherExpenseColumnHeader label="Amount" columnKey="amount" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['amount'] || []} onFilterChange={(v) => handleColumnFilterChange('amount', v)} uniqueValues={[]} isNumeric />
                             <OtherExpenseColumnHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundYear', v)} uniqueValues={uniqueValues['fundYear']} />
                             <OtherExpenseColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundType'] || []} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues['fundType']} />
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
                     </thead>
@@ -1012,8 +1013,28 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                        item.status === 'Completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
+                                        item.status === 'Ongoing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
+                                        item.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
+                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                    }`}>
+                                        {item.status}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-medium text-gray-900 dark:text-white">
+                                    {item.uacsCode}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white"><div className="truncate w-64" title={item.particulars}>{item.particulars}</div></td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.fundYear}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                    <div>{item.fundType}</div>
+                                    <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.tier}</div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs">
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1 items-start">
                                         {getWorkflowStatusBadge(item.workflow_status)}
                                         {item.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                             <div className="flex gap-1 mt-1">
@@ -1034,26 +1055,6 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                             </div>
                                         )}
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                        item.status === 'Completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                                        item.status === 'Ongoing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
-                                        item.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                                    }`}>
-                                        {item.status}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-mono font-medium text-gray-900 dark:text-white">
-                                    {item.uacsCode}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white"><div className="truncate w-64" title={item.particulars}>{item.particulars}</div></td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.fundYear}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                    <div>{item.fundType}</div>
-                                    <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.tier}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     {canEdit && (isSelectionMode ? (

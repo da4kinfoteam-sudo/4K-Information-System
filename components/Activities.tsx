@@ -541,14 +541,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -737,7 +738,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     onFilterChange={(v) => handleColumnFilterChange('fundType', v)} 
                                     uniqueValues={uniqueValues.fundType} 
                                 />
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Status</th>
                                 <ActivityColumnHeader 
                                     label="Project Status" 
                                     columnKey="status" 
@@ -775,6 +775,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     uniqueValues={[]}
                                     isNumeric={true}
                                 />
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap">Workflow Status</th>
                                 <th scope="col" className="px-6 py-3 text-right text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-700 z-10">
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
@@ -811,8 +812,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundType || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                            {new Date(activity.date).toLocaleDateString()}
+                                            {activity.endDate && activity.endDate !== activity.date ? ` - ${new Date(activity.endDate).toLocaleDateString()}` : ''}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate" title={activity.description}>{activity.description}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(totalActivityBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex flex-col gap-1">
+                                            <div className="flex flex-col gap-1 items-start">
                                                 {getWorkflowStatusBadge(activity.workflow_status)}
                                                 {activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                     <div className="flex gap-1 mt-1">
@@ -834,13 +842,6 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                            {new Date(activity.date).toLocaleDateString()}
-                                            {activity.endDate && activity.endDate !== activity.date ? ` - ${new Date(activity.endDate).toLocaleDateString()}` : ''}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300 max-w-xs truncate" title={activity.description}>{activity.description}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(totalActivityBudget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10">
                                             {canEdit && (
                                                 <div className="flex items-center justify-end">

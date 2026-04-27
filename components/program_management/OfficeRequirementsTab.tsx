@@ -599,14 +599,15 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider";
+        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
+        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
         switch (status) {
-            case 'APPROVED': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`;
-            case 'PENDING': return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`;
-            case 'REJECTED': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`;
-            case 'DRAFT': return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
-            default: return null;
+            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
+            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
+            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
+            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
         }
+        return <span className={classes}>{status || 'DRAFT'}</span>;
     };
 
     const canApprove = (role?: string) => {
@@ -1055,7 +1056,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, operatingUnit: vals }))}
                                 uniqueValues={uniqueValues['operatingUnit'] || []}
                             />
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Workflow</th>
                             <OfficeRequirementColumnHeader 
                                 label="Status" 
                                 columnKey="status" 
@@ -1121,6 +1121,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, fundType: vals }))}
                                 uniqueValues={uniqueValues['fundType'] || []}
                             />
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
                     </thead>
@@ -1133,8 +1134,17 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(item.status)}>{item.status}</span></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                                        {item.equipment}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300"><div className="truncate w-48" title={item.specs}>{item.specs}</div><div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundYear}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundType}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs">
-                                        <div className="flex flex-col gap-1">
+                                        <div className="flex flex-col gap-1 items-start">
                                             {getWorkflowStatusBadge(item.workflow_status)}
                                             {item.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                 <div className="flex gap-1 mt-1">
@@ -1156,15 +1166,6 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                             )}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(item.status)}>{item.status}</span></td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                                        {item.equipment}
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-300"><div className="truncate w-48" title={item.specs}>{item.specs}</div><div className="text-xs text-gray-400 truncate w-48">{item.purpose}</div></td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500 dark:text-gray-300">{item.numberOfUnits}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundYear}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundType}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         {canEdit && (
                                             isSelectionMode ? 
