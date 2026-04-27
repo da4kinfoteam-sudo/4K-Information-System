@@ -1,0 +1,254 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../supabaseClient';
+import { RoleConfig, appModules, UserRole } from '../../constants';
+import { Save, AlertTriangle, Info, Check, X } from 'lucide-react';
+
+const allRoles: UserRole[] = ['Super Admin', 'Administrator', 'Management', 'Focal - User', 'RFO - User', 'User', 'Guest'];
+
+const UserControlCenterTab: React.FC = () => {
+    const [configs, setConfigs] = useState<RoleConfig[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [warning, setWarning] = useState<string | null>(null);
+
+    // Initial state matching
+    const [pendingConfigs, setPendingConfigs] = useState<RoleConfig[]>([]);
+
+    useEffect(() => {
+        fetchConfigs();
+    }, []);
+
+    const fetchConfigs = async () => {
+        if (!supabase) return;
+        setLoading(true);
+        const { data, error } = await supabase.from('roles_config').select('*');
+        if (error) {
+            setError(error.message);
+        } else if (data) {
+            // Seed any missing configurations
+            const fullSet: RoleConfig[] = [];
+            allRoles.forEach(role => {
+                appModules.forEach(module => {
+                    const existing = data.find(c => c.role === role && c.module === module);
+                    if (existing) {
+                        fullSet.push(existing);
+                    } else {
+                        // Defaults based on role
+                        fullSet.push({
+                            role: role as string,
+                            module,
+                            can_view: true,
+                            can_edit: ['Super Admin', 'Administrator'].includes(role),
+                            can_delete: ['Super Admin', 'Administrator'].includes(role)
+                        });
+                    }
+                });
+            });
+            setConfigs(fullSet);
+            setPendingConfigs(fullSet);
+        }
+        setLoading(false);
+    };
+
+    const handleToggle = (role: string, module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {
+        setPendingConfigs(prev => prev.map(c => {
+            if (c.role === role && c.module === module) {
+                const newConfig = { ...c, [field]: !c[field] };
+                // Logic: cannot edit or delete if cannot view
+                if (field === 'can_view' && !newConfig.can_view) {
+                    newConfig.can_edit = false;
+                    newConfig.can_delete = false;
+                }
+                // Logic: Cannot view = false if trying to edit/delete
+                if ((field === 'can_edit' || field === 'can_delete') && newConfig[field]) {
+                    newConfig.can_view = true;
+                }
+                return newConfig;
+            }
+            return c;
+        }));
+    };
+
+    const runWhiteScreenCheck = (): string | null => {
+        // Mock-Mode Validation block
+        for (const role of allRoles) {
+            const roleConfigs = pendingConfigs.filter(c => c.role === role);
+            if (roleConfigs.length > 0) {
+                const hasAnyView = roleConfigs.some(c => c.can_view);
+                if (!hasAnyView) {
+                    return `Role "${role}" has absolutely zero access to the application. This will result in a white-screen or immediate lockout upon login. Please grant at least one view permission.`;
+                }
+            }
+        }
+        
+        // Safety Profile for Super Admin User Control Center Edit logic
+        const superAdminConfig = pendingConfigs.find(c => c.role === 'Super Admin' && c.module === 'System Management');
+        // While not strictly a module listed, we should ensure Super Admins at least have full rights to everything.
+        const superAdminDeficits = pendingConfigs.filter(c => c.role === 'Super Admin' && (!c.can_view || !c.can_edit || !c.can_delete));
+        if (superAdminDeficits.length > 0) {
+            return `Warning: You are attempting to remove permissions from the 'Super Admin' role. Super Admins must always have full access to prevent system lockout.`;
+        }
+
+        return null; // Passes all checks
+    };
+
+    const handleSave = async () => {
+        if (!supabase) return;
+
+        const validationWarning = runWhiteScreenCheck();
+        if (validationWarning) {
+            setWarning(validationWarning);
+            return;
+        }
+
+        setWarning(null);
+        setSaving(true);
+        setError(null);
+
+        // Upsert all pending configs
+        const { error } = await supabase.from('roles_config').upsert(
+            pendingConfigs.map(c => {
+                const { id, ...rest } = c; // remove id if new
+                return id ? c : rest;
+            }),
+            { onConflict: 'role,module' }
+        );
+
+        if (error) {
+            setError(error.message);
+        } else {
+            setConfigs(pendingConfigs);
+            alert('Role configurations saved successfully.');
+        }
+        setSaving(false);
+    };
+
+    const hasChanges = JSON.stringify(configs) !== JSON.stringify(pendingConfigs);
+
+    if (loading) return <div className="p-4">Loading control center...</div>;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div>
+                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Role-Level UX Control</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage global view, edit, and delete permissions for each role.</p>
+                </div>
+                <button
+                    onClick={handleSave}
+                    disabled={saving || !hasChanges}
+                    className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium transition-all ${saving || !hasChanges ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg'}`}
+                >
+                    <Save className="h-5 w-5" />
+                    {saving ? 'Saving...' : 'Save Configuration'}
+                </button>
+            </div>
+
+            {error && (
+                <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <p>{error}</p>
+                </div>
+            )}
+            
+            {warning && (
+                <div className="p-4 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p className="font-bold">Virtual Check Failed</p>
+                        <p className="text-sm mt-1">{warning}</p>
+                    </div>
+                </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300">
+                        <tr>
+                            <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 z-10 w-64 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">Module / Area</th>
+                            {allRoles.map(role => (
+                                <th key={role} className="px-4 py-4 font-bold border-b dark:border-gray-700 text-center min-w-[120px]">
+                                    {role}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                        {appModules.map(module => (
+                            <tr key={module} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                    {module}
+                                </td>
+                                {allRoles.map(role => {
+                                    const config = pendingConfigs.find(c => c.role === role && c.module === module);
+                                    if (!config) return <td key={role} className="p-4"></td>;
+                                    
+                                    const isSuperAdmin = role === 'Super Admin';
+
+                                    return (
+                                        <td key={role} className="px-4 py-3 align-top border-l border-gray-100 dark:border-gray-800/50">
+                                            <div className="flex flex-col gap-2">
+                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">VIEW</span>
+                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_view ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_view ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                    </div>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="hidden"
+                                                        checked={config.can_view}
+                                                        onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_view')}
+                                                        disabled={isSuperAdmin}
+                                                    />
+                                                </label>
+                                                
+                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">EDIT</span>
+                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_edit ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_edit ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                    </div>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="hidden"
+                                                        checked={config.can_edit}
+                                                        onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_edit')}
+                                                        disabled={isSuperAdmin}
+                                                    />
+                                                </label>
+
+                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">DEL</span>
+                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_delete ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_delete ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                    </div>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="hidden"
+                                                        checked={config.can_delete}
+                                                        onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_delete')}
+                                                        disabled={isSuperAdmin}
+                                                    />
+                                                </label>
+                                            </div>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-3">
+                <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-800 dark:text-blue-300">
+                    <p className="font-semibold mb-1">How Role Control Works (Phase 4)</p>
+                    <p>Changing these toggles affects all users with that specific role. <strong>Super Admin</strong> always retains full systemic control and cannot be locked out. If you assign an override on a specific user, that override will supersede these defaults (Upcoming Phase 5).</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default UserControlCenterTab;

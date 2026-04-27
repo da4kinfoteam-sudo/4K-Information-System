@@ -14,6 +14,7 @@ import UserLogsTab from './settings/UserLogsTab';
 import DCFManagementTab from './settings/DCFManagementTab';
 import LODManagementTab from './settings/LODManagementTab';
 import ArchiveManagementTab from './settings/ArchiveManagementTab';
+import UserControlCenterTab from './settings/UserControlCenterTab';
 
 interface SettingsProps {
     isDarkMode: boolean;
@@ -39,7 +40,7 @@ interface SettingsProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
-type TabName = 'profile' | 'management' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
+type TabName = 'profile' | 'management' | 'control_center' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
 
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
@@ -59,7 +60,8 @@ const Settings: React.FC<SettingsProps> = ({
     
     if (!currentUser) return null;
 
-    const isAdmin = currentUser?.role === 'Administrator';
+    const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
+    const isSuperAdmin = currentUser?.role === 'Super Admin';
     const canAccessSystem = isAdmin || currentUser?.role === 'Management';
 
     const TabButton: React.FC<{ name: TabName; label: string }> = ({ name, label }) => {
@@ -89,6 +91,7 @@ const Settings: React.FC<SettingsProps> = ({
                     <nav className="-mb-px flex space-x-2 px-4 overflow-x-auto" aria-label="Tabs">
                         <TabButton name="profile" label="User Profile" />
                         {isAdmin && <TabButton name="management" label="Users Management" />}
+                        {isSuperAdmin && <TabButton name="control_center" label="User Control Center" />}
                         {isAdmin && <TabButton name="dcf" label="DCF Management" />}
                         {isAdmin && <TabButton name="lod" label="LOD Management" />}
                         {canAccessSystem && <TabButton name="system" label="System Management" />}
@@ -102,6 +105,10 @@ const Settings: React.FC<SettingsProps> = ({
                         <UserProfileTab isDarkMode={isDarkMode} toggleDarkMode={toggleDarkMode} />
                     )}
                     
+                    {activeTab === 'control_center' && isSuperAdmin && (
+                        <UserControlCenterTab />
+                    )}
+
                     {activeTab === 'management' && isAdmin && (
                         <UserManagementTab />
                     )}

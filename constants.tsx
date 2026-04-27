@@ -88,6 +88,24 @@ export type UserRole = 'Super Admin' | 'Administrator' | 'Guest' | 'Focal - User
 export type VisibilityScope = 'All OUs' | 'Own OU';
 export type WorkflowStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
+export interface RoleConfig {
+    id?: number;
+    role: string;
+    module: string;
+    can_view: boolean;
+    can_edit: boolean;
+    can_delete: boolean;
+}
+
+export const appModules = [
+    'Reports & Dashboards',
+    'Data Collection Forms (Activities, Subprojects)',
+    'Program Management',
+    'Accomplishment Forms (Financial, Physical)',
+    'IPO Management',
+    'Resources (Marketing, LOD, Comm. Mapping)'
+];
+
 export interface User extends BaseEntity {
     username: string;
     fullName: string;
