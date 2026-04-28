@@ -31,11 +31,21 @@ if (typeof window !== 'undefined') {
     logEnvStatus();
 }
 
-const supabaseUrl = getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL');
-const supabaseKey = getEnvVar('VITE_SUPABASE_ANON_KEY') || 
-                    getEnvVar('VITE_SUPABASE_KEY') || 
-                    getEnvVar('SUPABASE_ANON_KEY') || 
-                    getEnvVar('SUPABASE_KEY');
+const supabaseUrl = 
+    import.meta.env.VITE_SUPABASE_URL || 
+    import.meta.env.SUPABASE_URL || 
+    getEnvVar('VITE_SUPABASE_URL') || 
+    getEnvVar('SUPABASE_URL');
+
+const supabaseKey = 
+    import.meta.env.VITE_SUPABASE_ANON_KEY || 
+    import.meta.env.VITE_SUPABASE_KEY ||
+    import.meta.env.SUPABASE_ANON_KEY ||
+    import.meta.env.SUPABASE_KEY ||
+    getEnvVar('VITE_SUPABASE_ANON_KEY') || 
+    getEnvVar('VITE_SUPABASE_KEY') || 
+    getEnvVar('SUPABASE_ANON_KEY') || 
+    getEnvVar('SUPABASE_KEY');
 
 if (!supabaseUrl || !supabaseKey) {
     console.warn('Supabase URL or Key is missing. Database features will be disabled. URL:', !!supabaseUrl, 'Key:', !!supabaseKey);

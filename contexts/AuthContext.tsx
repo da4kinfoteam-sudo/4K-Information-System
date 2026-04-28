@@ -42,9 +42,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!supabase) return;
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log("Supabase Auth Event:", event);
+            console.log("Supabase Auth Event:", event, "Session exists:", !!session);
             
             if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+                // If we already have the correct user in state, maybe skip re-fetch?
+                // But for now, let's just make sure we don't clear it.
                 const { data, error } = await supabase
                     .from('users')
                     .select('*')
@@ -66,19 +68,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     setCurrentUser(fallbackUser);
                 }
             } else if (event === 'SIGNED_OUT') {
+                // INVARIANT: We only auto-clear session if we are sure it's a "real" logout
+                // or if we are not in an emergency admin session.
                 const current = currentUserRef.current;
-                if (current && current.email && !current.email.endsWith('@offline.local')) {
-                    console.log("Supabase SIGNED_OUT: Clearing session");
+                
+                // If we have an offline user, ignore SIGNED_OUT from Supabase
+                if (current && current.email && current.email.endsWith('@offline.local')) {
+                    console.log("Supabase SIGNED_OUT: Ignoring for offline user");
+                    return;
+                }
+
+                // If Supabase says we are out, and we were logged in via Supabase, then we clear.
+                // We check if session is null to confirm state.
+                if (!session && current && current.email) {
+                    console.log("Supabase SIGNED_OUT: Clearing Supabase session");
                     setCurrentUser(null);
                     localStorage.removeItem('currentUserSession');
                 }
             }
         });
 
+        // Initial session check - less aggressive clearing
         supabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user && !currentUserRef.current) {
+            console.log("Initial session check:", !!session);
+            if (session?.user) {
                 supabase.from('users').select('*').eq('email', session.user.email).limit(1).then(({ data, error }) => {
-                    if (error) console.error("Initial session check error:", error);
                     if (data && data.length > 0) {
                         setCurrentUser(data[0] as User);
                     } else if (session.user) {
@@ -94,6 +108,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                         setCurrentUser(fallbackUser);
                     }
                 });
+            } else {
+                // If no Supabase session, but we have a "real" Supabase user in localStorage,
+                // we might want to clear it? No, let's wait for the onAuthStateChange event
+                // to be sure, or just leave it. If they aren't authorized, API calls will fail anyway.
+                // This prevents the refresh-logout loop.
             }
         });
 
