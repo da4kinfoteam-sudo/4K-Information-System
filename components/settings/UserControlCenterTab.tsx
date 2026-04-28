@@ -114,19 +114,18 @@ const UserControlCenterTab: React.FC = () => {
 
         // Filter and Clean data for upsert
         const recordsToSave = pendingConfigs.map(c => {
-            const cleaned: any = {
+            const record: any = {
                 role: c.role,
                 module: c.module,
                 can_view: !!c.can_view,
                 can_edit: !!c.can_edit,
                 can_delete: !!c.can_delete
             };
-            
-            // Critical: Only include ID if it is a truthy number to avoid "null value violates not-null" error
-            if (c.id && c.id > 0) {
-                cleaned.id = c.id;
+            // Only include ID if it's a valid positive number
+            if (typeof c.id === 'number' && c.id > 0) {
+                record.id = c.id;
             }
-            return cleaned;
+            return record;
         });
 
         const { error } = await supabase.from('roles_config').upsert(
@@ -174,6 +173,20 @@ const UserControlCenterTab: React.FC = () => {
                 </div>
             </div>
 
+            {success && (
+                <div className="fixed bottom-10 right-10 z-[100] animate-bounce-in">
+                    <div className="bg-emerald-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3">
+                        <div className="bg-white/20 p-2 rounded-full">
+                            <Check className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                            <p className="font-bold">Save Successful!</p>
+                            <p className="text-xs opacity-90">User role permissions have been updated.</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {error && (
                 <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3 border border-red-200">
                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
@@ -195,15 +208,15 @@ const UserControlCenterTab: React.FC = () => {
             )}
 
             <div className="relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-900">
-                <div className="overflow-auto max-h-[650px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-                    <table className="w-full text-sm text-left border-collapse table-fixed">
+                <div className="overflow-auto max-h-[700px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
+                    <table className="w-full text-sm text-left border-collapse">
                         <thead className="text-gray-700 dark:text-gray-300">
                             <tr className="bg-gray-100 dark:bg-gray-800 sticky top-0 z-40">
-                                <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-50 w-48 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                                <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-50 min-w-[200px] shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                                     User Roles
                                 </th>
                                 {appModules.map(module => (
-                                    <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[200px] text-[11px] uppercase tracking-wider bg-gray-100 dark:bg-gray-800">
+                                    <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[240px] text-[11px] uppercase tracking-wider bg-gray-100 dark:bg-gray-800">
                                         {module}
                                     </th>
                                 ))}

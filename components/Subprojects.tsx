@@ -813,11 +813,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                                     {isSelectionMode && (
                                                         <input type="checkbox" checked={selectedIds.includes(s.id)} onChange={(e) => { e.stopPropagation(); handleSelectRow(s.id); }} onClick={(e) => e.stopPropagation()} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                                                     )}
-                                                    <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200">Edit</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200">Delete</button>
+                                                    <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200 border border-emerald-600 px-2 py-1 rounded hover:bg-emerald-50 transition-colors">Details</button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(s); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200 border border-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors">Delete</button>
                                                 </div>
                                             ) : (
-                                                <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200">View</button>
+                                                <button onClick={(e) => { e.stopPropagation(); onSelectSubproject(s); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200 border border-emerald-600 px-4 py-1 rounded hover:bg-emerald-50 transition-colors">View Details</button>
                                             )}
                                         </td>
                                     </tr>

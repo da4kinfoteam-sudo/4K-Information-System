@@ -1166,19 +1166,32 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                             )}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        {canEdit && (
-                                            isSelectionMode ? 
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium sticky right-0 bg-white dark:bg-gray-800 z-10 shadow-[-4px_0_6px_rgba(0,0,0,0.02)]">
+                                        {isSelectionMode ? (
                                             <input 
                                                 type="checkbox" 
                                                 checked={selectedIds.includes(item.id)} 
                                                 onChange={(e) => { e.stopPropagation(); handleSelectRow(item.id); }} 
                                                 disabled={selectionIntent === 'delete' && !canDeleteThis}
-                                                className="mr-3 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
-                                            /> :
-                                            <div className="flex justify-end gap-2">
-                                                <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900">View</button>
-                                                {canDeleteThis && <button onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} className="text-red-600 hover:text-red-900">Delete</button>}
+                                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 disabled:opacity-50"
+                                            />
+                                        ) : (
+                                            <div className="flex justify-end gap-3">
+                                                {canEdit ? (
+                                                    <>
+                                                        <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-2 py-1 rounded hover:bg-emerald-50 transition-colors">Details</button>
+                                                        {canDeleteThis && (
+                                                            <button 
+                                                                onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
+                                                                className="text-red-600 hover:text-red-900 border border-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-4 py-1 rounded hover:bg-emerald-50 transition-colors">View Details</button>
+                                                )}
                                             </div>
                                         )}
                                     </td>
