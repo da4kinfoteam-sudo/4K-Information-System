@@ -41,15 +41,24 @@ const Login: React.FC = () => {
                      // Try to match email if username was provided
                      let loginEmail = identifier;
                      if (!identifier.includes('@')) {
-                         const matchedUser = await supabase.from('users').select('email').eq('username', identifier).limit(1);
-                         if (matchedUser.data && matchedUser.data.length > 0 && matchedUser.data[0].email) {
-                             loginEmail = matchedUser.data[0].email;
+                         console.log("Detecting email for username:", identifier);
+                         // Try searching in the database directly for the email mapping
+                         const { data: matchedData } = await supabase
+                            .from('users')
+                            .select('email')
+                            .eq('username', identifier)
+                            .maybeSingle();
+
+                         if (matchedData?.email) {
+                             loginEmail = matchedData.email;
                          } else {
+                             // Fallback to searching in locally fetched list
                              const ctxMatch = usersList.find(u => u.username === identifier);
                              if (ctxMatch?.email) loginEmail = ctxMatch.email;
                          }
                      }
-
+                     
+                     console.log("Attempting native sign in for:", loginEmail);
                      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                          email: loginEmail,
                          password: password

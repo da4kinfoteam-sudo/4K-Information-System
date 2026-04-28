@@ -105,16 +105,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const logout = async () => {
+        console.log("Logout initiated...");
         if (supabase) {
             try {
-                await supabase.auth.signOut();
+                // signOut from Supabase. We don't await indefinitely to prevent hanging UI.
+                const { error } = await Promise.race([
+                    supabase.auth.signOut(),
+                    new Promise<{ error: any }>((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000))
+                ]) as any;
+                if (error) console.warn("Supabase forced sign out error:", error);
             } catch (err) {
-                console.error("Sign out error", err);
+                console.error("Sign out exception (continuing clearing local state):", err);
             }
         }
         
+        // Ensure ALL auth-related local storage is gone
         localStorage.removeItem('currentUserSession');
+        // Clear potential Supabase tokens too if we want to be aggressive
+        Object.keys(localStorage).forEach(key => {
+            if (key.includes('sb-') && key.includes('-auth-token')) {
+                localStorage.removeItem(key);
+            }
+        });
+        
         setCurrentUser(null);
+        console.log("Local auth state cleared. Redirecting...");
+        
+        // Optional: Force a window reload to clean up all states if the user is really stuck
+        // window.location.href = '/'; 
     };
 
     const hasAccess = (module: string, action: 'view' | 'edit' | 'delete'): boolean => {
