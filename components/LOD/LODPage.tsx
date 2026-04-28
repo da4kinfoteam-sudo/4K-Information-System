@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { IPO, LodAssessment, philippineRegions, ouToRegionMap, filterYears } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
-import { usePagination } from '../mainfunctions/TableHooks';
+import { usePagination, useUserAccess } from '../mainfunctions/TableHooks';
 import { useLogAction } from '../../hooks/useLogAction';
 
 interface LODPageProps {
@@ -14,6 +14,8 @@ interface LODPageProps {
 const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
+    const { canEdit } = useUserAccess('Level of Development');
+    const isAdmin = canEdit;
     const [assessments, setAssessments] = useState<LodAssessment[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');

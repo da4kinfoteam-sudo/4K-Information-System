@@ -28,7 +28,7 @@ import { generateBar1Snapshots } from '../services/snapshotService';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
     const { currentUser, getVisibilityScope } = useAuth();
-    const visibilityScope = getVisibilityScope('Reports & Dashboards');
+    const visibilityScope = getVisibilityScope('Reports');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
 
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');

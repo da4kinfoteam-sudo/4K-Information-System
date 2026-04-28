@@ -206,7 +206,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Shared Hooks
-    const { canEdit, canViewAll } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
+    const { canEdit, canViewAll } = useUserAccess('Activities');
     const { 
         isSelectionMode, selectedIds, isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
         handleSelectAll, handleSelectRow, resetSelection 

@@ -163,36 +163,36 @@ const UserControlCenterTab: React.FC = () => {
             )}
 
             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                <table className="w-full text-sm text-left">
+                <table className="w-full text-sm text-left border-collapse">
                     <thead className="bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300">
                         <tr>
-                            <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 z-10 w-64 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">Module / Area</th>
-                            {allRoles.map(role => (
-                                <th key={role} className="px-4 py-4 font-bold border-b dark:border-gray-700 text-center min-w-[120px]">
-                                    {role}
+                            <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 z-20 w-48 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">User Roles</th>
+                            {appModules.map(module => (
+                                <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[200px] text-[11px] uppercase tracking-wider">
+                                    {module}
                                 </th>
                             ))}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-                        {appModules.map(module => (
-                            <tr key={module} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
-                                    {module}
+                        {allRoles.map(role => (
+                            <tr key={role} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                    {role}
                                 </td>
-                                {allRoles.map(role => {
+                                {appModules.map(module => {
                                     const config = pendingConfigs.find(c => c.role === role && c.module === module);
-                                    if (!config) return <td key={role} className="p-4"></td>;
+                                    if (!config) return <td key={module} className="p-4 border-r dark:border-gray-700 border-gray-100"></td>;
                                     
                                     const isSuperAdmin = role === 'Super Admin';
 
                                     return (
-                                        <td key={role} className="px-4 py-3 align-top border-l border-gray-100 dark:border-gray-800/50">
+                                        <td key={module} className="px-4 py-3 align-top border-r border-gray-100 dark:border-gray-800/50">
                                             <div className="flex flex-col gap-2">
-                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
-                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">VIEW</span>
-                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_view ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_view ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">VIEW</span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_view ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_view ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
@@ -203,10 +203,10 @@ const UserControlCenterTab: React.FC = () => {
                                                     />
                                                 </label>
                                                 
-                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
-                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">EDIT</span>
-                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_edit ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_edit ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">EDIT</span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_edit ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_edit ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
@@ -217,10 +217,10 @@ const UserControlCenterTab: React.FC = () => {
                                                     />
                                                 </label>
 
-                                                <label className={`flex justify-between items-center text-xs p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
-                                                    <span className="text-gray-600 dark:text-gray-400 font-medium tracking-wide">DEL</span>
-                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${config.can_delete ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${config.can_delete ? 'translate-x-5' : 'translate-x-0'}`}></span>
+                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                    <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">DELETE</span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_delete ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_delete ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
@@ -243,8 +243,8 @@ const UserControlCenterTab: React.FC = () => {
             <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-3">
                 <Info className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-blue-800 dark:text-blue-300">
-                    <p className="font-semibold mb-1">How Role Control Works (Phase 4)</p>
-                    <p>Changing these toggles affects all users with that specific role. <strong>Super Admin</strong> always retains full systemic control and cannot be locked out. If you assign an override on a specific user, that override will supersede these defaults (Upcoming Phase 5).</p>
+                    <p className="font-semibold mb-1">How Role Control Works</p>
+                    <p>Changing these toggles affects all users with that specific role. <strong>Super Admin</strong> always retains full systemic control and cannot be locked out. If you assign an override on a specific user in User Management, that override will supersede these defaults.</p>
                 </div>
             </div>
         </div>

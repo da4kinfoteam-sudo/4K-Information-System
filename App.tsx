@@ -399,23 +399,37 @@ const AppContent: React.FC = () => {
         const denied = <AccessDenied onBackToHome={() => navigateTo('/')} />;
 
         // Phase 6: Guard clauses for module-level access
-        if (['/dashboards', '/reports'].includes(currentPage)) {
-            if (!checkAccess('Reports & Dashboards')) return denied;
+        if (currentPage === '/dashboards' && !checkAccess('Dashboards')) return denied;
+        if (currentPage === '/reports' && !checkAccess('Reports')) return denied;
+        
+        if (['/subprojects', '/subproject-edit', '/subproject-detail'].includes(currentPage)) {
+            if (!checkAccess('Subprojects')) return denied;
         }
-        if (['/subprojects', '/trainings', '/other-activities', '/activities', '/activity-edit', '/subproject-edit', '/subproject-detail', '/activity-detail'].includes(currentPage)) {
-            if (!checkAccess('Data Collection Forms (Activities, Subprojects)')) return denied;
+        if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail'].includes(currentPage)) {
+            if (!checkAccess('Activities')) return denied;
         }
         if (['/program-management', '/program-management/office-detail', '/program-management/staffing-detail', '/program-management/other-expense-detail'].includes(currentPage)) {
             if (!checkAccess('Program Management')) return denied;
         }
-        if (['/accomplishment/financial', '/accomplishment/physical'].includes(currentPage)) {
-            if (!checkAccess('Accomplishment Forms (Financial, Physical)')) return denied;
-        }
+        if (currentPage === '/accomplishment/financial' && !checkAccess('Accomplishment - Financial')) return denied;
+        if (currentPage === '/accomplishment/physical' && !checkAccess('Accomplishment - Physical')) return denied;
+        
         if (['/ipo', '/ipo-detail'].includes(currentPage)) {
             if (!checkAccess('IPO Management')) return denied;
         }
-        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit', '/level-of-development', '/lod-details', '/commodity-mapping'].includes(currentPage)) {
-            if (!checkAccess('Resources (Marketing, LOD, Comm. Mapping)')) return denied;
+        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit'].includes(currentPage)) {
+            if (!checkAccess('Marketing Database')) return denied;
+        }
+        if (['/level-of-development', '/lod-details'].includes(currentPage)) {
+            if (!checkAccess('Level of Development')) return denied;
+        }
+        if (currentPage === '/commodity-mapping') {
+            if (!checkAccess('Community Mapping')) return denied;
+        }
+        if (currentPage === '/references' && !checkAccess('References')) return denied;
+        if (currentPage === '/settings' && !checkAccess('System Management')) {
+             // System Management is for the whole settings tab, but maybe we should allow profiles?
+             // Usually settings has profile. Let's see.
         }
 
         switch (currentPage) {

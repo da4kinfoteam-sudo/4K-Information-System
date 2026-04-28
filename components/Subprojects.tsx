@@ -189,7 +189,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
-    const { canEdit, canViewAll } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
+    const { canEdit, canViewAll } = useUserAccess('Subprojects');
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);

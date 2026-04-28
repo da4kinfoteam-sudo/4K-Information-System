@@ -61,23 +61,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
     );
 
     const renderNavItem = (item: NavItem) => {
-        // Legacy Permission Check
-        if (item.hiddenFor && currentUser && item.hiddenFor.includes(currentUser.role)) {
-            return null;
-        }
-
-        // Granular Management checks based on modules
-        if (item.name === 'Reports & Dashboards' && !hasAccess('Reports & Dashboards', 'view')) return null;
-        if ((item.name === 'Data Collection Forms') && !hasAccess('Data Collection Forms (Activities, Subprojects)', 'view')) return null;
-        if ((item.name === 'Accomplishment Forms') && !hasAccess('Accomplishment Forms (Financial, Physical)', 'view')) return null;
-        if (item.name === 'Program Management' && !hasAccess('Program Management', 'view')) return null;
-        if (item.name === 'IPO Management' && !hasAccess('IPO Management', 'view')) return null;
-        if (item.name === 'Resources' && !hasAccess('Resources (Marketing, LOD, Comm. Mapping)', 'view')) return null;
-
-        const isGroup = !!item.children;
-        const isExpanded = expandedGroups.has(item.name);
-        const isActive = item.href === currentPage || (isGroup && item.children?.some(c => c.href === currentPage));
-
         // Updated Theme Colors to match white background
         // Active state remains Emerald as requested
         const activeClass = 'bg-emerald-600 text-white shadow-md font-semibold';
@@ -85,6 +68,53 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
         const inactiveClass = 'text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-700/50 hover:text-emerald-700 dark:hover:text-emerald-400 font-medium';
         // Group Active: Very light slate background
         const groupActiveClass = 'bg-slate-50 dark:bg-gray-700/50 text-emerald-800 dark:text-emerald-400 font-semibold';
+
+        // Legacy Permission Check
+        if (item.hiddenFor && currentUser && item.hiddenFor.includes(currentUser.role)) {
+            return null;
+        }
+
+        // Granular Management checks based on modules
+        if (item.name === 'Homepage') return (
+            <li key={item.name} className="mb-1">
+                <a
+                    href={item.href}
+                    onClick={(e) => { e.preventDefault(); if(item.href) handleLinkClick(item.href); }}
+                    className={`flex items-center gap-3 p-3 rounded-lg transition-all duration-200 ${item.href === currentPage ? activeClass : inactiveClass}`}
+                >
+                    <span>{item.name}</span>
+                </a>
+            </li>
+        );
+
+        const moduleMapping: Record<string, string> = {
+            'Dashboards': 'Dashboards',
+            'Reports': 'Reports',
+            'Subprojects': 'Subprojects',
+            'Activities': 'Activities',
+            'Program Management': 'Program Management',
+            'Financial': 'Accomplishment - Financial',
+            'Physical': 'Accomplishment - Physical',
+            'Indigenous Peoples Organization': 'IPO Management',
+            'Marketing Database': 'Marketing Database',
+            'Level of Development': 'Level of Development',
+            'Community Mapping': 'Community Mapping',
+            'References': 'References'
+        };
+
+        const checkAccessRecursive = (navItem: NavItem): boolean => {
+            if (navItem.children) {
+                return navItem.children.some(child => checkAccessRecursive(child));
+            }
+            const moduleName = moduleMapping[navItem.name] || navItem.name;
+            return hasAccess(moduleName, 'view');
+        };
+
+        if (!checkAccessRecursive(item)) return null;
+
+        const isGroup = !!item.children;
+        const isExpanded = expandedGroups.has(item.name);
+        const isActive = item.href === currentPage || (isGroup && item.children?.some(c => c.href === currentPage));
 
         if (isGroup) {
             return (

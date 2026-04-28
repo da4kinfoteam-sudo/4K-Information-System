@@ -255,7 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const { currentUser, getVisibilityScope } = useAuth();
     
     // Check Reports & Dashboards visibility scope
-    const visibilityScope = getVisibilityScope('Reports & Dashboards');
+    const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
 
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());

@@ -68,7 +68,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     onSelectOfficeReq, onSelectStaffingReq
 }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = useUserAccess('Accomplishment Forms (Financial, Physical)');
+    const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
 
     // Filters (Persistent)
     const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('phys_selectedYear', null);

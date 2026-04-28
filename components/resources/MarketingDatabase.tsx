@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
 import { MarketingPartner, philippineRegions, CommodityNeed, referenceCommodityTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
-import { usePagination, useSelection } from '../mainfunctions/TableHooks';
+import { usePagination, useSelection, useUserAccess } from '../mainfunctions/TableHooks';
 import LocationPicker, { parseLocation } from '../LocationPicker';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { supabase } from '../../supabaseClient';
@@ -54,7 +54,8 @@ interface MarketingDatabaseProps {
 
 const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPartners, onSelectPartner, commodityCategories }) => {
     const { currentUser } = useAuth();
-    const isAdmin = currentUser?.role === 'Administrator';
+    const { canEdit } = useUserAccess('Marketing Database');
+    const isAdmin = canEdit;
     
     const [view, setView] = useState<'list' | 'add'>('list');
     const [searchTerm, setSearchTerm] = useLocalStorageState('market_search', '');

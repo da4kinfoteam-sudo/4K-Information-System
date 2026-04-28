@@ -31,7 +31,7 @@ type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser, getVisibilityScope } = useAuth();
-    const visibilityScope = getVisibilityScope('Reports & Dashboards');
+    const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
 
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');

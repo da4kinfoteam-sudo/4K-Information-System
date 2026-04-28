@@ -74,7 +74,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
+    const { canEdit } = useUserAccess('Subprojects');
     const { addIpoHistory } = useIpoHistory();
     const isAdmin = currentUser?.role === 'Administrator';
 

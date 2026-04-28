@@ -168,11 +168,37 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         }
 
-        if (rolesConfigs && rolesConfigs.length > 0) {
-            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
-            if (roleDef) {
-                return !!roleDef[`can_${action}`];
+        const aggregateMapping: Record<string, string> = {
+            'Subprojects': 'Data Collection Forms (Activities, Subprojects)',
+            'Activities': 'Data Collection Forms (Activities, Subprojects)',
+            'Accomplishment - Financial': 'Accomplishment Forms (Financial, Physical)',
+            'Accomplishment - Physical': 'Accomplishment Forms (Financial, Physical)',
+            'Reports': 'Reports & Dashboards',
+            'Dashboards': 'Reports & Dashboards',
+            'Marketing Database': 'Resources (Marketing Database, LOD, Community Mapping)',
+            'Level of Development': 'Resources (Marketing Database, LOD, Community Mapping)',
+            'Commodity Mapping': 'Resources (Marketing Database, LOD, Community Mapping)'
+        };
+
+        const checkModule = (modName: string) => {
+            if (rolesConfigs && rolesConfigs.length > 0) {
+                const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === modName);
+                if (roleDef && typeof roleDef[`can_${action}`] === 'boolean') {
+                    return !!roleDef[`can_${action}`];
+                }
             }
+            return null;
+        };
+
+        // Try granular first
+        const granularAccess = checkModule(module);
+        if (granularAccess !== null) return granularAccess;
+
+        // Try aggregate fallback
+        const aggregateName = aggregateMapping[module];
+        if (aggregateName) {
+            const aggregateAccess = checkModule(aggregateName);
+            if (aggregateAccess !== null) return aggregateAccess;
         }
 
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return true;
@@ -185,11 +211,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';
 
-        if (rolesConfigs && rolesConfigs.length > 0) {
-            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
-            if (roleDef && roleDef.visibility_scope) {
-                return (roleDef.visibility_scope === 'Own OU' || roleDef.visibility_scope === 'Own OUs') ? 'Own OU' : 'All';
+        const aggregateMapping: Record<string, string> = {
+            'Subprojects': 'Data Collection Forms (Activities, Subprojects)',
+            'Activities': 'Data Collection Forms (Activities, Subprojects)',
+            'Accomplishment - Financial': 'Accomplishment Forms (Financial, Physical)',
+            'Accomplishment - Physical': 'Accomplishment Forms (Financial, Physical)',
+            'Reports': 'Reports & Dashboards',
+            'Dashboards': 'Reports & Dashboards',
+            'Marketing Database': 'Resources (Marketing Database, LOD, Community Mapping)',
+            'Level of Development': 'Resources (Marketing Database, LOD, Community Mapping)',
+            'Commodity Mapping': 'Resources (Marketing Database, LOD, Community Mapping)'
+        };
+
+        const checkVisibility = (modName: string) => {
+            if (rolesConfigs && rolesConfigs.length > 0) {
+                const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === modName);
+                if (roleDef && roleDef.visibility_scope) {
+                    return (roleDef.visibility_scope === 'Own OU' || roleDef.visibility_scope === 'Own OUs') ? 'Own OU' : 'All';
+                }
             }
+            return null;
+        };
+
+        const granularVisibility = checkVisibility(module);
+        if (granularVisibility !== null) return granularVisibility;
+
+        const aggregateName = aggregateMapping[module];
+        if (aggregateName) {
+            const aggregateVisibility = checkVisibility(aggregateName);
+            if (aggregateVisibility !== null) return aggregateVisibility;
         }
 
         if (['Super Admin', 'Administrator', 'Management'].includes(currentUser.role)) {

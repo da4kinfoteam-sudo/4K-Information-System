@@ -57,7 +57,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
+    const { canEdit } = useUserAccess('Activities');
     const isAdmin = currentUser?.role === 'Administrator';
     
     // Helper to get UACS Description

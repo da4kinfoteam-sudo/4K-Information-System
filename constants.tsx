@@ -98,12 +98,19 @@ export interface RoleConfig {
 }
 
 export const appModules = [
-    'Reports & Dashboards',
-    'Data Collection Forms (Activities, Subprojects)',
+    'Dashboards',
+    'Reports',
+    'Subprojects',
+    'Activities',
     'Program Management',
-    'Accomplishment Forms (Financial, Physical)',
+    'Accomplishment - Financial',
+    'Accomplishment - Physical',
     'IPO Management',
-    'Resources (Marketing, LOD, Comm. Mapping)'
+    'Marketing Database',
+    'Level of Development',
+    'Commodity Mapping',
+    'References',
+    'System Management'
 ];
 
 export interface User extends BaseEntity {

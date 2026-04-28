@@ -111,7 +111,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     onSelectOfficeReq, onSelectStaffingReq, onSelectOtherExpense
 }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = useUserAccess('Accomplishment Forms (Financial, Physical)');
+    const { canEdit, canViewAll } = useUserAccess('Accomplishment - Financial');
 
     // Filter States (Persistent)
     const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', null);
