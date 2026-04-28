@@ -120,7 +120,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditProjectDetails = canEdit;
     const canEditCommodity = canEdit;
     const canEditBudget = canEdit;
-    const canEditAccomplishment = canEditFinancial || canEditPhysical;
+    const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {

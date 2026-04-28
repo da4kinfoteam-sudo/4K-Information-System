@@ -82,7 +82,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const canEditExpenses = canEdit;
     
     // Accomplishment: Editable based on tracking permissions
-    const canEditAccomplishment = canEditFinancial || canEditPhysical;
+    const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
 
     const totalBudget = useMemo(() => {
        return activity.expenses.reduce((acc, item) => acc + item.amount, 0);

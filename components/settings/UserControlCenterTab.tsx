@@ -113,20 +113,16 @@ const UserControlCenterTab: React.FC = () => {
         setSuccess(false);
 
         // Filter and Clean data for upsert
-        const recordsToSave = pendingConfigs.map(c => {
-            const record: any = {
-                role: c.role,
-                module: c.module,
-                can_view: !!c.can_view,
-                can_edit: !!c.can_edit,
-                can_delete: !!c.can_delete
-            };
-            // Only include ID if it's a valid positive number
-            if (typeof c.id === 'number' && c.id > 0) {
-                record.id = c.id;
-            }
-            return record;
-        });
+        // CRITICAL: We omit 'id' entirely so that the database handles it via the 'onConflict' logic 
+        // using the (role, module) unique constraint. This prevents "null value violates not-null" errors
+        // during bulk upserts if IDs are mixed or missing.
+        const recordsToSave = pendingConfigs.map(c => ({
+            role: c.role,
+            module: c.module,
+            can_view: !!c.can_view,
+            can_edit: !!c.can_edit,
+            can_delete: !!c.can_delete
+        }));
 
         const { error } = await supabase.from('roles_config').upsert(
             recordsToSave,
@@ -208,8 +204,8 @@ const UserControlCenterTab: React.FC = () => {
             )}
 
             <div className="relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-900">
-                <div className="overflow-auto max-h-[700px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-                    <table className="w-full text-sm text-left border-collapse">
+                <div className="overflow-auto max-h-[720px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
+                    <table className="min-w-max w-full text-sm text-left border-collapse">
                         <thead className="text-gray-700 dark:text-gray-300">
                             <tr className="bg-gray-100 dark:bg-gray-800 sticky top-0 z-40">
                                 <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-50 min-w-[200px] shadow-[2px_0_4px_rgba(0,0,0,0.05)]">

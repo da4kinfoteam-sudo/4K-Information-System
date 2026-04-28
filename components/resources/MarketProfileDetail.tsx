@@ -2,6 +2,7 @@
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { MarketingPartner, IPO, CommodityNeed, MarketLinkage } from '../../constants';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 
 interface MarketProfileDetailProps {
     partner: MarketingPartner;
@@ -15,6 +16,7 @@ interface MarketProfileDetailProps {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onEditDetails, onEditLinkages, commodityCategories }) => {
+    const { canEdit } = useUserAccess('Marketing Database');
     
     // Filter and Sort IPOs by Region Proximity (Potential)
     const potentialIpos = useMemo(() => {
@@ -63,10 +65,12 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white">General Information</h3>
-                            <button onClick={onEditDetails} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                Edit Details
-                            </button>
+                            {canEdit && (
+                                <button onClick={onEditDetails} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit Details
+                                </button>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
@@ -134,10 +138,12 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white">Marketing Linkages</h3>
-                            <button onClick={onEditLinkages} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                Edit Market Linkage
-                            </button>
+                            {canEdit && (
+                                <button onClick={onEditLinkages} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit Market Linkage
+                                </button>
+                            )}
                         </div>
 
                         <div className="space-y-4">
