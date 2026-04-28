@@ -5,7 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserPermissions } from '../mainfunctions/TableHooks';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 
 interface StaffingRequirementDetailProps {
@@ -45,7 +45,7 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
 
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Program Management');
     const isAdmin = currentUser?.role === 'Administrator';
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');

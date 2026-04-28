@@ -6,7 +6,7 @@ import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, Fun
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
-import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { usePagination, useSelection, useUserAccess } from './mainfunctions/TableHooks';
 import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesUpload } from './mainfunctions/ImportExportService';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { fetchAll } from '../hooks/useSupabaseTable';
@@ -206,7 +206,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Shared Hooks
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
     const { 
         isSelectionMode, selectedIds, isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
         handleSelectAll, handleSelectRow, resetSelection 

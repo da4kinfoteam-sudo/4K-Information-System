@@ -5,7 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
+import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
@@ -195,7 +195,7 @@ const StaffingRequirementColumnHeader: React.FC<StaffingRequirementColumnHeaderP
 
 export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Program Management');
     
     // Local State
     const [view, setView] = useState<'list' | 'form'>('list');

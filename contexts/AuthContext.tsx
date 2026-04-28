@@ -13,6 +13,7 @@ interface AuthContextType {
     setUsersList: React.Dispatch<React.SetStateAction<User[]>>;
     rolesConfigs: RoleConfig[];
     hasAccess: (module: string, action: 'view' | 'edit' | 'delete') => boolean;
+    getVisibilityScope: (module: string) => 'All' | 'Own OU';
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -154,8 +155,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return false;
     };
 
+    // Phase 6: Granular Visibility Scope enforcement
+    const getVisibilityScope = (module: string): 'All' | 'Own OU' => {
+        if (!currentUser) return 'Own OU'; // default restrictive
+        
+        if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';
+
+        if (rolesConfigs && rolesConfigs.length > 0) {
+            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
+            if (roleDef && roleDef.visibility_scope) {
+                // Return whatever is configured in the roles config
+                return (roleDef.visibility_scope === 'Own OU' || roleDef.visibility_scope === 'Own OUs') ? 'Own OU' : 'All';
+            }
+        }
+
+        // Default behavior for other legacy roles
+        if (['Super Admin', 'Administrator', 'Management'].includes(currentUser.role)) {
+            return 'All';
+        }
+        
+        return 'Own OU';
+    };
+
     return (
-        <AuthContext.Provider value={{ currentUser, login, logout, usersList, setUsersList, rolesConfigs, hasAccess }}>
+        <AuthContext.Provider value={{ currentUser, login, logout, usersList, setUsersList, rolesConfigs, hasAccess, getVisibilityScope }}>
             {children}
         </AuthContext.Provider>
     );

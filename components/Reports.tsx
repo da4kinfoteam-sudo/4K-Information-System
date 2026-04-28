@@ -27,13 +27,22 @@ type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utiliza
 import { generateBar1Snapshots } from '../services/snapshotService';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, getVisibilityScope } = useAuth();
+    const visibilityScope = getVisibilityScope('Reports & Dashboards');
+    const isLockedToOwnOu = visibilityScope === 'Own OU';
+
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     // Default to current year
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedOu, setSelectedOu] = useState<string>('All');
+    const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+
+    useEffect(() => {
+        if (isLockedToOwnOu && currentUser) {
+            setSelectedOu(currentUser.operatingUnit);
+        }
+    }, [currentUser, isLockedToOwnOu]);
     
     // Snapshot Management
     const [isGeneratingSnapshots, setIsGeneratingSnapshots] = useState(false);
@@ -208,7 +217,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            disabled={currentUser?.role === 'User'}
+                            disabled={isLockedToOwnOu}
                             className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>

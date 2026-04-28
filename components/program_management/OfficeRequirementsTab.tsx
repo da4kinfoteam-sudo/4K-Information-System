@@ -5,7 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { useSelection, getUserPermissions, usePagination } from '../mainfunctions/TableHooks';
+import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; 
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
@@ -188,7 +188,7 @@ interface OfficeRequirementsTabProps {
 
 export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Program Management');
     const isAdmin = currentUser?.role === 'Administrator';
     
     // Local State

@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, tiers, fundTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
-import { getUserPermissions } from '../mainfunctions/TableHooks';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 
 interface Props {
@@ -68,7 +68,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     onSelectOfficeReq, onSelectStaffingReq
 }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('Accomplishment Forms (Financial, Physical)');
 
     // Filters (Persistent)
     const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('phys_selectedYear', null);
@@ -100,11 +100,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
     // Init OU Lock
     useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
+        if (!canViewAll && currentUser) {
             setFormOu(currentUser.operatingUnit);
             setSelectedOu(currentUser.operatingUnit);
         }
-    }, [currentUser]);
+    }, [currentUser, canViewAll]);
 
     // --- 1. Load Data ---
     useEffect(() => {
@@ -592,7 +592,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Operating Unit</label>
-                                <select value={formOu} onChange={(e) => setFormOu(e.target.value)} disabled={currentUser?.role === 'User'} className={`${modalInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}>
+                                <select value={formOu} onChange={(e) => setFormOu(e.target.value)} disabled={!canViewAll} className={`${modalInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}>
                                     <option value="All">All OUs</option>
                                     {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                 </select>

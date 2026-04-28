@@ -4,7 +4,7 @@ import React, { useState, FormEvent, useEffect, useMemo } from 'react';
 import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { supabase } from '../supabaseClient';
@@ -74,7 +74,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
     const { addIpoHistory } = useIpoHistory();
     const isAdmin = currentUser?.role === 'Administrator';
 

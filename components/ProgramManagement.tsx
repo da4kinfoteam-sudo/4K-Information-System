@@ -4,7 +4,7 @@ import {
     OfficeRequirement, StaffingRequirement, OtherProgramExpense
 } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useUserAccess } from './mainfunctions/TableHooks';
 import { OfficeRequirementsTab } from './program_management/OfficeRequirementsTab';
 import { StaffingRequirementsTab } from './program_management/StaffingRequirementsTab';
 import { OtherExpensesTab } from './program_management/OtherExpensesTab';
@@ -37,7 +37,7 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const { currentUser } = useAuth();
     // Use local storage state for persistence
     const [activeTab, setActiveTab] = useLocalStorageState<ActiveTab>('programManagement_activeTab', 'Office');
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('Program Management');
 
     const TabButton = ({ name, label }: { name: ActiveTab; label: string }) => {
         const isActive = activeTab === name;

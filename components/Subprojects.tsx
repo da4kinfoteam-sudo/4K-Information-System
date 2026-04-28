@@ -5,7 +5,7 @@ import { Subproject, IPO, SubprojectDetail, operatingUnits, ouToRegionMap, filte
 import { Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
-import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { usePagination, useSelection, useUserAccess } from './mainfunctions/TableHooks';
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
@@ -189,7 +189,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
 
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [subprojectToDelete, setSubprojectToDelete] = useState<Subproject | null>(null);

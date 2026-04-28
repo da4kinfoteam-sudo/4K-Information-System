@@ -4,7 +4,7 @@ import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPermissions, usePagination } from './mainfunctions/TableHooks';
+import { useUserAccess, usePagination } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 
@@ -150,7 +150,7 @@ const PaginationControls: React.FC<{
 
 const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('IPO Management');
     const [isEditing, setIsEditing] = useState(false);
     const [editedIpo, setEditedIpo] = useState<IPO>(ipo);
     const [baseRegion, setBaseRegion] = useState(''); // Track base region from dropdown

@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { Activity, IPO } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
-import { getUserPermissions } from './mainfunctions/TableHooks';
+import { useUserAccess } from './mainfunctions/TableHooks';
 
 interface ActivityDetailProps {
     activity: Activity;
@@ -57,7 +57,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('Data Collection Forms (Activities, Subprojects)');
     const isAdmin = currentUser?.role === 'Administrator';
     
     // Helper to get UACS Description

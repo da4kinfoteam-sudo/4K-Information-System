@@ -252,9 +252,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     officeReqs, staffingReqs, otherProgramExpenses,
     onSelectSubproject, onSelectActivity, externalFilters
 }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, getVisibilityScope } = useAuth();
+    
+    // Check Reports & Dashboards visibility scope
+    const visibilityScope = getVisibilityScope('Reports & Dashboards');
+    const isLockedToOwnOu = visibilityScope === 'Own OU';
+
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedOu, setSelectedOu] = useState<string>('All');
+    const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [totalBudgetView, setTotalBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
@@ -625,7 +630,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
-                            disabled={currentUser?.role === 'User'}
+                            disabled={isLockedToOwnOu}
                             className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>

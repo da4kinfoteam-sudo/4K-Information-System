@@ -43,18 +43,27 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
     onSelectSubproject,
     onSelectActivity
 }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, getVisibilityScope } = useAuth();
     const { logAction } = useLogAction();
+    const visibilityScope = getVisibilityScope('System Management');
+    const isLockedToOwnOu = visibilityScope === 'Own OU';
     
     // Filters - Updated Defaults
     const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
-    const [filterOu, setFilterOu] = useState<string>('All');
+    const [filterOu, setFilterOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [filterFundType, setFilterFundType] = useState<string>('Current');
     const [filterTier, setFilterTier] = useState<string>('Tier 1');
 
     // UI State
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Subprojects', 'Activities', 'Staffing', 'Office']));
     const [isSaving, setIsSaving] = useState(false);
+
+    // Initial restriction
+    useEffect(() => {
+        if (isLockedToOwnOu && currentUser) {
+            setFilterOu(currentUser.operatingUnit);
+        }
+    }, [currentUser, isLockedToOwnOu]);
 
     // Pending Changes State
     const [pendingChanges, setPendingChanges] = useState<Record<string, PendingChange>>({});
@@ -373,7 +382,7 @@ const PhysicalStatusManagement: React.FC<PhysicalStatusManagementProps> = ({
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">Operating Unit</label>
-                        <select value={filterOu} onChange={(e) => setFilterOu(e.target.value)} className={commonInputClasses}>
+                        <select value={filterOu} onChange={(e) => setFilterOu(e.target.value)} disabled={isLockedToOwnOu} className={`${commonInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}>
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                         </select>

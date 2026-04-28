@@ -5,7 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserPermissions } from '../mainfunctions/TableHooks';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 
 interface OfficeRequirementDetailProps {
@@ -42,7 +42,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 
 const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('Program Management');
     const isAdmin = currentUser?.role === 'Administrator';
     const canEditDetails = canEdit;
     const canEditAccomplishment = canEdit;

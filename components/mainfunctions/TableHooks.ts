@@ -83,8 +83,14 @@ export function useSelection<T extends { id: number }>() {
 }
 
 // --- Permissions Helper ---
-export const getUserPermissions = (currentUser: User | null) => {
-    const canEdit = currentUser?.role === 'Administrator' || currentUser?.role === 'User';
-    const canViewAll = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
+import { useAuth } from '../../contexts/AuthContext';
+
+export const useUserAccess = (moduleName: string) => {
+    const { hasAccess, getVisibilityScope } = useAuth();
+    
+    // Instead of static role checks, we now check the specific AuthContext
+    const canEdit = hasAccess(moduleName, 'edit');
+    const canViewAll = getVisibilityScope(moduleName) === 'All';
+    
     return { canEdit, canViewAll };
 };

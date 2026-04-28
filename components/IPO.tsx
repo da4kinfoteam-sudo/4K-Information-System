@@ -6,7 +6,7 @@ import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommo
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
 import { useLogAction } from '../hooks/useLogAction';
-import { usePagination, useSelection, getUserPermissions } from './mainfunctions/TableHooks';
+import { usePagination, useSelection, useUserAccess } from './mainfunctions/TableHooks';
 import { downloadIposReport, downloadIposTemplate, handleIposUpload } from './mainfunctions/ImportExportService';
 import { useAuth } from '../contexts/AuthContext';
 import { fetchAll } from '../hooks/useSupabaseTable';
@@ -65,7 +65,7 @@ const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
 const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onSelectIpo, onSelectSubproject, particularTypes, commodityCategories, externalFilters, onClearExternalFilters, gidaAreas, elcacAreas }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = getUserPermissions(currentUser);
+    const { canEdit } = useUserAccess('IPO Management');
     const isAdmin = currentUser?.role === 'Administrator';
     const { logAction } = useLogAction();
     const [formData, setFormData] = useState(defaultFormData);

@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
-import { getUserPermissions } from '../mainfunctions/TableHooks';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
@@ -111,7 +111,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     onSelectOfficeReq, onSelectStaffingReq, onSelectOtherExpense
 }) => {
     const { currentUser } = useAuth();
-    const { canEdit, canViewAll } = getUserPermissions(currentUser);
+    const { canEdit, canViewAll } = useUserAccess('Accomplishment Forms (Financial, Physical)');
 
     // Filter States (Persistent)
     const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', null);
@@ -145,13 +145,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [expandedSubGroups, setExpandedSubGroups] = useLocalStorageState<string[]>('fin_expandedSubGroups', []);
     const [expandedRows, setExpandedRows] = useLocalStorageState<string[]>('fin_expandedRows', []);
 
-    // Initialize User OU lock
+    // Initialize User OU lock based on permissions
     useEffect(() => {
-        if (currentUser && currentUser.role === 'User') {
+        if (!canViewAll && currentUser) {
             setFormOu(currentUser.operatingUnit);
             setSelectedOu(currentUser.operatingUnit);
         }
-    }, [currentUser]);
+    }, [currentUser, canViewAll]);
 
     // --- 1. Load and Normalize Data ---
     useEffect(() => {
@@ -869,7 +869,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                 <select 
                                     value={formOu} 
                                     onChange={(e) => setFormOu(e.target.value)} 
-                                    disabled={currentUser?.role === 'User'}
+                                    disabled={!canViewAll}
                                     className={`${commonInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}
                                 >
                                     <option value="All">All OUs</option>
