@@ -14,6 +14,8 @@ interface AuthContextType {
     rolesConfigs: RoleConfig[];
     hasAccess: (module: string, action: 'view' | 'edit' | 'delete') => boolean;
     getVisibilityScope: (module: string) => 'All' | 'Own OU';
+    refreshUser: () => Promise<void>;
+    refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,12 +32,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         currentUserRef.current = currentUser;
     }, [currentUser]);
 
-    useEffect(() => {
+    const fetchRolesConfigs = async () => {
         if (!supabase) return;
-        supabase.from('roles_config').select('*').then(({ data, error }) => {
-            if (data) setRolesConfigs(data);
-            if (error) console.error("Error fetching roles configs:", error);
-        });
+        const { data, error } = await supabase.from('roles_config').select('*');
+        if (data) setRolesConfigs(data);
+        if (error) console.error("Error fetching roles configs:", error);
+    };
+
+    useEffect(() => {
+        fetchRolesConfigs();
     }, []);
 
     useEffect(() => {
@@ -157,9 +162,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const hasAccess = (module: string, action: 'view' | 'edit' | 'delete'): boolean => {
         if (!currentUser) return false;
 
-        if (currentUser.role === 'Super Admin' && module === 'System Management') {
-            return true;
-        }
+        // Super Admins and Administrators have full access bypass
+        if (['Super Admin', 'Administrator'].includes(currentUser.role)) return true;
 
         if (currentUser.permissions_override && typeof currentUser.permissions_override === 'object') {
             const moduleOverride = currentUser.permissions_override[module];
@@ -168,40 +172,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         }
 
-        const aggregateMapping: Record<string, string> = {
-            'Subprojects': 'Data Collection Forms (Activities, Subprojects)',
-            'Activities': 'Data Collection Forms (Activities, Subprojects)',
-            'Accomplishment - Financial': 'Accomplishment Forms (Financial, Physical)',
-            'Accomplishment - Physical': 'Accomplishment Forms (Financial, Physical)',
-            'Reports': 'Reports & Dashboards',
-            'Dashboards': 'Reports & Dashboards',
-            'Marketing Database': 'Resources (Marketing Database, LOD, Community Mapping)',
-            'Level of Development': 'Resources (Marketing Database, LOD, Community Mapping)',
-            'Commodity Mapping': 'Resources (Marketing Database, LOD, Community Mapping)'
-        };
-
-        const checkModule = (modName: string) => {
-            if (rolesConfigs && rolesConfigs.length > 0) {
-                const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === modName);
-                if (roleDef && typeof roleDef[`can_${action}`] === 'boolean') {
-                    return !!roleDef[`can_${action}`];
-                }
+        // Role-Level Granular Permissions
+        if (rolesConfigs && rolesConfigs.length > 0) {
+            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
+            if (roleDef && typeof roleDef[`can_${action}`] === 'boolean') {
+                return !!roleDef[`can_${action}`];
             }
-            return null;
-        };
-
-        // Try granular first
-        const granularAccess = checkModule(module);
-        if (granularAccess !== null) return granularAccess;
-
-        // Try aggregate fallback
-        const aggregateName = aggregateMapping[module];
-        if (aggregateName) {
-            const aggregateAccess = checkModule(aggregateName);
-            if (aggregateAccess !== null) return aggregateAccess;
         }
 
-        if (['Super Admin', 'Administrator'].includes(currentUser.role)) return true;
+        // By default, everyone can view but not edit/delete
         if (action === 'view') return true; 
         return false;
     };
@@ -210,18 +189,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (!currentUser) return 'Own OU';
         
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';
-
-        const aggregateMapping: Record<string, string> = {
-            'Subprojects': 'Data Collection Forms (Activities, Subprojects)',
-            'Activities': 'Data Collection Forms (Activities, Subprojects)',
-            'Accomplishment - Financial': 'Accomplishment Forms (Financial, Physical)',
-            'Accomplishment - Physical': 'Accomplishment Forms (Financial, Physical)',
-            'Reports': 'Reports & Dashboards',
-            'Dashboards': 'Reports & Dashboards',
-            'Marketing Database': 'Resources (Marketing Database, LOD, Community Mapping)',
-            'Level of Development': 'Resources (Marketing Database, LOD, Community Mapping)',
-            'Commodity Mapping': 'Resources (Marketing Database, LOD, Community Mapping)'
-        };
 
         const checkVisibility = (modName: string) => {
             if (rolesConfigs && rolesConfigs.length > 0) {
@@ -236,12 +203,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const granularVisibility = checkVisibility(module);
         if (granularVisibility !== null) return granularVisibility;
 
-        const aggregateName = aggregateMapping[module];
-        if (aggregateName) {
-            const aggregateVisibility = checkVisibility(aggregateName);
-            if (aggregateVisibility !== null) return aggregateVisibility;
-        }
-
         if (['Super Admin', 'Administrator', 'Management'].includes(currentUser.role)) {
             return 'All';
         }
@@ -249,8 +210,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return 'Own OU';
     };
 
+    const fetchCurrentUser = async () => {
+        if (!supabase || !currentUser?.id) return;
+        const { data, error } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
+        if (data) {
+            setCurrentUser(data);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ currentUser, login, logout, usersList, setUsersList, rolesConfigs, hasAccess, getVisibilityScope }}>
+        <AuthContext.Provider value={{ 
+            currentUser, login, logout, usersList, setUsersList, rolesConfigs, 
+            hasAccess, getVisibilityScope, refreshUser: fetchCurrentUser, refreshPermissions: fetchRolesConfigs 
+        }}>
             {children}
         </AuthContext.Provider>
     );

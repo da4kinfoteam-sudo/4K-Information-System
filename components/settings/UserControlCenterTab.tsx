@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { useAuth } from '../../contexts/AuthContext';
 import { RoleConfig, appModules, UserRole } from '../../constants';
 import { Save, AlertTriangle, Info, Check, X } from 'lucide-react';
 
@@ -14,6 +15,10 @@ const UserControlCenterTab: React.FC = () => {
 
     // Initial state matching
     const [pendingConfigs, setPendingConfigs] = useState<RoleConfig[]>([]);
+
+    const [success, setSuccess] = useState<boolean>(false);
+
+    const { refreshPermissions } = useAuth();
 
     useEffect(() => {
         fetchConfigs();
@@ -52,6 +57,7 @@ const UserControlCenterTab: React.FC = () => {
     };
 
     const handleToggle = (role: string, module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {
+        setSuccess(false);
         setPendingConfigs(prev => prev.map(c => {
             if (c.role === role && c.module === module) {
                 const newConfig = { ...c, [field]: !c[field] };
@@ -83,8 +89,7 @@ const UserControlCenterTab: React.FC = () => {
         }
         
         // Safety Profile for Super Admin User Control Center Edit logic
-        const superAdminConfig = pendingConfigs.find(c => c.role === 'Super Admin' && c.module === 'System Management');
-        // While not strictly a module listed, we should ensure Super Admins at least have full rights to everything.
+        // We ensure Super Admins at least have full rights to everything.
         const superAdminDeficits = pendingConfigs.filter(c => c.role === 'Super Admin' && (!c.can_view || !c.can_edit || !c.can_delete));
         if (superAdminDeficits.length > 0) {
             return `Warning: You are attempting to remove permissions from the 'Super Admin' role. Super Admins must always have full access to prevent system lockout.`;
@@ -105,21 +110,37 @@ const UserControlCenterTab: React.FC = () => {
         setWarning(null);
         setSaving(true);
         setError(null);
+        setSuccess(false);
 
-        // Upsert all pending configs
+        // Filter and Clean data for upsert
+        const recordsToSave = pendingConfigs.map(c => {
+            const cleaned: any = {
+                role: c.role,
+                module: c.module,
+                can_view: !!c.can_view,
+                can_edit: !!c.can_edit,
+                can_delete: !!c.can_delete
+            };
+            
+            // Critical: Only include ID if it is a truthy number to avoid "null value violates not-null" error
+            if (c.id && c.id > 0) {
+                cleaned.id = c.id;
+            }
+            return cleaned;
+        });
+
         const { error } = await supabase.from('roles_config').upsert(
-            pendingConfigs.map(c => {
-                const { id, ...rest } = c; // remove id if new
-                return id ? c : rest;
-            }),
+            recordsToSave,
             { onConflict: 'role,module' }
         );
 
         if (error) {
             setError(error.message);
         } else {
-            setConfigs(pendingConfigs);
-            alert('Role configurations saved successfully.');
+            setConfigs(JSON.parse(JSON.stringify(pendingConfigs)));
+            setSuccess(true);
+            await refreshPermissions();
+            setTimeout(() => setSuccess(false), 5000);
         }
         setSaving(false);
     };
@@ -135,20 +156,31 @@ const UserControlCenterTab: React.FC = () => {
                     <h3 className="text-xl font-bold text-gray-800 dark:text-white">Role-Level UX Control</h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage global view, edit, and delete permissions for each role.</p>
                 </div>
-                <button
-                    onClick={handleSave}
-                    disabled={saving || !hasChanges}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium transition-all ${saving || !hasChanges ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg'}`}
-                >
-                    <Save className="h-5 w-5" />
-                    {saving ? 'Saving...' : 'Save Configuration'}
-                </button>
+                <div className="flex items-center gap-4">
+                    {success && (
+                        <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm animate-pulse">
+                            <Check className="h-5 w-5" />
+                            Changes saved successfully!
+                        </div>
+                    )}
+                    <button
+                        onClick={handleSave}
+                        disabled={saving || !hasChanges}
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-white font-medium transition-all ${saving || !hasChanges ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 shadow-md hover:shadow-lg'}`}
+                    >
+                        <Save className="h-5 w-5" />
+                        {saving ? 'Saving...' : 'Save Configuration'}
+                    </button>
+                </div>
             </div>
 
             {error && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3">
+                <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-start gap-3 border border-red-200">
                     <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-                    <p>{error}</p>
+                    <div>
+                        <p className="font-bold">Database Error</p>
+                        <p className="text-sm">{error}</p>
+                    </div>
                 </div>
             )}
             
@@ -162,30 +194,32 @@ const UserControlCenterTab: React.FC = () => {
                 </div>
             )}
 
-            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                <table className="w-full text-sm text-left border-collapse">
-                    <thead className="bg-gray-100 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300">
-                        <tr>
-                            <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 z-20 w-48 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">User Roles</th>
-                            {appModules.map(module => (
-                                <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[200px] text-[11px] uppercase tracking-wider">
-                                    {module}
+            <div className="relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm bg-white dark:bg-gray-900">
+                <div className="overflow-auto max-h-[650px] scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
+                    <table className="w-full text-sm text-left border-collapse table-fixed">
+                        <thead className="text-gray-700 dark:text-gray-300">
+                            <tr className="bg-gray-100 dark:bg-gray-800 sticky top-0 z-40">
+                                <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-50 w-48 shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                                    User Roles
                                 </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-                        {allRoles.map(role => (
-                            <tr key={role} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
-                                    {role}
-                                </td>
-                                {appModules.map(module => {
-                                    const config = pendingConfigs.find(c => c.role === role && c.module === module);
-                                    if (!config) return <td key={module} className="p-4 border-r dark:border-gray-700 border-gray-100"></td>;
-                                    
-                                    const isSuperAdmin = role === 'Super Admin';
-
+                                {appModules.map(module => (
+                                    <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[200px] text-[11px] uppercase tracking-wider bg-gray-100 dark:bg-gray-800">
+                                        {module}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            {allRoles.map(role => (
+                                <tr key={role} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
+                                    <td className="px-6 py-4 font-bold text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-30 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
+                                        {role}
+                                    </td>
+                                    {appModules.map(module => {
+                                        const config = pendingConfigs.find(c => c.role === role && c.module === module);
+                                        if (!config) return <td key={module} className="p-4 border-r dark:border-gray-700 border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"></td>;
+                                        
+                                        const isSuperAdmin = role === 'Super Admin';
                                     return (
                                         <td key={module} className="px-4 py-3 align-top border-r border-gray-100 dark:border-gray-800/50">
                                             <div className="flex flex-col gap-2">
@@ -238,6 +272,7 @@ const UserControlCenterTab: React.FC = () => {
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
             
             <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 flex items-start gap-3">

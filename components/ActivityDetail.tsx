@@ -58,6 +58,9 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
+    const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
+    const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
+
     const isAdmin = currentUser?.role === 'Administrator';
     
     // Helper to get UACS Description
@@ -78,9 +81,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     const canEditDetails = canEdit;
     const canEditExpenses = canEdit;
     
-    // Accomplishment: Editable if Ongoing/Completed (to update blank fields) or Proposed (though weird).
-    // Basically always editable for User unless Cancelled, but fields inside will be locked if filled.
-    const canEditAccomplishment = canEdit;
+    // Accomplishment: Editable based on tracking permissions
+    const canEditAccomplishment = canEditFinancial || canEditPhysical;
 
     const totalBudget = useMemo(() => {
        return activity.expenses.reduce((acc, item) => acc + item.amount, 0);

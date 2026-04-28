@@ -75,6 +75,8 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
+    const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
+    const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
     const isAdmin = currentUser?.role === 'Administrator';
 
@@ -118,7 +120,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditProjectDetails = canEdit;
     const canEditCommodity = canEdit;
     const canEditBudget = canEdit;
-    const canEditAccomplishment = canEdit;
+    const canEditAccomplishment = canEditFinancial || canEditPhysical;
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {
