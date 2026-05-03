@@ -52,6 +52,18 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 export const supabase = (supabaseUrl && supabaseKey) 
-    ? createClient(supabaseUrl, supabaseKey) 
+    ? createClient(supabaseUrl, supabaseKey, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+        },
+        realtime: {
+            timeout: 30000,
+        },
+        global: {
+            fetch: fetch.bind(globalThis),
+        }
+    }) 
     : null;
 // --- End of supabaseClient.ts ---

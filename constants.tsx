@@ -121,6 +121,8 @@ export interface User extends BaseEntity {
     operatingUnit: string;
     visibility_scope?: VisibilityScope;
     assigned_focal_id?: number | string;
+    requires_approver?: boolean;
+    approver_id?: number | null;
     permissions_override?: any; // JSONB toggles
     password?: string;
 }

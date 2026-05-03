@@ -17,7 +17,10 @@ const UserManagementTab: React.FC = () => {
         email: '',
         role: 'User',
         operatingUnit: 'NPMO',
-        password: ''
+        password: '',
+        visibility_scope: 'All OUs',
+        requires_approver: false,
+        approver_id: null
     });
 
     const [userOverrides, setUserOverrides] = useState<any>({});
@@ -26,7 +29,10 @@ const UserManagementTab: React.FC = () => {
 
     const handleAddUser = () => {
         setEditingUser(null);
-        setFormData({ username: '', fullName: '', email: '', role: 'User', operatingUnit: 'NPMO', password: '' });
+        setFormData({ 
+            username: '', fullName: '', email: '', role: 'User', operatingUnit: 'NPMO', password: '', 
+            visibility_scope: 'All OUs', requires_approver: false, approver_id: null 
+        });
         setIsModalOpen(true);
     };
 
@@ -38,7 +44,10 @@ const UserManagementTab: React.FC = () => {
             email: user.email,
             role: user.role,
             operatingUnit: user.operatingUnit,
-            password: user.password || ''
+            password: user.password || '',
+            visibility_scope: user.visibility_scope || 'All OUs',
+            requires_approver: user.requires_approver || false,
+            approver_id: user.approver_id || null
         });
         setIsModalOpen(true);
     };
@@ -212,6 +221,7 @@ const UserManagementTab: React.FC = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Email</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Operating Unit</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Visibility</th>
                             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Overrides</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                         </tr>
@@ -232,6 +242,23 @@ const UserManagementTab: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{user.operatingUnit}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                            {user.visibility_scope || 'All OUs'}
+                                        </span>
+                                        {user.requires_approver && (
+                                            <span className="inline-flex items-center text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+                                                Requires Approver
+                                                {user.approver_id && (
+                                                    <span className="ml-1 text-gray-500">
+                                                        ({usersList.find(u => u.id === user.approver_id)?.fullName || 'Unknown'})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-center">
                                     {hasOverrides ? (
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
@@ -414,6 +441,44 @@ const UserManagementTab: React.FC = () => {
                                     {operatingUnits.map(unit => <option key={unit} value={unit}>{unit}</option>)}
                                 </select>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Visibility Scope</label>
+                                <select value={formData.visibility_scope || 'All OUs'} onChange={e => setFormData({...formData, visibility_scope: e.target.value as any})} className={commonInputClasses}>
+                                    <option value="All OUs">All OUs</option>
+                                    <option value="Own OU">Own OU</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center gap-2 mt-4">
+                                <input 
+                                    type="checkbox" 
+                                    id="reqApprover"
+                                    checked={formData.requires_approver || false} 
+                                    onChange={e => {
+                                        setFormData({
+                                            ...formData, 
+                                            requires_approver: e.target.checked,
+                                            approver_id: e.target.checked ? formData.approver_id : null
+                                        });
+                                    }} 
+                                    className="h-4 w-4 text-accent border-gray-300 rounded focus:ring-accent"
+                                />
+                                <label htmlFor="reqApprover" className="text-sm font-medium text-gray-700 dark:text-gray-300">Requires Approver</label>
+                            </div>
+                            {formData.requires_approver && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Select Approver</label>
+                                    <select 
+                                        value={formData.approver_id || ''} 
+                                        onChange={e => setFormData({...formData, approver_id: e.target.value ? parseInt(e.target.value) : null})} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="">-- No Approver Assigned --</option>
+                                        {usersList.filter(u => u.id !== editingUser?.id).map(user => (
+                                            <option key={user.id} value={user.id}>{user.fullName} ({user.role})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                              <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
                                 <input type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className={commonInputClasses} placeholder="Leave blank to keep unchanged" />
