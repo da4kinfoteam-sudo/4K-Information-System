@@ -123,7 +123,7 @@ const Login: React.FC = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Identity Handle</label>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Username</label>
                         <input 
                             type="text" 
                             required 
@@ -134,7 +134,7 @@ const Login: React.FC = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Access Key</label>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Password</label>
                         <input 
                             type="password" 
                             required 
