@@ -18,18 +18,27 @@ const ArchiveManagementTab: React.FC = () => {
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
     const fetchTrashItems = async () => {
-        setLoading(true);
-        const { data, error } = await supabase
-            .from('trash_bin')
-            .select('*')
-            .order('deleted_at', { ascending: false });
-
-        if (error) {
-            console.error('Error fetching trash items:', error);
-        } else {
-            setItems(data || []);
+        if (!supabase) {
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('trash_bin')
+                .select('*')
+                .order('deleted_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching trash items:', error);
+            } else {
+                setItems(data || []);
+            }
+        } catch (err) {
+            console.error('Archive Fetch Exception:', err);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {

@@ -121,32 +121,40 @@ const LODManagementTab: React.FC = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        if (!supabase) return;
+        if (!supabase) {
+            setLoading(false);
+            return;
+        }
 
-        const { data: sData } = await supabase.from('lod_sections').select('*').order('order', { ascending: true });
-        const { data: qData } = await supabase.from('lod_questions').select('*').order('order', { ascending: true });
-        const { data: cData } = await supabase.from('lod_choices').select('*').order('order', { ascending: true });
-        const { data: lData } = await supabase.from('lod_level_configs').select('*').order('level', { ascending: true });
+        try {
+            const { data: sData } = await supabase.from('lod_sections').select('*').order('order', { ascending: true });
+            const { data: qData } = await supabase.from('lod_questions').select('*').order('order', { ascending: true });
+            const { data: cData } = await supabase.from('lod_choices').select('*').order('order', { ascending: true });
+            const { data: lData } = await supabase.from('lod_level_configs').select('*').order('level', { ascending: true });
 
-        if (sData) {
-            setSections(sData);
-            setEditingSections(sData);
+            if (sData) {
+                setSections(sData);
+                setEditingSections(sData);
+            }
+            if (qData) {
+                setQuestions(qData);
+                setEditingQuestions(qData);
+                // Lock all existing questions by default
+                setLockedQuestionIds(new Set(qData.map(q => q.id)));
+            }
+            if (cData) {
+                setChoices(cData);
+                setEditingChoices(cData);
+            }
+            if (lData) {
+                setLevelConfigs(lData);
+                setEditingLevels(lData);
+            }
+        } catch (err) {
+            console.error("LOD Fetch Error:", err);
+        } finally {
+            setLoading(false);
         }
-        if (qData) {
-            setQuestions(qData);
-            setEditingQuestions(qData);
-            // Lock all existing questions by default
-            setLockedQuestionIds(new Set(qData.map(q => q.id)));
-        }
-        if (cData) {
-            setChoices(cData);
-            setEditingChoices(cData);
-        }
-        if (lData) {
-            setLevelConfigs(lData);
-            setEditingLevels(lData);
-        }
-        setLoading(false);
     };
 
     // --- DRAG AND DROP HANDLERS ---

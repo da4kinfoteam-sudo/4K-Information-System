@@ -25,35 +25,43 @@ const UserControlCenterTab: React.FC = () => {
     }, []);
 
     const fetchConfigs = async () => {
-        if (!supabase) return;
-        setLoading(true);
-        const { data, error } = await supabase.from('roles_config').select('*');
-        if (error) {
-            setError(error.message);
-        } else if (data) {
-            // Seed any missing configurations
-            const fullSet: RoleConfig[] = [];
-            allRoles.forEach(role => {
-                appModules.forEach(module => {
-                    const existing = data.find(c => c.role === role && c.module === module);
-                    if (existing) {
-                        fullSet.push(existing);
-                    } else {
-                        // Defaults based on role
-                        fullSet.push({
-                            role: role as string,
-                            module,
-                            can_view: true,
-                            can_edit: ['Super Admin', 'Administrator'].includes(role),
-                            can_delete: ['Super Admin', 'Administrator'].includes(role)
-                        });
-                    }
-                });
-            });
-            setConfigs(fullSet);
-            setPendingConfigs(fullSet);
+        if (!supabase) {
+            setLoading(false);
+            return;
         }
-        setLoading(false);
+        setLoading(true);
+        try {
+            const { data, error } = await supabase.from('roles_config').select('*');
+            if (error) {
+                setError(error.message);
+            } else if (data) {
+                // Seed any missing configurations
+                const fullSet: RoleConfig[] = [];
+                allRoles.forEach(role => {
+                    appModules.forEach(module => {
+                        const existing = data.find(c => c.role === role && c.module === module);
+                        if (existing) {
+                            fullSet.push(existing);
+                        } else {
+                            // Defaults based on role
+                            fullSet.push({
+                                role: role as string,
+                                module,
+                                can_view: true,
+                                can_edit: ['Super Admin', 'Administrator'].includes(role),
+                                can_delete: ['Super Admin', 'Administrator'].includes(role)
+                            });
+                        }
+                    });
+                });
+                setConfigs(fullSet);
+                setPendingConfigs(fullSet);
+            }
+        } catch (err: any) {
+            setError(err.message || "An unknown error occurred while fetching role configurations.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleToggle = (role: string, module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {

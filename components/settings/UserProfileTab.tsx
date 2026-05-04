@@ -10,7 +10,7 @@ interface UserProfileTabProps {
     toggleDarkMode: () => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 transition-all sm:text-sm";
 
 const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkMode }) => {
     const { currentUser, setUsersList, login } = useAuth();
@@ -75,7 +75,7 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
                 <div className="flex-1 space-y-6">
                     <section className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
                         <div className="flex items-center gap-3 mb-6">
-                            <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-600">
                                 <UserIcon className="h-5 w-5" />
                             </div>
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Personal Identity</h3>
@@ -128,7 +128,7 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
                                     <button 
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-accent transition-colors"
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-600 transition-colors"
                                     >
                                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                     </button>
@@ -148,7 +148,7 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
                         <div className="space-y-3">
                             <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                                 <p className="text-[10px] font-black text-gray-400 uppercase">System Role</p>
-                                <p className="text-sm font-bold text-accent">{profileData.role}</p>
+                                <p className="text-sm font-bold text-emerald-600">{profileData.role}</p>
                             </div>
                             <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                                 <p className="text-[10px] font-black text-gray-400 uppercase">Operating Unit</p>
@@ -161,12 +161,12 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
                         <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Interface Preferences</h3>
                         <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                             <div className="flex items-center gap-3">
-                                {isDarkMode ? <Moon className="h-4 w-4 text-accent" /> : <Sun className="h-4 w-4 text-amber-500" />}
+                                {isDarkMode ? <Moon className="h-4 w-4 text-emerald-600" /> : <Sun className="h-4 w-4 text-amber-500" />}
                                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Dark Interface</span>
                             </div>
                             <button 
                                 onClick={toggleDarkMode}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDarkMode ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDarkMode ? 'bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
                             >
                                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-200 ${isDarkMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
                             </button>
@@ -176,7 +176,7 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
                     <button 
                         onClick={handleSaveProfile} 
                         disabled={saving}
-                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-white font-bold text-sm transition-all shadow-lg active:scale-95 ${saving ? 'bg-gray-400' : 'bg-accent hover:bg-opacity-90 shadow-accent/20'}`}
+                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-white font-bold text-sm transition-all shadow-lg active:scale-95 ${saving ? 'bg-gray-400' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'}`}
                     >
                         <Save className="h-4 w-4" />
                         {saving ? 'Updating...' : 'Save All Changes'}

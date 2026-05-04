@@ -41,14 +41,21 @@ const UserLogsTab: React.FC<UserLogsTabProps> = ({
 
     useEffect(() => {
         const fetchLogs = async () => {
+            if (!supabase) {
+                setLoading(false);
+                return;
+            }
             setLoading(true);
-            if (supabase) {
+            try {
                 const data = await fetchAll('user_logs', 'created_at', false);
                 if (data) {
                     setLogs(data as UserLog[]);
                 }
+            } catch (err) {
+                console.error("Logs Fetch Exception:", err);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
         fetchLogs();
     }, []);

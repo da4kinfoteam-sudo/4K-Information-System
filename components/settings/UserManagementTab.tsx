@@ -4,7 +4,7 @@ import { User, operatingUnits, appModules, RoleConfig } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { Shield, Save, X as XIcon, Info, Users, UserCog } from 'lucide-react';
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
 
 const UserManagementTab: React.FC = () => {
     const { usersList, setUsersList } = useAuth();
@@ -228,93 +228,95 @@ const UserManagementTab: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-gray-800 p-4 rounded-xl border border-emerald-100 dark:border-emerald-700/50 shadow-sm">
                 <div>
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Users className="h-6 w-6 text-accent" />
+                        <Users className="h-6 w-6 text-emerald-600" />
                         System User Directory
                     </h3>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage system identities, permissions, and security overrides.</p>
                 </div>
-                <button onClick={handleAddUser} className="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-lg text-white bg-accent hover:bg-opacity-90 transition-all shadow-md active:scale-95">
+                <button onClick={handleAddUser} className="inline-flex items-center px-5 py-2.5 border border-transparent text-sm font-semibold rounded-lg text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md active:scale-95">
                     + Add New User
                 </button>
             </div>
 
             <div className="bg-white dark:bg-gray-900 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-gray-700/50 sm:rounded-xl">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-750">
-                    <thead className="bg-[#f8fafc] dark:bg-gray-850">
-                        <tr>
-                            <th className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Identity</th>
-                            <th className="px-6 py-4 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Access & Org</th>
-                            <th className="px-6 py-4 text-center text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Visibility Control</th>
-                            <th className="px-6 py-4 text-right text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Operations</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                        {usersList.map(user => {
-                            const hasOverrides = user.permissions_override && Object.keys(user.permissions_override).length > 0;
-                            return (
-                                <tr key={user.id} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center text-accent font-bold text-sm">
-                                                {user.fullName.substring(0, 1).toUpperCase()}
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-900">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-750">
+                        <thead className="bg-[#f8fafc] dark:bg-gray-850 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Identity</th>
+                                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Access & Org</th>
+                                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Visibility Control</th>
+                                <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Operations</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                            {usersList.map(user => {
+                                const hasOverrides = user.permissions_override && Object.keys(user.permissions_override).length > 0;
+                                return (
+                                    <tr key={user.id} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10 transition-colors">
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                                                    {user.fullName.substring(0, 1).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{user.username}</div>
+                                                    <div className="text-[10px] text-gray-400 dark:text-gray-500">{user.email}</div>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{user.username}</div>
-                                                <div className="text-xs text-gray-400 dark:text-gray-500">{user.email}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="inline-flex w-fit items-center px-2 py-0.5 rounded text-[10px] font-bold bg-accent/10 text-accent border border-accent/20">
-                                                {user.role.toUpperCase()}
-                                            </span>
-                                            <div className="text-xs font-medium text-gray-600 dark:text-gray-400">{user.operatingUnit}</div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <div className="flex flex-col items-center gap-1.5">
-                                            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800">
-                                                Scope: {user.visibility_scope || 'All OUs'}
-                                            </span>
-                                            {hasOverrides && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
-                                                    SURGICAL ACCESS ACTIVE
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="inline-flex w-fit items-center px-1.5 py-0.25 rounded text-[9px] font-bold bg-emerald-100/50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50">
+                                                    {user.role.toUpperCase()}
                                                 </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5 whitespace-nowrap text-right">
-                                        <div className="flex items-center justify-end gap-1">
-                                            <button 
-                                                onClick={() => handleEditPermissions(user)} 
-                                                className="p-2 text-gray-400 hover:text-accent dark:hover:text-accent transition-colors rounded-lg hover:bg-accent/10" 
-                                                title="Surgical Permissions"
-                                            >
-                                                <Shield className="h-4.5 w-4.5" />
-                                            </button>
-                                            <button 
-                                                onClick={() => handleEditUser(user)} 
-                                                className="px-3 py-1.5 text-xs font-bold text-accent hover:bg-accent hover:text-white rounded-lg transition-all border border-accent/20"
-                                            >
-                                                EDIT
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDeleteUser(user.id)} 
-                                                className="p-2 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20"
-                                            >
-                                                <XIcon className="h-4.5 w-4.5" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                                <div className="text-[10px] font-medium text-gray-600 dark:text-gray-400">{user.operatingUnit}</div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${user.visibility_scope === 'Own OU' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700'}`}>
+                                                    {user.visibility_scope || 'All OUs'}
+                                                </span>
+                                                {hasOverrides && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.25 rounded text-[8px] font-black bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
+                                                        OVERRIDDEN
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                            <div className="flex items-center justify-end gap-1">
+                                                <button 
+                                                    onClick={() => handleEditPermissions(user)} 
+                                                    className="p-1.5 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20" 
+                                                    title="Surgical Permissions"
+                                                >
+                                                    <Shield className="h-4 w-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleEditUser(user)} 
+                                                    className="px-2 py-1 text-[10px] font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-md transition-all border border-emerald-200/50 uppercase"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteUser(user.id)} 
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                >
+                                                    <XIcon className="h-4 w-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             {/* Permission Override Modal */}
@@ -324,11 +326,11 @@ const UserManagementTab: React.FC = () => {
                         <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                             <div>
                                 <h3 className="text-xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
-                                    <Shield className="h-6 w-6 text-accent" />
+                                    <Shield className="h-6 w-6 text-emerald-600" />
                                     Access Overrides
                                 </h3>
                                 <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">
-                                    {editingUser.fullName} • <span className="text-accent">{editingUser.role}</span>
+                                    {editingUser.fullName} • <span className="text-emerald-600">{editingUser.role}</span>
                                 </p>
                             </div>
                             <button onClick={() => setIsPermissionModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
@@ -337,8 +339,8 @@ const UserManagementTab: React.FC = () => {
                         </div>
                         
                         <div className="p-6 overflow-y-auto flex-1">
-                            <div className="bg-accent/5 dark:bg-accent/10 p-4 rounded-xl border border-accent/10 flex items-start gap-3 mb-8">
-                                <Info className="h-5 w-5 text-accent flex-shrink-0 mt-0.5" />
+                            <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50 flex items-start gap-3 mb-8">
+                                <Info className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                                 <div className="text-sm text-gray-600 dark:text-gray-300">
                                     <p className="font-bold text-gray-900 dark:text-white mb-1">Hierarchy Logic</p>
                                     <p>Overrides defined here supersede role-level permissions. These are surgical controls for this specific account only.</p>
@@ -364,7 +366,7 @@ const UserManagementTab: React.FC = () => {
                                             
                                             const Toggle = ({ field }: { field: 'can_view'|'can_edit'|'can_delete' }) => {
                                                 const val = effectiveConfig[field];
-                                                const accentColor = field === 'can_view' ? 'bg-accent' : field === 'can_edit' ? 'bg-amber-500' : 'bg-red-500';
+                                                const accentColor = field === 'can_view' ? 'bg-emerald-600' : field === 'can_edit' ? 'bg-amber-500' : 'bg-red-500';
                                                 
                                                 return (
                                                     <label className="flex flex-col items-center gap-1 cursor-pointer group">
@@ -382,14 +384,14 @@ const UserManagementTab: React.FC = () => {
                                             };
 
                                             return (
-                                                <tr key={module} className={`hover:bg-gray-50/50 dark:hover:bg-gray-750/50 transition-colors ${hasOverride ? 'bg-accent/[0.02] dark:bg-accent/[0.04]' : ''}`}>
+                                                <tr key={module} className={`hover:bg-emerald-50/10 dark:hover:bg-emerald-900/10 transition-colors ${hasOverride ? 'bg-emerald-50/5 dark:bg-emerald-900/5' : ''}`}>
                                                     <td className="px-6 py-4 text-sm font-bold text-gray-800 dark:text-white">
                                                         {module}
                                                     </td>
                                                     <td className="px-4 py-4 text-center">
                                                         {hasOverride ? (
                                                             <div className="flex flex-col items-center">
-                                                                <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-black bg-accent/10 text-accent border border-accent/20 mb-1">
+                                                                <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100/50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50 mb-1">
                                                                     OVERRIDDEN
                                                                 </span>
                                                                 <button onClick={() => handleClearOverride(module)} className="text-[9px] font-bold text-gray-400 hover:text-red-500 underline uppercase tracking-tighter">Reset</button>
@@ -414,7 +416,7 @@ const UserManagementTab: React.FC = () => {
                             <button
                                 onClick={handleSavePermissions}
                                 disabled={saving}
-                                className={`flex items-center gap-2 px-8 py-2.5 rounded-xl text-white text-xs font-black tracking-widest transition-all ${saving ? 'bg-gray-400' : 'bg-accent hover:shadow-lg shadow-accent/20 active:scale-95'}`}
+                                className={`flex items-center gap-2 px-8 py-2.5 rounded-xl text-white text-xs font-black tracking-widest transition-all ${saving ? 'bg-gray-400' : 'bg-emerald-600 hover:shadow-emerald-600/30'}`}
                             >
                                 <Save className="h-4 w-4" />
                                 {saving ? 'SAVING...' : 'SAVE CONFIG'}
@@ -483,6 +485,19 @@ const UserManagementTab: React.FC = () => {
                                 </div>
                             </div>
 
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Data Visibility Scope</label>
+                                <select 
+                                    value={formData.visibility_scope || 'All OUs'} 
+                                    onChange={e => setFormData({...formData, visibility_scope: e.target.value as any})} 
+                                    className={commonInputClasses}
+                                >
+                                    <option value="All OUs">All OUs (Unrestricted)</option>
+                                    <option value="Own OU">Own OU (Restricted)</option>
+                                </select>
+                                <p className="text-[10px] text-gray-400 mt-1 italic font-medium">Controls whether the user can see entries from other Operating Units.</p>
+                            </div>
+
                             <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-850 rounded-xl border border-gray-100 dark:border-gray-700">
                                 <div>
                                     <p className="text-[10px] font-black text-gray-900 dark:text-white uppercase tracking-widest">Workflow Bridge</p>
@@ -495,8 +510,8 @@ const UserManagementTab: React.FC = () => {
                                         checked={formData.requires_approver || false} 
                                         onChange={e => setFormData({ ...formData, requires_approver: e.target.checked, approver_id: e.target.checked ? formData.approver_id : null })} 
                                     />
-                                    <div className={`w-9 h-5 rounded-full transition-colors ${formData.requires_approver ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                        <span className={`block h-3.5 w-3.5 transform rounded-full bg-white transition-transform mt-0.75 ml-0.75 ${formData.requires_approver ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    <div className={`w-9 h-5 rounded-full transition-colors ${formData.requires_approver ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                        <span className={`block h-3.5 w-3.5 transform rounded-full bg-white transition-transform mt-0.75 ml-0.75 ${formData.requires_approver ? 'translate-x-4.5' : 'translate-x-0'}`} />
                                     </div>
                                 </label>
                             </div>
@@ -519,7 +534,7 @@ const UserManagementTab: React.FC = () => {
 
                             <div className="flex justify-end gap-3 pt-6 border-t border-gray-100 dark:border-gray-700 mt-2">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 font-bold text-[10px] text-gray-400 uppercase tracking-widest hover:text-gray-700 transition-colors">DISCARD</button>
-                                <button type="submit" disabled={saving} className={`px-10 py-2.5 rounded-xl text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all ${saving ? 'bg-gray-300 cursor-not-allowed' : 'bg-accent hover:shadow-accent/30'}`}>
+                                <button type="submit" disabled={saving} className={`px-10 py-2.5 rounded-xl text-white text-[10px] font-bold uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all ${saving ? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-600 hover:shadow-emerald-500/30'}`}>
                                     {saving ? 'SYNCING...' : 'COMMIT'}
                                 </button>
                             </div>
