@@ -16,17 +16,18 @@ interface AuthContextType {
     getVisibilityScope: (module: string) => 'All' | 'Own OU';
     refreshUser: () => Promise<void>;
     refreshPermissions: () => Promise<void>;
+    isAuthReady: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentUser, setCurrentUser] = useLocalStorageState<User | null>('currentUserSession', null);
-    
+    const [isAuthReady, setIsAuthReady] = useState(false);
     const [usersList, setUsersList] = useSupabaseTable<User>('users', []);
-    
     const [rolesConfigs, setRolesConfigs] = useState<RoleConfig[]>([]);
     const currentUserRef = useRef<User | null>(currentUser);
+    const isInitializingRef = useRef(false);
 
     useEffect(() => {
         currentUserRef.current = currentUser;
@@ -34,9 +35,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const fetchRolesConfigs = async () => {
         if (!supabase) return;
-        const { data, error } = await supabase.from('roles_config').select('*');
-        if (data) setRolesConfigs(data);
-        if (error) console.error("Error fetching roles configs:", error);
+        try {
+            const { data, error } = await supabase.from('roles_config').select('*');
+            if (data) setRolesConfigs(data);
+            if (error) console.error("Error fetching roles configs:", error);
+        } catch (err) {
+            console.error("Fetch roles configs exception:", err);
+        }
     };
 
     useEffect(() => {
@@ -44,22 +49,51 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     useEffect(() => {
-        if (!supabase) return;
+        if (!supabase || isInitializingRef.current) return;
+        isInitializingRef.current = true;
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log("Supabase Auth Event:", event, "Session exists:", !!session);
-            
-            if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
-                // If we already have the correct user in state, maybe skip re-fetch?
-                // But for now, let's just make sure we don't clear it.
+        const initializeAuth = async () => {
+            console.log("Initializing Auth...");
+            try {
+                // 1. Check initial session with a reasonable timeout to prevent hanging on refresh
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise<{ data: { session: null }, error: Error }>((_, reject) => 
+                    setTimeout(() => reject(new Error("Session check timed out")), 5000)
+                );
+
+                const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
+                const session = result?.data?.session || null;
+                
+                console.log("Initial session check resolved. Session exists:", !!session);
+                
+                if (session?.user) {
+                    await syncUserFromSession(session);
+                } else {
+                    const current = currentUserRef.current;
+                    if (current && !current.email?.endsWith('@offline.local')) {
+                        console.log("No valid Supabase session found. Clearing local stale session.");
+                        setCurrentUser(null);
+                    }
+                }
+            } catch (err) {
+                console.error("Auth initialization failed or timed out:", err);
+            } finally {
+                setIsAuthReady(true);
+                isInitializingRef.current = false;
+            }
+        };
+
+        const syncUserFromSession = async (session: any) => {
+            if (!session?.user) return;
+            try {
                 const { data, error } = await supabase
                     .from('users')
                     .select('*')
                     .eq('email', session.user.email)
-                    .limit(1);
+                    .maybeSingle();
                 
-                if (data && data.length > 0) {
-                    setCurrentUser(data[0] as User);
+                if (data) {
+                    setCurrentUser(data as User);
                 } else {
                     const fallbackUser: User = {
                         id: Date.now(), 
@@ -72,54 +106,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     };
                     setCurrentUser(fallbackUser);
                 }
+            } catch (err) {
+                console.error("Sync user error:", err);
+            }
+        };
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log("Supabase Auth Event:", event, "Session exists:", !!session);
+            
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                if (session) await syncUserFromSession(session);
             } else if (event === 'SIGNED_OUT') {
-                // INVARIANT: We only auto-clear session if we are sure it's a "real" logout
-                // or if we are not in an emergency admin session.
                 const current = currentUserRef.current;
-                
-                // If we have an offline user, ignore SIGNED_OUT from Supabase
-                if (current && current.email && current.email.endsWith('@offline.local')) {
-                    console.log("Supabase SIGNED_OUT: Ignoring for offline user");
-                    return;
-                }
-
-                // If Supabase says we are out, and we were logged in via Supabase, then we clear.
-                // We check if session is null to confirm state.
-                if (!session && current && current.email) {
-                    console.log("Supabase SIGNED_OUT: Clearing Supabase session");
+                if (current && !current.email?.endsWith('@offline.local')) {
                     setCurrentUser(null);
-                    localStorage.removeItem('currentUserSession');
                 }
             }
         });
 
-        // Initial session check - less aggressive clearing
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            console.log("Initial session check:", !!session);
-            if (session?.user) {
-                supabase.from('users').select('*').eq('email', session.user.email).limit(1).then(({ data, error }) => {
-                    if (data && data.length > 0) {
-                        setCurrentUser(data[0] as User);
-                    } else if (session.user) {
-                        const fallbackUser: User = {
-                            id: Date.now(), 
-                            username: session.user.email?.split('@')[0] || 'user',
-                            email: session.user.email || '',
-                            fullName: session.user.user_metadata?.full_name || 'Mapped User',
-                            role: session.user.user_metadata?.role || 'User',
-                            operatingUnit: session.user.user_metadata?.operatingUnit || 'NPMO',
-                            password: ''
-                        };
-                        setCurrentUser(fallbackUser);
-                    }
-                });
-            } else {
-                // If no Supabase session, but we have a "real" Supabase user in localStorage,
-                // we might want to clear it? No, let's wait for the onAuthStateChange event
-                // to be sure, or just leave it. If they aren't authorized, API calls will fail anyway.
-                // This prevents the refresh-logout loop.
-            }
-        });
+        initializeAuth();
 
         return () => subscription.unsubscribe();
     }, []);
@@ -225,7 +230,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return (
         <AuthContext.Provider value={{ 
             currentUser, login, logout, usersList, setUsersList, rolesConfigs, 
-            hasAccess, getVisibilityScope, refreshUser: fetchCurrentUser, refreshPermissions: fetchRolesConfigs 
+            hasAccess, getVisibilityScope, refreshUser: fetchCurrentUser, refreshPermissions: fetchRolesConfigs,
+            isAuthReady
         }}>
             {children}
         </AuthContext.Provider>

@@ -44,14 +44,19 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
 
     // Check Database Connection
     useEffect(() => {
-        const checkDb = async () => {
+        const checkDb = async (isRetry = false) => {
             if (!supabase) {
                 setDbStatus('offline');
                 return;
             }
             try {
-                // Robust check: Simple select query to 'users' table
-                const { error } = await supabase.from('users').select('id').limit(1);
+                // Use a race with a timeout to prevent perpetual "Connecting..." state
+                const fetchPromise = supabase.from('users').select('id').limit(1);
+                const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
+                    setTimeout(() => reject(new Error("DB Check Timeout")), 4000)
+                );
+
+                const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
                 
                 if (!error) {
                     setDbStatus('connected');
@@ -61,14 +66,19 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 }
             } catch (err) {
                 console.error('DB Check Exception:', err);
-                setDbStatus('offline');
+                // If it timed out, don't immediately set offline, maybe it's just slow
+                if (!isRetry) {
+                    setTimeout(() => checkDb(true), 2000);
+                } else {
+                    setDbStatus('offline');
+                }
             }
         };
         
         checkDb();
         
-        // Poll connection status every 15 seconds
-        const intervalId = setInterval(checkDb, 15000);
+        // Poll connection status every 30 seconds (less frequent to reduce flood)
+        const intervalId = setInterval(() => checkDb(false), 30000);
         return () => clearInterval(intervalId);
     }, []);
 

@@ -86,7 +86,7 @@ const AccessDenied: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) 
 );
 
 const AppContent: React.FC = () => {
-    const { currentUser, hasAccess } = useAuth();
+    const { currentUser, hasAccess, isAuthReady } = useAuth();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
     const [isDarkMode, setIsDarkMode] = useState(false);
@@ -104,6 +104,22 @@ const AppContent: React.FC = () => {
     const clearExternalFilters = () => {
         setExternalFilters(null);
     };
+
+    if (!isAuthReady && currentUser && !currentUser.email?.endsWith('@offline.local')) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+                <div className="flex flex-col items-center">
+                    <div className="relative h-16 w-16">
+                        <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <p className="mt-6 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest text-xs animate-pulse">
+                        Synchronizing Identity...
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     // --- DATA STATE MANAGEMENT ---
     
@@ -125,7 +141,7 @@ const AppContent: React.FC = () => {
 
     // Fetch Program Management & System Settings Data on mount
     useEffect(() => {
-        if (!supabase) return;
+        if (!supabase || !isAuthReady) return;
         const fetchAllData = async () => {
             const or = await fetchAll('office_requirements', 'id', false);
             setOfficeReqs(or as OfficeRequirement[]);

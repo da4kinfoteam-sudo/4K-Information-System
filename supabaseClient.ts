@@ -56,13 +56,18 @@ export const supabase = (supabaseUrl && supabaseKey)
         auth: {
             persistSession: true,
             autoRefreshToken: true,
-            detectSessionInUrl: true
+            detectSessionInUrl: false, // Standard login doesn't need this, avoids some refresh loops
+            storageKey: 'npmoms-auth-token', // Explicit storage key
+            storage: typeof window !== 'undefined' ? window.localStorage : undefined
         },
         realtime: {
-            timeout: 30000,
+            timeout: 20000,
         },
         global: {
-            fetch: fetch.bind(globalThis),
+            fetch: (input, init) => fetch(input, init).catch(err => {
+                console.error("Supabase Global Fetch Error:", err);
+                throw err;
+            })
         }
     }) 
     : null;
