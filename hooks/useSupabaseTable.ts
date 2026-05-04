@@ -1,9 +1,7 @@
-
 // Author: 4K 
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
-// Helper to fetch all rows handling pagination limits
 export async function fetchAll(tableName: string, orderBy: string = 'id', ascending: boolean = true) {
     if (!supabase) return [];
     
@@ -45,15 +43,12 @@ export function useSupabaseTable<T extends { id: number | string }>(
     const [data, setData] = useState<T[]>(initialData);
     const [isLoaded, setIsLoaded] = useState(false);
 
-    // 1. Fetch data on mount
     useEffect(() => {
         if (!supabase) return;
 
         const fetchData = async () => {
             const dbData = await fetchAll(tableName);
             if (dbData && dbData.length > 0) {
-                // Determine if we need to parse JSON columns based on your schema.
-                // Supabase JS client usually auto-converts JSON columns to objects.
                 setData(dbData as T[]);
             }
             setIsLoaded(true);
@@ -62,7 +57,6 @@ export function useSupabaseTable<T extends { id: number | string }>(
         fetchData();
     }, [tableName]);
 
-    // 2. Intercept state updates to sync with Supabase
     const setSupabaseData = (action: React.SetStateAction<T[]>) => {
         setData((prev) => {
             const next = typeof action === 'function' ? (action as any)(prev) : action;
@@ -71,7 +65,6 @@ export function useSupabaseTable<T extends { id: number | string }>(
                 const prevIds = new Set(prev.map(i => i.id));
                 const nextIds = new Set(next.map(i => i.id));
 
-                // A. Handle Deletions (Items present in prev but missing in next)
                 const itemsToDelete = prev.filter(i => !nextIds.has(i.id));
                 if (itemsToDelete.length > 0) {
                     const idsToDelete = itemsToDelete.map(i => i.id);
@@ -80,18 +73,33 @@ export function useSupabaseTable<T extends { id: number | string }>(
                     });
                 }
 
-                // B. Handle Upserts (New items or Modified items)
-                // We compare JSON stringified versions to detect changes. 
-                // Note: This is a simple diffing strategy. For large datasets, field-level diffing is better.
                 const itemsToUpsert = next.filter(n => {
                     const p = prev.find(i => i.id === n.id);
-                    // If new (no p) or different (p != n), we upsert
                     return !p || JSON.stringify(p) !== JSON.stringify(n);
                 });
 
                 if (itemsToUpsert.length > 0) {
-                    supabase.from(tableName).upsert(itemsToUpsert).then(res => {
-                        if (res.error) console.error(`Error upserting to ${tableName}:`, res.error);
+                    itemsToUpsert.forEach(async (item) => {
+                        const isExisting = prev.some(p => p.id === item.id);
+                        
+                        if (isExisting) {
+                            const { id, ...updateData } = item as any;
+                            const { error } = await supabase.from(tableName).update(updateData).eq('id', id);
+                            if (error) console.error(`Error updating ${tableName} ID ${id}:`, error);
+                        } else {
+                            const shouldOmitId = typeof item.id === 'number' && item.id > 1700000000000;
+                            
+                            const payload = { ...item } as any;
+                            if (shouldOmitId) delete payload.id;
+
+                            const { data: inserted, error } = await supabase.from(tableName).insert([payload]).select().single();
+                            
+                            if (error) {
+                                console.error(`Error inserting into ${tableName}:`, error);
+                            } else if (inserted && shouldOmitId) {
+                                setData(prevData => prevData.map(d => d.id === item.id ? inserted : d));
+                            }
+                        }
                     });
                 }
             }
@@ -102,3 +110,4 @@ export function useSupabaseTable<T extends { id: number | string }>(
 
     return [data, setSupabaseData];
 }
+// --- End of useSupabaseTable.ts ---

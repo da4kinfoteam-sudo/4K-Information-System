@@ -36,6 +36,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
     const menuRef = useRef<HTMLDivElement>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [dbStatus, setDbStatus] = useState<'connected' | 'offline' | 'loading'>('loading');
+    const failureCountRef = useRef(0);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentDate(new Date()), 60000);
@@ -50,36 +51,38 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 return;
             }
             try {
-                // Increased timeout to 25s for initial sanity check
-                const fetchPromise = supabase.from('users').select('id').limit(1);
+                // Heartbeat check: Efficiently check connection without heavy data transfer
+                const fetchPromise = supabase.from('users').select('id', { head: true, count: 'exact' }).limit(1);
                 const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                    setTimeout(() => reject(new Error("Database Latency Timeout")), 25000)
+                    setTimeout(() => reject(new Error("Network Threshold Exceeded")), 15000)
                 );
 
                 const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
                 
                 if (!error) {
                     setDbStatus('connected');
+                    failureCountRef.current = 0; // Success: reset counter
                 } else {
-                    console.warn('DB Check Error:', error.message || error);
-                    setDbStatus('offline');
+                    throw error;
                 }
             } catch (err: any) {
-                console.error('DB Check Exception:', err);
-                // If it timed out, don't immediately set offline on first attempt
-                if (!isRetry) {
-                    // Stay in loading state for the retry
-                    setTimeout(() => checkDb(true), 2000);
-                } else {
+                failureCountRef.current += 1;
+                console.warn(`Connection heartbeat failed (${failureCountRef.current}/3):`, err.message || err);
+                
+                // Only mark as offline after 3 consecutive failures
+                if (failureCountRef.current >= 3) {
                     setDbStatus('offline');
+                } else if (!isRetry) {
+                    // Immediate back-to-back retry if it's the first or second failure
+                    setTimeout(() => checkDb(true), 2500);
                 }
             }
         };
         
         checkDb();
         
-        // Poll connection status every 60 seconds (less frequent to reduce network chatter)
-        const intervalId = setInterval(() => checkDb(false), 60000);
+        // Poll connection status every 30 seconds for better session awareness
+        const intervalId = setInterval(() => checkDb(false), 30000);
         return () => clearInterval(intervalId);
     }, []);
 

@@ -21,10 +21,29 @@ export const supabase = (SB_URL && SB_KEY)
             detectSessionInUrl: true
         },
         global: {
-            fetch: (...args) => fetch(...args).catch(err => {
-                console.error("Supabase Global Fetch Error:", err);
-                throw err;
-            })
+            fetch: async (url, options) => {
+                const maxRetries = 2;
+                let lastError;
+                
+                for (let i = 0; i <= maxRetries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (response.status >= 500 && i < maxRetries) {
+                            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                            continue;
+                        }
+                        return response;
+                    } catch (err: any) {
+                        lastError = err;
+                        if (i < maxRetries) {
+                            console.warn(`Supabase Fetch Attempt ${i + 1} failed, retrying...`, err.message);
+                            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+                        }
+                    }
+                }
+                console.error("Supabase Global Fetch Failed after retries:", lastError);
+                throw lastError;
+            }
         }
     }) 
     : null;

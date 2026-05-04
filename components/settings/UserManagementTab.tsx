@@ -1,3 +1,4 @@
+// Author: 4K 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { User, operatingUnits, appModules, RoleConfig } from '../../constants';
@@ -60,7 +61,6 @@ const UserManagementTab: React.FC = () => {
         setUserOverrides(typeof user.permissions_override === 'object' && user.permissions_override !== null ? { ...user.permissions_override } : {});
         setIsPermissionModalOpen(true);
         
-        // Fetch role defaults for comparison
         if (supabase) {
             const { data } = await supabase.from('roles_config').select('*').eq('role', user.role);
             if (data) setRoleDefaults(data);
@@ -74,14 +74,12 @@ const UserManagementTab: React.FC = () => {
                 newOverrides[module] = {};
             }
             
-            // Toggle the value, or set it if it doesn't exist
             const currentValue = newOverrides[module][field] !== undefined 
                 ? newOverrides[module][field] 
                 : (roleDefaults.find(r => r.module === module)?.[field] || false);
                 
             newOverrides[module][field] = !currentValue;
 
-            // Dependent toggles logic
             if (field === 'can_view' && !newOverrides[module].can_view) {
                 newOverrides[module].can_edit = false;
                 newOverrides[module].can_delete = false;
@@ -147,14 +145,12 @@ const UserManagementTab: React.FC = () => {
         setFormError(null);
         setSaving(true);
         
-        // Include password only if provided (to allow partial updates)
         const payloadToSave = { ...formData };
         if (!payloadToSave.password || payloadToSave.password.trim() === '') {
             delete payloadToSave.password;
         }
         
         if (editingUser) {
-            // Update logic
             if (supabase) {
                 try {
                     const { error } = await supabase
@@ -179,7 +175,6 @@ const UserManagementTab: React.FC = () => {
             setSaving(false);
             setIsModalOpen(false);
         } else {
-            // Create logic
             if (supabase) {
                 try {
                     const { id, ...insertPayload } = payloadToSave as any;
@@ -318,7 +313,6 @@ const UserManagementTab: React.FC = () => {
                 </div>
             </div>
 
-            {/* Permission Override Modal */}
             {isPermissionModalOpen && editingUser && (
                 <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-4xl w-full flex flex-col max-h-[90vh] border border-gray-100 dark:border-gray-700">
@@ -425,7 +419,6 @@ const UserManagementTab: React.FC = () => {
                 </div>
             )}
 
-            {/* User Modal */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100 dark:border-gray-700">
@@ -545,3 +538,4 @@ const UserManagementTab: React.FC = () => {
 };
 
 export default UserManagementTab;
+// --- End of UserManagementTab.tsx ---
