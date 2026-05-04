@@ -43,7 +43,10 @@ const UserControlCenterTab: React.FC = () => {
                     appModules.forEach(module => {
                         const existing = data.find(c => c.role === role && c.module === module);
                         if (existing) {
-                            fullSet.push(existing);
+                            fullSet.push({
+                                ...existing,
+                                visibility_scope: existing.visibility_scope || (['Super Admin', 'Administrator', 'Management'].includes(role) ? 'All OUs' : 'Own OU')
+                            });
                         } else {
                             // Defaults based on role
                             fullSet.push({
@@ -51,7 +54,8 @@ const UserControlCenterTab: React.FC = () => {
                                 module,
                                 can_view: true,
                                 can_edit: ['Super Admin', 'Administrator'].includes(role),
-                                can_delete: ['Super Admin', 'Administrator'].includes(role)
+                                can_delete: ['Super Admin', 'Administrator'].includes(role),
+                                visibility_scope: ['Super Admin', 'Administrator', 'Management'].includes(role) ? 'All OUs' : 'Own OU'
                             });
                         }
                     });
@@ -84,6 +88,24 @@ const UserControlCenterTab: React.FC = () => {
             }
             return c;
         }));
+    };
+
+    const handleVisibilityToggle = (role: string) => {
+        setSuccess(false);
+        setPendingConfigs(prev => {
+            // Find current scope for the role (should be same for all modules of this role)
+            const currentConfig = prev.find(c => c.role === role);
+            if (!currentConfig) return prev;
+            
+            const newScope = currentConfig.visibility_scope === 'All OUs' ? 'Own OU' : 'All OUs';
+            
+            return prev.map(c => {
+                if (c.role === role) {
+                    return { ...c, visibility_scope: newScope };
+                }
+                return c;
+            });
+        });
     };
 
     const runWhiteScreenCheck = (): string | null => {
@@ -131,7 +153,8 @@ const UserControlCenterTab: React.FC = () => {
             module: c.module,
             can_view: !!c.can_view,
             can_edit: !!c.can_edit,
-            can_delete: !!c.can_delete
+            can_delete: !!c.can_delete,
+            visibility_scope: c.visibility_scope || 'Own OU'
         }));
 
         const { error } = await supabase.from('roles_config').upsert(
@@ -221,6 +244,9 @@ const UserControlCenterTab: React.FC = () => {
                                 <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 bg-gray-100 dark:bg-gray-800 sticky left-0 top-0 z-50 min-w-[200px] shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                                     User Roles
                                 </th>
+                                <th className="px-6 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[150px] text-[11px] uppercase tracking-wider bg-gray-100 dark:bg-gray-800">
+                                    OU Visibility
+                                </th>
                                 {appModules.map(module => (
                                     <th key={module} className="px-4 py-4 font-bold border-b border-r dark:border-gray-700 border-gray-200 text-center min-w-[240px] text-[11px] uppercase tracking-wider bg-gray-100 dark:bg-gray-800">
                                         {module}
@@ -233,6 +259,34 @@ const UserControlCenterTab: React.FC = () => {
                                 <tr key={role} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
                                     <td className="px-6 py-4 font-bold text-gray-900 dark:text-white border-r dark:border-gray-700 border-gray-200 bg-white dark:bg-gray-900 sticky left-0 z-30 shadow-[2px_0_4px_rgba(0,0,0,0.02)]">
                                         {role}
+                                    </td>
+                                    <td className="px-4 py-4 border-r dark:border-gray-700 border-gray-200 text-center">
+                                        {(() => {
+                                            const roleConfig = pendingConfigs.find(c => c.role === role);
+                                            const isSuperAdmin = role === 'Super Admin';
+                                            const scope = roleConfig?.visibility_scope || 'Own OU';
+                                            
+                                            return (
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <button
+                                                        onClick={() => !isSuperAdmin && handleVisibilityToggle(role)}
+                                                        disabled={isSuperAdmin}
+                                                        className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                                                            isSuperAdmin 
+                                                                ? 'bg-emerald-100 text-emerald-800 opacity-60 cursor-not-allowed'
+                                                                : scope === 'All OUs'
+                                                                    ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        {scope}
+                                                    </button>
+                                                    <p className="text-[9px] text-gray-400 font-medium">
+                                                        {scope === 'All OUs' ? 'Can view everything' : 'Restricted to own OU'}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })()}
                                     </td>
                                     {appModules.map(module => {
                                         const config = pendingConfigs.find(c => c.role === role && c.module === module);

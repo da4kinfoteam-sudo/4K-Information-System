@@ -95,6 +95,7 @@ export interface RoleConfig {
     can_view: boolean;
     can_edit: boolean;
     can_delete: boolean;
+    visibility_scope?: VisibilityScope;
 }
 
 export const appModules = [

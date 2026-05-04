@@ -19,7 +19,7 @@ const UserManagementTab: React.FC = () => {
         role: 'User',
         operatingUnit: 'NPMO',
         password: '',
-        visibility_scope: 'All OUs',
+        visibility_scope: undefined,
         requires_approver: false,
         approver_id: null
     });
@@ -34,7 +34,7 @@ const UserManagementTab: React.FC = () => {
         setFormError(null);
         setFormData({ 
             username: '', fullName: '', email: '', role: 'User', operatingUnit: 'NPMO', password: '', 
-            visibility_scope: 'All OUs', requires_approver: false, approver_id: null 
+            visibility_scope: undefined, requires_approver: false, approver_id: null 
         });
         setIsModalOpen(true);
     };
@@ -49,7 +49,7 @@ const UserManagementTab: React.FC = () => {
             role: user.role,
             operatingUnit: user.operatingUnit,
             password: user.password || '',
-            visibility_scope: user.visibility_scope || 'All OUs',
+            visibility_scope: user.visibility_scope || undefined,
             requires_approver: user.requires_approver || false,
             approver_id: user.approver_id || null
         });
@@ -478,14 +478,15 @@ const UserManagementTab: React.FC = () => {
                                 <div className="col-span-2 bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
                                     <label className="block text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">Data Visibility scope (DCF Restriction)</label>
                                     <select 
-                                        value={formData.visibility_scope || 'All OUs'} 
-                                        onChange={e => setFormData({...formData, visibility_scope: e.target.value as any})} 
+                                        value={formData.visibility_scope || ''} 
+                                        onChange={e => setFormData({...formData, visibility_scope: (e.target.value || undefined) as any})} 
                                         className={commonInputClasses}
                                     >
+                                        <option value="">System Default (Base on Role)</option>
                                         <option value="All OUs">All OUs (Universal Access)</option>
                                         <option value="Own OU">Own OU (Restricted to Selected OU)</option>
                                     </select>
-                                    <p className="text-[9px] text-gray-500 mt-1 italic font-medium">Critical: This restricts the data users can query in the DCF modules.</p>
+                                    <p className="text-[9px] text-gray-500 mt-1 italic font-medium">Override the role-level visibility settings for this specific user if necessary.</p>
                                 </div>
                             </div>
 

@@ -104,7 +104,7 @@ const Login: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <span className={`h-2 w-2 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500' : 'bg-red-400'}`}></span>
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                {dbStatus === 'online' ? 'Direct Access: Connected' : 'Direct Access: offline'}
+                                {dbStatus === 'online' ? 'Connected' : 'Offline'}
                             </p>
                         </div>
                         {connError && (

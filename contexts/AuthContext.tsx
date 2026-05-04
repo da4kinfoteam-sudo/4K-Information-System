@@ -76,25 +76,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const getVisibilityScope = (module: string): 'All' | 'Own OU' => {
         if (!currentUser) return 'Own OU';
+        
+        // 1. Admin Bypass
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';
 
+        // 2. Individual User Visibility Override (explicitly set in User Management)
         if (currentUser.visibility_scope === 'Own OU') return 'Own OU';
         if (currentUser.visibility_scope === 'All OUs') return 'All';
 
-        const checkVisibility = (modName: string) => {
-            if (rolesConfigs && rolesConfigs.length > 0) {
-                const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === modName);
-                if (roleDef && roleDef.visibility_scope) {
-                    return (roleDef.visibility_scope === 'Own OU' || roleDef.visibility_scope === 'Own OUs') ? 'Own OU' : 'All';
-                }
+        // 3. Role-Level Configuration (from User Role Control Center)
+        if (rolesConfigs && rolesConfigs.length > 0) {
+            const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === module);
+            if (roleDef && roleDef.visibility_scope) {
+                return (roleDef.visibility_scope === 'All OUs') ? 'All' : 'Own OU';
             }
-            return null;
-        };
+        }
 
-        const granularVisibility = checkVisibility(module);
-        if (granularVisibility !== null) return granularVisibility;
-
-        if (['Super Admin', 'Administrator', 'Management'].includes(currentUser.role)) {
+        // 4. System Defaults (Legacy Fallbacks)
+        if (['Management'].includes(currentUser.role)) {
             return 'All';
         }
         
