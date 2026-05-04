@@ -50,10 +50,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 return;
             }
             try {
-                // Use a race with a timeout to prevent perpetual "Connecting..." state
+                // Use a slightly longer timeout (6s) for the initial check to account for Vercel/Supabase cold starts
                 const fetchPromise = supabase.from('users').select('id').limit(1);
                 const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                    setTimeout(() => reject(new Error("DB Check Timeout")), 4000)
+                    setTimeout(() => reject(new Error("DB Check Timeout")), 6000)
                 );
 
                 const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
@@ -61,13 +61,14 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 if (!error) {
                     setDbStatus('connected');
                 } else {
-                    console.warn('DB Check Error:', error.message);
+                    console.warn('DB Check Error:', error.message || error);
                     setDbStatus('offline');
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error('DB Check Exception:', err);
-                // If it timed out, don't immediately set offline, maybe it's just slow
+                // If it timed out, don't immediately set offline on first attempt
                 if (!isRetry) {
+                    // Stay in loading state for the retry
                     setTimeout(() => checkDb(true), 2000);
                 } else {
                     setDbStatus('offline');
@@ -77,8 +78,8 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
         
         checkDb();
         
-        // Poll connection status every 30 seconds (less frequent to reduce flood)
-        const intervalId = setInterval(() => checkDb(false), 30000);
+        // Poll connection status every 60 seconds (less frequent to reduce network chatter)
+        const intervalId = setInterval(() => checkDb(false), 60000);
         return () => clearInterval(intervalId);
     }, []);
 

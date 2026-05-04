@@ -33,19 +33,13 @@ if (typeof window !== 'undefined') {
 
 const supabaseUrl = 
     import.meta.env.VITE_SUPABASE_URL || 
-    import.meta.env.SUPABASE_URL || 
-    getEnvVar('VITE_SUPABASE_URL') || 
-    getEnvVar('SUPABASE_URL');
+    getEnvVar('VITE_SUPABASE_URL');
 
 const supabaseKey = 
     import.meta.env.VITE_SUPABASE_ANON_KEY || 
     import.meta.env.VITE_SUPABASE_KEY ||
-    import.meta.env.SUPABASE_ANON_KEY ||
-    import.meta.env.SUPABASE_KEY ||
     getEnvVar('VITE_SUPABASE_ANON_KEY') || 
-    getEnvVar('VITE_SUPABASE_KEY') || 
-    getEnvVar('SUPABASE_ANON_KEY') || 
-    getEnvVar('SUPABASE_KEY');
+    getEnvVar('VITE_SUPABASE_KEY');
 
 if (!supabaseUrl || !supabaseKey) {
     console.warn('Supabase URL or Key is missing. Database features will be disabled. URL:', !!supabaseUrl, 'Key:', !!supabaseKey);
@@ -61,10 +55,7 @@ export const supabase = (supabaseUrl && supabaseKey)
             storage: typeof window !== 'undefined' ? window.localStorage : undefined
         },
         realtime: {
-            timeout: 20000,
-        },
-        global: {
-            fetch: (...args) => fetch(...args)
+            timeout: 25000, // Slightly longer timeout
         }
     }) 
     : null;

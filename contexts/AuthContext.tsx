@@ -82,13 +82,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         };
 
-        const initializeAuth = async () => {
+const initializeAuth = async () => {
             if (isInitializingRef.current) return;
             isInitializingRef.current = true;
             console.log("Initializing Auth...");
             
             try {
-                const { data: { session } } = await supabase.auth.getSession();
+                // 1. Check initial session with a 5s timeout to prevent hanging on slow network/cold starts
+                const sessionPromise = supabase.auth.getSession();
+                const timeoutPromise = new Promise<{ data: { session: null } }>(resolve => 
+                    setTimeout(() => resolve({ data: { session: null } }), 5000)
+                );
+
+                const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;
                 console.log("Initial session check resolved. Session exists:", !!session);
                 
                 if (session?.user) {
@@ -101,7 +107,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     }
                 }
             } catch (err) {
-                console.error("Auth initialization failed:", err);
+                console.error("Auth initialization failed or timed out:", err);
             } finally {
                 setIsAuthReady(true);
                 // Keep isInitializingRef true to prevent re-init if component re-mounts unexpectedly
