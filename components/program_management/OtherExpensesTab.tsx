@@ -461,7 +461,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         setValidationErrors([]);
 
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
         const submissionData: any = {
             ...formData,
@@ -571,7 +571,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
         if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} items?`)) return;
 
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, physicalDeliveryDate, ...rest } = item;
@@ -704,7 +704,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 const data = event.target?.result; const workbook = XLSX.read(data, { type: 'array' });
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]) as any[];
                 const currentTimestamp = new Date().toISOString();
-                const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+                const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();

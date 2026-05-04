@@ -612,7 +612,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             return;
         }
         
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const submissionData = { 
             ...formData, 
             registeringBody: finalRegisteringBody,

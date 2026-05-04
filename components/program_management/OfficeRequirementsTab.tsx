@@ -418,7 +418,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
             return;
         }
 
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
         const submissionData: any = {
             ...formData,
@@ -541,7 +541,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
 
         if (!window.confirm(`Are you sure you want to clone ${itemsToClone.length} office requirements? This will create new entries with the same targets but reset accomplishments.`)) return;
 
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, ...rest } = item;
@@ -699,7 +699,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as any[];
                 
                 const currentTimestamp = new Date().toISOString();
-                const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+                const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
                 const newItems = jsonData.map((row: any, index: number) => {
                     const fundYear = Number(row.fundYear) || new Date().getFullYear();

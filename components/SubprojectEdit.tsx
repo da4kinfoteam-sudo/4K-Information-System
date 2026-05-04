@@ -491,7 +491,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             payload.history = [historyEntry];
             
             // Phase 2: Workflow Logic
-            if (currentUser?.role === 'RFO - User') {
+            if (currentUser?.requires_approver) {
                 payload.workflow_status = 'PENDING';
             } else {
                 payload.workflow_status = 'APPROVED';

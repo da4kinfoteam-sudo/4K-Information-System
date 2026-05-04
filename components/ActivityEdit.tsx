@@ -447,7 +447,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         let activitiesToSave: Activity[] = [];
         const currentYear = new Date().getFullYear();
         const prefix = formData.type === 'Training' ? 'TRN' : 'ACT';
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
         if (mode === 'create') {
              if (conductType === 'Repeating') {

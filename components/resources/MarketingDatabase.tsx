@@ -233,7 +233,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
             user: currentUser?.fullName || 'System'
         };
 
-        const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+        const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
 
         const newPartnerPayload = {
             ...formData,
@@ -290,7 +290,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 const newPartners = jsonData.map((row: any, index: number) => {
                     const uid = `MP-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${index}`;
                     const { region } = parseLocation(row.location || '');
-                    const workflow_status = currentUser?.role === 'RFO - User' ? 'PENDING' : 'APPROVED';
+                    const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
                     return {
                         uid,
                         companyName: String(row.companyName || 'Unnamed Partner'),

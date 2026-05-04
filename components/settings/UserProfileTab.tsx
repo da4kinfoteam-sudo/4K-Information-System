@@ -3,21 +3,24 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { User } from '../../constants';
 import { supabase } from '../../supabaseClient';
+import { User as UserIcon, ShieldCheck, Mail, Key, Eye, EyeOff, Save, Moon, Sun } from 'lucide-react';
 
 interface UserProfileTabProps {
     isDarkMode: boolean;
     toggleDarkMode: () => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-accent focus:border-accent sm:text-sm";
+const commonInputClasses = "mt-1 block w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all sm:text-sm";
 
 const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkMode }) => {
     const { currentUser, setUsersList, login } = useAuth();
     const [profileData, setProfileData] = useState<User | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (currentUser) {
-            setProfileData(currentUser);
+            setProfileData({ ...currentUser });
         }
     }, [currentUser]);
 
@@ -29,6 +32,7 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
 
     const handleSaveProfile = async () => {
         if (!profileData) return;
+        setSaving(true);
 
         if (supabase) {
             try {
@@ -44,75 +48,138 @@ const UserProfileTab: React.FC<UserProfileTabProps> = ({ isDarkMode, toggleDarkM
 
                 if (error) {
                     console.error("Error updating profile in database:", error);
-                    alert("Failed to update profile in database.");
+                    alert("Failed to update profile: " + error.message);
+                    setSaving(false);
                     return;
                 }
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Error updating profile:", error);
-                alert("An unexpected error occurred.");
+                alert("An unexpected error occurred: " + error.message);
+                setSaving(false);
                 return;
             }
         }
 
         setUsersList(prev => prev.map(u => u.id === profileData.id ? profileData : u));
         login(profileData);
-        alert("Profile updated successfully!");
+        setSaving(false);
+        alert("Success: Your profile and account credentials have been updated.");
     };
 
     if (!profileData) return null;
 
     return (
-        <div className="space-y-6 max-w-2xl">
-            <div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Personal Information</h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Update your account details.</p>
-            </div>
-            <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                <div className="sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                    <input type="text" name="username" value={profileData.username || ''} onChange={handleProfileChange} className={commonInputClasses} />
+        <div className="max-w-4xl space-y-8 pb-12">
+            <div className="flex flex-col md:flex-row gap-8 items-start">
+                {/* Left Column: Personal Info */}
+                <div className="flex-1 space-y-6">
+                    <section className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-accent/10 rounded-lg text-accent">
+                                <UserIcon className="h-5 w-5" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Personal Identity</h3>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                                <input type="text" name="fullName" value={profileData.fullName} onChange={handleProfileChange} className={commonInputClasses} placeholder="Your display name" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Username</label>
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">@</span>
+                                    <input type="text" name="username" value={profileData.username || ''} onChange={handleProfileChange} className={`${commonInputClasses} pl-8`} />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Email Address</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                    <input type="email" name="email" value={profileData.email} onChange={handleProfileChange} className={`${commonInputClasses} pl-10`} />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-600 dark:text-emerald-400">
+                                <Key className="h-5 w-5" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Account Security</h3>
+                        </div>
+                        
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Change your system password. Changes take effect immediately upon saving.</p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Update Password</label>
+                                <div className="relative">
+                                    <input 
+                                        type={showPassword ? "text" : "password"} 
+                                        name="password" 
+                                        value={profileData.password || ''} 
+                                        onChange={handleProfileChange} 
+                                        className={commonInputClasses} 
+                                        placeholder="Enter new password"
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-accent transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
-                <div className="sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
-                    <input type="text" name="fullName" value={profileData.fullName} onChange={handleProfileChange} className={commonInputClasses} />
-                </div>
-                <div className="sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                    <input type="email" name="email" value={profileData.email} onChange={handleProfileChange} className={commonInputClasses} />
-                </div>
-                <div className="sm:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                    <input type="password" name="password" value={profileData.password || ''} onChange={handleProfileChange} className={commonInputClasses} />
-                </div>
-                <div className="sm:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
-                    <input type="text" disabled value={profileData.role} className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
-                </div>
-                <div className="sm:col-span-3">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit</label>
-                    <input type="text" disabled value={profileData.operatingUnit} className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} />
-                </div>
-            </div>
-            <div className="pt-5">
-                <div className="flex justify-end">
-                    <button type="button" onClick={handleSaveProfile} className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-accent hover:bg-opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent">
-                        Save
-                    </button>
-                </div>
-            </div>
-            
-            <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Appearance</h3>
-                <div className="mt-4 flex items-center justify-between">
-                    <div>
-                        <p className="font-medium text-gray-700 dark:text-gray-300">Dark Mode</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Toggle dark mode theme for the application.</p>
-                    </div>
+
+                {/* Right Column: Roles & Appearance */}
+                <div className="w-full md:w-80 space-y-6">
+                    <section className="bg-gray-50 dark:bg-gray-800/40 p-6 rounded-2xl border border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-3 mb-4">
+                            <ShieldCheck className="h-5 w-5 text-gray-400" />
+                            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300">Access Level</h3>
+                        </div>
+                        <div className="space-y-3">
+                            <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                                <p className="text-[10px] font-black text-gray-400 uppercase">System Role</p>
+                                <p className="text-sm font-bold text-accent">{profileData.role}</p>
+                            </div>
+                            <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                                <p className="text-[10px] font-black text-gray-400 uppercase">Operating Unit</p>
+                                <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{profileData.operatingUnit}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Interface Preferences</h3>
+                        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                            <div className="flex items-center gap-3">
+                                {isDarkMode ? <Moon className="h-4 w-4 text-accent" /> : <Sun className="h-4 w-4 text-amber-500" />}
+                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Dark Interface</span>
+                            </div>
+                            <button 
+                                onClick={toggleDarkMode}
+                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isDarkMode ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-700'}`}
+                            >
+                                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-200 ${isDarkMode ? 'translate-x-4.5' : 'translate-x-1'}`} />
+                            </button>
+                        </div>
+                    </section>
+                    
                     <button 
-                        onClick={toggleDarkMode}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 ${isDarkMode ? 'bg-accent' : 'bg-gray-200'}`}
+                        onClick={handleSaveProfile} 
+                        disabled={saving}
+                        className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-white font-bold text-sm transition-all shadow-lg active:scale-95 ${saving ? 'bg-gray-400' : 'bg-accent hover:bg-opacity-90 shadow-accent/20'}`}
                     >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${isDarkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                        <Save className="h-4 w-4" />
+                        {saving ? 'Updating...' : 'Save All Changes'}
                     </button>
                 </div>
             </div>
