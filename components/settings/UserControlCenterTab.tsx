@@ -26,10 +26,12 @@ const UserControlCenterTab: React.FC = () => {
 
     const fetchConfigs = async () => {
         if (!supabase) {
+            setError("Supabase connection is not established. Please check your configuration.");
             setLoading(false);
             return;
         }
         setLoading(true);
+        setError(null);
         try {
             const { data, error } = await supabase.from('roles_config').select('*');
             if (error) {

@@ -120,11 +120,12 @@ const LODManagementTab: React.FC = () => {
     }, []);
 
     const fetchData = async () => {
-        setLoading(true);
         if (!supabase) {
+            console.warn("Supabase client not initialized.");
             setLoading(false);
             return;
         }
+        setLoading(true);
 
         try {
             const { data: sData } = await supabase.from('lod_sections').select('*').order('order', { ascending: true });

@@ -400,7 +400,7 @@ const AppContent: React.FC = () => {
         setExternalFilters(filters);
     };
 
-    if (!isAuthReady && currentUser && !currentUser.email?.endsWith('@offline.local')) {
+    if (!isAuthReady) {
         return (
             <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
                 <div className="flex flex-col items-center">

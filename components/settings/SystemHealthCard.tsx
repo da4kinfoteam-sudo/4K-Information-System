@@ -46,7 +46,7 @@ const SystemHealthCard: React.FC = () => {
                 <button 
                     onClick={testConnection} 
                     disabled={connectionStatus === 'checking'}
-                    className="text-sm text-accent hover:underline disabled:opacity-50"
+                    className="text-sm text-emerald-600 hover:underline disabled:opacity-50"
                 >
                     {connectionStatus === 'checking' ? 'Checking...' : 'Test Connection'}
                 </button>

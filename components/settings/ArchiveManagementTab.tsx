@@ -19,6 +19,7 @@ const ArchiveManagementTab: React.FC = () => {
 
     const fetchTrashItems = async () => {
         if (!supabase) {
+            console.warn("Supabase client not initialized.");
             setLoading(false);
             return;
         }

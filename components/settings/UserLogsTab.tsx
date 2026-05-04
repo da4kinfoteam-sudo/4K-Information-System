@@ -42,6 +42,7 @@ const UserLogsTab: React.FC<UserLogsTabProps> = ({
     useEffect(() => {
         const fetchLogs = async () => {
             if (!supabase) {
+                console.warn("Supabase client not initialized.");
                 setLoading(false);
                 return;
             }

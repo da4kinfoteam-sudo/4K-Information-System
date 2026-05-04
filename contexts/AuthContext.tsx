@@ -49,44 +49,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, []);
 
     useEffect(() => {
-        if (!supabase || isInitializingRef.current) return;
-        isInitializingRef.current = true;
-
-        const initializeAuth = async () => {
-            console.log("Initializing Auth...");
-            try {
-                // 1. Check initial session with a reasonable timeout to prevent hanging on refresh
-                const sessionPromise = supabase.auth.getSession();
-                const timeoutPromise = new Promise<{ data: { session: null }, error: Error }>((_, reject) => 
-                    setTimeout(() => reject(new Error("Session check timed out")), 5000)
-                );
-
-                const result = await Promise.race([sessionPromise, timeoutPromise]) as any;
-                const session = result?.data?.session || null;
-                
-                console.log("Initial session check resolved. Session exists:", !!session);
-                
-                if (session?.user) {
-                    await syncUserFromSession(session);
-                } else {
-                    const current = currentUserRef.current;
-                    if (current && !current.email?.endsWith('@offline.local')) {
-                        console.log("No valid Supabase session found. Clearing local stale session.");
-                        setCurrentUser(null);
-                    }
-                }
-            } catch (err) {
-                console.error("Auth initialization failed or timed out:", err);
-            } finally {
-                setIsAuthReady(true);
-                isInitializingRef.current = false;
-            }
-        };
+        if (!supabase) {
+            setIsAuthReady(true);
+            return;
+        }
 
         const syncUserFromSession = async (session: any) => {
             if (!session?.user) return;
             try {
-                const { data, error } = await supabase
+                const { data } = await supabase
                     .from('users')
                     .select('*')
                     .eq('email', session.user.email)
@@ -108,6 +79,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 }
             } catch (err) {
                 console.error("Sync user error:", err);
+            }
+        };
+
+        const initializeAuth = async () => {
+            if (isInitializingRef.current) return;
+            isInitializingRef.current = true;
+            console.log("Initializing Auth...");
+            
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                console.log("Initial session check resolved. Session exists:", !!session);
+                
+                if (session?.user) {
+                    await syncUserFromSession(session);
+                } else {
+                    const current = currentUserRef.current;
+                    if (current && !current.email?.endsWith('@offline.local')) {
+                        console.log("No valid Supabase session found. Clearing local stale session.");
+                        setCurrentUser(null);
+                    }
+                }
+            } catch (err) {
+                console.error("Auth initialization failed:", err);
+            } finally {
+                setIsAuthReady(true);
+                // Keep isInitializingRef true to prevent re-init if component re-mounts unexpectedly
             }
         };
 

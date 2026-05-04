@@ -242,72 +242,71 @@ const UserManagementTab: React.FC = () => {
             </div>
 
             <div className="bg-white dark:bg-gray-900 overflow-hidden shadow-sm ring-1 ring-gray-200 dark:ring-gray-700/50 sm:rounded-xl">
-                <div className="overflow-x-auto max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-900">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-750">
-                        <thead className="bg-[#f8fafc] dark:bg-gray-850 sticky top-0 z-10">
+                <div className="overflow-x-auto max-h-[520px] overflow-y-auto scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-900">
+                    <table className="min-w-full divide-y divide-gray-100 dark:divide-gray-800">
+                        <thead className="bg-[#f8fafc] dark:bg-gray-850 sticky top-0 z-20">
                             <tr>
-                                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Identity</th>
-                                <th className="px-4 py-3 text-left text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Access & Org</th>
-                                <th className="px-4 py-3 text-center text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Visibility Control</th>
-                                <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Operations</th>
+                                <th className="px-3 py-2 text-left text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">User Identity</th>
+                                <th className="px-3 py-2 text-left text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Access & Org</th>
+                                <th className="px-3 py-2 text-center text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Visibility Control</th>
+                                <th className="px-3 py-2 text-right text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 dark:border-gray-800">Operations</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                        <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
                             {usersList.map(user => {
                                 const hasOverrides = user.permissions_override && Object.keys(user.permissions_override).length > 0;
                                 return (
-                                    <tr key={user.id} className="hover:bg-emerald-50/30 dark:hover:bg-emerald-900/10 transition-colors">
-                                        <td className="px-4 py-3 whitespace-nowrap">
+                                    <tr key={user.id} className="hover:bg-emerald-50/10 dark:hover:bg-emerald-900/10 transition-colors group">
+                                        <td className="px-3 py-1.5 whitespace-nowrap">
                                             <div className="flex items-center gap-2">
-                                                <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-xs">
+                                                <div className="h-6 w-6 rounded-md bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-black text-[9px]">
                                                     {user.fullName.substring(0, 1).toUpperCase()}
                                                 </div>
-                                                <div>
-                                                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{user.username}</div>
-                                                    <div className="text-[10px] text-gray-400 dark:text-gray-500">{user.email}</div>
+                                                <div className="min-w-0">
+                                                    <div className="text-[11px] font-bold text-gray-900 dark:text-gray-100 truncate max-w-[140px] tracking-tight">{user.fullName}</div>
+                                                    <div className="text-[9px] text-gray-400 dark:text-gray-500 truncate max-w-[140px]">@{user.username}</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                            <div className="flex flex-col gap-0.5">
-                                                <span className="inline-flex w-fit items-center px-1.5 py-0.25 rounded text-[9px] font-bold bg-emerald-100/50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200/50">
-                                                    {user.role.toUpperCase()}
+                                        <td className="px-3 py-1.5 whitespace-nowrap">
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-tighter">
+                                                    {user.role}
                                                 </span>
-                                                <div className="text-[10px] font-medium text-gray-600 dark:text-gray-400">{user.operatingUnit}</div>
+                                                <div className="text-[9px] font-medium text-gray-500 dark:text-gray-500">{user.operatingUnit}</div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${user.visibility_scope === 'Own OU' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700'}`}>
-                                                    {user.visibility_scope || 'All OUs'}
+                                        <td className="px-3 py-1.5 whitespace-nowrap">
+                                            <div className="flex flex-col items-center">
+                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter border ${user.visibility_scope === 'Own OU' ? 'bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-900/10 dark:border-amber-800' : 'bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-900/10 dark:border-emerald-800'}`}>
+                                                    {user.visibility_scope === 'Own OU' ? 'Restricted' : 'Universal'}
                                                 </span>
                                                 {hasOverrides && (
-                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.25 rounded text-[8px] font-black bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
-                                                        OVERRIDDEN
-                                                    </span>
+                                                    <span className="text-[7px] font-black text-amber-600 dark:text-amber-400 mt-0.5 animate-pulse">CUSTOM RULES</span>
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-right">
                                             <div className="flex items-center justify-end gap-1">
                                                 <button 
                                                     onClick={() => handleEditPermissions(user)} 
-                                                    className="p-1.5 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/20" 
+                                                    className="p-1 px-1.5 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors rounded hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-1" 
                                                     title="Surgical Permissions"
                                                 >
-                                                    <Shield className="h-4 w-4" />
+                                                    <Shield className="h-3 w-3" />
+                                                    <span className="text-[8px] font-bold">ACL</span>
                                                 </button>
                                                 <button 
                                                     onClick={() => handleEditUser(user)} 
-                                                    className="px-2 py-1 text-[10px] font-bold text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-md transition-all border border-emerald-200/50 uppercase"
+                                                    className="px-2 py-1 text-[9px] font-bold text-gray-600 dark:text-gray-300 hover:bg-emerald-600 hover:text-white rounded border border-gray-200 dark:border-gray-700 hover:border-emerald-600 transition-all uppercase"
                                                 >
                                                     Edit
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDeleteUser(user.id)} 
-                                                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors rounded hover:bg-red-50 dark:hover:bg-red-950/20"
                                                 >
-                                                    <XIcon className="h-4 w-4" />
+                                                    <XIcon className="h-3 w-3" />
                                                 </button>
                                             </div>
                                         </td>
@@ -483,19 +482,18 @@ const UserManagementTab: React.FC = () => {
                                         {operatingUnits.map(unit => <option key={unit} value={unit}>{unit}</option>)}
                                     </select>
                                 </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Data Visibility Scope</label>
-                                <select 
-                                    value={formData.visibility_scope || 'All OUs'} 
-                                    onChange={e => setFormData({...formData, visibility_scope: e.target.value as any})} 
-                                    className={commonInputClasses}
-                                >
-                                    <option value="All OUs">All OUs (Unrestricted)</option>
-                                    <option value="Own OU">Own OU (Restricted)</option>
-                                </select>
-                                <p className="text-[10px] text-gray-400 mt-1 italic font-medium">Controls whether the user can see entries from other Operating Units.</p>
+                                <div className="col-span-2 bg-emerald-50/50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800/50">
+                                    <label className="block text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">Data Visibility scope (DCF Restriction)</label>
+                                    <select 
+                                        value={formData.visibility_scope || 'All OUs'} 
+                                        onChange={e => setFormData({...formData, visibility_scope: e.target.value as any})} 
+                                        className={commonInputClasses}
+                                    >
+                                        <option value="All OUs">All OUs (Universal Access)</option>
+                                        <option value="Own OU">Own OU (Restricted to Selected OU)</option>
+                                    </select>
+                                    <p className="text-[9px] text-gray-500 mt-1 italic font-medium">Critical: This restricts the data users can query in the DCF modules.</p>
+                                </div>
                             </div>
 
                             <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-850 rounded-xl border border-gray-100 dark:border-gray-700">
