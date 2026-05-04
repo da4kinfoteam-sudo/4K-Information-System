@@ -262,7 +262,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const initiallyFilteredSubprojects = useMemo(() => {
         let filtered = [...subprojects];
 
-        if (currentUser?.role === 'User') {
+        if (!canViewAll && currentUser) {
             filtered = filtered.filter(s => s.operatingUnit === currentUser.operatingUnit);
         }
 

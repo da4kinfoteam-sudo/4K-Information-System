@@ -155,6 +155,21 @@ const AppContent: React.FC = () => {
         fetchAllData();
     }, [currentUser]);
 
+    // Helper to filter data based on visibility scope
+    const filterByVisibility = <T extends { operatingUnit?: string }>(data: T[]): T[] => {
+        if (!currentUser) return data;
+        if (['Super Admin', 'Administrator'].includes(currentUser.role)) return data;
+        const scope = currentUser.visibility_scope || 'All OUs';
+        if (scope === 'All OUs') return data;
+        return data.filter(item => item.operatingUnit === currentUser.operatingUnit);
+    };
+
+    const visibleSubprojects = filterByVisibility(subprojects);
+    const visibleActivities = filterByVisibility(activities);
+    const visibleOfficeReqs = filterByVisibility(officeReqs);
+    const visibleStaffingReqs = filterByVisibility(staffingReqs);
+    const visibleOtherExpenses = filterByVisibility(otherProgramExpenses);
+
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
@@ -435,13 +450,13 @@ const AppContent: React.FC = () => {
         switch (currentPage) {
             case '/':
                 return <Dashboard 
-                            subprojects={subprojects} 
+                            subprojects={visibleSubprojects} 
                             ipos={ipos} 
-                            activities={activities}
+                            activities={visibleActivities}
                             systemSettings={systemSettings}
-                            officeReqs={officeReqs}
-                            staffingReqs={staffingReqs}
-                            otherProgramExpenses={otherProgramExpenses}
+                            officeReqs={visibleOfficeReqs}
+                            staffingReqs={visibleStaffingReqs}
+                            otherProgramExpenses={visibleOtherExpenses}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
                             // @ts-ignore
@@ -449,13 +464,13 @@ const AppContent: React.FC = () => {
                         />;
             case '/dashboards':
                  return <DashboardsPage 
-                            subprojects={subprojects} 
+                            subprojects={visibleSubprojects} 
                             ipos={ipos} 
-                            trainings={trainings}
-                            otherActivities={otherActivities}
-                            officeReqs={officeReqs}
-                            staffingReqs={staffingReqs}
-                            otherProgramExpenses={otherProgramExpenses}
+                            trainings={visibleActivities.filter(a => a.type === 'Training')}
+                            otherActivities={visibleActivities.filter(a => a.type === 'Activity')}
+                            officeReqs={visibleOfficeReqs}
+                            staffingReqs={visibleStaffingReqs}
+                            otherProgramExpenses={visibleOtherExpenses}
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
@@ -465,7 +480,7 @@ const AppContent: React.FC = () => {
             case '/subprojects':
                 return <Subprojects 
                             ipos={ipos} 
-                            subprojects={subprojects} 
+                            subprojects={visibleSubprojects} 
                             setSubprojects={setSubprojects}
                             setIpos={setIpos} 
                             onSelectIpo={handleSelectIpo}
@@ -480,7 +495,7 @@ const AppContent: React.FC = () => {
             case '/trainings':
                 return <ActivitiesComponent 
                             ipos={ipos} 
-                            activities={activities}
+                            activities={visibleActivities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
@@ -494,7 +509,7 @@ const AppContent: React.FC = () => {
             case '/other-activities':
                 return <ActivitiesComponent 
                             ipos={ipos} 
-                            activities={activities}
+                            activities={visibleActivities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
@@ -508,7 +523,7 @@ const AppContent: React.FC = () => {
             case '/activities': 
                 return <ActivitiesComponent 
                             ipos={ipos} 
-                            activities={activities}
+                            activities={visibleActivities}
                             setActivities={setActivities}
                             onSelectIpo={handleSelectIpo}
                             onSelectActivity={handleSelectActivity}
@@ -586,11 +601,11 @@ const AppContent: React.FC = () => {
                         />;
             case '/program-management':
                 return <ProgramManagement
-                            officeReqs={officeReqs}
+                            officeReqs={visibleOfficeReqs}
                             setOfficeReqs={setOfficeReqs}
-                            staffingReqs={staffingReqs}
+                            staffingReqs={visibleStaffingReqs}
                             setStaffingReqs={setStaffingReqs}
-                            otherProgramExpenses={otherProgramExpenses}
+                            otherProgramExpenses={visibleOtherExpenses}
                             setOtherProgramExpenses={setOtherProgramExpenses}
                             uacsCodes={derivedUacsCodes}
                             onSelectOfficeReq={handleSelectOfficeReq}
@@ -602,15 +617,15 @@ const AppContent: React.FC = () => {
             // NEW ACCOMPLISHMENT ROUTES
             case '/accomplishment/financial':
                 return <FinancialAccomplishment 
-                            subprojects={subprojects}
+                            subprojects={visibleSubprojects}
                             setSubprojects={setSubprojects}
-                            activities={activities}
+                            activities={visibleActivities}
                             setActivities={setActivities}
-                            officeReqs={officeReqs}
+                            officeReqs={visibleOfficeReqs}
                             setOfficeReqs={setOfficeReqs}
-                            staffingReqs={staffingReqs}
+                            staffingReqs={visibleStaffingReqs}
                             setStaffingReqs={setStaffingReqs}
-                            otherProgramExpenses={otherProgramExpenses}
+                            otherProgramExpenses={visibleOtherExpenses}
                             setOtherProgramExpenses={setOtherProgramExpenses}
                             uacsCodes={derivedUacsCodes}
                             onSelectSubproject={handleSelectSubproject}
@@ -621,13 +636,13 @@ const AppContent: React.FC = () => {
                         />;
             case '/accomplishment/physical':
                 return <PhysicalAccomplishment 
-                            subprojects={subprojects}
+                            subprojects={visibleSubprojects}
                             setSubprojects={setSubprojects}
-                            activities={activities}
+                            activities={visibleActivities}
                             setActivities={setActivities}
-                            officeReqs={officeReqs}
+                            officeReqs={visibleOfficeReqs}
                             setOfficeReqs={setOfficeReqs}
-                            staffingReqs={staffingReqs}
+                            staffingReqs={visibleStaffingReqs}
                             setStaffingReqs={setStaffingReqs}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
@@ -711,12 +726,12 @@ const AppContent: React.FC = () => {
             case '/reports':
                 return <Reports 
                             ipos={ipos} 
-                            subprojects={subprojects} 
-                            trainings={trainings}
-                            otherActivities={otherActivities}
-                            officeReqs={officeReqs}
-                            staffingReqs={staffingReqs}
-                            otherProgramExpenses={otherProgramExpenses}
+                            subprojects={visibleSubprojects} 
+                            trainings={visibleActivities.filter(a => a.type === 'Training')}
+                            otherActivities={visibleActivities.filter(a => a.type === 'Activity')}
+                            officeReqs={visibleOfficeReqs}
+                            staffingReqs={visibleStaffingReqs}
+                            otherProgramExpenses={visibleOtherExpenses}
                             uacsCodes={derivedUacsCodes}
                         />;
             case '/subproject-detail':

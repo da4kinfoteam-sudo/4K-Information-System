@@ -190,6 +190,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return 'All';
 
+        // Check if the individual user has a forcefully restricted visibility scope.
+        if (currentUser.visibility_scope === 'Own OU') return 'Own OU';
+        if (currentUser.visibility_scope === 'All OUs') return 'All';
+
         const checkVisibility = (modName: string) => {
             if (rolesConfigs && rolesConfigs.length > 0) {
                 const roleDef = rolesConfigs.find(c => c.role === currentUser.role && c.module === modName);
