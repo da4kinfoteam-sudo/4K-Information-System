@@ -183,22 +183,6 @@ const AppContent: React.FC = () => {
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
 
-    if (!isAuthReady && currentUser && !currentUser.email?.endsWith('@offline.local')) {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
-                <div className="flex flex-col items-center">
-                    <div className="relative h-16 w-16">
-                        <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
-                        <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                    <p className="mt-6 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest text-[10px] animate-pulse text-center max-w-xs leading-relaxed">
-                        Empowering Indigenous Peoples towards Self Determination
-                    </p>
-                </div>
-            </div>
-        );
-    }
-
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
         deadlines
@@ -415,6 +399,22 @@ const AppContent: React.FC = () => {
     const handleApplyFilter = (filters: { region?: string; year?: string; search?: string; status?: string }) => {
         setExternalFilters(filters);
     };
+
+    if (!isAuthReady && currentUser && !currentUser.email?.endsWith('@offline.local')) {
+        return (
+            <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+                <div className="flex flex-col items-center">
+                    <div className="relative h-16 w-16">
+                        <div className="absolute inset-0 border-4 border-emerald-500/20 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <p className="mt-6 text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest text-[10px] animate-pulse text-center max-w-xs leading-relaxed">
+                        Empowering Indigenous Peoples towards Self Determination
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     if (!currentUser) {
         return <Login />;
