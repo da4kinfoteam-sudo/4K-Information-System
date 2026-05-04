@@ -88,10 +88,10 @@ const initializeAuth = async () => {
             console.log("Initializing Auth...");
             
             try {
-                // 1. Check initial session with a 12s timeout to prevent hanging on slow network/cold starts
+                // 1. Check initial session with a 25s timeout to prevent hanging on slow network/cold starts
                 const sessionPromise = supabase.auth.getSession();
                 const timeoutPromise = new Promise<{ data: { session: null } }>(resolve => 
-                    setTimeout(() => resolve({ data: { session: null } }), 12000)
+                    setTimeout(() => resolve({ data: { session: null } }), 25000)
                 );
 
                 const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any;

@@ -50,10 +50,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 return;
             }
             try {
-                // Increased timeout to 12s for initial sanity check
+                // Increased timeout to 25s for initial sanity check
                 const fetchPromise = supabase.from('users').select('id').limit(1);
                 const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                    setTimeout(() => reject(new Error("Database Wakeup Timeout")), 12000)
+                    setTimeout(() => reject(new Error("Database Latency Timeout")), 25000)
                 );
 
                 const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;

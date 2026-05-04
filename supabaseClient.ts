@@ -1,47 +1,30 @@
 // Author: 4K 
 import { createClient } from '@supabase/supabase-js';
 
-// Static detection for Vite build-time replacement
-const SB_URL = import.meta.env.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : '');
-const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : '');
+// Standard Vite Env Vars
+const ENV_URL = import.meta.env.VITE_SUPABASE_URL;
+const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY;
 
-const getEnvVar = (key: string) => {
-    const isValid = (val: any) => val && val !== 'undefined' && val !== 'null';
-    
-    // 1. Check Vite's import.meta.env (standard for client-side)
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-        const val = import.meta.env[key];
-        if (isValid(val)) return val;
-    }
-    // 2. Check process.env (mapped in vite.config.ts)
-    if (typeof process !== 'undefined' && process.env && (process.env as any)[key]) {
-        const val = (process.env as any)[key];
-        if (isValid(val)) return val;
-    }
-    // 3. Check window._env_ (runtime injection)
-    if (typeof window !== 'undefined' && (window as any)._env_ && (window as any)._env_[key]) {
-        const val = (window as any)._env_[key];
-        if (isValid(val)) return val;
-    }
-    return '';
-};
+// Process Env Vars (mapped via define in vite.config.ts)
+const PROC_URL = typeof process !== 'undefined' ? (process.env.VITE_SUPABASE_URL || (process.env as any).SUPABASE_URL) : '';
+const PROC_KEY = typeof process !== 'undefined' ? (process.env.VITE_SUPABASE_ANON_KEY || (process.env as any).SUPABASE_ANON_KEY) : '';
 
-const supabaseUrl = SB_URL || getEnvVar('VITE_SUPABASE_URL') || getEnvVar('SUPABASE_URL');
-const supabaseKey = SB_KEY || getEnvVar('VITE_SUPABASE_ANON_KEY') || getEnvVar('VITE_SUPABASE_KEY') || getEnvVar('SUPABASE_ANON_KEY') || getEnvVar('SUPABASE_KEY');
+const supabaseUrl = ENV_URL || PROC_URL || '';
+const supabaseKey = ENV_KEY || PROC_KEY || '';
 
-// Log keys present (without full values) to help debug
 if (typeof window !== 'undefined') {
-    console.log("Supabase Client Init:", {
-        hasUrl: !!supabaseUrl,
-        urlLength: supabaseUrl?.length,
-        hasKey: !!supabaseKey,
-        keyLength: supabaseKey?.length,
-        env: import.meta.env.MODE
+    console.log("Supabase Client Diagnostic:", {
+        urlSource: ENV_URL ? 'import.meta.env' : (PROC_URL ? 'process.env' : 'none'),
+        keySource: ENV_KEY ? 'import.meta.env' : (PROC_KEY ? 'process.env' : 'none'),
+        urlValid: supabaseUrl.startsWith('https://'),
+        urlLength: supabaseUrl.length,
+        keyLength: supabaseKey.length,
+        mode: import.meta.env.MODE
     });
 }
 
 if (!supabaseUrl || !supabaseKey) {
-    console.warn('Supabase URL or Key is missing. Database features will be disabled.');
+    console.error('CRITICAL: Supabase URL or Key is missing. Check Vercel/Local Environment Variables.');
 }
 
 export const supabase = (supabaseUrl && supabaseKey) 
@@ -54,13 +37,15 @@ export const supabase = (supabaseUrl && supabaseKey)
             storage: typeof window !== 'undefined' ? window.localStorage : undefined
         },
         realtime: {
-            timeout: 40000, 
+            timeout: 60000, // 60s for realtime consistency
         },
         global: {
-            fetch: (...args) => fetch(...args).catch(err => {
-                console.error("Supabase Network Error:", err);
-                throw err;
-            })
+            fetch: (url, options) => {
+                return fetch(url, options).catch(err => {
+                    console.error("Supabase Lower-Level Fetch Error:", { url, err });
+                    throw err;
+                });
+            }
         }
     }) 
     : null;
