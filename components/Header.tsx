@@ -50,10 +50,10 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                 return;
             }
             try {
-                // Use a slightly longer timeout (6s) for the initial check to account for Vercel/Supabase cold starts
+                // Increased timeout to 12s for initial sanity check
                 const fetchPromise = supabase.from('users').select('id').limit(1);
                 const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                    setTimeout(() => reject(new Error("DB Check Timeout")), 6000)
+                    setTimeout(() => reject(new Error("Database Wakeup Timeout")), 12000)
                 );
 
                 const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;

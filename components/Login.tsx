@@ -23,10 +23,10 @@ const Login: React.FC = () => {
         
         setConnError(null);
         try {
-            // Use a short timeout for the connectivity check
+            // Increased timeout to 10s for slow cold-starts or latency
             const fetchPromise = supabase.from('users').select('count', { count: 'exact', head: true });
             const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                setTimeout(() => reject(new Error("Connection timed out (5s)")), 5000)
+                setTimeout(() => reject(new Error("Connection timed out (10s). Database may be waking up.")), 10000)
             );
 
             const { error: dbError } = await Promise.race([fetchPromise, timeoutPromise]) as any;
