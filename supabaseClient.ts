@@ -1,52 +1,55 @@
 // Author: 4K 
 import { createClient } from '@supabase/supabase-js';
 
-// Standard Vite Env Vars
-const ENV_URL = import.meta.env.VITE_SUPABASE_URL;
-const ENV_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY;
-
-// Process Env Vars (mapped via define in vite.config.ts)
-const PROC_URL = typeof process !== 'undefined' ? (process.env.VITE_SUPABASE_URL || (process.env as any).SUPABASE_URL) : '';
-const PROC_KEY = typeof process !== 'undefined' ? (process.env.VITE_SUPABASE_ANON_KEY || (process.env as any).SUPABASE_ANON_KEY) : '';
-
-const supabaseUrl = ENV_URL || PROC_URL || '';
-const supabaseKey = ENV_KEY || PROC_KEY || '';
+const SB_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_KEY || '';
 
 if (typeof window !== 'undefined') {
-    console.log("Supabase Client Diagnostic:", {
-        urlSource: ENV_URL ? 'import.meta.env' : (PROC_URL ? 'process.env' : 'none'),
-        keySource: ENV_KEY ? 'import.meta.env' : (PROC_KEY ? 'process.env' : 'none'),
-        urlValid: supabaseUrl.startsWith('https://'),
-        urlLength: supabaseUrl.length,
-        keyLength: supabaseKey.length,
+    console.log("Supabase Client Init:", {
+        hasUrl: !!SB_URL,
+        urlPreview: SB_URL ? SB_URL.substring(0, 15) + '...' : 'none',
+        hasKey: !!SB_KEY,
         mode: import.meta.env.MODE
     });
 }
 
-if (!supabaseUrl || !supabaseKey) {
-    console.error('CRITICAL: Supabase URL or Key is missing. Check Vercel/Local Environment Variables.');
-}
-
-export const supabase = (supabaseUrl && supabaseKey) 
-    ? createClient(supabaseUrl, supabaseKey, {
+export const supabase = (SB_URL && SB_KEY) 
+    ? createClient(SB_URL, SB_KEY, {
         auth: {
             persistSession: true,
             autoRefreshToken: true,
-            detectSessionInUrl: true,
-            storageKey: 'npmoms-auth-token',
-            storage: typeof window !== 'undefined' ? window.localStorage : undefined
-        },
-        realtime: {
-            timeout: 60000, // 60s for realtime consistency
+            detectSessionInUrl: true
         },
         global: {
-            fetch: (url, options) => {
-                return fetch(url, options).catch(err => {
-                    console.error("Supabase Lower-Level Fetch Error:", { url, err });
-                    throw err;
-                });
-            }
+            fetch: (...args) => fetch(...args).catch(err => {
+                console.error("Supabase Global Fetch Error:", err);
+                throw err;
+            })
         }
     }) 
     : null;
+
+if (supabase && typeof window !== 'undefined') {
+    (window as any).supabaseDiagnostics = {
+        supabase,
+        SB_URL,
+        SB_KEY: SB_KEY ? "Present (Private)" : "Missing",
+        ping: async () => {
+             const start = Date.now();
+             try {
+                const { error, data } = await supabase.from('users').select('id').limit(1);
+                return { success: !error, error, data, time: Date.now() - start };
+             } catch (e) {
+                return { success: false, error: e, time: Date.now() - start };
+             }
+        }
+    };
+    
+    supabase.from('users').select('id').limit(1)
+        .then(({ error }) => {
+            if (error) console.warn("Initial DB sanity check failed:", error.message);
+            else console.log("Initial DB sanity check success.");
+        })
+        .catch(err => console.error("Initial DB sanity check exception:", err));
+}
 // --- End of supabaseClient.ts ---
