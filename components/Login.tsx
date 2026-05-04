@@ -10,35 +10,27 @@ const Login: React.FC = () => {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [dbStatus, setDbStatus] = useState<'online' | 'offline'>('offline');
-
-    // Check Supabase connection on mount for UI indicator
     const [connError, setConnError] = useState<string | null>(null);
 
     const checkConnection = async () => {
         if (!supabase) {
             setDbStatus('offline');
-            setConnError("Supabase client not initialized. Check your environment variables.");
+            setConnError("Database client not initialized.");
             return;
         }
         
-        setDbStatus('offline');
-        setConnError(null);
-        
         try {
-            // Simplified check: Use the SDK's built-in capability
             const { error: dbError } = await supabase.from('users').select('id', { head: true, count: 'exact' }).limit(1);
-
             if (!dbError) {
                 setDbStatus('online');
+                setConnError(null);
             } else {
-                console.warn("Supabase connection check failed:", dbError);
                 setDbStatus('offline');
-                setConnError(dbError.message || "Unauthorized or Session Expired");
+                setConnError(dbError.message);
             }
         } catch (e: any) {
-            console.warn("Supabase connection check exception:", e);
             setDbStatus('offline');
-            setConnError(e.message || "Unknown connectivity error.");
+            setConnError(e.message);
         }
     };
 
@@ -53,129 +45,44 @@ const Login: React.FC = () => {
 
         try {
             let user = null;
-            let isPasswordInvalid = false;
 
-            // 1. Attempt Native Supabase Auth (Phase 3 Core Migration)
             if (supabase) {
-                try {
-                     // Try to match email if username was provided
-                     let loginEmail = identifier;
-                     if (!identifier.includes('@')) {
-                         console.log("Detecting email for username:", identifier);
-                         // Try searching in the database directly for the email mapping
-                         const { data: matchedData } = await supabase
-                            .from('users')
-                            .select('email')
-                            .eq('username', identifier)
-                            .maybeSingle();
+                // Direct database lookup
+                let { data, error: dbError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .or(`username.eq."${identifier}",email.eq."${identifier}"`)
+                    .eq('password', password)
+                    .maybeSingle();
 
-                         if (matchedData?.email) {
-                             loginEmail = matchedData.email;
-                         } else {
-                             // Fallback to searching in locally fetched list
-                             const ctxMatch = usersList.find(u => u.username === identifier);
-                             if (ctxMatch?.email) loginEmail = ctxMatch.email;
-                         }
-                     }
-                     
-                     console.log("Attempting native sign in for:", loginEmail);
-                     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-                         email: loginEmail,
-                         password: password
-                     });
-
-                     if (!authError && authData.user) {
-                         // Successfully logged in via native auth!
-                         // AuthContext's listener will catch this and update state.
-                         return;
-                     } else if (authError && authError.message.includes('Invalid login credentials')) {
-                         // Wait, might be wrong native credentials, but let's check if the user is just
-                         // not migrated to auth.users yet (fallback to old plain-text logic)
-                         console.warn("Native auth failed. Attempting legacy plaintext fallback...", authError);
-                     }
-                } catch (e) {
-                     console.warn("Supabase native auth exception:", e);
+                if (dbError) {
+                    console.error("Direct Auth Error:", dbError);
+                } else if (data) {
+                    user = data;
                 }
             }
 
-            // 2. Fallback: Legacy Plaintext Database Authentication (For Pre-Migrated Data)
-            if (supabase) {
-                try {
-                    // Try finding by username first
-                    let { data, error } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('username', identifier)
-                        .limit(1);
-
-                    if (error) console.warn('Supabase Login Query Error (Username):', error);
-
-                    // If not found, try finding by email
-                    if (!data || data.length === 0) {
-                        const result = await supabase
-                            .from('users')
-                            .select('*')
-                            .eq('email', identifier)
-                            .limit(1);
-                        data = result.data;
-                        if (result.error) console.warn('Supabase Login Query Error (Email):', result.error);
-                    }
-
-                    if (data && data.length > 0) {
-                        // User found in DB
-                        // Verify password (plaintext comparison as per current schema)
-                        if (data[0].password === password) {
-                            user = data[0];
-                        } else {
-                            isPasswordInvalid = true;
-                        }
-                    }
-                } catch (dbErr) {
-                    console.warn("Database auth exception (Offline?):", dbErr);
-                    // Do not block fallback if DB fails
-                }
-            }
-
-            // If DB explicitly said wrong password, stop.
-            if (isPasswordInvalid) {
-                setError('Invalid password.');
-                setIsLoading(false);
-                return;
-            }
-
-            // 2. Fallback: Check Local Context List
-            // This handles cases where DB might be offline but data was loaded previously (though rare with empty init)
-            if (!user) {
-                 user = usersList.find(u => 
-                    (u.email === identifier || u.username === identifier) && 
-                    (u.password === password)
-                );
-            }
-
-            // 3. Fallback: Hardcoded Admin (Offline/Emergency Mode)
-            // Allows login even if DB is empty or unreachable
-            if (!user) {
-                if (identifier === 'admin' && password === 'admin') {
-                    user = {
-                        id: 99999, // Temporary ID
-                        username: 'admin',
-                        fullName: 'System Administrator',
-                        email: 'admin@offline.local',
-                        role: 'Super Admin',
-                        operatingUnit: 'NPMO',
-                        password: 'admin'
-                    };
-                }
+            // Fallback for hardcoded admin
+            if (!user && identifier === 'admin' && password === 'admin') {
+                user = {
+                    id: 99999,
+                    username: 'admin',
+                    fullName: 'System Administrator',
+                    email: 'admin@system.local',
+                    role: 'Super Admin' as any,
+                    operatingUnit: 'NPMO',
+                    password: 'admin'
+                };
             }
 
             if (user) {
                 login(user);
             } else {
-                setError('Invalid email/username or password.');
+                setError('Invalid credentials. Access denied.');
             }
         } catch (err) {
             console.error("Login exception:", err);
-            setError('An unexpected error occurred during login.');
+            setError('System error during validation.');
         } finally {
             setIsLoading(false);
         }
@@ -183,33 +90,25 @@ const Login: React.FC = () => {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4 transition-colors duration-200">
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full animate-fadeIn">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl max-w-md w-full animate-fadeIn border border-gray-200 dark:border-gray-700">
                 <div className="flex flex-col items-center mb-8">
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-full mb-4 shadow-sm border border-gray-100 dark:border-gray-600">
                         <img 
                             src="/assets/4klogo.png" 
                             alt="DA 4K Logo" 
-                            className="h-24 w-24 object-contain"
+                            className="h-20 w-20 object-contain"
                         />
                     </div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white text-center">4K Information System</h1>
-                    <div className="flex flex-col items-center gap-2 mt-3">
+                    <h1 className="text-2xl font-black text-gray-900 dark:text-white text-center tracking-tight">4K Information System</h1>
+                    <div className="flex flex-col items-center gap-1 mt-3">
                         <div className="flex items-center gap-2">
-                            <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'}`}></span>
-                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                                {dbStatus === 'online' ? 'Database Connected' : 'Offline Mode'}
+                            <span className={`h-2 w-2 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500' : 'bg-red-400'}`}></span>
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                {dbStatus === 'online' ? 'Direct Access: Connected' : 'Direct Access: offline'}
                             </p>
-                            {dbStatus === 'offline' && (
-                                <button 
-                                    onClick={(e) => { e.preventDefault(); checkConnection(); }}
-                                    className="text-[10px] text-emerald-600 hover:underline font-bold uppercase ml-1"
-                                >
-                                    Retry
-                                </button>
-                            )}
                         </div>
                         {connError && (
-                            <p className="text-[10px] text-red-500 text-center max-w-[280px] leading-tight italic">
+                            <p className="text-[9px] text-red-500 text-center font-bold uppercase tracking-tighter">
                                 {connError}
                             </p>
                         )}
@@ -217,53 +116,47 @@ const Login: React.FC = () => {
                 </div>
                 
                 {error && (
-                    <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded relative mb-6 text-sm" role="alert">
-                        <span className="block sm:inline">{error}</span>
+                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-xl mb-6 text-xs font-bold text-center" role="alert">
+                        {error}
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address or Username</label>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Identity Handle</label>
                         <input 
                             type="text" 
                             required 
                             value={identifier} 
                             onChange={(e) => setIdentifier(e.target.value)}
                             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white"
-                            placeholder="Enter your username or email"
+                            placeholder="Username or Email"
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Access Key</label>
                         <input 
                             type="password" 
                             required 
                             value={password} 
                             onChange={(e) => setPassword(e.target.value)}
                             className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white"
-                            placeholder="Enter your password"
+                            placeholder="Password"
                         />
                     </div>
                     <button 
                         type="submit" 
                         disabled={isLoading}
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-colors duration-200 disabled:opacity-70 disabled:cursor-not-allowed"
+                        className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-lg text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
                     >
-                        {isLoading ? (
-                            <div className="flex items-center">
-                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Authenticating...
-                            </div>
-                        ) : 'Sign In'}
+                        {isLoading ? 'Verifying...' : 'Initialize Session'}
                     </button>
                 </form>
-                <p className="mt-6 text-xs text-center text-gray-400 dark:text-gray-500">
-                    Protected by DA-4K Program Management Office
-                </p>
+                <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
+                    <p className="text-[9px] text-center font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+                        Protected System Architecture • PMO 4K
+                    </p>
+                </div>
             </div>
         </div>
     );
