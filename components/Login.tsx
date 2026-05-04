@@ -21,44 +21,19 @@ const Login: React.FC = () => {
             return;
         }
         
+        setDbStatus('offline');
         setConnError(null);
+        
         try {
-            // Diagnostic: Try a direct fetch first to see if the network layer is the problem
-            const url = (supabase as any).supabaseUrl;
-            console.log("Direct ping to:", url);
-            const pingStart = Date.now();
-            
-            // 1. Pre-flight check with a standard fetch (bypassing SDK)
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
-                
-                const pingResp = await fetch(`${url}/rest/v1/`, {
-                    method: 'GET',
-                    headers: { 'apikey': (supabase as any).supabaseKey },
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                console.log(`Direct ping successful in ${Date.now() - pingStart}ms. Status: ${pingResp.status}`);
-            } catch (pingErr: any) {
-                console.warn("Direct ping failed:", pingErr);
-                // We'll still try the SDK check, but this confirms network-level blockage
-            }
-
-            // 2. SDK-level check
-            const fetchPromise = supabase.from('users').select('count', { count: 'exact', head: true });
-            const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
-                setTimeout(() => reject(new Error("Database connection timed out (25s). Possible network issue or cold start.")), 25000)
-            );
-
-            const { error: dbError } = await Promise.race([fetchPromise, timeoutPromise]) as any;
+            // Simplified check: Use the SDK's built-in capability
+            const { error: dbError } = await supabase.from('users').select('id', { head: true, count: 'exact' }).limit(1);
 
             if (!dbError) {
                 setDbStatus('online');
             } else {
                 console.warn("Supabase connection check failed:", dbError);
                 setDbStatus('offline');
-                setConnError(dbError.message || JSON.stringify(dbError));
+                setConnError(dbError.message || "Unauthorized or Session Expired");
             }
         } catch (e: any) {
             console.warn("Supabase connection check exception:", e);
