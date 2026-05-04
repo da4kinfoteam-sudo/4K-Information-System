@@ -12,17 +12,40 @@ const Login: React.FC = () => {
     const [dbStatus, setDbStatus] = useState<'online' | 'offline'>('offline');
 
     // Check Supabase connection on mount for UI indicator
-    useEffect(() => {
-        const checkConnection = async () => {
-            if (!supabase) return;
-            try {
-                const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
-                if (!error) setDbStatus('online');
-            } catch (e) {
-                console.warn("Supabase connection check failed:", e);
+    const [connError, setConnError] = useState<string | null>(null);
+
+    const checkConnection = async () => {
+        if (!supabase) {
+            setDbStatus('offline');
+            setConnError("Supabase client not initialized. Check your environment variables.");
+            return;
+        }
+        
+        setConnError(null);
+        try {
+            // Use a short timeout for the connectivity check
+            const fetchPromise = supabase.from('users').select('count', { count: 'exact', head: true });
+            const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
+                setTimeout(() => reject(new Error("Connection timed out (5s)")), 5000)
+            );
+
+            const { error: dbError } = await Promise.race([fetchPromise, timeoutPromise]) as any;
+
+            if (!dbError) {
+                setDbStatus('online');
+            } else {
+                console.warn("Supabase connection check failed:", dbError);
                 setDbStatus('offline');
+                setConnError(dbError.message || JSON.stringify(dbError));
             }
-        };
+        } catch (e: any) {
+            console.warn("Supabase connection check exception:", e);
+            setDbStatus('offline');
+            setConnError(e.message || "Unknown connectivity error.");
+        }
+    };
+
+    useEffect(() => {
         checkConnection();
     }, []);
 
@@ -173,11 +196,26 @@ const Login: React.FC = () => {
                         />
                     </div>
                     <h1 className="text-2xl font-bold text-gray-800 dark:text-white text-center">4K Information System</h1>
-                    <div className="flex items-center gap-2 mt-3">
-                        <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}></span>
-                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                            {dbStatus === 'online' ? 'Database Connected' : 'Offline Mode'}
-                        </p>
+                    <div className="flex flex-col items-center gap-2 mt-3">
+                        <div className="flex items-center gap-2">
+                            <span className={`h-2.5 w-2.5 rounded-full ${dbStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-red-400'}`}></span>
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                                {dbStatus === 'online' ? 'Database Connected' : 'Offline Mode'}
+                            </p>
+                            {dbStatus === 'offline' && (
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); checkConnection(); }}
+                                    className="text-[10px] text-emerald-600 hover:underline font-bold uppercase ml-1"
+                                >
+                                    Retry
+                                </button>
+                            )}
+                        </div>
+                        {connError && (
+                            <p className="text-[10px] text-red-500 text-center max-w-[280px] leading-tight italic">
+                                {connError}
+                            </p>
+                        )}
                     </div>
                 </div>
                 
