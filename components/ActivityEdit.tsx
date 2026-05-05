@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
+import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -884,29 +885,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* Actual Obligation Group */}
                                         <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded border border-blue-100 dark:border-blue-800">
-                                            <p className="text-xs font-bold text-blue-700 uppercase">Obligation</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="block text-xs text-gray-500">Date (Month)</label>
-                                                    <select 
-                                                        value={getMonthFromDateStr(exp.actualObligationDate)} 
-                                                        onChange={(e) => updateActualDateFromMonth(exp.id, 'actualObligationDate', e.target.value)} 
-                                                        className={commonInputClasses}
-                                                    >
-                                                        <option value="">Select</option>
-                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs text-gray-500">Amount</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={exp.actualObligationAmount || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', parseFloat(e.target.value))}
-                                                        className={commonInputClasses} 
-                                                    />
-                                                </div>
-                                            </div>
+                                            <p className="text-xs font-bold text-blue-700 uppercase">Obligations</p>
+                                            <ObligationsEditor
+                                                obligations={exp.obligations || []}
+                                                onChange={(newObs, total) => {
+                                                    handleExpenseAccomplishmentChange(exp.id, 'obligations', newObs);
+                                                    handleExpenseAccomplishmentChange(exp.id, 'actualObligationAmount', total);
+                                                }}
+                                                defaultYear={formData.fundingYear}
+                                            />
                                         </div>
 
                                         {/* Actual Disbursement Group */}

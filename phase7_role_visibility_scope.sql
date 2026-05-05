@@ -17,5 +17,5 @@ SET visibility_scope = 'Own OU'
 WHERE visibility_scope IS NULL;
 
 -- Log the change
-INSERT INTO public.system_logs (event, details, user_id)
-VALUES ('DB_MIGRATION', 'Added visibility_scope to roles_config table', 'SYSTEM');
+INSERT INTO public.user_logs (description, username, operating_unit, created_at)
+VALUES ('DB_MIGRATION: Added visibility_scope to roles_config table', 'SYSTEM', 'NPMO', NOW());

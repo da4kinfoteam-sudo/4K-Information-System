@@ -6,6 +6,7 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
+import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 
 interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
@@ -403,8 +404,14 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                         <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                             <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Accomplishment Data</legend>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label><input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} /></div>
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Obligations</label>
+                                    <ObligationsEditor
+                                        obligations={formData.obligations || []}
+                                        onChange={(newObs, total) => setFormData(prev => ({ ...prev, obligations: newObs, actualObligationAmount: total }))}
+                                        defaultYear={formData.fundYear?.toString()}
+                                    />
+                                </div>
                             </div>
                         </fieldset>
 

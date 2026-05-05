@@ -201,6 +201,22 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             });
         };
 
+        const aggregateObligations = (item: any) => {
+            if (item.obligations && item.obligations.length > 0) {
+                item.obligations.forEach((o: any) => {
+                    const obMonth = getMonth(o.date);
+                    if (obMonth !== -1) {
+                        monthlyData[obMonth].obligation += (Number(o.amount) || 0);
+                    }
+                });
+            } else {
+                const obMonth = getMonth(item.actualObligationDate);
+                if (obMonth !== -1) {
+                    monthlyData[obMonth].obligation += (item.actualObligationAmount || 0);
+                }
+            }
+        };
+
         // 1. Process Subprojects
         (data.subprojects || []).forEach(sp => {
             const spBudget = (sp.details || []).reduce((sum, d) => {
@@ -211,8 +227,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 if (targetMonth !== -1) monthlyData[targetMonth].target += amount;
 
                 // Monthly Actuals
-                const obMonth = getMonth(d.actualObligationDate);
-                if (obMonth !== -1) monthlyData[obMonth].obligation += (d.actualObligationAmount || 0);
+                aggregateObligations(d);
 
                 const disbMonth = getMonth(d.actualDisbursementDate);
                 if (disbMonth !== -1) monthlyData[disbMonth].disbursement += (d.actualDisbursementAmount || 0);
@@ -240,8 +255,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 const targetMonth = getMonth(e.obligationMonth);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += e.amount;
 
-                const obMonth = getMonth(e.actualObligationDate);
-                if (obMonth !== -1) monthlyData[obMonth].obligation += (e.actualObligationAmount || 0);
+                aggregateObligations(e);
 
                 const disbMonth = getMonth(e.actualDisbursementDate);
                 if (disbMonth !== -1) monthlyData[disbMonth].disbursement += (e.actualDisbursementAmount || 0);
@@ -282,8 +296,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const targetMonth = getMonth(or.obligationDate);
             if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
 
-            const obMonth = getMonth(or.actualObligationDate);
-            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+            aggregateObligations(or);
 
             const disbMonth = getMonth(or.actualDisbursementDate);
             if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
@@ -306,8 +319,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const targetMonth = getMonth(sr.obligationDate);
             if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
 
-            const obMonth = getMonth(sr.actualObligationDate);
-            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+            aggregateObligations(sr);
 
             const disbMonth = getMonth(sr.actualDisbursementDate);
             if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
@@ -330,8 +342,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const targetMonth = getMonth(oe.obligationDate);
             if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
 
-            const obMonth = getMonth(oe.actualObligationDate);
-            if(obMonth !== -1) monthlyData[obMonth].obligation += actualOb;
+            aggregateObligations(oe);
 
             const disbMonth = getMonth(oe.actualDisbursementDate);
             if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;

@@ -253,13 +253,12 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
     const processedData = useMemo(() => {
         const lineItems: any[] = [];
         
-        const processItem = (component: string, packageType: string | undefined, activityName: string, objectType: string, uacsCode: string, allotment: number, obligationDate: string, obligationAmount: number, disbursements: any) => {
+        const processItem = (component: string, packageType: string | undefined, activityName: string, objectType: string, uacsCode: string, allotment: number, obligationDate: string, obligationAmount: number, obligationsList: any[], disbursements: any) => {
             const objType = objectType === 'CO' ? 'CO' : 'MOOE';
-            const obliMonth = getMonthIndex(obligationDate);
             
             lineItems.push({
                 component, packageType, activityName, objectType: objType, uacsCode,
-                allotment, obligationMonth: obliMonth, obligationAmount, disbursements
+                allotment, obligationDate, obligationAmount, obligationsList, disbursements
             });
         };
 
@@ -267,7 +266,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             sp.details.forEach(d => {
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (d as any)[`actualDisbursement${m}`] || 0);
-                processItem('Production and Livelihood', sp.packageType, sp.name, d.objectType, d.uacsCode, d.pricePerUnit * d.numberOfUnits, d.actualObligationDate || '', d.actualObligationAmount || 0, disbursements);
+                processItem('Production and Livelihood', sp.packageType, sp.name, d.objectType, d.uacsCode, d.pricePerUnit * d.numberOfUnits, d.actualObligationDate || '', d.actualObligationAmount || 0, d.obligations || [], disbursements);
             });
         });
         
@@ -276,7 +275,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             t.expenses.forEach(e => {
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
-                processItem(t.component, undefined, t.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, disbursements);
+                processItem(t.component, undefined, t.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
             });
         });
         
@@ -285,7 +284,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
-                processItem(oa.component, packageType, oa.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, disbursements);
+                processItem(oa.component, packageType, oa.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
             });
         });
         
@@ -295,13 +294,13 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                     const objType = getObjectTypeByCode(e.uacsCode, uacsCodes);
                     const disbursements: any = {};
                     SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
-                    processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, disbursements);
+                    processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
                 });
             } else {
                 const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (sr as any)[`actualDisbursement${m}`] || 0);
-                processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, sr.uacsCode, sr.annualSalary, sr.actualObligationDate || '', sr.actualObligationAmount || 0, disbursements);
+                processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, sr.uacsCode, sr.annualSalary, sr.actualObligationDate || '', sr.actualObligationAmount || 0, sr.obligations || [], disbursements);
             }
         });
         
@@ -309,14 +308,14 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             const objType = getObjectTypeByCode(or.uacsCode, uacsCodes);
             const disbursements: any = {};
             SHORT_MONTHS.forEach(m => disbursements[m] = (or as any)[`actualDisbursement${m}`] || 0);
-            processItem('Program Management', 'Office Requirements', or.equipment, objType, or.uacsCode, or.pricePerUnit * or.numberOfUnits, or.actualObligationDate || '', or.actualObligationAmount || 0, disbursements);
+            processItem('Program Management', 'Office Requirements', or.equipment, objType, or.uacsCode, or.pricePerUnit * or.numberOfUnits, or.actualObligationDate || '', or.actualObligationAmount || 0, or.obligations || [], disbursements);
         });
         
         data.otherProgramExpenses.forEach(ope => {
             const objType = getObjectTypeByCode(ope.uacsCode, uacsCodes);
             const disbursements: any = {};
             SHORT_MONTHS.forEach(m => disbursements[m] = (ope as any)[`actualDisbursement${m}`] || 0);
-            processItem('Program Management', 'Office Requirements', ope.particulars, objType, ope.uacsCode, ope.amount, ope.actualObligationDate || '', ope.actualObligationAmount || 0, disbursements);
+            processItem('Program Management', 'Office Requirements', ope.particulars, objType, ope.uacsCode, ope.amount, ope.actualObligationDate || '', ope.actualObligationAmount || 0, ope.obligations || [], disbursements);
         });
 
         const groupedData: { [key: string]: any } = {
@@ -369,11 +368,25 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             activity.allotment.total += item.allotment;
 
             // Obligation
-            if (item.obligationMonth >= 0 && item.obligationMonth < 12) {
-                const obli = activity.months[item.obligationMonth].obligation;
-                if (isCO) obli.co += item.obligationAmount;
-                else obli.mooe += item.obligationAmount;
-                obli.total += item.obligationAmount;
+            if (item.obligationsList && item.obligationsList.length > 0) {
+                item.obligationsList.forEach((o: any) => {
+                    const obMonth = getMonthIndex(o.date);
+                    if (obMonth >= 0 && obMonth < 12) {
+                        const amt = Number(o.amount) || 0;
+                        const obli = activity.months[obMonth].obligation;
+                        if (isCO) obli.co += amt;
+                        else obli.mooe += amt;
+                        obli.total += amt;
+                    }
+                });
+            } else {
+                const legacyMonth = getMonthIndex(item.obligationDate);
+                if (legacyMonth >= 0 && legacyMonth < 12) {
+                    const obli = activity.months[legacyMonth].obligation;
+                    if (isCO) obli.co += item.obligationAmount;
+                    else obli.mooe += item.obligationAmount;
+                    obli.total += item.obligationAmount;
+                }
             }
 
             // Disbursement

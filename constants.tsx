@@ -147,6 +147,13 @@ export interface HistoryEntry {
     user: string;
 }
 
+export interface ObligationRecord {
+    id: number;
+    amount: number;
+    date: string;
+    remarks?: string;
+}
+
 export interface SubprojectDetail {
     id: number;
     type: string;
@@ -167,6 +174,7 @@ export interface SubprojectDetail {
     actualAmount?: number; // Legacy total
     actualObligationAmount?: number; // New split field
     actualDisbursementAmount?: number; // New split field
+    obligations?: ObligationRecord[];
     isCompleted?: boolean;
 }
 
@@ -265,6 +273,7 @@ export interface ActivityExpense {
     actualAmount?: number;
     actualObligationAmount?: number;
     actualDisbursementAmount?: number;
+    obligations?: ObligationRecord[];
 }
 
 export interface Activity extends BaseEntity {
@@ -335,6 +344,7 @@ export interface BaseProgramManagementItem extends BaseEntity {
     actualDisbursementDate?: string;
     actualObligationAmount?: number;
     actualDisbursementAmount?: number;
+    obligations?: ObligationRecord[];
 }
 
 export interface OfficeRequirement extends BaseProgramManagementItem {
@@ -370,6 +380,7 @@ export interface StaffingExpense {
     actualObligationDate?: string;
     actualDisbursementAmount?: number;
     actualDisbursementDate?: string;
+    obligations?: ObligationRecord[];
     // Actual Monthly Disbursement
     actualDisbursementJan?: number;
     actualDisbursementFeb?: number;

@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { MonthYearPicker } from './ui/MonthYearPicker';
+import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { supabase } from '../supabaseClient';
 import { Info } from 'lucide-react';
 
@@ -1099,8 +1100,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Units</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation Date</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Obligation Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium" colSpan={2}>Obligations (Multiple)</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Disbursement Date</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Disbursement Amount</th>
                                                     </tr>
@@ -1147,22 +1147,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         className="h-8 text-xs"
                                                                     />
                                                                 </td>
-                                                                <td className="px-3 py-2">
-                                                                    <MonthYearPicker
-                                                                        value={detail.actualObligationDate}
-                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualObligationDate', val)}
-                                                                        placeholder="Select month"
+                                                                <td className="px-3 py-2" colSpan={2}>
+                                                                    <ObligationsEditor 
+                                                                        obligations={detail.obligations || []}
+                                                                        onChange={(newObs, total) => {
+                                                                            handleDetailAccomplishmentChange(idx, 'obligations', newObs);
+                                                                            handleDetailAccomplishmentChange(idx, 'actualObligationAmount', total);
+                                                                        }}
                                                                         defaultYear={editedSubproject.fundingYear}
-                                                                        className="h-8 text-xs"
-                                                                    />
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    <input 
-                                                                        type="number" 
-                                                                        value={(detail as any).actualObligationAmount || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualObligationAmount', parseFloat(e.target.value))} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
-                                                                        placeholder="0.00" 
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2">

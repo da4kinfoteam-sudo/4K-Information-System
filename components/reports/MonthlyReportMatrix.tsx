@@ -328,11 +328,21 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             entry.disb += disb;
         };
 
+        const getObligationAmountInWindow = (item: any) => {
+            let total = 0;
+            if (item.obligations && item.obligations.length > 0) {
+                total += item.obligations.reduce((sum: number, o: any) => sum + (isDateInReportWindow(o.date) ? (Number(o.amount) || 0) : 0), 0);
+            } else if (isDateInReportWindow(item.actualObligationDate)) {
+                total += (item.actualObligationAmount || 0);
+            }
+            return total;
+        };
+
         financialData.subprojects.forEach(sp => {
             const y = sp.fundingYear || 0;
             const ft = sp.fundType || 'Current';
             const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualObligationDate) ? (d.actualObligationAmount || 0) : 0), 0);
+            const obli = sp.details.reduce((s, d) => s + getObligationAmountInWindow(d), 0);
             const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || d.actualAmount || 0) : 0), 0);
             aggregate(y, ft, alloc, obli, disb);
         });
@@ -341,7 +351,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const y = act.fundingYear || 0;
             const ft = act.fundType || 'Current';
             const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
-            const obli = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualObligationDate) ? (e.actualObligationAmount || 0) : 0), 0);
+            const obli = act.expenses.reduce((s:number, e:any) => s + getObligationAmountInWindow(e), 0);
             const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
             aggregate(y, ft, alloc, obli, disb);
         };
@@ -352,7 +362,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const y = item.fundYear || 0;
             const ft = item.fundType || 'Current';
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
-            const obli = isDateInReportWindow(item.actualObligationDate) ? (item.actualObligationAmount || 0) : 0;
+            const obli = getObligationAmountInWindow(item);
             let disb = 0;
             if (isStaff || item.particulars) {
                  if (y === targetYearInt) {

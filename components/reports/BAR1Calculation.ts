@@ -383,7 +383,7 @@ export const calculateBAR1ReportData = (data: {
             const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
             const count = isStaff ? 1 : (pm.numberOfUnits || 1);
             const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
-            const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate, itemName);
+            const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate || pm.actualObligationDate, itemName);
             addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
         });
     }

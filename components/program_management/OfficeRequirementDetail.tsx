@@ -7,6 +7,7 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
+import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 
 interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
@@ -402,16 +403,13 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <input type="number" name="actualAmount" value={formData.actualAmount} onChange={handleInputChange} className={commonInputClasses} placeholder="Non-specific actuals" />
                                 </div>
                                 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Month</label>
-                                    <MonthYearPicker 
-                                        value={formData.actualObligationDate}
-                                        onChange={(val) => setFormData(prev => ({ ...prev, actualObligationDate: val }))}
+                                <div className="sm:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Obligations</label>
+                                    <ObligationsEditor
+                                        obligations={formData.obligations || []}
+                                        onChange={(newObs, total) => setFormData(prev => ({ ...prev, obligations: newObs, actualObligationAmount: total }))}
+                                        defaultYear={formData.fundYear?.toString()}
                                     />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
-                                    <input type="number" name="actualObligationAmount" value={formData.actualObligationAmount} onChange={handleInputChange} className={commonInputClasses} />
                                 </div>
                                 
                                 <div>

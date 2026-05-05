@@ -7,6 +7,7 @@ import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
+import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
@@ -610,15 +611,16 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 <fieldset key={expense.id} className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
                                     <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">{expense.expenseParticular || 'Unspecified Particular'} ({expense.uacsCode})</legend>
                                     
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Amount</label>
-                                            <input type="number" value={expense.actualObligationAmount || 0} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', Number(e.target.value))} className={commonInputClasses} />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Actual Obligation Date</label>
-                                            <input type="date" value={expense.actualObligationDate || ''} onChange={(e) => handleExpenseAccomplishmentChange(expense.id, 'actualObligationDate', e.target.value)} className={commonInputClasses} />
-                                        </div>
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Obligations</label>
+                                        <ObligationsEditor
+                                            obligations={expense.obligations || []}
+                                            onChange={(newObs, total) => {
+                                                handleExpenseAccomplishmentChange(expense.id, 'obligations', newObs);
+                                                handleExpenseAccomplishmentChange(expense.id, 'actualObligationAmount', total);
+                                            }}
+                                            defaultYear={formData.fundYear?.toString()}
+                                        />
                                     </div>
 
                                     <div className="mt-4">
