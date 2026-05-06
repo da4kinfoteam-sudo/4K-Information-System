@@ -137,6 +137,20 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const { currentUser } = useAuth();
     const canViewMatrix = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
+    const getObligationTotal = (item: any) => {
+        if (item.obligations && item.obligations.length > 0) {
+            return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+        }
+        return Number(item.actualObligationAmount) || 0;
+    };
+
+    const getDisbursementTotal = (item: any) => {
+        if (item.disbursements && item.disbursements.length > 0) {
+            return item.disbursements.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+        }
+        return Number(item.actualDisbursementAmount) || 0;
+    };
+
     const financialData = useMemo<FinancialData>(() => {
         const components: { [key: string]: { target: number; obligation: number; disbursement: number } } = {
             'Social Preparation': { target: 0, obligation: 0, disbursement: 0 },
@@ -166,13 +180,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) return -1;
             return date.getUTCMonth();
-        };
-
-        const getObligationTotal = (item: any) => {
-            if (item.obligations && item.obligations.length > 0) {
-                return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
-            }
-            return Number(item.actualObligationAmount) || 0;
         };
 
         const ipoToADMap: { [key: string]: string } = {};
@@ -250,7 +257,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             }, 0);
 
             const spObligation = (sp.details || []).reduce((sum, d) => sum + getObligationTotal(d), 0);
-            const spDisbursement = (sp.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
+            const spDisbursement = (sp.details || []).reduce((sum, d) => sum + getDisbursementTotal(d), 0);
 
             components['Production and Livelihood'].target += spBudget;
             components['Production and Livelihood'].obligation += spObligation;
@@ -278,7 +285,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             }, 0);
 
             const actObligation = (act.expenses || []).reduce((sum, e) => sum + getObligationTotal(e), 0);
-            const actDisbursement = (act.expenses || []).reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
+            const actDisbursement = (act.expenses || []).reduce((sum, e) => sum + getDisbursementTotal(e), 0);
 
             totalAllocation += actBudget;
             totalObligation += actObligation;
@@ -407,14 +414,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         (data.subprojects || []).forEach(sp => {
             const alloc = (sp.details || []).reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = (sp.details || []).reduce((s, d) => s + getObligationTotal(d), 0);
-            const disb = (sp.details || []).reduce((s, d) => s + (d.actualDisbursementAmount || 0), 0);
+            const disb = (sp.details || []).reduce((s, d) => s + getDisbursementTotal(d), 0);
             addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
         });
 
         const processAct = (act: Training | OtherActivity) => {
             const alloc = (act.expenses || []).reduce((s, e) => s + e.amount, 0);
             const obli = (act.expenses || []).reduce((s, e) => s + getObligationTotal(e), 0);
-            const disb = (act.expenses || []).reduce((s, e) => s + (e.actualDisbursementAmount || 0), 0);
+            const disb = (act.expenses || []).reduce((s, e) => s + getDisbursementTotal(e), 0);
             addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
         };
         (data.trainings || []).forEach(processAct);
@@ -423,7 +430,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         const processPM = (item: any, isStaff = false) => {
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
             const obli = getObligationTotal(item);
-            const disb = item.actualDisbursementAmount || 0;
+            const disb = getDisbursementTotal(item);
             addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
         };
         (data.officeReqs || []).forEach(item => processPM(item));

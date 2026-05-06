@@ -120,6 +120,7 @@ const AppContent: React.FC = () => {
 
     // Financial Obligations State
     const [allFinancialObligations, setAllFinancialObligations] = useState<any[]>([]);
+    const [allFinancialDisbursements, setAllFinancialDisbursements] = useState<any[]>([]);
 
     // Hydration Logic
     const obligationsMap = useMemo(() => {
@@ -137,55 +138,94 @@ const AppContent: React.FC = () => {
         return map;
     }, [allFinancialObligations]);
 
-    const enrichedSubprojects = useMemo(() => {
+    const disbursementsMap = useMemo(() => {
+        const map = new Map<string, any[]>();
+        allFinancialDisbursements.forEach(d => {
+            const key = `${d.entity_type}-${d.parent_id}-${d.item_id || 'null'}`;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push({
+                id: d.id,
+                date: d.disbursement_date,
+                amount: d.amount,
+                remarks: d.remarks
+            });
+        });
+        return map;
+    }, [allFinancialDisbursements]);
+
+    const enrichedSubprojects: Subproject[] = useMemo(() => {
         return subprojects.map(sp => ({
             ...sp,
             details: sp.details?.map(d => {
                 const key = `subproject_detail-${sp.id}-${d.id || 'null'}`;
-                return { ...d, obligations: obligationsMap.get(key) || d.obligations || [] };
+                return { 
+                    ...d, 
+                    obligations: obligationsMap.get(key) || d.obligations || [],
+                    disbursements: disbursementsMap.get(key) || d.disbursements || []
+                };
             })
         }));
-    }, [subprojects, obligationsMap]);
+    }, [subprojects, obligationsMap, disbursementsMap]);
 
-    const enrichedActivities = useMemo(() => {
+    const enrichedActivities: Activity[] = useMemo(() => {
         return activities.map(act => ({
             ...act,
             expenses: act.expenses?.map(e => {
                 const key = `activity_expense-${act.id}-${e.id || 'null'}`;
-                return { ...e, obligations: obligationsMap.get(key) || e.obligations || [] };
+                return { 
+                    ...e, 
+                    obligations: obligationsMap.get(key) || e.obligations || [],
+                    disbursements: disbursementsMap.get(key) || e.disbursements || []
+                };
             })
         }));
-    }, [activities, obligationsMap]);
+    }, [activities, obligationsMap, disbursementsMap]);
 
-    const enrichedOfficeReqs = useMemo(() => {
+    const enrichedOfficeReqs: OfficeRequirement[] = useMemo(() => {
         return officeReqs.map(o => {
             const key = `office_requirement-${o.id}-null`;
-            return { ...o, obligations: obligationsMap.get(key) || o.obligations || [] };
+            return { 
+                ...o, 
+                obligations: obligationsMap.get(key) || o.obligations || [],
+                disbursements: disbursementsMap.get(key) || o.disbursements || []
+            };
         });
-    }, [officeReqs, obligationsMap]);
+    }, [officeReqs, obligationsMap, disbursementsMap]);
 
-    const enrichedStaffingReqs = useMemo(() => {
+    const enrichedStaffingReqs: StaffingRequirement[] = useMemo(() => {
         return staffingReqs.map(s => {
             if (s.expenses && s.expenses.length > 0) {
                 return {
                     ...s,
                     expenses: s.expenses.map(e => {
                         const key = `staffing_expense-${s.id}-${e.id}`;
-                        return { ...e, obligations: obligationsMap.get(key) || e.obligations || [] };
+                        return { 
+                            ...e, 
+                            obligations: obligationsMap.get(key) || e.obligations || [],
+                            disbursements: disbursementsMap.get(key) || e.disbursements || []
+                        };
                     })
                 };
             }
             const key = `staffing_expense-${s.id}-null`;
-            return { ...s, obligations: obligationsMap.get(key) || s.obligations || [] };
+            return { 
+                ...s, 
+                obligations: obligationsMap.get(key) || s.obligations || [],
+                disbursements: disbursementsMap.get(key) || s.disbursements || []
+            };
         });
-    }, [staffingReqs, obligationsMap]);
+    }, [staffingReqs, obligationsMap, disbursementsMap]);
 
-    const enrichedOtherExpenses = useMemo(() => {
+    const enrichedOtherExpenses: OtherProgramExpense[] = useMemo(() => {
         return otherProgramExpenses.map(o => {
             const key = `other_program_expense-${o.id}-null`;
-            return { ...o, obligations: obligationsMap.get(key) || o.obligations || [] };
+            return { 
+                ...o, 
+                obligations: obligationsMap.get(key) || o.obligations || [],
+                disbursements: disbursementsMap.get(key) || o.disbursements || []
+            };
         });
-    }, [otherProgramExpenses, obligationsMap]);
+    }, [otherProgramExpenses, obligationsMap, disbursementsMap]);
 
     // System Settings States (Deadlines)
     // Managed manually to support direct DB operations
@@ -224,15 +264,23 @@ const AppContent: React.FC = () => {
             // Fetch Financial Obligations
             const obli = await fetchAll('financial_obligations', 'id', true);
             setAllFinancialObligations(obli || []);
+
+            // Fetch Financial Disbursements
+            const disb = await fetchAll('financial_disbursements', 'id', true);
+            setAllFinancialDisbursements(disb || []);
         };
         fetchAllData();
 
-        // Subscribe to Financial Obligations
+        // Subscribe to Financial Obligations & Disbursements
         if (supabase) {
-            const channel = supabase.channel('financial_obligations_realtime')
+            const channel = supabase.channel('financial_records_realtime')
                 .on('postgres_changes', { event: '*', table: 'financial_obligations', schema: 'public' }, async () => {
                     const obli = await fetchAll('financial_obligations', 'id', true);
                     setAllFinancialObligations(obli || []);
+                })
+                .on('postgres_changes', { event: '*', table: 'financial_disbursements', schema: 'public' }, async () => {
+                    const disb = await fetchAll('financial_disbursements', 'id', true);
+                    setAllFinancialDisbursements(disb || []);
                 })
                 .subscribe();
 

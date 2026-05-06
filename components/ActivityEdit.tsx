@@ -8,6 +8,7 @@ import { useLogAction } from '../hooks/useLogAction';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
+import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -552,6 +553,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                              
                              // Sync obligations for new activity
                              await syncActivityObligations(createdId, act.expenses);
+                             await syncActivityDisbursements(createdId, act.expenses);
                          }
                     } else {
                          const { error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id);
@@ -560,6 +562,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          
                          // Sync obligations for updated activity
                          await syncActivityObligations(activity!.id, act.expenses);
+                         await syncActivityDisbursements(activity!.id, act.expenses);
                     }
                     
                     // IPO History Log
@@ -621,6 +624,37 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         if (syncPayload.length > 0) {
             await supabase.from('financial_obligations').insert(syncPayload);
+        }
+    };
+
+    const syncActivityDisbursements = async (parentId: number, expenses: ActivityExpense[]) => {
+        if (!supabase) return;
+        const entityType = 'activity_expense';
+        
+        await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId);
+        
+        const syncPayload: any[] = [];
+        expenses.forEach(exp => {
+            if (exp.disbursements && exp.disbursements.length > 0) {
+                const latestDb = [...exp.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                exp.actualDisbursementAmount = exp.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
+                exp.actualDisbursementDate = latestDb.date;
+
+                exp.disbursements.forEach(d => {
+                    syncPayload.push({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        item_id: exp.id?.toString() || null,
+                        disbursement_date: d.date,
+                        amount: d.amount || 0,
+                        remarks: d.remarks || ''
+                    });
+                });
+            }
+        });
+
+        if (syncPayload.length > 0) {
+            await supabase.from('financial_disbursements').insert(syncPayload);
         }
     };
 
@@ -963,28 +997,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         {/* Actual Disbursement Group */}
                                         <div className="space-y-2 p-3 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-800">
                                             <p className="text-xs font-bold text-green-700 uppercase">Disbursement</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="block text-xs text-gray-500">Date (Month)</label>
-                                                    <select 
-                                                        value={getMonthFromDateStr(exp.actualDisbursementDate)} 
-                                                        onChange={(e) => updateActualDateFromMonth(exp.id, 'actualDisbursementDate', e.target.value)} 
-                                                        className={commonInputClasses}
-                                                    >
-                                                        <option value="">Select</option>
-                                                        {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs text-gray-500">Amount</label>
-                                                    <input 
-                                                        type="number" 
-                                                        value={exp.actualDisbursementAmount || ''} 
-                                                        onChange={(e) => handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', parseFloat(e.target.value))}
-                                                        className={commonInputClasses} 
-                                                    />
-                                                </div>
-                                            </div>
+                                            <DisbursementsEditor
+                                                disbursements={exp.disbursements || []}
+                                                onChange={(newDisb, total) => {
+                                                    handleExpenseAccomplishmentChange(exp.id, 'disbursements', newDisb);
+                                                    handleExpenseAccomplishmentChange(exp.id, 'actualDisbursementAmount', total);
+                                                }}
+                                                defaultYear={formData.fundingYear}
+                                            />
                                         </div>
                                     </div>
                                 </div>

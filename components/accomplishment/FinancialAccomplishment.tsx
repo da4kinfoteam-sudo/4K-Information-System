@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier, ObligationRecord } from '../../constants';
+import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier, ObligationRecord, DisbursementRecord } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
@@ -9,7 +9,9 @@ import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter, Plus, Trash2, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { ObligationsEditor } from './ObligationsEditor';
+import { DisbursementsEditor } from './DisbursementsEditor';
 import { ObligationListEditor } from '../ui/ObligationListEditor';
+import { DisbursementListEditor } from '../ui/DisbursementListEditor';
 
 interface Props {
     subprojects: Subproject[];
@@ -57,6 +59,7 @@ interface FinancialItem {
     actualDisbursementAmount: number;
 
     obligations: ObligationRecord[];
+    disbursements: DisbursementRecord[];
 
     // Monthly breakdown for actuals (specific to Staffing/Other)
     actualDisbursementJan: number;
@@ -104,6 +107,19 @@ const formatCurrency = (amount: number) => {
 
 // Helper to normalize legacy obligations to the new array structure
 const getInitialObligations = (existingArr: ObligationRecord[] | undefined, date: string, amount: number) => {
+    if (existingArr && existingArr.length > 0) return existingArr;
+    if (amount > 0) {
+        return [{
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            date: date || '',
+            amount: amount,
+            remarks: 'Legacy Record'
+        }];
+    }
+    return [];
+};
+
+const getInitialDisbursements = (existingArr: DisbursementRecord[] | undefined, date: string, amount: number) => {
     if (existingArr && existingArr.length > 0) return existingArr;
     if (amount > 0) {
         return [{
@@ -224,6 +240,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualDisbursementMonth: d.actualDisbursementDate || '',
                     actualDisbursementAmount: d.actualDisbursementAmount || 0,
                     obligations: getInitialObligations(d.obligations, d.actualObligationDate || '', d.actualObligationAmount || 0),
+                    disbursements: getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', d.actualDisbursementAmount || 0),
                     status: sp.status,
                     ...defaultMonthly, // Not used for SP currently
                     isConfirmed: false
@@ -252,6 +269,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualDisbursementMonth: e.actualDisbursementDate || '',
                     actualDisbursementAmount: e.actualDisbursementAmount || 0,
                     obligations: getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
+                    disbursements: getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', e.actualDisbursementAmount || 0),
                     status: act.status,
                     ...defaultMonthly,
                     isConfirmed: false
@@ -278,6 +296,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualDisbursementMonth: o.actualDisbursementDate || '',
                 actualDisbursementAmount: o.actualDisbursementAmount || 0,
                 obligations: getInitialObligations(o.obligations, o.actualObligationDate || '', o.actualObligationAmount || 0),
+                disbursements: getInitialDisbursements(o.disbursements, o.actualDisbursementDate || '', o.actualDisbursementAmount || 0),
                 status: o.status,
                 ...defaultMonthly,
                 isConfirmed: false
@@ -341,6 +360,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualDisbursementMonth: s.actualDisbursementDate || '',
                     actualDisbursementAmount: s.actualDisbursementAmount || 0,
                     obligations: getInitialObligations(s.obligations, s.actualObligationDate || '', s.actualObligationAmount || 0),
+                    disbursements: getInitialDisbursements(s.disbursements, s.actualDisbursementDate || '', s.actualDisbursementAmount || 0),
                     status: s.hiringStatus,
                     ...defaultMonthly, // Default
                     ...monthlyActuals, // Overwrite
@@ -373,6 +393,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualDisbursementMonth: ope.actualDisbursementDate || '',
                 actualDisbursementAmount: ope.actualDisbursementAmount || 0,
                 obligations: getInitialObligations(ope.obligations, ope.actualObligationDate || '', ope.actualObligationAmount || 0),
+                disbursements: getInitialDisbursements(ope.disbursements, ope.actualDisbursementDate || '', ope.actualDisbursementAmount || 0),
                 status: ope.status,
                 ...defaultMonthly,
                 ...monthlyActuals,
@@ -534,10 +555,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     const total = updates.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
                     newItem.actualObligationAmount = total;
                     
-                    // If we have obligations, set the date to the latest one or first one
                     if (updates.obligations.length > 0) {
                         const sorted = [...updates.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
                         newItem.actualObligationMonth = sorted[0].date;
+                    }
+                }
+
+                // If disbursements were updated, auto-sum amount and update month
+                if (updates.disbursements) {
+                    const total = updates.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
+                    newItem.actualDisbursementAmount = total;
+                    
+                    if (updates.disbursements.length > 0) {
+                        const sorted = [...updates.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                        newItem.actualDisbursementMonth = sorted[0].date;
                     }
                 }
 
@@ -661,6 +692,43 @@ const FinancialAccomplishment: React.FC<Props> = ({
         if (insertError) console.error("Error inserting obligations:", insertError);
     };
 
+    const syncDisbursementsToCentralTable = async (item: FinancialItem) => {
+        if (!supabase) return;
+        
+        const entityType = item.sourceType === 'Subproject' ? 'subproject_detail' : 
+                          item.sourceType === 'Activity' ? 'activity_expense' : 
+                          item.sourceType === 'Staffing' ? 'staffing_expense' :
+                          item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
+        
+        const parentId = item.sourceId;
+        const itemId = item.detailId?.toString() || null;
+
+        const { error: deleteError } = await supabase.from('financial_disbursements')
+            .delete()
+            .eq('entity_type', entityType)
+            .eq('parent_id', parentId)
+            .filter('item_id', itemId === null ? 'is' : 'eq', itemId);
+        
+        if (deleteError) {
+            console.error("Error deleting old disbursements:", deleteError);
+            return;
+        }
+
+        if (!item.disbursements || item.disbursements.length === 0) return;
+
+        const payload = item.disbursements.map(d => ({
+            entity_type: entityType,
+            parent_id: parentId,
+            item_id: itemId,
+            disbursement_date: d.date,
+            amount: d.amount || 0,
+            remarks: d.remarks || ''
+        }));
+
+        const { error: insertError } = await supabase.from('financial_disbursements').insert(payload);
+        if (insertError) console.error("Error inserting disbursements:", insertError);
+    };
+
     const saveItemToDB = async (item: FinancialItem) => {
         if (item.sourceType === 'Subproject') {
             const sp = subprojects.find(s => s.id === item.sourceId);
@@ -674,7 +742,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         actualObligationAmount: item.actualObligationAmount,
                         actualDisbursementDate: item.actualDisbursementMonth,
                         actualDisbursementAmount: item.actualDisbursementAmount,
-                        obligations: item.obligations
+                        obligations: item.obligations,
+                        disbursements: item.disbursements
                     };
                     // Update targets if Proposed
                     if (item.status === 'Proposed') {
@@ -703,7 +772,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         actualObligationAmount: item.actualObligationAmount,
                         actualDisbursementDate: item.actualDisbursementMonth,
                         actualDisbursementAmount: item.actualDisbursementAmount,
-                        obligations: item.obligations
+                        obligations: item.obligations,
+                        disbursements: item.disbursements
                     };
                     // Update targets if Proposed
                     if (item.status === 'Proposed') {
@@ -735,7 +805,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             actualObligationAmount: item.actualObligationAmount,
                             actualDisbursementDate: item.actualDisbursementMonth,
                             actualDisbursementAmount: item.actualDisbursementAmount,
-                            obligations: item.obligations
+                            obligations: item.obligations,
+                            disbursements: item.disbursements
                         };
                         SHORT_MONTHS.forEach(m => {
                             updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
@@ -784,7 +855,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
-                     actualDisbursementAmount: item.actualDisbursementAmount
+                     actualDisbursementAmount: item.actualDisbursementAmount,
+                     obligations: item.obligations,
+                     disbursements: item.disbursements
                 };
                 SHORT_MONTHS.forEach(m => {
                     payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
@@ -802,7 +875,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
             const payload: any = {
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
-                 actualDisbursementAmount: item.actualDisbursementAmount
+                 actualDisbursementAmount: item.actualDisbursementAmount,
+                 obligations: item.obligations,
+                 disbursements: item.disbursements
             };
             
             SHORT_MONTHS.forEach(m => {
@@ -822,7 +897,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
                  actualDisbursementDate: item.actualDisbursementMonth,
-                 actualDisbursementAmount: item.actualDisbursementAmount
+                 actualDisbursementAmount: item.actualDisbursementAmount,
+                 obligations: item.obligations,
+                 disbursements: item.disbursements
             };
             if (item.status === 'Proposed') {
                 payload.obligationDate = item.targetObligationMonth;
@@ -836,6 +913,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
         // Sync with centralized obligations table
         await syncObligationsToCentralTable(item);
+        await syncDisbursementsToCentralTable(item);
     };
 
     const undoLocalItem = (uniqueId: string) => {
@@ -1289,32 +1367,25 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Actual Disb */}
-                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
-                                                                            {supportsMonthly ? (
-                                                                                 <span className="block text-right text-xs font-semibold px-2">{formatCurrency(item.actualDisbursementAmount)}</span>
-                                                                            ) : (
-                                                                                <input 
-                                                                                    type="number" 
-                                                                                    value={item.actualDisbursementAmount || ''} 
-                                                                                    onChange={(e) => updateLocalItem(item.uniqueId, { actualDisbursementAmount: parseFloat(e.target.value) || 0 })}
-                                                                                    disabled={!canEdit}
-                                                                                    className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
-                                                                                    placeholder="0"
+                                                                        {supportsMonthly ? (
+                                                                            <>
+                                                                                <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                                    <span className="block text-right text-xs font-semibold px-2">{formatCurrency(item.actualDisbursementAmount)}</span>
+                                                                                </td>
+                                                                                <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">
+                                                                                    <span className="block text-center text-[10px] text-gray-500">See below</span>
+                                                                                </td>
+                                                                            </>
+                                                                        ) : (
+                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
+                                                                                <DisbursementsEditor
+                                                                                    disbursements={item.disbursements || []}
+                                                                                    onChange={(newDb, total) => updateLocalItem(item.uniqueId, { disbursements: newDb, actualDisbursementAmount: total })}
+                                                                                    defaultYear={selectedYear}
+                                                                                    readOnly={!canEdit}
                                                                                 />
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">
-                                                                            {supportsMonthly ? (
-                                                                                <span className="block text-center text-[10px] text-gray-500">See below</span>
-                                                                            ) : (
-                                                                                <MonthYearPicker 
-                                                                                    value={item.actualDisbursementMonth} 
-                                                                                    onChange={(val) => updateLocalItem(item.uniqueId, { actualDisbursementMonth: val })}
-                                                                                    disabled={!canEdit}
-                                                                                    className="h-7 text-[10px] py-0"
-                                                                                />
-                                                                            )}
-                                                                        </td>
+                                                                            </td>
+                                                                        )}
 
                                                                         <td className="px-4 py-1.5 text-right">
                                                                             {canEdit && (
@@ -1357,7 +1428,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     </div>
 
                                                                                     {/* Monthly Disbursement Section (If supported) */}
-                                                                                    {supportsMonthly && (
+                                                                                    {supportsMonthly ? (
                                                                                         <div className="lg:w-1/2">
                                                                                             <h4 className="text-[11px] font-black uppercase text-blue-800 dark:text-blue-400 mb-3 flex items-center gap-2">
                                                                                                 <CalendarIcon className="w-4 h-4" />
@@ -1379,6 +1450,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                                     </div>
                                                                                                 ))}
                                                                                             </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div className="flex-1">
+                                                                                            <h4 className="text-[11px] font-black uppercase text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
+                                                                                                <ListFilter className="w-4 h-4" />
+                                                                                                Multi-Disbursement Records
+                                                                                            </h4>
+                                                                                            <DisbursementListEditor 
+                                                                                                disbursements={item.disbursements || []}
+                                                                                                onChange={(newDb) => {
+                                                                                                    updateLocalItem(item.uniqueId, { disbursements: newDb });
+                                                                                                }}
+                                                                                                readOnly={!canEdit}
+                                                                                            />
                                                                                         </div>
                                                                                     )}
                                                                                 </div>

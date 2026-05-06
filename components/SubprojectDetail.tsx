@@ -8,6 +8,7 @@ import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
+import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
 import { Info } from 'lucide-react';
 
@@ -655,6 +656,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         // Sync obligations to central table if supabase is available
         if (supabase) {
              syncSubprojectObligations(subproject.id, cleanDetails);
+             syncSubprojectDisbursements(subproject.id, cleanDetails);
         }
         
         setEditMode('none');
@@ -694,6 +696,46 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
         if (syncPayload.length > 0) {
             await supabase.from('financial_obligations').insert(syncPayload);
+        }
+    };
+
+    const syncSubprojectDisbursements = async (parentId: number, details: SubprojectDetailType[]) => {
+        if (!supabase) return;
+        const entityType = 'subproject_detail';
+        
+        await supabase.from('financial_disbursements').delete().eq('entity_type', entityType).eq('parent_id', parentId);
+        
+        const syncPayload: any[] = [];
+        details.forEach(item => {
+            if (item.disbursements && item.disbursements.length > 0) {
+                const latestDb = [...item.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                item.actualDisbursementAmount = item.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
+                item.actualDisbursementDate = latestDb.date;
+
+                item.disbursements.forEach(d => {
+                    syncPayload.push({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        item_id: item.id?.toString() || null,
+                        disbursement_date: d.date,
+                        amount: d.amount || 0,
+                        remarks: d.remarks || ''
+                    });
+                });
+            } else if (item.actualDisbursementAmount && item.actualDisbursementAmount > 0) {
+                 syncPayload.push({
+                     entity_type: entityType,
+                     parent_id: parentId,
+                     item_id: item.id?.toString() || null,
+                     disbursement_date: item.actualDisbursementDate || new Date().toISOString().split('T')[0],
+                     amount: item.actualDisbursementAmount || 0,
+                     remarks: 'Migrated missing'
+                 });
+            }
+        });
+
+        if (syncPayload.length > 0) {
+            await supabase.from('financial_disbursements').insert(syncPayload);
         }
     };
 
@@ -1215,22 +1257,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                     />
                                                                 </td>
-                                                                <td className="px-3 py-2">
-                                                                    <MonthYearPicker
-                                                                        value={detail.actualDisbursementDate}
-                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualDisbursementDate', val)}
-                                                                        placeholder="Select month"
+                                                                <td className="px-3 py-2" colSpan={2}>
+                                                                    <DisbursementsEditor
+                                                                        disbursements={detail.disbursements || []}
+                                                                        onChange={(newDb, total) => {
+                                                                            handleDetailAccomplishmentChange(idx, 'disbursements', newDb);
+                                                                            handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', total);
+                                                                        }}
                                                                         defaultYear={editedSubproject.fundingYear}
-                                                                        className="h-8 text-xs"
-                                                                    />
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    <input 
-                                                                        type="number" 
-                                                                        value={(detail as any).actualDisbursementAmount || ''} 
-                                                                        onChange={(e) => handleDetailAccomplishmentChange(idx, 'actualDisbursementAmount', parseFloat(e.target.value))} 
-                                                                        className="w-full text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500 disabled:bg-gray-100 disabled:dark:bg-gray-800" 
-                                                                        placeholder="0.00" 
                                                                     />
                                                                 </td>
                                                             </tr>
