@@ -356,7 +356,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             });
 
             expensesList.forEach(exp => {
-                // exp.actualObligationDate = formData.actualObligationDate; // Removed override as per request
+                // Update legacy fields for each expense from its obligations
+                if (exp.obligations && exp.obligations.length > 0) {
+                    const latestOb = [...exp.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                    exp.actualObligationAmount = exp.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
+                    exp.actualObligationDate = latestOb.date;
+                }
+
                 aggregatedTotals.annualSalary += exp.amount;
                 aggregatedTotals.actualObligationAmount += (exp.actualObligationAmount || 0);
                 

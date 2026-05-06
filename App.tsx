@@ -118,6 +118,75 @@ const AppContent: React.FC = () => {
     const [staffingReqs, setStaffingReqs] = useState<StaffingRequirement[]>([]);
     const [otherProgramExpenses, setOtherProgramExpenses] = useState<OtherProgramExpense[]>([]);
 
+    // Financial Obligations State
+    const [allFinancialObligations, setAllFinancialObligations] = useState<any[]>([]);
+
+    // Hydration Logic
+    const obligationsMap = useMemo(() => {
+        const map = new Map<string, any[]>();
+        allFinancialObligations.forEach(o => {
+            const key = `${o.entity_type}-${o.parent_id}-${o.item_id || 'null'}`;
+            if (!map.has(key)) map.set(key, []);
+            map.get(key)!.push({
+                id: o.id,
+                date: o.obligation_date,
+                amount: o.amount,
+                remarks: o.remarks
+            });
+        });
+        return map;
+    }, [allFinancialObligations]);
+
+    const enrichedSubprojects = useMemo(() => {
+        return subprojects.map(sp => ({
+            ...sp,
+            details: sp.details?.map(d => {
+                const key = `subproject_detail-${sp.id}-${d.id || 'null'}`;
+                return { ...d, obligations: obligationsMap.get(key) || d.obligations || [] };
+            })
+        }));
+    }, [subprojects, obligationsMap]);
+
+    const enrichedActivities = useMemo(() => {
+        return activities.map(act => ({
+            ...act,
+            expenses: act.expenses?.map(e => {
+                const key = `activity_expense-${act.id}-${e.id || 'null'}`;
+                return { ...e, obligations: obligationsMap.get(key) || e.obligations || [] };
+            })
+        }));
+    }, [activities, obligationsMap]);
+
+    const enrichedOfficeReqs = useMemo(() => {
+        return officeReqs.map(o => {
+            const key = `office_requirement-${o.id}-null`;
+            return { ...o, obligations: obligationsMap.get(key) || o.obligations || [] };
+        });
+    }, [officeReqs, obligationsMap]);
+
+    const enrichedStaffingReqs = useMemo(() => {
+        return staffingReqs.map(s => {
+            if (s.expenses && s.expenses.length > 0) {
+                return {
+                    ...s,
+                    expenses: s.expenses.map(e => {
+                        const key = `staffing_expense-${s.id}-${e.id}`;
+                        return { ...e, obligations: obligationsMap.get(key) || e.obligations || [] };
+                    })
+                };
+            }
+            const key = `staffing_expense-${s.id}-null`;
+            return { ...s, obligations: obligationsMap.get(key) || s.obligations || [] };
+        });
+    }, [staffingReqs, obligationsMap]);
+
+    const enrichedOtherExpenses = useMemo(() => {
+        return otherProgramExpenses.map(o => {
+            const key = `other_program_expense-${o.id}-null`;
+            return { ...o, obligations: obligationsMap.get(key) || o.obligations || [] };
+        });
+    }, [otherProgramExpenses, obligationsMap]);
+
     // System Settings States (Deadlines)
     // Managed manually to support direct DB operations
     const [deadlines, setDeadlines] = useState<Deadline[]>([]);
@@ -151,9 +220,27 @@ const AppContent: React.FC = () => {
             // Fetch ELCAC Areas
             const ea = await fetchAll('elcac_areas', 'id', true);
             setElcacAreas(ea as ElcacArea[]);
+
+            // Fetch Financial Obligations
+            const obli = await fetchAll('financial_obligations', 'id', true);
+            setAllFinancialObligations(obli || []);
         };
         fetchAllData();
-    }, [currentUser]);
+
+        // Subscribe to Financial Obligations
+        if (supabase) {
+            const channel = supabase.channel('financial_obligations_realtime')
+                .on('postgres_changes', { event: '*', table: 'financial_obligations', schema: 'public' }, async () => {
+                    const obli = await fetchAll('financial_obligations', 'id', true);
+                    setAllFinancialObligations(obli || []);
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        }
+    }, [currentUser, isAuthReady]);
 
     // Helper to filter data based on visibility scope
     const filterByVisibility = <T extends { operatingUnit?: string }>(data: T[]): T[] => {
@@ -164,11 +251,15 @@ const AppContent: React.FC = () => {
         return data.filter(item => item.operatingUnit === currentUser.operatingUnit);
     };
 
-    const visibleSubprojects = filterByVisibility(subprojects);
-    const visibleActivities = filterByVisibility(activities);
-    const visibleOfficeReqs = filterByVisibility(officeReqs);
-    const visibleStaffingReqs = filterByVisibility(staffingReqs);
-    const visibleOtherExpenses = filterByVisibility(otherProgramExpenses);
+    const visibleSubprojects = filterByVisibility(enrichedSubprojects);
+    const visibleActivities = filterByVisibility(enrichedActivities);
+    const visibleOfficeReqs = filterByVisibility(enrichedOfficeReqs);
+    const visibleStaffingReqs = filterByVisibility(enrichedStaffingReqs);
+    const visibleOtherExpenses = filterByVisibility(enrichedOtherExpenses);
+
+    // Derived Activities
+    const trainings = useMemo(() => visibleActivities.filter(a => a.type === 'Training'), [visibleActivities]);
+    const otherActivities = useMemo(() => visibleActivities.filter(a => a.type === 'Activity'), [visibleActivities]);
 
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
@@ -329,10 +420,6 @@ const AppContent: React.FC = () => {
         Object.keys(categories).forEach(key => categories[key].sort());
         return categories;
     }, [refCommodities, refLivestock]);
-
-    // Derived Activities
-    const trainings = useMemo(() => activities.filter(a => a.type === 'Training'), [activities]);
-    const otherActivities = useMemo(() => activities.filter(a => a.type === 'Activity'), [activities]);
 
     // Navigation Handlers
     const handleSelectSubproject = (project: Subproject) => {
@@ -668,8 +755,9 @@ const AppContent: React.FC = () => {
                 
             case '/program-management/office-detail':
                 if (!selectedOfficeReq) return <div>Select an item</div>;
+                const latestOffice = visibleOfficeReqs.find(i => i.id === selectedOfficeReq.id) || selectedOfficeReq;
                 return <OfficeRequirementDetail 
-                            item={selectedOfficeReq}
+                            item={latestOffice}
                             onBack={handleBack}
                             uacsCodes={derivedUacsCodes}
                             onUpdate={(updatedItem) => {
@@ -679,8 +767,9 @@ const AppContent: React.FC = () => {
                         />;
             case '/program-management/staffing-detail':
                 if (!selectedStaffingReq) return <div>Select an item</div>;
+                const latestStaff = visibleStaffingReqs.find(i => i.id === selectedStaffingReq.id) || selectedStaffingReq;
                 return <StaffingRequirementDetail 
-                            item={selectedStaffingReq}
+                            item={latestStaff}
                             onBack={handleBack}
                             uacsCodes={derivedUacsCodes}
                             onUpdate={(updatedItem) => {
@@ -690,8 +779,9 @@ const AppContent: React.FC = () => {
                         />;
             case '/program-management/other-expense-detail':
                 if (!selectedOtherExpense) return <div>Select an item</div>;
+                const latestOther = visibleOtherExpenses.find(i => i.id === selectedOtherExpense.id) || selectedOtherExpense;
                 return <OtherExpenseDetail 
-                            item={selectedOtherExpense}
+                            item={latestOther}
                             onBack={handleBack}
                             uacsCodes={derivedUacsCodes}
                             onUpdate={(updatedItem) => {
@@ -752,8 +842,9 @@ const AppContent: React.FC = () => {
                         />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;
+                const latestSp = visibleSubprojects.find(s => s.id === selectedSubproject.id) || selectedSubproject;
                 return <SubprojectDetail 
-                            subproject={selectedSubproject} 
+                            subproject={latestSp} 
                             ipos={ipos}
                             onBack={handleBack} 
                             previousPageName={getPageName(previousPage)}
@@ -811,8 +902,9 @@ const AppContent: React.FC = () => {
                         />;
             case '/activity-detail':
                 if (!selectedActivity) return <div>Select an activity</div>;
+                const latestAct = visibleActivities.find(a => a.id === selectedActivity.id) || selectedActivity;
                 return <ActivityDetail
-                            activity={selectedActivity}
+                            activity={latestAct}
                             ipos={ipos}
                             onBack={handleBack} 
                             previousPageName={getPageName(previousPage)}

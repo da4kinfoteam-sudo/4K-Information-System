@@ -63,9 +63,21 @@ const addActivityData = (a: any, b: any) => {
 
 const getMonthIndex = (dateString: string) => {
     if (!dateString) return -1;
+    // Use manual parsing to avoid timezone shifts
+    // Format is usually YYYY-MM-DD or YYYY-MM
+    const parts = dateString.split('-');
+    if (parts.length >= 2) {
+        const month = parseInt(parts[1], 10);
+        if (!isNaN(month) && month >= 1 && month <= 12) {
+            return month - 1; // 0-indexed
+        }
+    }
+    // Fallback but safer
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return -1;
-    return date.getMonth();
+    // If it's a T00:00:00Z date, getMonth might shift it. 
+    // We can use getUTCMonth if the date string has no time component
+    return date.getUTCMonth(); 
 };
 
 const MetricsColumns: React.FC<{ metrics: any, allotmentTotal: number, obligationTotal?: number, showPercent?: boolean, isUnpaid?: boolean }> = ({ metrics, allotmentTotal, obligationTotal, showPercent = true, isUnpaid = false }) => {

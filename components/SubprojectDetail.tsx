@@ -674,6 +674,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const syncPayload: any[] = [];
         details.forEach(item => {
             if (item.obligations && item.obligations.length > 0) {
+                // Update legacy fields for fallback reporting
+                const latestOb = [...item.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                item.actualObligationAmount = item.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
+                item.actualObligationDate = latestOb.date;
+
                 item.obligations.forEach(o => {
                     syncPayload.push({
                         entity_type: entityType,

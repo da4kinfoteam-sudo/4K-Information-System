@@ -304,6 +304,15 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
         const isDateInReportWindow = (dateStr?: string) => {
             if (!dateStr) return false;
+            // Manual check for YYYY-MM-DD or YYYY-MM
+            const parts = dateStr.split('-');
+            if (parts.length >= 2) {
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10);
+                if (year < targetYearInt) return true;
+                if (year > targetYearInt) return false;
+                return (month - 1) <= selectedMonth;
+            }
             const d = new Date(dateStr);
             return d <= reportDateLimit;
         };
@@ -362,7 +371,13 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const y = item.fundYear || 0;
             const ft = item.fundType || 'Current';
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
-            const obli = getObligationAmountInWindow(item);
+            
+            let obli = 0;
+            if (isStaff && item.expenses && item.expenses.length > 0) {
+                obli = item.expenses.reduce((sum: number, e: any) => sum + getObligationAmountInWindow(e), 0);
+            } else {
+                obli = getObligationAmountInWindow(item);
+            }
             let disb = 0;
             if (isStaff || item.particulars) {
                  if (y === targetYearInt) {

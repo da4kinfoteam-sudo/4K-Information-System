@@ -466,7 +466,15 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Obligations</label>
                                     <ObligationsEditor
                                         obligations={formData.obligations || []}
-                                        onChange={(newObs, total) => setFormData(prev => ({ ...prev, obligations: newObs, actualObligationAmount: total }))}
+                                        onChange={(newObs, total) => {
+                                            const latestOb = newObs.length > 0 ? [...newObs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] : null;
+                                            setFormData(prev => ({ 
+                                                ...prev, 
+                                                obligations: newObs, 
+                                                actualObligationAmount: total,
+                                                actualObligationDate: latestOb ? latestOb.date : prev.actualObligationDate
+                                            }));
+                                        }}
                                         defaultYear={formData.fundYear?.toString()}
                                     />
                                 </div>

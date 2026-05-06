@@ -158,7 +158,21 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         const getMonth = (dateStr?: string) => {
             if (!dateStr) return -1;
-            return new Date(dateStr).getMonth();
+            const parts = dateStr.split('-');
+            if (parts.length >= 2) {
+                const month = parseInt(parts[1], 10);
+                if (!isNaN(month) && month >= 1 && month <= 12) return month - 1;
+            }
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return -1;
+            return date.getUTCMonth();
+        };
+
+        const getObligationTotal = (item: any) => {
+            if (item.obligations && item.obligations.length > 0) {
+                return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
+            }
+            return Number(item.actualObligationAmount) || 0;
         };
 
         const ipoToADMap: { [key: string]: string } = {};
@@ -235,7 +249,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 return sum + amount;
             }, 0);
 
-            const spObligation = (sp.details || []).reduce((sum, d) => sum + (d.actualObligationAmount || 0), 0);
+            const spObligation = (sp.details || []).reduce((sum, d) => sum + getObligationTotal(d), 0);
             const spDisbursement = (sp.details || []).reduce((sum, d) => sum + (d.actualDisbursementAmount || 0), 0);
 
             components['Production and Livelihood'].target += spBudget;
@@ -263,7 +277,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                 return sum + e.amount;
             }, 0);
 
-            const actObligation = (act.expenses || []).reduce((sum, e) => sum + (e.actualObligationAmount || 0), 0);
+            const actObligation = (act.expenses || []).reduce((sum, e) => sum + getObligationTotal(e), 0);
             const actDisbursement = (act.expenses || []).reduce((sum, e) => sum + (e.actualDisbursementAmount || 0), 0);
 
             totalAllocation += actBudget;
@@ -290,7 +304,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         // 3. Process Office Requirements
         (data.officeReqs || []).forEach(or => {
             const targetAmount = or.pricePerUnit * or.numberOfUnits;
-            const actualOb = or.actualObligationAmount || 0;
+            const actualOb = getObligationTotal(or);
             const actualDisb = or.actualDisbursementAmount || 0;
 
             const targetMonth = getMonth(or.obligationDate);
@@ -313,13 +327,23 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         // 4. Process Staffing Requirements
         (data.staffingReqs || []).forEach(sr => {
             const targetAmount = sr.annualSalary;
-            const actualOb = sr.actualObligationAmount || 0;
+            
+            let actualOb = 0;
+            if (sr.expenses && sr.expenses.length > 0) {
+                sr.expenses.forEach(e => {
+                    const targetMonth = getMonth(e.obligationDate);
+                    if (targetMonth !== -1) monthlyData[targetMonth].target += (Number(e.amount) || 0);
+                    actualOb += getObligationTotal(e);
+                    aggregateObligations(e);
+                });
+            } else {
+                const targetMonth = getMonth(sr.obligationDate);
+                if (targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
+                actualOb = getObligationTotal(sr);
+                aggregateObligations(sr);
+            }
+            
             const actualDisb = sr.actualDisbursementAmount || 0;
-
-            const targetMonth = getMonth(sr.obligationDate);
-            if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-
-            aggregateObligations(sr);
 
             const disbMonth = getMonth(sr.actualDisbursementDate);
             if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
@@ -336,7 +360,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         // 5. Process Other Program Expenses
         (data.otherProgramExpenses || []).forEach(oe => {
             const targetAmount = oe.amount;
-            const actualOb = oe.actualObligationAmount || 0;
+            const actualOb = getObligationTotal(oe);
             const actualDisb = oe.actualDisbursementAmount || 0;
 
             const targetMonth = getMonth(oe.obligationDate);
@@ -382,14 +406,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         (data.subprojects || []).forEach(sp => {
             const alloc = (sp.details || []).reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = (sp.details || []).reduce((s, d) => s + (d.actualObligationAmount || 0), 0);
+            const obli = (sp.details || []).reduce((s, d) => s + getObligationTotal(d), 0);
             const disb = (sp.details || []).reduce((s, d) => s + (d.actualDisbursementAmount || 0), 0);
             addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
         });
 
         const processAct = (act: Training | OtherActivity) => {
             const alloc = (act.expenses || []).reduce((s, e) => s + e.amount, 0);
-            const obli = (act.expenses || []).reduce((s, e) => s + (e.actualObligationAmount || 0), 0);
+            const obli = (act.expenses || []).reduce((s, e) => s + getObligationTotal(e), 0);
             const disb = (act.expenses || []).reduce((s, e) => s + (e.actualDisbursementAmount || 0), 0);
             addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
         };
@@ -398,7 +422,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
         const processPM = (item: any, isStaff = false) => {
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
-            const obli = item.actualObligationAmount || 0;
+            const obli = getObligationTotal(item);
             const disb = item.actualDisbursementAmount || 0;
             addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
         };
