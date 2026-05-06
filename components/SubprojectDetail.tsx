@@ -135,8 +135,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     useEffect(() => {
         setEditedSubproject(subproject);
-        // Map details and preserve ID for tracking
-        setDetailItems((subproject.details || []).map(d => ({ ...d })));
+        // Map details and preserve ID for tracking, plus virtualize logic
+        setDetailItems((subproject.details || []).map(d => {
+            const hasAmount = (d.actualObligationAmount || 0) > 0;
+            const hasNoObligations = !d.obligations || d.obligations.length === 0;
+            if (hasAmount && hasNoObligations) {
+                return {
+                    ...d,
+                    obligations: [{
+                        id: Date.now() + Math.random(),
+                        date: d.actualObligationDate || '',
+                        amount: d.actualObligationAmount || 0,
+                        remarks: 'Legacy Record'
+                    }]
+                };
+            }
+            return { ...d };
+        }));
         
         if (editMode === 'details') setActiveTab('details');
         if (editMode === 'commodity') setActiveTab('commodity');
@@ -636,7 +651,45 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         });
 
         onUpdateSubproject(updatedSubprojectWithDetails);
+        
+        // Sync obligations to central table if supabase is available
+        if (supabase) {
+             syncSubprojectObligations(subproject.id, cleanDetails);
+        }
+        
         setEditMode('none');
+    };
+
+    const syncSubprojectObligations = async (parentId: number, details: SubprojectDetailType[]) => {
+        if (!supabase) return;
+        const entityType = 'subproject_detail';
+        
+        // Delete all for this parent first
+        await supabase.from('financial_obligations')
+            .delete()
+            .eq('entity_type', entityType)
+            .eq('parent_id', parentId);
+        
+        // Insert all from all detail items
+        const syncPayload: any[] = [];
+        details.forEach(item => {
+            if (item.obligations && item.obligations.length > 0) {
+                item.obligations.forEach(o => {
+                    syncPayload.push({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        item_id: item.id?.toString() || null,
+                        obligation_date: o.date,
+                        amount: o.amount || 0,
+                        remarks: o.remarks || ''
+                    });
+                });
+            }
+        });
+
+        if (syncPayload.length > 0) {
+            await supabase.from('financial_obligations').insert(syncPayload);
+        }
     };
 
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";

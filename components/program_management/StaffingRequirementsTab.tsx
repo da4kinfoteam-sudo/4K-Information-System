@@ -586,7 +586,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, ...rest } = item;
+            const { id, uid, created_at, updated_at, obligations, ...rest } = item;
             const newUid = `SR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
             // Deep copy and reset expenses actuals

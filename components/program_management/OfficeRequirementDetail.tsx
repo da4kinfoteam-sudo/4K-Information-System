@@ -50,6 +50,43 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OfficeRequirement>(item);
+    
+    // Virtualize legacy obligations on load and fetch from centralized table
+    useEffect(() => {
+        const fetchObligations = async () => {
+            if (!item?.id || !supabase) return;
+
+            // Fetch from centralized table first
+            const { data, error } = await supabase
+                .from('financial_obligations')
+                .select('*')
+                .eq('entity_type', 'office_requirement')
+                .eq('parent_id', item.id);
+
+            if (!error && data && data.length > 0) {
+                // If records exist in centralized table, use them
+                const mappedObligations = data.map(o => ({
+                    id: o.id,
+                    date: o.obligation_date,
+                    amount: o.amount,
+                    remarks: o.remarks
+                }));
+                setFormData(prev => ({ ...prev, obligations: mappedObligations }));
+            } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
+                // Legacy Fallback: Only if centralized table is empty
+                const virtualObligations = [{
+                    id: Date.now(),
+                    date: item.actualObligationDate || '',
+                    amount: item.actualObligationAmount || 0,
+                    remarks: 'Legacy Record'
+                }];
+                setFormData(prev => ({ ...prev, obligations: virtualObligations }));
+            }
+        };
+
+        fetchObligations();
+    }, [item]);
+
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
     // For selects
@@ -230,12 +267,34 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         };
 
         if (supabase) {
-            // Exclude ID from update payload
-            const { id, ...payload } = updatedItem;
+            // Exclude ID and obligations from update payload
+            const { id, obligations, ...payload } = updatedItem;
             const { error } = await supabase.from('office_requirements').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);
                 return;
+            }
+
+            // Sync obligations to centralized table
+            const entityType = 'office_requirement';
+            const parentId = item.id;
+            
+            // Delete old
+            await supabase.from('financial_obligations')
+                .delete()
+                .eq('entity_type', entityType)
+                .eq('parent_id', parentId);
+            
+            // Insert new
+            if (obligations && obligations.length > 0) {
+                const syncPayload = obligations.map((o: any) => ({
+                    entity_type: entityType,
+                    parent_id: parentId,
+                    obligation_date: o.date,
+                    amount: o.amount || 0,
+                    remarks: o.remarks || ''
+                }));
+                await supabase.from('financial_obligations').insert(syncPayload);
             }
         }
         

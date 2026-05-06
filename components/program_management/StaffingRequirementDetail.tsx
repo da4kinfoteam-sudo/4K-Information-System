@@ -77,6 +77,14 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 actualObligationDate: item.actualObligationDate,
                 actualDisbursementAmount: item.actualDisbursementAmount,
                 actualDisbursementDate: item.actualDisbursementDate,
+                obligations: (item.obligations && item.obligations.length > 0) ? item.obligations : (
+                    (item.actualObligationAmount > 0) ? [{
+                        id: Date.now(),
+                        date: item.actualObligationDate || '',
+                        amount: item.actualObligationAmount,
+                        remarks: 'Legacy Record'
+                    }] : []
+                ),
 
                 actualDisbursementJan: item.actualDisbursementJan || 0, actualDisbursementFeb: item.actualDisbursementFeb || 0, actualDisbursementMar: item.actualDisbursementMar || 0,
                 actualDisbursementApr: item.actualDisbursementApr || 0, actualDisbursementMay: item.actualDisbursementMay || 0, actualDisbursementJun: item.actualDisbursementJun || 0,
@@ -379,11 +387,42 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         };
 
         if (supabase) {
-            const { id, ...payload } = updatedItem;
+            const { id, obligations, ...payload } = updatedItem;
             const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);
                 return;
+            }
+
+            // Sync obligations to centralized table
+            const entityType = 'staffing_expense';
+            const parentId = item.id;
+            
+            // Delete all for this parent first
+            await supabase.from('financial_obligations')
+                .delete()
+                .eq('entity_type', entityType)
+                .eq('parent_id', parentId);
+            
+            // Insert all from all expenses
+            const syncPayload: any[] = [];
+            expensesList.forEach(exp => {
+                if (exp.obligations && exp.obligations.length > 0) {
+                    exp.obligations.forEach(o => {
+                        syncPayload.push({
+                            entity_type: entityType,
+                            parent_id: parentId,
+                            item_id: exp.id?.toString() || null,
+                            obligation_date: o.date,
+                            amount: o.amount || 0,
+                            remarks: o.remarks || ''
+                        });
+                    });
+                }
+            });
+
+            if (syncPayload.length > 0) {
+                await supabase.from('financial_obligations').insert(syncPayload);
             }
         }
         

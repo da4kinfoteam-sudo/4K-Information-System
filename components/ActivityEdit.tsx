@@ -139,9 +139,29 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
     useEffect(() => {
         if (activity) {
-            setFormData(activity);
-            setInitialActivity(activity);
-            if (activity.endDate && activity.endDate !== activity.date) {
+            let processedActivity = { ...activity };
+            // Virtualize legacy obligations for each expense on load if missing
+            if (processedActivity.expenses) {
+                processedActivity.expenses = processedActivity.expenses.map(exp => {
+                    const hasAmount = (exp.actualObligationAmount || 0) > 0;
+                    const hasNoObligations = !exp.obligations || exp.obligations.length === 0;
+                    if (hasAmount && hasNoObligations) {
+                        return {
+                            ...exp,
+                            obligations: [{
+                                id: Date.now() + Math.random(),
+                                date: exp.actualObligationDate || '',
+                                amount: exp.actualObligationAmount || 0,
+                                remarks: 'Legacy Record'
+                            }]
+                        };
+                    }
+                    return exp;
+                });
+            }
+            setFormData(processedActivity);
+            setInitialActivity(processedActivity);
+            if (processedActivity.endDate && processedActivity.endDate !== processedActivity.date) {
                 setConductType('Multi-day');
             } else {
                 setConductType('Single');
@@ -526,13 +546,20 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                          const { data, error } = await supabase.from('activities').insert([sanitizedPayload]).select();
                          if (error) throw error;
                          if (data && data.length > 0) {
-                             activitiesToSave[i].id = data[0].id;
-                             logAction(`Created ${act.type}`, act.name, undefined, act.type, String(data[0].id));
+                             const createdId = data[0].id;
+                             activitiesToSave[i].id = createdId;
+                             logAction(`Created ${act.type}`, act.name, undefined, act.type, String(createdId));
+                             
+                             // Sync obligations for new activity
+                             await syncActivityObligations(createdId, act.expenses);
                          }
                     } else {
                          const { error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id);
                          if (error) throw error;
                          logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id));
+                         
+                         // Sync obligations for updated activity
+                         await syncActivityObligations(activity!.id, act.expenses);
                     }
                     
                     // IPO History Log
@@ -558,6 +585,38 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         }
         if (mode === 'create') alert(`Saved ${activitiesToSave.length} activities.`);
         onBack();
+    };
+
+    const syncActivityObligations = async (parentId: number, expenses: ActivityExpense[]) => {
+        if (!supabase) return;
+        const entityType = 'activity_expense';
+        
+        // Delete old
+        await supabase.from('financial_obligations')
+            .delete()
+            .eq('entity_type', entityType)
+            .eq('parent_id', parentId);
+        
+        // Insert new from all expenses
+        const syncPayload: any[] = [];
+        expenses.forEach(exp => {
+            if (exp.obligations && exp.obligations.length > 0) {
+                exp.obligations.forEach(o => {
+                    syncPayload.push({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        item_id: exp.id?.toString() || null,
+                        obligation_date: o.date,
+                        amount: o.amount || 0,
+                        remarks: o.remarks || ''
+                    });
+                });
+            }
+        });
+
+        if (syncPayload.length > 0) {
+            await supabase.from('financial_obligations').insert(syncPayload);
+        }
     };
 
     const TabButton = ({ name, label }: { name: any, label: string }) => (

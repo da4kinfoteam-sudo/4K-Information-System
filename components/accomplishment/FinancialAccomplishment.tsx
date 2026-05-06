@@ -102,6 +102,20 @@ const formatCurrency = (amount: number) => {
   }).format(rounded);
 }
 
+// Helper to normalize legacy obligations to the new array structure
+const getInitialObligations = (existingArr: ObligationRecord[] | undefined, date: string, amount: number) => {
+    if (existingArr && existingArr.length > 0) return existingArr;
+    if (amount > 0) {
+        return [{
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            date: date || '',
+            amount: amount,
+            remarks: 'Legacy Record'
+        }];
+    }
+    return [];
+};
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
 const FinancialAccomplishment: React.FC<Props> = ({
@@ -209,7 +223,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: d.actualObligationAmount || 0,
                     actualDisbursementMonth: d.actualDisbursementDate || '',
                     actualDisbursementAmount: d.actualDisbursementAmount || 0,
-                    obligations: d.obligations || [],
+                    obligations: getInitialObligations(d.obligations, d.actualObligationDate || '', d.actualObligationAmount || 0),
                     status: sp.status,
                     ...defaultMonthly, // Not used for SP currently
                     isConfirmed: false
@@ -237,7 +251,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: e.actualObligationAmount || 0,
                     actualDisbursementMonth: e.actualDisbursementDate || '',
                     actualDisbursementAmount: e.actualDisbursementAmount || 0,
-                    obligations: e.obligations || [],
+                    obligations: getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
                     status: act.status,
                     ...defaultMonthly,
                     isConfirmed: false
@@ -263,7 +277,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualObligationAmount: o.actualObligationAmount || 0,
                 actualDisbursementMonth: o.actualDisbursementDate || '',
                 actualDisbursementAmount: o.actualDisbursementAmount || 0,
-                obligations: o.obligations || [],
+                obligations: getInitialObligations(o.obligations, o.actualObligationDate || '', o.actualObligationAmount || 0),
                 status: o.status,
                 ...defaultMonthly,
                 isConfirmed: false
@@ -296,7 +310,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         actualObligationAmount: e.actualObligationAmount || 0,
                         actualDisbursementMonth: e.actualDisbursementDate || '',
                         actualDisbursementAmount: e.actualDisbursementAmount || 0,
-                        obligations: e.obligations || [],
+                        obligations: getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
                         status: s.hiringStatus,
                         ...defaultMonthly,
                         ...monthlyActuals,
@@ -326,7 +340,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     actualObligationAmount: s.actualObligationAmount || 0,
                     actualDisbursementMonth: s.actualDisbursementDate || '',
                     actualDisbursementAmount: s.actualDisbursementAmount || 0,
-                    obligations: s.obligations || [],
+                    obligations: getInitialObligations(s.obligations, s.actualObligationDate || '', s.actualObligationAmount || 0),
                     status: s.hiringStatus,
                     ...defaultMonthly, // Default
                     ...monthlyActuals, // Overwrite
@@ -358,7 +372,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 actualObligationAmount: ope.actualObligationAmount || 0,
                 actualDisbursementMonth: ope.actualDisbursementDate || '',
                 actualDisbursementAmount: ope.actualDisbursementAmount || 0,
-                obligations: ope.obligations || [],
+                obligations: getInitialObligations(ope.obligations, ope.actualObligationDate || '', ope.actualObligationAmount || 0),
                 status: ope.status,
                 ...defaultMonthly,
                 ...monthlyActuals,
@@ -770,8 +784,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
-                     actualDisbursementAmount: item.actualDisbursementAmount,
-                     obligations: item.obligations,
+                     actualDisbursementAmount: item.actualDisbursementAmount
                 };
                 SHORT_MONTHS.forEach(m => {
                     payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
@@ -789,8 +802,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
             const payload: any = {
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
-                 actualDisbursementAmount: item.actualDisbursementAmount,
-                 obligations: item.obligations,
+                 actualDisbursementAmount: item.actualDisbursementAmount
             };
             
             SHORT_MONTHS.forEach(m => {
@@ -810,8 +822,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
                  actualDisbursementDate: item.actualDisbursementMonth,
-                 actualDisbursementAmount: item.actualDisbursementAmount,
-                 obligations: item.obligations,
+                 actualDisbursementAmount: item.actualDisbursementAmount
             };
             if (item.status === 'Proposed') {
                 payload.obligationDate = item.targetObligationMonth;
