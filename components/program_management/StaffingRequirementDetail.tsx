@@ -52,12 +52,12 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
     
-    // Construct display expenses, handling legacy data where expenses array might be empty but root data exists
+    // Construct display expenses, handling legacy data where obligations array might be empty but actual fields exist
     const displayExpenses = useMemo(() => {
-        if (item.expenses && item.expenses.length > 0) return item.expenses;
+        let expenses = (item.expenses && item.expenses.length > 0) ? [...item.expenses] : [];
 
-        // Legacy Fallback: Construct a single expense from root fields
-        if (item.annualSalary > 0 || item.uacsCode) {
+        // Legacy Fallback: If no expenses, construct a single expense from root fields
+        if (expenses.length === 0 && (item.annualSalary > 0 || item.uacsCode)) {
              const legacy: StaffingExpense = {
                 id: 99999, // Dummy ID for display
                 objectType: 'MOOE',
@@ -77,23 +77,28 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 actualObligationDate: item.actualObligationDate,
                 actualDisbursementAmount: item.actualDisbursementAmount,
                 actualDisbursementDate: item.actualDisbursementDate,
-                obligations: (item.obligations && item.obligations.length > 0) ? item.obligations : (
-                    (item.actualObligationAmount > 0) ? [{
-                        id: Date.now(),
-                        date: item.actualObligationDate || '',
-                        amount: item.actualObligationAmount,
-                        remarks: 'Legacy Record'
-                    }] : []
-                ),
+                obligations: [], // Will be populated by mapping below
 
                 actualDisbursementJan: item.actualDisbursementJan || 0, actualDisbursementFeb: item.actualDisbursementFeb || 0, actualDisbursementMar: item.actualDisbursementMar || 0,
                 actualDisbursementApr: item.actualDisbursementApr || 0, actualDisbursementMay: item.actualDisbursementMay || 0, actualDisbursementJun: item.actualDisbursementJun || 0,
                 actualDisbursementJul: item.actualDisbursementJul || 0, actualDisbursementAug: item.actualDisbursementAug || 0, actualDisbursementSep: item.actualDisbursementSep || 0,
                 actualDisbursementOct: item.actualDisbursementOct || 0, actualDisbursementNov: item.actualDisbursementNov || 0, actualDisbursementDec: item.actualDisbursementDec || 0,
             };
-            return [legacy];
+            expenses = [legacy];
         }
-        return [];
+
+        // Migrate legacy actual fields into obligations array
+        return expenses.map(exp => ({
+            ...exp,
+            obligations: (exp.obligations && exp.obligations.length > 0) ? exp.obligations : (
+                (exp.actualObligationAmount > 0) ? [{
+                    id: Date.now(),
+                    date: exp.actualObligationDate || '',
+                    amount: exp.actualObligationAmount || 0,
+                    remarks: 'Legacy Record'
+                }] : []
+            )
+        }));
     }, [item]);
 
     // Expense Management State

@@ -137,22 +137,17 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         setEditedSubproject(subproject);
         // Map details and preserve ID for tracking, plus virtualize logic
-        setDetailItems((subproject.details || []).map(d => {
-            const hasAmount = (d.actualObligationAmount || 0) > 0;
-            const hasNoObligations = !d.obligations || d.obligations.length === 0;
-            if (hasAmount && hasNoObligations) {
-                return {
-                    ...d,
-                    obligations: [{
-                        id: Date.now() + Math.random(),
-                        date: d.actualObligationDate || '',
-                        amount: d.actualObligationAmount || 0,
-                        remarks: 'Legacy Record'
-                    }]
-                };
-            }
-            return { ...d };
-        }));
+        setDetailItems((subproject.details || []).map(d => ({
+            ...d,
+            obligations: (d.obligations && d.obligations.length > 0) ? d.obligations : (
+                (d.actualObligationAmount || 0 > 0) ? [{
+                    id: Date.now() + Math.random(),
+                    date: d.actualObligationDate || '',
+                    amount: d.actualObligationAmount || 0,
+                    remarks: 'Legacy Record'
+                }] : []
+            )
+        })));
         
         if (editMode === 'details') setActiveTab('details');
         if (editMode === 'commodity') setActiveTab('commodity');
