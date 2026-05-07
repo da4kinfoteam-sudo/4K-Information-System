@@ -265,12 +265,12 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
     const processedData = useMemo(() => {
         const lineItems: any[] = [];
         
-        const processItem = (component: string, packageType: string | undefined, activityName: string, objectType: string, uacsCode: string, allotment: number, obligationDate: string, obligationAmount: number, obligationsList: any[], disbursements: any) => {
+        const processItem = (component: string, packageType: string | undefined, activityName: string, objectType: string, uacsCode: string, allotment: number, obligationDate: string, obligationAmount: number, obligationsList: any[], disbursements: any, disbursementsList: any[] = []) => {
             const objType = objectType === 'CO' ? 'CO' : 'MOOE';
             
             lineItems.push({
                 component, packageType, activityName, objectType: objType, uacsCode,
-                allotment, obligationDate, obligationAmount, obligationsList, disbursements
+                allotment, obligationDate, obligationAmount, obligationsList, disbursements, disbursementsList
             });
         };
 
@@ -278,7 +278,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             sp.details.forEach(d => {
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (d as any)[`actualDisbursement${m}`] || 0);
-                processItem('Production and Livelihood', sp.packageType, sp.name, d.objectType, d.uacsCode, d.pricePerUnit * d.numberOfUnits, d.actualObligationDate || '', d.actualObligationAmount || 0, d.obligations || [], disbursements);
+                processItem('Production and Livelihood', sp.packageType, sp.name, d.objectType, d.uacsCode, d.pricePerUnit * d.numberOfUnits, d.actualObligationDate || '', d.actualObligationAmount || 0, d.obligations || [], disbursements, d.disbursements || []);
             });
         });
         
@@ -287,7 +287,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             t.expenses.forEach(e => {
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
-                processItem(t.component, undefined, t.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
+                processItem(t.component, undefined, t.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements, e.disbursements || []);
             });
         });
         
@@ -296,7 +296,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
-                processItem(oa.component, packageType, oa.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
+                processItem(oa.component, packageType, oa.name, e.objectType || 'MOOE', e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements, e.disbursements || []);
             });
         });
         
@@ -306,13 +306,13 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                     const objType = getObjectTypeByCode(e.uacsCode, uacsCodes);
                     const disbursements: any = {};
                     SHORT_MONTHS.forEach(m => disbursements[m] = (e as any)[`actualDisbursement${m}`] || 0);
-                    processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements);
+                    processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, e.uacsCode, e.amount, e.actualObligationDate || '', e.actualObligationAmount || 0, e.obligations || [], disbursements, e.disbursements || []);
                 });
             } else {
                 const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
                 const disbursements: any = {};
                 SHORT_MONTHS.forEach(m => disbursements[m] = (sr as any)[`actualDisbursement${m}`] || 0);
-                processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, sr.uacsCode, sr.annualSalary, sr.actualObligationDate || '', sr.actualObligationAmount || 0, sr.obligations || [], disbursements);
+                processItem('Program Management', 'Staff Requirements', sr.personnelPosition, objType, sr.uacsCode, sr.annualSalary, sr.actualObligationDate || '', sr.actualObligationAmount || 0, sr.obligations || [], disbursements, sr.disbursements || []);
             }
         });
         
@@ -320,14 +320,14 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             const objType = getObjectTypeByCode(or.uacsCode, uacsCodes);
             const disbursements: any = {};
             SHORT_MONTHS.forEach(m => disbursements[m] = (or as any)[`actualDisbursement${m}`] || 0);
-            processItem('Program Management', 'Office Requirements', or.equipment, objType, or.uacsCode, or.pricePerUnit * or.numberOfUnits, or.actualObligationDate || '', or.actualObligationAmount || 0, or.obligations || [], disbursements);
+            processItem('Program Management', 'Office Requirements', or.equipment, objType, or.uacsCode, or.pricePerUnit * or.numberOfUnits, or.actualObligationDate || '', or.actualObligationAmount || 0, or.obligations || [], disbursements, or.disbursements || []);
         });
         
         data.otherProgramExpenses.forEach(ope => {
             const objType = getObjectTypeByCode(ope.uacsCode, uacsCodes);
             const disbursements: any = {};
             SHORT_MONTHS.forEach(m => disbursements[m] = (ope as any)[`actualDisbursement${m}`] || 0);
-            processItem('Program Management', 'Office Requirements', ope.particulars, objType, ope.uacsCode, ope.amount, ope.actualObligationDate || '', ope.actualObligationAmount || 0, ope.obligations || [], disbursements);
+            processItem('Program Management', 'Office Requirements', ope.particulars, objType, ope.uacsCode, ope.amount, ope.actualObligationDate || '', ope.actualObligationAmount || 0, ope.obligations || [], disbursements, ope.disbursements || []);
         });
 
         const groupedData: { [key: string]: any } = {
@@ -402,15 +402,28 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
             }
 
             // Disbursement
-            SHORT_MONTHS.forEach((m, idx) => {
-                const disbAmount = item.disbursements[m] || 0;
-                if (disbAmount > 0) {
-                    const disb = activity.months[idx].disbursement;
-                    if (isCO) disb.co += disbAmount;
-                    else disb.mooe += disbAmount;
-                    disb.total += disbAmount;
-                }
-            });
+            if (item.disbursementsList && item.disbursementsList.length > 0) {
+                item.disbursementsList.forEach((d: any) => {
+                    const dbMonth = getMonthIndex(d.date);
+                    if (dbMonth >= 0 && dbMonth < 12) {
+                        const amt = Number(d.amount) || 0;
+                        const disb = activity.months[dbMonth].disbursement;
+                        if (isCO) disb.co += amt;
+                        else disb.mooe += amt;
+                        disb.total += amt;
+                    }
+                });
+            } else {
+                SHORT_MONTHS.forEach((m, idx) => {
+                    const disbAmount = item.disbursements[m] || 0;
+                    if (disbAmount > 0) {
+                        const disb = activity.months[idx].disbursement;
+                        if (isCO) disb.co += disbAmount;
+                        else disb.mooe += disbAmount;
+                        disb.total += disbAmount;
+                    }
+                });
+            }
         });
         
         const plPackageKeys = Object.keys(groupedData['Production and Livelihood'].packages);

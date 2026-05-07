@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useMemo } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, tiers, fundTypes, filterYears } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -137,6 +137,11 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
     const { currentUser } = useAuth();
     const canViewMatrix = currentUser?.role === 'Administrator' || currentUser?.role === 'Management';
 
+    const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
+    const [selectedOu, setSelectedOu] = React.useState<string>(canViewMatrix ? 'All' : (currentUser?.operatingUnit || 'All'));
+    const [selectedTier, setSelectedTier] = React.useState<string>('Tier 1');
+    const [selectedFundType, setSelectedFundType] = React.useState<string>('Current');
+
     const getObligationTotal = (item: any) => {
         if (item.obligations && item.obligations.length > 0) {
             return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
@@ -148,10 +153,32 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         if (item.disbursements && item.disbursements.length > 0) {
             return item.disbursements.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
         }
-        return Number(item.actualDisbursementAmount) || 0;
+        const legacyTotal = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            .reduce((sum, m) => sum + (Number(item[`actualDisbursement${m}`]) || 0), 0);
+        return legacyTotal || Number(item.actualDisbursementAmount) || 0;
     };
 
     const financialData = useMemo<FinancialData>(() => {
+        const baseFilter = (item: any) => {
+            if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+            if (selectedFundType !== 'All' && (item.fundType || item.fundingType) !== selectedFundType) return false;
+            if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
+            return true;
+        };
+
+        const yearFilter = (item: any, overrideYear?: string) => {
+            if (selectedYear === 'All') return true;
+            const y = overrideYear || item.fundingYear?.toString() || item.fundYear?.toString();
+            return y === selectedYear;
+        };
+
+        const filteredSubprojects = (data.subprojects || []).filter(item => baseFilter(item) && yearFilter(item));
+        const filteredTrainings = (data.trainings || []).filter(item => baseFilter(item) && yearFilter(item));
+        const filteredOtherActivities = (data.otherActivities || []).filter(item => baseFilter(item) && yearFilter(item));
+        const filteredOfficeReqs = (data.officeReqs || []).filter(item => baseFilter(item) && yearFilter(item));
+        const filteredStaffingReqs = (data.staffingReqs || []).filter(item => baseFilter(item) && yearFilter(item));
+        const filteredOtherExpenses = (data.otherProgramExpenses || []).filter(item => baseFilter(item) && yearFilter(item));
+
         const components: { [key: string]: { target: number; obligation: number; disbursement: number } } = {
             'Social Preparation': { target: 0, obligation: 0, disbursement: 0 },
             'Production and Livelihood': { target: 0, obligation: 0, disbursement: 0 },
@@ -225,34 +252,63 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         const aggregateObligations = (item: any) => {
             if (item.obligations && item.obligations.length > 0) {
                 item.obligations.forEach((o: any) => {
-                    const obMonth = getMonth(o.date);
-                    if (obMonth !== -1) {
-                        monthlyData[obMonth].obligation += (Number(o.amount) || 0);
+                    const obDate = new Date(o.date);
+                    if (selectedYear === 'All' || obDate.getFullYear().toString() === selectedYear) {
+                        const obMonth = getMonth(o.date);
+                        if (obMonth !== -1) {
+                            monthlyData[obMonth].obligation += (Number(o.amount) || 0);
+                        }
                     }
                 });
             } else {
-                const obMonth = getMonth(item.actualObligationDate);
-                if (obMonth !== -1) {
-                    monthlyData[obMonth].obligation += (item.actualObligationAmount || 0);
+                const obDate = new Date(item.actualObligationDate);
+                if (selectedYear === 'All' || obDate.getFullYear().toString() === selectedYear) {
+                    const obMonth = getMonth(item.actualObligationDate);
+                    if (obMonth !== -1) {
+                        monthlyData[obMonth].obligation += (item.actualObligationAmount || 0);
+                    }
+                }
+            }
+        };
+
+        const aggregateDisbursements = (item: any) => {
+            if (item.disbursements && item.disbursements.length > 0) {
+                item.disbursements.forEach((d: any) => {
+                    const dbDate = new Date(d.date);
+                    if (selectedYear === 'All' || dbDate.getFullYear().toString() === selectedYear) {
+                        const dbMonth = getMonth(d.date);
+                        if (dbMonth !== -1) {
+                            monthlyData[dbMonth].disbursement += (Number(d.amount) || 0);
+                        }
+                    }
+                });
+            } else {
+                const dbDate = new Date(item.actualDisbursementDate);
+                if (selectedYear === 'All' || dbDate.getFullYear().toString() === selectedYear) {
+                    const dbMonth = getMonth(item.actualDisbursementDate);
+                    if (dbMonth !== -1) {
+                        monthlyData[dbMonth].disbursement += (item.actualDisbursementAmount || 0);
+                    }
+                }
+                // Legacy monthly properties (Assume they belong to the item's fund year)
+                const itemYear = item.fundingYear?.toString() || item.fundYear?.toString();
+                if (selectedYear === 'All' || itemYear === selectedYear) {
+                    ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].forEach((m, idx) => {
+                        const val = Number(item[`actualDisbursement${m}`]) || 0;
+                        if (val > 0) monthlyData[idx].disbursement += val;
+                    });
                 }
             }
         };
 
         // 1. Process Subprojects
-        (data.subprojects || []).forEach(sp => {
+        filteredSubprojects.forEach(sp => {
             const spBudget = (sp.details || []).reduce((sum, d) => {
                 const amount = d.pricePerUnit * d.numberOfUnits;
-                
-                // Monthly Targets
                 const targetMonth = getMonth(d.obligationMonth);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += amount;
-
-                // Monthly Actuals
                 aggregateObligations(d);
-
-                const disbMonth = getMonth(d.actualDisbursementDate);
-                if (disbMonth !== -1) monthlyData[disbMonth].disbursement += (d.actualDisbursementAmount || 0);
-
+                aggregateDisbursements(d);
                 return sum + amount;
             }, 0);
 
@@ -262,9 +318,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             components['Production and Livelihood'].target += spBudget;
             components['Production and Livelihood'].obligation += spObligation;
             components['Production and Livelihood'].disbursement += spDisbursement;
-
             addToProvince(sp.location, sp.indigenousPeopleOrganization, spBudget, spObligation, spDisbursement);
-
             totalAllocation += spBudget;
             totalObligation += spObligation;
             totalDisbursement += spDisbursement;
@@ -275,12 +329,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const actBudget = (act.expenses || []).reduce((sum, e) => {
                 const targetMonth = getMonth(e.obligationMonth);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += e.amount;
-
                 aggregateObligations(e);
-
-                const disbMonth = getMonth(e.actualDisbursementDate);
-                if (disbMonth !== -1) monthlyData[disbMonth].disbursement += (e.actualDisbursementAmount || 0);
-
+                aggregateDisbursements(e);
                 return sum + e.amount;
             }, 0);
 
@@ -305,22 +355,19 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             addToProvince(act.location, act.participatingIpos, actBudget, actObligation, actDisbursement);
         };
 
-        (data.trainings || []).forEach(processActivity);
-        (data.otherActivities || []).forEach(processActivity);
+        filteredTrainings.forEach(processActivity);
+        filteredOtherActivities.forEach(processActivity);
 
         // 3. Process Office Requirements
-        (data.officeReqs || []).forEach(or => {
+        filteredOfficeReqs.forEach(or => {
             const targetAmount = or.pricePerUnit * or.numberOfUnits;
             const actualOb = getObligationTotal(or);
-            const actualDisb = or.actualDisbursementAmount || 0;
+            const actualDisb = getDisbursementTotal(or);
 
             const targetMonth = getMonth(or.obligationDate);
             if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-
             aggregateObligations(or);
-
-            const disbMonth = getMonth(or.actualDisbursementDate);
-            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+            aggregateDisbursements(or);
 
             totalAllocation += targetAmount;
             totalObligation += actualOb;
@@ -332,7 +379,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         });
 
         // 4. Process Staffing Requirements
-        (data.staffingReqs || []).forEach(sr => {
+        filteredStaffingReqs.forEach(sr => {
             const targetAmount = sr.annualSalary;
             
             let actualOb = 0;
@@ -342,18 +389,17 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
                     if (targetMonth !== -1) monthlyData[targetMonth].target += (Number(e.amount) || 0);
                     actualOb += getObligationTotal(e);
                     aggregateObligations(e);
+                    aggregateDisbursements(e);
                 });
             } else {
                 const targetMonth = getMonth(sr.obligationDate);
                 if (targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
                 actualOb = getObligationTotal(sr);
                 aggregateObligations(sr);
+                aggregateDisbursements(sr);
             }
             
-            const actualDisb = sr.actualDisbursementAmount || 0;
-
-            const disbMonth = getMonth(sr.actualDisbursementDate);
-            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+            const actualDisb = getDisbursementTotal(sr);
 
             totalAllocation += targetAmount;
             totalObligation += actualOb;
@@ -365,18 +411,15 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         });
 
         // 5. Process Other Program Expenses
-        (data.otherProgramExpenses || []).forEach(oe => {
+        filteredOtherExpenses.forEach(oe => {
             const targetAmount = oe.amount;
             const actualOb = getObligationTotal(oe);
-            const actualDisb = oe.actualDisbursementAmount || 0;
+            const actualDisb = getDisbursementTotal(oe);
 
             const targetMonth = getMonth(oe.obligationDate);
             if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-
             aggregateObligations(oe);
-
-            const disbMonth = getMonth(oe.actualDisbursementDate);
-            if(disbMonth !== -1) monthlyData[disbMonth].disbursement += actualDisb;
+            aggregateDisbursements(oe);
 
             totalAllocation += targetAmount;
             totalObligation += actualOb;
@@ -388,7 +431,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
         });
 
         return { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData };
-    }, [data]);
+    }, [data, selectedYear, selectedOu, selectedTier, selectedFundType]);
 
     const matrixData = useMemo<MatrixData>(() => {
         const matrix: MatrixData = {};
@@ -401,6 +444,19 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             };
         });
 
+        const baseFilter = (item: any) => {
+            if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+            if (selectedFundType !== 'All' && (item.fundType || item.fundingType) !== selectedFundType) return false;
+            // No OU filter here because this is for the OU matrix
+            return true;
+        };
+
+        const yearFilter = (item: any) => {
+            if (selectedYear === 'All') return true;
+            const y = item.fundingYear?.toString() || item.fundYear?.toString();
+            return y === selectedYear;
+        };
+
         const addToMatrix = (ou: string, component: string, alloc: number, obli: number, disb: number) => {
             if (!matrix[ou]) return; 
             const targetComp = component || 'Program Management';
@@ -411,7 +467,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             }
         };
 
-        (data.subprojects || []).forEach(sp => {
+        (data.subprojects || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(sp => {
             const alloc = (sp.details || []).reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = (sp.details || []).reduce((s, d) => s + getObligationTotal(d), 0);
             const disb = (sp.details || []).reduce((s, d) => s + getDisbursementTotal(d), 0);
@@ -424,8 +480,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const disb = (act.expenses || []).reduce((s, e) => s + getDisbursementTotal(e), 0);
             addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
         };
-        (data.trainings || []).forEach(processAct);
-        (data.otherActivities || []).forEach(processAct);
+        (data.trainings || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(processAct);
+        (data.otherActivities || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(processAct);
 
         const processPM = (item: any, isStaff = false) => {
             const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
@@ -433,12 +489,12 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
             const disb = getDisbursementTotal(item);
             addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
         };
-        (data.officeReqs || []).forEach(item => processPM(item));
-        (data.staffingReqs || []).forEach(item => processPM(item, true));
-        (data.otherProgramExpenses || []).forEach(item => processPM(item));
+        (data.officeReqs || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item));
+        (data.staffingReqs || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item, true));
+        (data.otherProgramExpenses || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item));
 
         return matrix;
-    }, [data]);
+    }, [data, selectedYear, selectedTier, selectedFundType]);
 
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 
@@ -865,18 +921,72 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({ data }) => {
 
     return (
         <div className="space-y-8 animate-fadeIn">
-            {/* Action Bar */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Financial Dashboard</h1>
-                <button 
-                    onClick={handleExportPPTX}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                    Download Financial Report
-                </button>
+            {/* Action Bar with Filters */}
+            <div className="flex flex-col gap-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm print-hidden">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Financial Performance</h1>
+                    <button 
+                        onClick={handleExportPPTX}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg w-full md:w-auto justify-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        Download Report
+                    </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 border-t dark:border-gray-700 pt-4">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
+                        <select 
+                            id="ou-filter"
+                            value={selectedOu}
+                            onChange={(e) => setSelectedOu(e.target.value)}
+                            disabled={!canViewMatrix}
+                            className="bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1.5 pl-3 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-sm disabled:opacity-70"
+                        >
+                            <option value="All">All OUs</option>
+                            {operatingUnits.map(ou => (<option key={ou} value={ou}>{ou}</option>))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                        <select 
+                            id="tier-filter"
+                            value={selectedTier}
+                            onChange={(e) => setSelectedTier(e.target.value)}
+                            className="bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1.5 pl-3 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (<option key={tier} value={tier}>{tier}</option>))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                        <select 
+                            id="fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            className="bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1.5 pl-3 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(ft => (<option key={ft} value={ft}>{ft}</option>))}
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                        <select 
+                            id="year-filter"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1.5 pl-3 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-sm"
+                        >
+                            <option value="All">All Years</option>
+                            {[...filterYears].sort((a,b) => parseInt(b)-parseInt(a)).map(year => (<option key={year} value={year}>{year}</option>))}
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <section aria-labelledby="budget-utilization">
