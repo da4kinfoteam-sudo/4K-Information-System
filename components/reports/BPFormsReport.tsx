@@ -208,7 +208,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
                     objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits,
                     particularName: d.expenseParticular,
-                    itemParticular: d.particulars
+                    itemParticular: d.particulars,
+                    isRealignment: sp.isRealignment,
+                    isSavings: sp.isSavings
                 });
             });
         });
@@ -221,7 +223,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 lineItems.push({
                     component: t.component, packageType: undefined, activityName: t.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
-                    isTraining: true, particularName: e.expenseParticular
+                    isTraining: true, particularName: e.expenseParticular,
+                    isRealignment: t.isRealignment,
+                    isSavings: t.isSavings
                 });
             });
         });
@@ -233,7 +237,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 lineItems.push({
                     component: oa.component, packageType, activityName: oa.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
-                    particularName: e.expenseParticular
+                    particularName: e.expenseParticular,
+                    isRealignment: oa.isRealignment,
+                    isSavings: oa.isSavings
                 });
             });
         });
@@ -295,7 +301,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
         
         lineItems.forEach(item => {
-            if (item.amount <= 0) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings) return;
 
             let targetList;
             const packageKey = item.packageType || (item.isTraining ? 'Trainings' : 'Activities');

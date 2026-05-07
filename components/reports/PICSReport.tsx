@@ -30,6 +30,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
         const adTracker = new Map();
         
         data.subprojects.forEach(sp => {
+            if (sp.isRealignment || sp.isSavings) return;
             const region = ouToRegionMap[sp.operatingUnit] || 'Unmapped Region'; 
             if (region === 'National Capital Region (NCR)') return;
             const { province } = parseLocation(sp.location); 
@@ -75,13 +76,17 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
             const key = getKey(region, province || 'Unspecified', indicator); 
             if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
             const entry = aggregator.get(key); 
-            entry.totalTarget += 1; 
-            activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
+            if (!activity.isRealignment && !activity.isSavings) {
+                entry.totalTarget += 1; 
+                activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
+                if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
+                else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); } 
+            }
             entry.maleTarget += (activity.participantsMale || 0); 
             entry.femaleTarget += (activity.participantsFemale || 0); 
             entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
-            if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
-            else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+            if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+            else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
         });
 
         data.otherActivities.forEach(activity => { 
@@ -93,13 +98,17 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
             const key = getKey(region, province || 'Unspecified', indicator); 
             if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
             const entry = aggregator.get(key); 
-            entry.totalTarget += 1; 
-            activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
+            if (!activity.isRealignment && !activity.isSavings) {
+                entry.totalTarget += 1; 
+                activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
+                if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
+                else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); } 
+            }
             entry.maleTarget += (activity.participantsMale || 0); 
             entry.femaleTarget += (activity.participantsFemale || 0); 
             entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
-            if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
-            else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+            if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+            else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
         });
 
         return Array.from(aggregator.values()).sort((a:any, b:any) => { if (a.region !== b.region) return a.region.localeCompare(b.region); if (a.province !== b.province) return a.province.localeCompare(b.province); return a.indicator.localeCompare(b.indicator); });

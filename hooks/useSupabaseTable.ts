@@ -55,6 +55,23 @@ export function useSupabaseTable<T extends { id: number | string }>(
         };
 
         fetchData();
+
+        // Subscribe to real-time changes
+        const channel = supabase
+            .channel(`public:${tableName}`)
+            .on(
+                'postgres_changes',
+                { event: '*', table: tableName, schema: 'public' },
+                () => {
+                    // Re-fetch all data on any change for consistency, as complex relations might be affected
+                    fetchData();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [tableName]);
 
     const setSupabaseData = (action: React.SetStateAction<T[]>) => {

@@ -113,14 +113,14 @@ const AppContent: React.FC = () => {
     const [activities, setActivities] = useSupabaseTable<Activity>('activities', []);
     const [marketingPartners, setMarketingPartners] = useSupabaseTable<MarketingPartner>('marketing_partners', []);
     
-    // Program Management States - Managed manually to support direct CRUD with generated IDs
-    const [officeReqs, setOfficeReqs] = useState<OfficeRequirement[]>([]);
-    const [staffingReqs, setStaffingReqs] = useState<StaffingRequirement[]>([]);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useState<OtherProgramExpense[]>([]);
+    // Program Management States - Now using useSupabaseTable for real-time support
+    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', []);
+    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', []);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', []);
 
-    // Financial Obligations State
-    const [allFinancialObligations, setAllFinancialObligations] = useState<any[]>([]);
-    const [allFinancialDisbursements, setAllFinancialDisbursements] = useState<any[]>([]);
+    // Financial Records - Now using useSupabaseTable for real-time support
+    const [allFinancialObligations, setAllFinancialObligations] = useSupabaseTable<any>('financial_obligations', []);
+    const [allFinancialDisbursements, setAllFinancialDisbursements] = useSupabaseTable<any>('financial_disbursements', []);
 
     // Hydration Logic
     const obligationsMap = useMemo(() => {
@@ -236,15 +236,6 @@ const AppContent: React.FC = () => {
     useEffect(() => {
         if (!supabase || !isAuthReady) return;
         const fetchAllData = async () => {
-            const or = await fetchAll('office_requirements', 'id', false);
-            setOfficeReqs(or as OfficeRequirement[]);
-
-            const sr = await fetchAll('staffing_requirements', 'id', false);
-            setStaffingReqs(sr as StaffingRequirement[]);
-
-            const oe = await fetchAll('other_program_expenses', 'id', false);
-            setOtherProgramExpenses(oe as OtherProgramExpense[]);
-
             // Fetch System Settings
             const dl = await fetchAll('deadlines', 'date', true);
             setDeadlines(dl as Deadline[]);
@@ -260,35 +251,9 @@ const AppContent: React.FC = () => {
             // Fetch ELCAC Areas
             const ea = await fetchAll('elcac_areas', 'id', true);
             setElcacAreas(ea as ElcacArea[]);
-
-            // Fetch Financial Obligations
-            const obli = await fetchAll('financial_obligations', 'id', true);
-            setAllFinancialObligations(obli || []);
-
-            // Fetch Financial Disbursements
-            const disb = await fetchAll('financial_disbursements', 'id', true);
-            setAllFinancialDisbursements(disb || []);
         };
         fetchAllData();
-
-        // Subscribe to Financial Obligations & Disbursements
-        if (supabase) {
-            const channel = supabase.channel('financial_records_realtime')
-                .on('postgres_changes', { event: '*', table: 'financial_obligations', schema: 'public' }, async () => {
-                    const obli = await fetchAll('financial_obligations', 'id', true);
-                    setAllFinancialObligations(obli || []);
-                })
-                .on('postgres_changes', { event: '*', table: 'financial_disbursements', schema: 'public' }, async () => {
-                    const disb = await fetchAll('financial_disbursements', 'id', true);
-                    setAllFinancialDisbursements(disb || []);
-                })
-                .subscribe();
-
-            return () => {
-                supabase.removeChannel(channel);
-            };
-        }
-    }, [currentUser, isAuthReady]);
+    }, [isAuthReady]);
 
     // Helper to filter data based on visibility scope
     const filterByVisibility = <T extends { operatingUnit?: string }>(data: T[]): T[] => {

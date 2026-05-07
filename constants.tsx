@@ -131,7 +131,7 @@ export interface User extends BaseEntity {
 export const tiers = ['Tier 1', 'Tier 2'] as const;
 export type Tier = typeof tiers[number];
 
-export const fundTypes = ['Current', 'Continuing', 'Insertion', 'Realignment', 'Savings'] as const;
+export const fundTypes = ['Current', 'Continuing', 'Insertion'] as const;
 export type FundType = typeof fundTypes[number];
 
 export const filterYears = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028'];
@@ -214,6 +214,8 @@ export interface Subproject extends BaseEntity {
     lng?: number;
     fundingYear?: number;
     fundType?: FundType;
+    isRealignment?: boolean;
+    isSavings?: boolean;
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
@@ -304,6 +306,8 @@ export interface Activity extends BaseEntity {
     component: ActivityComponentType;
     fundingYear?: number;
     fundType?: FundType;
+    isRealignment?: boolean;
+    isSavings?: boolean;
     tier?: Tier;
     operatingUnit: string;
     encodedBy: string;
@@ -343,6 +347,8 @@ export interface BaseProgramManagementItem extends BaseEntity {
     disbursementDate: string;
     physicalDeliveryDate?: string;
     fundType: FundType;
+    isRealignment?: boolean;
+    isSavings?: boolean;
     fundYear: number;
     tier: Tier;
     encodedBy: string;

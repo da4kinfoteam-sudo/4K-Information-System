@@ -834,10 +834,20 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     {/* Group 2: Funding */}
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding Source</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
                             <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <div className="flex flex-col justify-center space-y-2 mt-4 md:mt-0">
+                                <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                    <span>Realignment</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                    <span>Savings</span>
+                                </label>
+                            </div>
                         </div>
                     </fieldset>
 

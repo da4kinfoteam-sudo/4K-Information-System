@@ -63,45 +63,51 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         };
 
         // Helper to aggregate items with same name/indicator
-        const addItemToGroup = (list: any[], newItem: any) => {
+        const addItemToGroup = (list: any[], newItem: any, isExcluded: boolean) => {
             const existing = list.find(i => i.indicator === newItem.indicator);
             if (existing) {
-                existing.totalPhysicalTarget += newItem.totalPhysicalTarget;
-                existing.mooeCost += newItem.mooeCost;
-                existing.coCost += newItem.coCost;
-                existing.totalCost += newItem.totalCost;
-                
-                existing.q1Physical += newItem.q1Physical;
-                existing.q2Physical += newItem.q2Physical;
-                existing.q3Physical += newItem.q3Physical;
-                existing.q4Physical += newItem.q4Physical;
-                
-                existing.q1Financial += newItem.q1Financial;
-                existing.q2Financial += newItem.q2Financial;
-                existing.q3Financial += newItem.q3Financial;
-                existing.q4Financial += newItem.q4Financial;
+                if (!isExcluded) {
+                    existing.totalPhysicalTarget += newItem.totalPhysicalTarget;
+                    existing.mooeCost += newItem.mooeCost;
+                    existing.coCost += newItem.coCost;
+                    existing.totalCost += newItem.totalCost;
+                    
+                    existing.q1Physical += newItem.q1Physical;
+                    existing.q2Physical += newItem.q2Physical;
+                    existing.q3Physical += newItem.q3Physical;
+                    existing.q4Physical += newItem.q4Physical;
+                    
+                    existing.q1Financial += newItem.q1Financial;
+                    existing.q2Financial += newItem.q2Financial;
+                    existing.q3Financial += newItem.q3Financial;
+                    existing.q4Financial += newItem.q4Financial;
+                }
+                // Actuals still aggregate...
             } else {
                 list.push(newItem);
             }
         };
         
         data.subprojects.forEach(sp => {
-            const mooeCost = sp.details.filter(d => d.objectType === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
-            const coCost = sp.details.filter(d => d.objectType === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
-            const totalCost = mooeCost + coCost;
+            const isExcluded = sp.isRealignment || sp.isSavings;
+            const mooeCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'MOOE').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
+            const coCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'CO').reduce((sum, d) => sum + d.pricePerUnit * d.numberOfUnits, 0);
+            const totalCost = isExcluded ? 0 : mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(sp.estimatedCompletionDate);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             sp.details.forEach(detail => {
                 const financialQuarter = getQuarter(detail.obligationMonth);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
-                    quarterlyFinancial[`q${financialQuarter}`] += detail.pricePerUnit * detail.numberOfUnits;
+                    if (!isExcluded) {
+                        quarterlyFinancial[`q${financialQuarter}`] += detail.pricePerUnit * detail.numberOfUnits;
+                    }
                 }
             });
 
             const item = {
-                indicator: sp.name, totalPhysicalTarget: 1, mooeCost, coCost, totalCost,
-                q1Physical: physicalTargetQuarter === 1 ? 1 : 0, q2Physical: physicalTargetQuarter === 2 ? 1 : 0, q3Physical: physicalTargetQuarter === 3 ? 1 : 0, q4Physical: physicalTargetQuarter === 4 ? 1 : 0,
+                indicator: sp.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
             };
@@ -110,26 +116,28 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             if (!finalData['Production and Livelihood'].packages[packageKey]) {
                 finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
             }
-            addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
+            addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item, isExcluded);
         });
 
         data.trainings.forEach(t => {
-            const mooeCost = t.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
-            const coCost = t.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
-            const totalCost = mooeCost + coCost;
+            const isExcluded = t.isRealignment || t.isSavings;
+            const mooeCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
+            const coCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
+            const totalCost = isExcluded ? 0 : mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(t.date);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             t.expenses.forEach(expense => {
                 const financialQuarter = getQuarter(expense.obligationMonth);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
-                    quarterlyFinancial[`q${financialQuarter}`] += expense.amount;
+                    if (!isExcluded)
+                        quarterlyFinancial[`q${financialQuarter}`] += expense.amount;
                 }
             });
 
             const item = {
-                indicator: t.name, totalPhysicalTarget: 1, mooeCost, coCost, totalCost,
-                q1Physical: physicalTargetQuarter === 1 ? 1 : 0, q2Physical: physicalTargetQuarter === 2 ? 1 : 0, q3Physical: physicalTargetQuarter === 3 ? 1 : 0, q4Physical: physicalTargetQuarter === 4 ? 1 : 0,
+                indicator: t.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
             };
@@ -139,39 +147,41 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                  if (!finalData['Production and Livelihood'].packages[packageKey]) {
                     finalData['Production and Livelihood'].packages[packageKey] = { items: [] };
                  }
-                 addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item);
+                 addItemToGroup(finalData['Production and Livelihood'].packages[packageKey].items, item, isExcluded);
             } else if (t.component === 'Program Management') {
                  // Removed Trainings from Program Management as per request
             } else if (finalData[t.component]) {
-                addItemToGroup(finalData[t.component], item);
+                addItemToGroup(finalData[t.component], item, isExcluded);
             }
         });
 
         data.otherActivities.forEach(oa => {
-            const mooeCost = oa.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
-            const coCost = oa.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
-            const totalCost = mooeCost + coCost;
+            const isExcluded = oa.isRealignment || oa.isSavings;
+            const mooeCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'MOOE').reduce((sum, e) => sum + e.amount, 0);
+            const coCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'CO').reduce((sum, e) => sum + e.amount, 0);
+            const totalCost = isExcluded ? 0 : mooeCost + coCost;
             const physicalTargetQuarter = getQuarter(oa.date);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             oa.expenses.forEach(expense => {
                 const financialQuarter = getQuarter(expense.obligationMonth);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
-                    quarterlyFinancial[`q${financialQuarter}`] += expense.amount;
+                    if (!isExcluded)
+                        quarterlyFinancial[`q${financialQuarter}`] += expense.amount;
                 }
             });
 
             const item = {
-                indicator: oa.name, totalPhysicalTarget: 1, mooeCost, coCost, totalCost,
-                q1Physical: physicalTargetQuarter === 1 ? 1 : 0, q2Physical: physicalTargetQuarter === 2 ? 1 : 0, q3Physical: physicalTargetQuarter === 3 ? 1 : 0, q4Physical: physicalTargetQuarter === 4 ? 1 : 0,
+                indicator: oa.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
             };
             
             if (oa.component === 'Program Management') {
-                 addItemToGroup(finalData['Program Management'].packages['Activities'].items, item);
+                 addItemToGroup(finalData['Program Management'].packages['Activities'].items, item, isExcluded);
             } else if (finalData[oa.component]) {
-                addItemToGroup(finalData[oa.component], item);
+                addItemToGroup(finalData[oa.component], item, isExcluded);
             }
         });
 

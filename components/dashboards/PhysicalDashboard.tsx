@@ -75,7 +75,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
             Q1: new Set(), Q2: new Set(), Q3: new Set(), Q4: new Set()
         };
 
-        (data.subprojects || []).forEach(p => {
+        (data.subprojects || []).filter(p => !p.isRealignment && !p.isSavings).forEach(p => {
             if (p.startDate) {
                 const quarter = getQuarter(new Date(p.startDate));
                 if (quarter >= 1 && quarter <= 4) {
@@ -86,7 +86,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 }
             }
         });
-        (data.trainings || []).forEach(t => {
+        (data.trainings || []).filter(t => !t.isRealignment && !t.isSavings).forEach(t => {
             if (t.date) {
                 const quarter = getQuarter(new Date(t.date));
                 if (quarter >= 1 && quarter <= 4) {
@@ -184,10 +184,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
         // --- Targets (Total in Registry/Plan for Selected Year) ---
         
         // 1. Target Subprojects (All in list - already filtered by fundingYear in DashboardsPage)
-        const targetSubprojects = data.subprojects || [];
+        const targetSubprojects = (data.subprojects || []).filter(p => !p.isRealignment && !p.isSavings);
 
         // 2. Target Trainings (All in list - already filtered by fundingYear in DashboardsPage)
-        const targetTrainings = data.trainings || [];
+        const targetTrainings = (data.trainings || []).filter(t => !t.isRealignment && !t.isSavings);
 
         // 3. Target IPOs with Subprojects (Unique IPOs in ANY target subproject)
         const targetIposWithSubprojects = new Set(targetSubprojects.map(p => p.indigenousPeopleOrganization));

@@ -337,6 +337,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         const filterItem = (item: any) => {
             let matches = true;
+            if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
             const year = item.fundingYear || item.fundYear;
             if (selectedYear !== 'All' && year?.toString() !== selectedYear) matches = false;
             if (selectedTier !== 'All' && item.tier !== selectedTier) matches = false;
@@ -346,6 +347,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         }
 
         const filterIpo = (item: IPO) => {
+            if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
             if (selectedOu !== 'All') {
                 const targetRegion = ouToRegionMap[selectedOu];
                 if (item.region !== targetRegion) return false;
@@ -406,7 +408,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             const alloc = (sp.details || []).reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = (sp.details || []).reduce((acc, d) => acc + getObligationTotal(d), 0);
             const disb = (sp.details || []).reduce((acc, d) => acc + getDisbursementTotal(d), 0);
-            spAlloc += alloc; spObli += obli; spDisb += disb;
+            
+            if (!sp.isRealignment && !sp.isSavings) spAlloc += alloc;
+            spObli += obli; spDisb += disb;
         });
 
         let trAlloc = 0, trObli = 0, trDisb = 0;
@@ -414,7 +418,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             const alloc = (t.expenses || []).reduce((acc, e) => acc + e.amount, 0);
             const obli = (t.expenses || []).reduce((acc, e) => acc + getObligationTotal(e), 0);
             const disb = (t.expenses || []).reduce((acc, e) => acc + getDisbursementTotal(e), 0);
-            trAlloc += alloc; trObli += obli; trDisb += disb;
+            
+            if (!t.isRealignment && !t.isSavings) trAlloc += alloc;
+            trObli += obli; trDisb += disb;
         });
 
         let oaAlloc = 0, oaObli = 0, oaDisb = 0;
@@ -422,16 +428,25 @@ const Dashboard: React.FC<DashboardProps> = ({
             const alloc = (oa.expenses || []).reduce((acc, e) => acc + e.amount, 0);
             const obli = (oa.expenses || []).reduce((acc, e) => acc + getObligationTotal(e), 0);
             const disb = (oa.expenses || []).reduce((acc, e) => acc + getDisbursementTotal(e), 0);
-            oaAlloc += alloc; oaObli += obli; oaDisb += disb;
+            
+            if (!oa.isRealignment && !oa.isSavings) oaAlloc += alloc;
+            oaObli += obli; oaDisb += disb;
         });
 
         let pmAlloc = 0, pmObli = 0, pmDisb = 0;
         const processPm = (items: any[], isStaff = false) => {
             (items || []).forEach(item => {
-                const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
+                let alloc = 0;
+                if (isStaff && item.expenses && item.expenses.length > 0) {
+                    alloc = item.expenses.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+                } else {
+                    alloc = isStaff ? (Number(item.annualSalary) || 0) : (item.amount || (item.pricePerUnit * item.numberOfUnits) || 0);
+                }
                 const obli = getObligationTotal(item);
                 const disb = getDisbursementTotal(item);
-                pmAlloc += alloc; pmObli += obli; pmDisb += disb;
+                
+                if (!item.isRealignment && !item.isSavings) pmAlloc += alloc;
+                pmObli += obli; pmDisb += disb;
             });
         };
         processPm(filteredData.officeReqs);
@@ -444,16 +459,16 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         // 2. Physical Counts
         const completedSubprojects = (filteredData.subprojects || []).filter(sp => sp.status === 'Completed').length;
-        const totalSubprojects = (filteredData.subprojects || []).length;
+        const totalSubprojects = (filteredData.subprojects || []).filter(sp => !sp.isRealignment && !sp.isSavings).length;
 
         const completedTrainings = (filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).length;
-        const totalTrainings = (filteredData.activities || []).filter(a => a.type === 'Training').length;
+        const totalTrainings = (filteredData.activities || []).filter(a => a.type === 'Training' && !a.isRealignment && !a.isSavings).length;
 
         // 3. IPO Analysis
-        const targetIposWithSp = new Set((filteredData.subprojects || []).map(sp => sp.indigenousPeopleOrganization));
+        const targetIposWithSp = new Set((filteredData.subprojects || []).filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => sp.indigenousPeopleOrganization));
         const actualIposWithSp = new Set((filteredData.subprojects || []).filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
 
-        const targetIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training').flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
+        const targetIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training' && !a.isRealignment && !a.isSavings).flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
         const actualIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
 
         const actualIposAssisted = new Set<string>(Array.from(actualIposWithSp as Set<string>).concat(Array.from(actualIposWithTr as Set<string>)));

@@ -58,13 +58,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
 
         let data = {
-            subprojects: props.subprojects,
-            ipos: props.ipos,
-            trainings: props.trainings,
-            otherActivities: props.otherActivities,
-            officeReqs: props.officeReqs,
-            staffingReqs: props.staffingReqs,
-            otherProgramExpenses: props.otherProgramExpenses
+            subprojects: props.subprojects.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            ipos: props.ipos.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            trainings: props.trainings.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            otherActivities: props.otherActivities.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            officeReqs: props.officeReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            staffingReqs: props.staffingReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            otherProgramExpenses: props.otherProgramExpenses.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED')
         };
 
         // Filter by Year
@@ -73,7 +73,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             // Note: We DO NOT filter IPOs by registration date here anymore. 
             // Dashboards like GAD and Physical need the full IPO registry to check for engagement status in the selected year.
             data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
-            data.otherActivities = data.otherActivities.filter(a => a.date && new Date(a.date).getFullYear().toString() === selectedYear);
+            data.otherActivities = data.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear);
             data.officeReqs = data.officeReqs.filter(i => i.fundYear?.toString() === selectedYear);
             data.staffingReqs = data.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear);
             data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear);
@@ -232,7 +232,15 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         navigateTo={props.navigateTo}
                     />
                 )}
-                {activeTab === 'Financial' && <FinancialDashboard data={filteredData} />}
+                {activeTab === 'Financial' && (
+                    <FinancialDashboard 
+                        data={filteredData} 
+                        selectedYearProp={selectedYear}
+                        selectedOuProp={selectedOu}
+                        selectedTierProp={selectedTier}
+                        selectedFundTypeProp={selectedFundType}
+                    />
+                )}
                 {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
                 {activeTab === 'Agricultural Interventions' && <AgriculturalInterventionsDashboard subprojects={filteredData.subprojects} />}
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}

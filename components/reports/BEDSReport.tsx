@@ -155,6 +155,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
             if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
             if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+            if (item.isRealignment || item.isSavings) return false;
             return true;
         };
 
@@ -254,6 +255,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
             if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
             if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
             if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+            if (item.isRealignment || item.isSavings) return false;
             return true;
         };
 

@@ -116,7 +116,7 @@ export const calculateBAR1ReportData = (data: {
     });
 
     // Production and Livelihood - Subproject Reach
-    const allTargetADs = data.subprojects.map(sp => ({
+    const allTargetADs = data.subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
         id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         date: sp.estimatedCompletionDate
@@ -127,7 +127,7 @@ export const calculateBAR1ReportData = (data: {
         date: sp.actualCompletionDate
     })).filter(x => x.id);
 
-    const allTargetIPOs = data.subprojects.map(sp => ({
+    const allTargetIPOs = data.subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
         id: sp.indigenousPeopleOrganization,
         label: sp.indigenousPeopleOrganization,
         date: sp.estimatedCompletionDate
@@ -166,7 +166,7 @@ export const calculateBAR1ReportData = (data: {
         }
         const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
 
-        const targetADs = subprojects.map(sp => ({
+        const targetADs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             date: sp.estimatedCompletionDate 
@@ -183,7 +183,7 @@ export const calculateBAR1ReportData = (data: {
             actual: calculateFirstEncounter(actualADs)
         });
 
-        const targetIPOs = subprojects.map(sp => ({
+        const targetIPOs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
             id: sp.indigenousPeopleOrganization,
             label: sp.indigenousPeopleOrganization,
             date: sp.estimatedCompletionDate
@@ -200,7 +200,7 @@ export const calculateBAR1ReportData = (data: {
             actual: calculateFirstEncounter(actualIPOs)
         });
 
-        const targetSPs = subprojects.map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
+        const targetSPs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
         const actualSPs = subprojects.map(sp => ({ val: 1, date: sp.actualCompletionDate, label: sp.name }));
         pkgItems.push({
             indicator: "Number of Subprojects",
@@ -211,7 +211,7 @@ export const calculateBAR1ReportData = (data: {
 
     // Trainings
     const processTrainings = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-        const relevantTrainings = data.trainings.filter(t => t.component === componentName);
+        const relevantTrainings = data.trainings.filter(t => t.component === componentName && !t.isRealignment && !t.isSavings);
         if (relevantTrainings.length === 0 && !isPackage) return; // Skip empty groups? Original didn't skip, but it keeps it clean. Wait, original didn't skip.
 
         const getTargetDate = (t: Training) => t.endDate || t.date;
@@ -274,7 +274,7 @@ export const calculateBAR1ReportData = (data: {
     };
 
     const processOtherActivities = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-        const relevantActivities = data.otherActivities.filter(a => a.component === componentName);
+        const relevantActivities = data.otherActivities.filter(a => a.component === componentName && !a.isRealignment && !a.isSavings);
         
         // Group by name
         const groups: { [name: string]: OtherActivity[] } = {};

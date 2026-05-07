@@ -90,11 +90,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
 
     const targetRegion = selectedOu !== 'All' ? ouToRegionMap[selectedOu] : null;
     const filterIpoByRegion = (list: IPO[]) => {
-        if (selectedOu === 'All' || !targetRegion) return list;
-        return list.filter(i => i.region === targetRegion);
+        const approvedList = list.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED');
+        if (selectedOu === 'All' || !targetRegion) return approvedList;
+        return approvedList.filter(i => i.region === targetRegion);
     };
 
     const baseFilter = (item: any) => {
+        if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
         if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
         if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
         return true;
@@ -103,6 +105,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     // Filter logic for Financial History Table (Ignores Year AND Fund Type filter)
     // This allows Table 2 in MonthlyReportMatrix to show Current vs Continuing breakdown
     const financialBaseFilter = (item: any) => {
+        if (item.workflow_status && item.workflow_status !== 'APPROVED') return false;
         if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
         // NOTE: fundType filter is INTENTIONALLY skipped here to allow aggregation of Current vs Continuing
         return true;

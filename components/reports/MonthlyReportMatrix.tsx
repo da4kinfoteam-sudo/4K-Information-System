@@ -120,6 +120,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         data.ipos.forEach(i => ipoAdMap.set(i.name, i.ancestralDomainNo));
 
         data.subprojects.forEach(sp => {
+            if (sp.isRealignment || sp.isSavings) return;
             const pkg = sp.packageType || 'Other';
             if (!packages[pkg]) packages[pkg] = [];
             packages[pkg].push(sp);
@@ -187,8 +188,9 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
         // --- 2. Trainings/Activities ---
         const processActivity = (act: any) => {
-            const tMonth = isTargetDueMonthly(act.date) ? 1 : 0;
-            const tCum = isTargetDueCumulative(act.date) ? 1 : 0;
+            const isExcluded = act.isRealignment || act.isSavings;
+            const tMonth = (!isExcluded && isTargetDueMonthly(act.date)) ? 1 : 0;
+            const tCum = (!isExcluded && isTargetDueCumulative(act.date)) ? 1 : 0;
             const aMonth = (act.actualDate && isTargetDueMonthly(act.actualDate)) ? 1 : 0;
             const aCum = (act.actualDate && isTargetDueCumulative(act.actualDate)) ? 1 : 0;
             
@@ -350,7 +352,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         financialData.subprojects.forEach(sp => {
             const y = sp.fundingYear || 0;
             const ft = sp.fundType || 'Current';
-            const alloc = sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
+            const isExcluded = sp.isRealignment || sp.isSavings;
+            const alloc = isExcluded ? 0 : sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
             const obli = sp.details.reduce((s, d) => s + getObligationAmountInWindow(d), 0);
             const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || d.actualAmount || 0) : 0), 0);
             aggregate(y, ft, alloc, obli, disb);
@@ -359,7 +362,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         const processAct = (act: any) => {
             const y = act.fundingYear || 0;
             const ft = act.fundType || 'Current';
-            const alloc = act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
+            const isExcluded = act.isRealignment || act.isSavings;
+            const alloc = isExcluded ? 0 : act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
             const obli = act.expenses.reduce((s:number, e:any) => s + getObligationAmountInWindow(e), 0);
             const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
             aggregate(y, ft, alloc, obli, disb);
