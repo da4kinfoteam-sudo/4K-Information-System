@@ -634,6 +634,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
             if (cleanD.obligationMonth === '') (cleanD as any).obligationMonth = null;
             if (cleanD.disbursementMonth === '') (cleanD as any).disbursementMonth = null;
+            if (cleanD.obligations && cleanD.obligations.length === 0) {
+                 cleanD.actualObligationAmount = 0;
+                 cleanD.actualObligationDate = undefined;
+            }
             return cleanD;
         });
 

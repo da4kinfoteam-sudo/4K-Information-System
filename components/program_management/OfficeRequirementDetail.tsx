@@ -261,7 +261,8 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             pricePerUnit: Number(formData.pricePerUnit),
             fundYear: Number(formData.fundYear),
             actualAmount: Number(formData.actualAmount) || 0,
-            actualObligationAmount: Number(formData.actualObligationAmount) || 0,
+            actualObligationAmount: (formData.obligations && formData.obligations.length === 0) ? null : Number(formData.actualObligationAmount) || 0,
+            actualObligationDate: (formData.obligations && formData.obligations.length === 0) ? null : (formData.actualObligationDate || null),
             actualDisbursementAmount: Number(formData.actualDisbursementAmount) || 0,
             updated_at: new Date().toISOString()
         };

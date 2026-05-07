@@ -534,6 +534,10 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     if (sanitizedPayload.expenses) {
                         sanitizedPayload.expenses = sanitizedPayload.expenses.map((exp: any) => {
                             const sanitizedExp = { ...exp };
+                            if (sanitizedExp.obligations && sanitizedExp.obligations.length === 0) {
+                                sanitizedExp.actualObligationAmount = 0;
+                                sanitizedExp.actualObligationDate = null;
+                            }
                             ['actualObligationDate', 'actualDisbursementDate'].forEach(field => {
                                 if (sanitizedExp[field] === '') {
                                     sanitizedExp[field] = null;

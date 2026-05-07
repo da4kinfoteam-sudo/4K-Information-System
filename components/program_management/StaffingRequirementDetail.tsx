@@ -153,7 +153,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     useEffect(() => {
         setFormData(item);
         setExpensesList(displayExpenses);
-    }, [item, displayExpenses, editMode]);
+    }, [item]);
 
     // Helper to calculate total actual disbursement for an item
     const calculateActualDisbursementTotal = (expense: StaffingExpense) => {
@@ -389,6 +389,8 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             fundYear: Number(formData.fundYear),
             expenses: expensesList,
             actualAmount: 0, // Removed usage as per request, ensuring 0
+            actualObligationAmount: expensesList.length === 0 ? null : aggregatedTotals.actualObligationAmount,
+            actualObligationDate: expensesList.length === 0 ? null : (formData.actualObligationDate || null),
             updated_at: new Date().toISOString()
         };
 

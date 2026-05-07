@@ -221,7 +221,8 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
             amount: Number(formData.amount),
             obligatedAmount: Number(formData.amount), // Sync obligatedAmount with amount
             actualAmount: Number(formData.actualAmount),
-            actualObligationAmount: Number(formData.actualObligationAmount),
+            actualObligationAmount: (formData.obligations && formData.obligations.length === 0) ? null : Number(formData.actualObligationAmount),
+            actualObligationDate: (formData.obligations && formData.obligations.length === 0) ? null : (formData.actualObligationDate || null),
             actualDisbursementAmount: Number(formData.actualDisbursementAmount),
             updated_at: new Date().toISOString()
         };
