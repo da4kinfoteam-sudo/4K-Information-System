@@ -235,7 +235,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
 
         if (supabase) {
             // Exclude ID and obligations from payload
-            const { id, obligations, ...payload } = updatedItem;
+            const { id, obligations, disbursements, ...payload } = updatedItem;
             const { error } = await supabase.from('other_program_expenses').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);

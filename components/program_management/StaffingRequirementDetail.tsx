@@ -366,6 +366,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     const latestOb = [...exp.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
                     exp.actualObligationAmount = exp.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
                     exp.actualObligationDate = latestOb.date;
+                } else {
+                    exp.actualObligationAmount = 0;
+                    exp.actualObligationDate = null;
                 }
 
                 aggregatedTotals.annualSalary += exp.amount;
@@ -400,7 +403,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         };
 
         if (supabase) {
-            const { id, obligations, ...payload } = updatedItem;
+            const { id, obligations, disbursements, ...payload } = updatedItem;
             const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);

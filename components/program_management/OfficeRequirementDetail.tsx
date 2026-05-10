@@ -269,7 +269,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
         if (supabase) {
             // Exclude ID and obligations from update payload
-            const { id, obligations, ...payload } = updatedItem;
+            const { id, obligations, disbursements, ...payload } = updatedItem;
             const { error } = await supabase.from('office_requirements').update(payload).eq('id', item.id);
             if (error) {
                 alert('Failed to update: ' + error.message);

@@ -537,6 +537,18 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                             if (sanitizedExp.obligations && sanitizedExp.obligations.length === 0) {
                                 sanitizedExp.actualObligationAmount = 0;
                                 sanitizedExp.actualObligationDate = null;
+                            } else if (sanitizedExp.obligations && sanitizedExp.obligations.length > 0) {
+                                const latestOb = [...sanitizedExp.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                                sanitizedExp.actualObligationAmount = sanitizedExp.obligations.reduce((sum: number, o: any) => sum + (o.amount || 0), 0);
+                                sanitizedExp.actualObligationDate = latestOb.date;
+                            }
+                            if (sanitizedExp.disbursements && sanitizedExp.disbursements.length === 0) {
+                                sanitizedExp.actualDisbursementAmount = 0;
+                                sanitizedExp.actualDisbursementDate = null;
+                            } else if (sanitizedExp.disbursements && sanitizedExp.disbursements.length > 0) {
+                                const latestDb = [...sanitizedExp.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                                sanitizedExp.actualDisbursementAmount = sanitizedExp.disbursements.reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+                                sanitizedExp.actualDisbursementDate = latestDb.date;
                             }
                             ['actualObligationDate', 'actualDisbursementDate'].forEach(field => {
                                 if (sanitizedExp[field] === '') {
@@ -623,6 +635,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                         remarks: o.remarks || ''
                     });
                 });
+            } else {
+                exp.actualObligationAmount = 0;
+                exp.actualObligationDate = null;
             }
         });
 

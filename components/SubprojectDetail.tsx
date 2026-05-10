@@ -140,7 +140,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setDetailItems((subproject.details || []).map(d => ({
             ...d,
             obligations: (d.obligations && d.obligations.length > 0) ? d.obligations : (
-                (d.actualObligationAmount || 0 > 0) ? [{
+                ((d.actualObligationAmount || 0) > 0) ? [{
                     id: Date.now() + Math.random(),
                     date: d.actualObligationDate || '',
                     amount: d.actualObligationAmount || 0,
@@ -632,6 +632,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             if (cleanD.obligations && cleanD.obligations.length === 0) {
                  cleanD.actualObligationAmount = 0;
                  cleanD.actualObligationDate = undefined;
+            } else if (cleanD.obligations && cleanD.obligations.length > 0) {
+                 const latestOb = [...cleanD.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                 cleanD.actualObligationAmount = cleanD.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
+                 cleanD.actualObligationDate = latestOb.date;
+            }
+            if (cleanD.disbursements && cleanD.disbursements.length === 0) {
+                 cleanD.actualDisbursementAmount = 0;
+                 cleanD.actualDisbursementDate = undefined;
+            } else if (cleanD.disbursements && cleanD.disbursements.length > 0) {
+                 const latestDb = [...cleanD.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+                 cleanD.actualDisbursementAmount = cleanD.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
+                 cleanD.actualDisbursementDate = latestDb.date;
             }
             return cleanD;
         });
