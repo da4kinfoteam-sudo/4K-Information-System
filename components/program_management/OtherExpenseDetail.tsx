@@ -35,6 +35,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Virtualize legacy obligations on load and fetch from centralized table
     useEffect(() => {

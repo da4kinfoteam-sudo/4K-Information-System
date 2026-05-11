@@ -1,7 +1,8 @@
 // Author: 4K 
 import React from 'react';
 import { ObligationRecord } from '../../constants';
-import { Trash2, Plus, Calendar as CalendarIcon } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
+import { MonthYearPicker } from './MonthYearPicker';
 
 interface Props {
     obligations: ObligationRecord[];
@@ -75,17 +76,13 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
                         >
                             <div className="flex-1 grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Date</label>
-                                    <div className="relative">
-                                        <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                                        <input
-                                            type="date"
-                                            value={obli.date}
-                                            onChange={(e) => handleUpdate(obli.id, { date: e.target.value })}
-                                            disabled={readOnly}
-                                            className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-none rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500 transition-all disabled:opacity-50"
-                                        />
-                                    </div>
+                                    <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Month</label>
+                                    <MonthYearPicker
+                                        value={obli.date}
+                                        onChange={(val) => handleUpdate(obli.id, { date: val })}
+                                        disabled={readOnly}
+                                        className="h-8 text-[11px] px-2"
+                                    />
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Amount</label>

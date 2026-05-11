@@ -54,6 +54,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<StaffingRequirement>(item);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Construct display expenses, handling legacy data where obligations array might be empty but actual fields exist
     const displayExpenses = useMemo(() => {

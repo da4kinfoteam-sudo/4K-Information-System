@@ -839,13 +839,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     expenses: updatedExpenses,
                     actualObligationAmount: totalActualObli,
                     actualDisbursementAmount: totalActualDisb,
+                    actualObligationDate: item.actualObligationMonth || s.actualObligationDate,
+                    actualDisbursementDate: item.actualDisbursementMonth || s.actualDisbursementDate,
                     ...monthlyTotals
                 };
                 
-                if (item.actualObligationMonth && !s.actualObligationDate) {
-                    payload.actualObligationDate = item.actualObligationMonth;
-                }
-
                 if (item.status === 'Proposed') {
                     payload.obligationDate = item.targetObligationMonth;
                     payload.annualSalary = item.targetObligationAmount;
@@ -875,6 +873,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
             const payload: any = {
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
+                 actualDisbursementDate: item.actualDisbursementMonth,
                  actualDisbursementAmount: item.actualDisbursementAmount,
                  obligations: item.obligations,
                  disbursements: item.disbursements
@@ -1289,10 +1288,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                         {/* Obligations Toggle */}
                                                                                         <button 
                                                                                             onClick={() => toggleRowExpansion(item.uniqueId)} 
-                                                                                            className="ml-2 inline-flex items-center gap-1 text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold"
+                                                                                            className="ml-2 inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-100 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
                                                                                         >
                                                                                             <Info className="w-2.5 h-2.5" />
-                                                                                            {item.obligations.length > 0 ? `${item.obligations.length} Recs` : 'Add Recs'}
+                                                                                            {item.obligations.length > 0 ? `${item.obligations.length} records` : 'Breakdown'}
                                                                                         </button>
                                                                                     </td>
                                                                         
@@ -1333,8 +1332,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     {formatCurrency(item.actualObligationAmount)}
                                                                                 </span>
                                                                                 {item.actualObligationMonth && (
-                                                                                    <span className="text-[9px] text-gray-500 uppercase font-medium">
-                                                                                        {new Date(item.actualObligationMonth).toLocaleDateString(undefined, {month:'short', year:'numeric'})}
+                                                                                    <span className="text-[9px] text-gray-500 uppercase font-medium leading-tight text-center">
+                                                                                        {(() => {
+                                                                                            const date = new Date(item.actualObligationMonth);
+                                                                                            return isNaN(date.getTime()) ? item.actualObligationMonth : date.toLocaleDateString(undefined, {month:'short', year:'numeric'});
+                                                                                        })()}
                                                                                     </span>
                                                                                 )}
                                                                             </div>

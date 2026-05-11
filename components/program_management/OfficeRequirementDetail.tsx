@@ -53,6 +53,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OfficeRequirement>(item);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Virtualize legacy obligations on load and fetch from centralized table
     useEffect(() => {
