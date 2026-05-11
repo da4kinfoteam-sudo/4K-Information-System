@@ -861,9 +861,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         actualObligationDate: item.actualObligationMonth,
                         actualObligationAmount: item.actualObligationAmount,
                         actualDisbursementDate: item.actualDisbursementMonth,
-                        actualDisbursementAmount: item.actualDisbursementAmount,
-                        obligations: item.obligations,
-                        disbursements: item.disbursements
+                        actualDisbursementAmount: item.actualDisbursementAmount
                     };
                     // Update targets if Proposed
                     if (item.status === 'Proposed') {
@@ -877,6 +875,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
             });
 
             if (supabase) {
+                // Don't include obligations/disbursements in the direct update of activities table
+                // as they are stored in the centralized tables and causing schema cache errors
                 const { error: updateError } = await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
                 if (updateError) throw updateError;
             }
@@ -897,9 +897,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             actualObligationDate: item.actualObligationMonth,
                             actualObligationAmount: item.actualObligationAmount,
                             actualDisbursementDate: item.actualDisbursementMonth,
-                            actualDisbursementAmount: item.actualDisbursementAmount,
-                            obligations: item.obligations,
-                            disbursements: item.disbursements
+                            actualDisbursementAmount: item.actualDisbursementAmount
                         };
                         SHORT_MONTHS.forEach(m => {
                             updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
@@ -946,9 +944,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
-                     actualDisbursementAmount: item.actualDisbursementAmount,
-                     obligations: item.obligations,
-                     disbursements: item.disbursements
+                     actualDisbursementAmount: item.actualDisbursementAmount
                 };
                 SHORT_MONTHS.forEach(m => {
                     payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
@@ -970,9 +966,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
                  actualDisbursementDate: item.actualDisbursementMonth,
-                 actualDisbursementAmount: item.actualDisbursementAmount,
-                 obligations: item.obligations,
-                 disbursements: item.disbursements
+                 actualDisbursementAmount: item.actualDisbursementAmount
             };
             
             SHORT_MONTHS.forEach(m => {

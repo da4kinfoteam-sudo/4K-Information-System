@@ -71,7 +71,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
         };
 
         fetchObligations();
-    }, [item]);
+    }, [item.id, editMode, supabase]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -251,6 +251,8 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 const entityType = 'other_program_expense';
                 const parentId = item.id;
                 
+                console.log("Syncing obligations to centralized table...", { entityType, parentId, count: obligations?.length });
+
                 // Delete old
                 const { error: deleteError } = await supabase.from('financial_obligations')
                     .delete()
@@ -259,6 +261,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 
                 if (deleteError) {
                     console.error("Error deleting old obligations:", deleteError);
+                    // Continue as it might still succeed
                 }
                 
                 // Insert new
@@ -272,7 +275,10 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                     }));
                     
                     const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
-                    if (insertError) throw insertError;
+                    if (insertError) {
+                        console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
+                        throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
+                    }
                 }
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Other');

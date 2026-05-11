@@ -128,8 +128,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     useEffect(() => {
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
-
-            console.log("Fetching obligations for Staffing Req...", item.id);
+            
+            // Ensure basis for list exists
+            if (expensesList.length === 0) {
+                setExpensesList(displayExpenses);
+            }
             // Fetch from centralized table first
             const { data, error } = await supabase
                 .from('financial_obligations')
@@ -206,27 +209,23 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     // Reset form data and hydrate expenses list (including legacy fix) when item changes
     useEffect(() => {
         setFormData(item);
-        setExpensesList(displayExpenses);
-    }, [item]);
+        if (editMode === 'none') {
+            setExpensesList(displayExpenses);
+        }
+    }, [item, editMode, displayExpenses]);
 
     // Helper to calculate total actual disbursement for an item
     const calculateActualDisbursementTotal = (expense: StaffingExpense) => {
         return months.reduce((sum, m) => sum + (Number((expense as any)[`actualDisbursement${m}`]) || 0), 0);
     };
 
-    // Recalculate Totals only for accomplishment here, detailed target aggregation happens on submit
     useEffect(() => {
         if (editMode === 'accomplishment') {
-            // Aggregate from expensesList for accomplishment
             const totalActualObligation = expensesList.reduce((acc, exp) => acc + (exp.actualObligationAmount || 0), 0);
+            const totalActualDisbursement = expensesList.reduce((acc, exp) => acc + calculateActualDisbursementTotal(exp), 0);
             
-            // Calculate actual disbursement from monthly fields
-            const totalActualDisbursement = expensesList.reduce((acc, exp) => {
-                return acc + calculateActualDisbursementTotal(exp);
-            }, 0);
-            
-            // Only update if different to avoid loop
-            if (totalActualObligation !== formData.actualObligationAmount || totalActualDisbursement !== formData.actualDisbursementAmount) {
+            if (Math.abs(totalActualObligation - formData.actualObligationAmount) > 0.01 || 
+                Math.abs(totalActualDisbursement - formData.actualDisbursementAmount) > 0.01) {
                 setFormData(prev => ({ 
                     ...prev, 
                     actualObligationAmount: totalActualObligation,
@@ -234,20 +233,13 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 }));
             }
             
-            // Automation Logic: Hiring Status
-            if (formData.actualObligationDate) {
-                 if (formData.hiringStatus !== 'Filled') {
-                     setFormData(prev => ({ ...prev, hiringStatus: 'Filled' }));
-                 }
-            } else {
-                 if (formData.hiringStatus === 'Filled') {
-                     // Revert to Proposed if date removed
-                     setFormData(prev => ({ ...prev, hiringStatus: 'Proposed' }));
-                 }
+            if (formData.actualObligationDate && formData.hiringStatus !== 'Filled') {
+                setFormData(prev => ({ ...prev, hiringStatus: 'Filled' }));
+            } else if (!formData.actualObligationDate && formData.hiringStatus === 'Filled') {
+                setFormData(prev => ({ ...prev, hiringStatus: 'Proposed' }));
             }
-
         }
-    }, [expensesList, editMode, formData.actualObligationDate]); // Watch date for status automation
+    }, [expensesList, editMode, formData.actualObligationDate, formData.hiringStatus, formData.actualObligationAmount, formData.actualDisbursementAmount]); 
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -493,7 +485,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
                 if (syncPayload.length > 0) {
                     const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
-                    if (insertError) throw insertError;
+                    if (insertError) {
+                        console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
+                        throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
+                    }
                 }
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');

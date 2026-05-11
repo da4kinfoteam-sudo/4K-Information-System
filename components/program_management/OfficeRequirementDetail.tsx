@@ -89,7 +89,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         };
 
         fetchObligations();
-    }, [item]);
+    }, [item.id, editMode, supabase]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -285,6 +285,8 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 const entityType = 'office_requirement';
                 const parentId = item.id;
                 
+                console.log("Syncing obligations to centralized table...", { entityType, parentId, count: obligations?.length });
+
                 // Delete old
                 const { error: deleteError } = await supabase.from('financial_obligations')
                     .delete()
@@ -293,8 +295,6 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 
                 if (deleteError) {
                     console.error("Error deleting old obligations:", deleteError);
-                    // We continue anyway, or we could throw. 
-                    // Usually best to at least try inserting the new ones.
                 }
                 
                 // Insert new
@@ -308,7 +308,10 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     }));
                     
                     const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
-                    if (insertError) throw insertError;
+                    if (insertError) {
+                        console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
+                        throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
+                    }
                 }
 
                 const metadata = getMonetaryChanges(item, updatedItem, 'Office');
