@@ -55,12 +55,16 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const [formData, setFormData] = useState<OfficeRequirement>(item);
     const [isSaving, setIsSaving] = useState(false);
     
-    // Virtualize legacy obligations on load and fetch from centralized table
+    // Initial load and whenever the item ID changes
     useEffect(() => {
+        if (!item) return;
+
+        // Reset form data to current item
+        setFormData(item);
+
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
 
-            // Fetch from centralized table first
             const { data, error } = await supabase
                 .from('financial_obligations')
                 .select('*')
@@ -68,14 +72,12 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 .eq('parent_id', item.id);
 
             if (!error && data && data.length > 0) {
-                // If records exist in centralized table, use them
                 const mappedObligations = data.map(o => ({
                     id: o.id,
                     date: o.obligation_date,
                     amount: o.amount,
                     remarks: o.remarks
                 }));
-                // CRITICAL: Also update the actualObligationAmount to match the sum of centralized records
                 const totalAmount = mappedObligations.reduce((sum, ob) => sum + (Number(ob.amount) || 0), 0);
                 setFormData(prev => ({ 
                     ...prev, 
@@ -83,7 +85,6 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     actualObligationAmount: totalAmount 
                 }));
             } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
-                // Legacy Fallback: Only if centralized table is empty
                 const virtualObligations = [{
                     id: Date.now(),
                     date: item.actualObligationDate || '',
@@ -95,7 +96,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         };
 
         fetchObligations();
-    }, [item.id, editMode, supabase]);
+    }, [item.id, supabase]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -131,32 +132,29 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
     // Reset form data and init selects when switching items or edit modes
     useEffect(() => {
-        setFormData(item);
-        
-        let foundType: ObjectType = 'MOOE'; 
-        let foundParticular = '';
-        outerLoop: 
-        for (const type of objectTypes) { 
-            if(uacsCodes[type]) { 
-                for (const part in uacsCodes[type]) { 
-                    if (item.uacsCode && uacsCodes[type][part].hasOwnProperty(item.uacsCode)) { 
-                        foundType = type; 
-                        foundParticular = part; 
-                        break outerLoop; 
+        if (editMode === 'details') {
+            let foundType: ObjectType = 'MOOE'; 
+            let foundParticular = '';
+            outerLoop: 
+            for (const type of objectTypes) { 
+                if(uacsCodes[type]) { 
+                    for (const part in uacsCodes[type]) { 
+                        if (item.uacsCode && uacsCodes[type][part].hasOwnProperty(item.uacsCode)) { 
+                            foundType = type; 
+                            foundParticular = part; 
+                            break outerLoop; 
+                        } 
                     } 
                 } 
-            } 
-        }
-        setSelectedObjectType(foundType); 
-        setSelectedParticular(foundParticular);
-    }, [item, uacsCodes]);
-
-    useEffect(() => {
-        if (editMode !== 'none') {
+            }
+            setSelectedObjectType(foundType); 
+            setSelectedParticular(foundParticular);
+        } else if (editMode === 'none') {
             setFormData(item);
             setValidationErrors([]);
         }
-    }, [editMode, item]);
+    }, [editMode, item, uacsCodes]);
+
 
     const formatDateMonthYear = (dateStr: string | undefined) => {
         if (!dateStr) return 'N/A';

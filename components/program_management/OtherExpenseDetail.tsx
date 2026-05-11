@@ -37,12 +37,16 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Virtualize legacy obligations on load and fetch from centralized table
+    // Initial load and whenever the item ID changes
     useEffect(() => {
+        if (!item) return;
+        
+        // Always reset form data to current item first
+        setFormData(item);
+
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
 
-            // Fetch from centralized table first
             const { data, error } = await supabase
                 .from('financial_obligations')
                 .select('*')
@@ -50,14 +54,12 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 .eq('parent_id', item.id);
 
             if (!error && data && data.length > 0) {
-                // If records exist in centralized table, use them
                 const mappedObligations = data.map(o => ({
                     id: o.id,
                     date: o.obligation_date,
                     amount: o.amount,
                     remarks: o.remarks
                 }));
-                // CRITICAL: Also update the actualObligationAmount to match the sum of centralized records
                 const totalAmount = mappedObligations.reduce((sum, ob) => sum + (Number(ob.amount) || 0), 0);
                 setFormData(prev => ({ 
                     ...prev, 
@@ -65,7 +67,6 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                     actualObligationAmount: totalAmount 
                 }));
             } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
-                // Legacy Fallback: Only if centralized table is empty
                 const virtualObligations = [{
                     id: Date.now(),
                     date: item.actualObligationDate || '',
@@ -77,7 +78,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
         };
 
         fetchObligations();
-    }, [item.id, editMode, supabase]);
+    }, [item.id, supabase]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -111,10 +112,8 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
         return availableUacsCodes.find(c => c.code === formData.uacsCode)?.desc || '';
     }, [formData.uacsCode, availableUacsCodes]);
 
-    // Reset form data and init selects when switching edit modes or items
+    // Handle selectivity initialization when entering details edit mode
     useEffect(() => {
-        setFormData(item);
-        
         if (editMode === 'details') {
             let foundType: ObjectType = 'MOOE'; 
             let foundParticular = '';
@@ -132,8 +131,11 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
             }
             setSelectedObjectType(foundType); 
             setSelectedParticular(foundParticular);
+        } else if (editMode === 'none') {
+            // Reset to original state when canceling
+            setFormData(item);
         }
-    }, [item, editMode, uacsCodes]);
+    }, [editMode, item, uacsCodes]);
 
     // Recalculate Totals when monthly fields change
     useEffect(() => {

@@ -124,15 +124,17 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [selectedParticular, setSelectedParticular] = useState('');
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
-    // Virtualize legacy obligations on load and fetch from centralized table
+
+    // Initial load and whenever the item ID changes
     useEffect(() => {
+        if (!item) return;
+
+        // Reset form data and expenses list
+        setFormData(item);
+        setExpensesList(displayExpenses);
+
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
-            
-            // Ensure basis for list exists
-            if (expensesList.length === 0) {
-                setExpensesList(displayExpenses);
-            }
             
             // Fetch from centralized table first
             const { data, error } = await supabase
@@ -142,11 +144,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 .eq('parent_id', item.id);
 
             if (!error && data && data.length > 0) {
-                console.log("Fetched obligations from centralized table:", data.length);
-                // Group fetched obligations by item_id (which corresponds to the expense index or id)
+                console.log("Fetched staffing obligations from centralized table:", data.length);
                 const obligationsByItem: { [key: string]: any[] } = {};
                 data.forEach(o => {
-                    // Use item_id as the key
                     const itemId = o.item_id;
                     if (itemId) {
                         if (!obligationsByItem[itemId]) obligationsByItem[itemId] = [];
@@ -160,8 +160,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 });
 
                 setExpensesList(prev => {
-                    const currentList = prev.length > 0 ? prev : displayExpenses;
-                    return currentList.map(exp => {
+                    return prev.map(exp => {
                         const itemId = exp.id?.toString();
                         if (itemId && obligationsByItem[itemId]) {
                             const obs = obligationsByItem[itemId];
@@ -174,10 +173,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             }
         };
 
-        if (editMode !== 'none') {
-            fetchObligations();
-        }
-    }, [editMode, item.id]);
+        fetchObligations();
+    }, [item.id, supabase, displayExpenses]);
+
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -215,11 +213,12 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     // Reset form data and hydrate expenses list (including legacy fix) when item changes
     useEffect(() => {
-        setFormData(item);
         if (editMode === 'none') {
+            setFormData(item);
             setExpensesList(displayExpenses);
+            setValidationErrors([]);
         }
-    }, [item, editMode, displayExpenses]);
+    }, [editMode, item, displayExpenses]);
 
     // Helper to calculate total actual disbursement for an item
     const calculateActualDisbursementTotal = (expense: StaffingExpense) => {
