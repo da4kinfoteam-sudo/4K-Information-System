@@ -63,16 +63,19 @@ export function MonthYearPicker({
         <Button
           variant={"outline"}
           className={cn(
-            "w-full justify-start text-left font-normal hover:bg-transparent hover:text-inherit",
+            "w-full justify-between text-left font-normal hover:bg-transparent hover:text-inherit px-2",
             !date && "text-muted-foreground",
             className
           )}
           disabled={disabled}
         >
-          <CalendarIcon className="mr-1.5 h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">
-            {date ? format(date, "MMM yyyy") : <span>{placeholder}</span>}
-          </span>
+          <div className="flex items-center gap-1.5 overflow-hidden">
+            <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {date ? format(date, "MMM yyyy") : <span>{placeholder}</span>}
+            </span>
+          </div>
+          {!disabled && <span className="opacity-40 text-[8px] ml-1 shrink-0">▼</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xl rounded-lg" align="start">

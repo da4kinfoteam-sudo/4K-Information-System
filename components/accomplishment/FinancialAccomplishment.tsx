@@ -167,6 +167,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [items, setItems] = useState<FinancialItem[]>([]);
     const [changedItems, setChangedItems] = useState<Map<string, FinancialItem>>(new Map());
     const [isSavingAll, setIsSavingAll] = useState(false);
+    const [localSavingIds, setLocalSavingIds] = useState<Set<string>>(new Set());
     const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
     
@@ -192,220 +193,286 @@ const FinancialAccomplishment: React.FC<Props> = ({
         if (!selectedYear) return;
         setIsLoading(true);
 
-        const timer = setTimeout(() => {
-            const loadedItems: FinancialItem[] = [];
+        const fetchData = async () => {
+            try {
+                // Fetch centralized obligations and disbursements for the current year
+                const startDate = `${selectedYear}-01-01`;
+                const endDate = `${selectedYear}-12-31`;
 
-            // Helper for default monthly object
-        const defaultMonthly = {
-             actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0,
-             actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
-             actualDisbursementJul: 0, actualDisbursementAug: 0, actualDisbursementSep: 0,
-             actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
-        };
+                const [obliRes, disbRes] = await Promise.all([
+                    supabase.from('financial_obligations').select('*').gte('obligation_date', startDate).lte('obligation_date', endDate),
+                    supabase.from('financial_disbursements').select('*').gte('disbursement_date', startDate).lte('disbursement_date', endDate)
+                ]);
 
-        // General Filter Check
-        const matchesFilters = (item: any) => {
-            const itemYear = item.fundingYear || item.fundYear;
-            // Year check
-            if (itemYear !== selectedYear) return false;
-            // OU check
-            if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
-            // Tier check
-            if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-            // Fund Type check
-            if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+                const centralizedObligations = obliRes.data || [];
+                const centralizedDisbursements = disbRes.data || [];
 
-            return true;
-        };
+                // Helper to get obligations for a specific item
+                const getObligations = (sourceType: string, parentId: number, detailId?: number) => {
+                    const entityType = sourceType === 'Subproject' ? 'subproject_detail' : 
+                                      sourceType === 'Activity' ? 'activity_expense' : 
+                                      sourceType === 'Staffing' ? 'staffing_expense' :
+                                      sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
+                    
+                    const matches = centralizedObligations.filter(o => 
+                        o.entity_type === entityType && 
+                        o.parent_id === parentId && 
+                        (detailId ? o.item_id === detailId.toString() : true)
+                    );
 
-        // Subprojects
-        (subprojects || []).filter(matchesFilters).forEach(sp => {
-            (sp.details || []).forEach(d => {
-                loadedItems.push({
-                    uniqueId: `sp-${sp.id}-${d.id}`,
-                    sourceType: 'Subproject',
-                    sourceId: sp.id,
-                    detailId: d.id,
-                    uacsCode: d.uacsCode,
-                    objectType: d.objectType || 'MOOE',
-                    expenseParticular: d.expenseParticular || 'Unspecified',
-                    sourceName: sp.name,
-                    budgetParticular: d.particulars,
-                    targetObligationMonth: d.obligationMonth,
-                    targetObligationAmount: d.pricePerUnit * d.numberOfUnits,
-                    targetDisbursementMonth: d.disbursementMonth,
-                    targetDisbursementAmount: d.pricePerUnit * d.numberOfUnits,
-                    actualObligationMonth: d.actualObligationDate || '',
-                    actualObligationAmount: d.actualObligationAmount || 0,
-                    actualDisbursementMonth: d.actualDisbursementDate || '',
-                    actualDisbursementAmount: d.actualDisbursementAmount || 0,
-                    obligations: getInitialObligations(d.obligations, d.actualObligationDate || '', d.actualObligationAmount || 0),
-                    disbursements: getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', d.actualDisbursementAmount || 0),
-                    status: sp.status,
-                    ...defaultMonthly, // Not used for SP currently
-                    isConfirmed: false
+                    return matches.map(o => ({
+                        id: o.id,
+                        date: o.obligation_date,
+                        amount: o.amount,
+                        remarks: o.remarks
+                    }));
+                };
+
+                const getDisbursements = (sourceType: string, parentId: number, detailId?: number) => {
+                    const entityType = sourceType === 'Subproject' ? 'subproject_detail' : 
+                                      sourceType === 'Activity' ? 'activity_expense' : 
+                                      sourceType === 'Staffing' ? 'staffing_expense' :
+                                      sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
+                    
+                    const matches = centralizedDisbursements.filter(d => 
+                        d.entity_type === entityType && 
+                        d.parent_id === parentId && 
+                        (detailId ? d.item_id === detailId.toString() : true)
+                    );
+
+                    return matches.map(d => ({
+                        id: d.id,
+                        date: d.disbursement_date,
+                        amount: d.amount,
+                        remarks: d.remarks
+                    }));
+                };
+
+                const loadedItems: FinancialItem[] = [];
+                const defaultMonthly = {
+                     actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0,
+                     actualDisbursementApr: 0, actualDisbursementMay: 0, actualDisbursementJun: 0,
+                     actualDisbursementJul: 0, actualDisbursementAug: 0, actualDisbursementSep: 0,
+                     actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
+                };
+
+                const matchesFilters = (item: any) => {
+                    const itemYear = item.fundingYear || item.fundYear;
+                    if (itemYear !== selectedYear) return false;
+                    if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
+                    if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+                    if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+                    return true;
+                };
+
+                // Subprojects
+                (subprojects || []).filter(matchesFilters).forEach(sp => {
+                    (sp.details || []).forEach(d => {
+                        const obs = getObligations('Subproject', sp.id, d.id);
+                        const dibs = getDisbursements('Subproject', sp.id, d.id);
+                        
+                        loadedItems.push({
+                            uniqueId: `sp-${sp.id}-${d.id}`,
+                            sourceType: 'Subproject',
+                            sourceId: sp.id,
+                            detailId: d.id,
+                            uacsCode: d.uacsCode,
+                            objectType: d.objectType || 'MOOE',
+                            expenseParticular: d.expenseParticular || 'Unspecified',
+                            sourceName: sp.name,
+                            budgetParticular: d.particulars,
+                            targetObligationMonth: d.obligationMonth,
+                            targetObligationAmount: d.pricePerUnit * d.numberOfUnits,
+                            targetDisbursementMonth: d.disbursementMonth,
+                            targetDisbursementAmount: d.pricePerUnit * d.numberOfUnits,
+                            actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualObligationDate || ''),
+                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (d.actualObligationAmount || 0),
+                            actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualDisbursementDate || ''),
+                            actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (d.actualDisbursementAmount || 0),
+                            obligations: obs.length > 0 ? obs : getInitialObligations(d.obligations, d.actualObligationDate || '', d.actualObligationAmount || 0),
+                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', d.actualDisbursementAmount || 0),
+                            status: sp.status,
+                            ...defaultMonthly,
+                            isConfirmed: false
+                        });
+                    });
                 });
-            });
-        });
 
-        // Activities
-        (activities || []).filter(matchesFilters).forEach(act => {
-            (act.expenses || []).forEach(e => {
-                loadedItems.push({
-                    uniqueId: `act-${act.id}-${e.id}`,
-                    sourceType: 'Activity',
-                    sourceId: act.id,
-                    detailId: e.id,
-                    uacsCode: e.uacsCode,
-                    objectType: e.objectType || 'MOOE',
-                    expenseParticular: e.expenseParticular || 'Unspecified',
-                    sourceName: act.name || `${act.type} (${act.component})`,
-                    targetObligationMonth: e.obligationMonth,
-                    targetObligationAmount: e.amount,
-                    targetDisbursementMonth: e.disbursementMonth,
-                    targetDisbursementAmount: e.amount,
-                    actualObligationMonth: e.actualObligationDate || '',
-                    actualObligationAmount: e.actualObligationAmount || 0,
-                    actualDisbursementMonth: e.actualDisbursementDate || '',
-                    actualDisbursementAmount: e.actualDisbursementAmount || 0,
-                    obligations: getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
-                    disbursements: getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', e.actualDisbursementAmount || 0),
-                    status: act.status,
-                    ...defaultMonthly,
-                    isConfirmed: false
+                // Activities
+                (activities || []).filter(matchesFilters).forEach(act => {
+                    (act.expenses || []).forEach(e => {
+                        const obs = getObligations('Activity', act.id, e.id);
+                        const dibs = getDisbursements('Activity', act.id, e.id);
+
+                        loadedItems.push({
+                            uniqueId: `act-${act.id}-${e.id}`,
+                            sourceType: 'Activity',
+                            sourceId: act.id,
+                            detailId: e.id,
+                            uacsCode: e.uacsCode,
+                            objectType: e.objectType || 'MOOE',
+                            expenseParticular: e.expenseParticular || 'Unspecified',
+                            sourceName: act.name || `${act.type} (${act.component})`,
+                            targetObligationMonth: e.obligationMonth,
+                            targetObligationAmount: e.amount,
+                            targetDisbursementMonth: e.disbursementMonth,
+                            targetDisbursementAmount: e.amount,
+                            actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
+                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (e.actualObligationAmount || 0),
+                            actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualDisbursementDate || ''),
+                            actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (e.actualDisbursementAmount || 0),
+                            obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
+                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', e.actualDisbursementAmount || 0),
+                            status: act.status,
+                            ...defaultMonthly,
+                            isConfirmed: false
+                        });
+                    });
                 });
-            });
-        });
 
-        // Office Requirements
-        (officeReqs || []).filter(matchesFilters).forEach(o => {
-            loadedItems.push({
-                uniqueId: `office-${o.id}`,
-                sourceType: 'Office',
-                sourceId: o.id,
-                uacsCode: o.uacsCode,
-                objectType: 'MOOE',
-                expenseParticular: 'Office Requirements',
-                sourceName: o.equipment,
-                targetObligationMonth: o.obligationDate,
-                targetObligationAmount: o.pricePerUnit * o.numberOfUnits,
-                targetDisbursementMonth: o.disbursementDate,
-                targetDisbursementAmount: o.pricePerUnit * o.numberOfUnits,
-                actualObligationMonth: o.actualObligationDate || '',
-                actualObligationAmount: o.actualObligationAmount || 0,
-                actualDisbursementMonth: o.actualDisbursementDate || '',
-                actualDisbursementAmount: o.actualDisbursementAmount || 0,
-                obligations: getInitialObligations(o.obligations, o.actualObligationDate || '', o.actualObligationAmount || 0),
-                disbursements: getInitialDisbursements(o.disbursements, o.actualDisbursementDate || '', o.actualDisbursementAmount || 0),
-                status: o.status,
-                ...defaultMonthly,
-                isConfirmed: false
-            });
-        });
+                // Office Requirements
+                (officeReqs || []).filter(matchesFilters).forEach(o => {
+                    const obs = getObligations('Office', o.id);
+                    const dibs = getDisbursements('Office', o.id);
 
-        // Staffing Requirements (Supports Monthly Breakdown)
-        (staffingReqs || []).filter(matchesFilters).forEach(s => {
-            if (s.expenses && s.expenses.length > 0) {
-                (s.expenses || []).forEach(e => {
+                    loadedItems.push({
+                        uniqueId: `office-${o.id}`,
+                        sourceType: 'Office',
+                        sourceId: o.id,
+                        uacsCode: o.uacsCode,
+                        objectType: 'MOOE',
+                        expenseParticular: 'Office Requirements',
+                        sourceName: o.equipment,
+                        targetObligationMonth: o.obligationDate,
+                        targetObligationAmount: o.pricePerUnit * o.numberOfUnits,
+                        targetDisbursementMonth: o.disbursementDate,
+                        targetDisbursementAmount: o.pricePerUnit * o.numberOfUnits,
+                        actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (o.actualObligationDate || ''),
+                        actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (o.actualObligationAmount || 0),
+                        actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (o.actualDisbursementDate || ''),
+                        actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (o.actualDisbursementAmount || 0),
+                        obligations: obs.length > 0 ? obs : getInitialObligations(o.obligations, o.actualObligationDate || '', o.actualObligationAmount || 0),
+                        disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(o.disbursements, o.actualDisbursementDate || '', o.actualDisbursementAmount || 0),
+                        status: o.status,
+                        ...defaultMonthly,
+                        isConfirmed: false
+                    });
+                });
+
+                // Staffing
+                (staffingReqs || []).filter(matchesFilters).forEach(s => {
+                    if (s.expenses && s.expenses.length > 0) {
+                        (s.expenses || []).forEach(e => {
+                            const obs = getObligations('Staffing', s.id, e.id);
+                            // Staffing rarely has multiple disbursements in centralization, usually monthly root fields
+                            
+                            const monthlyActuals: any = {};
+                            SHORT_MONTHS.forEach(m => {
+                                monthlyActuals[`actualDisbursement${m}`] = (e as any)[`actualDisbursement${m}`] || 0;
+                            });
+
+                            loadedItems.push({
+                                uniqueId: `staff-${s.id}-${e.id}`,
+                                sourceType: 'Staffing',
+                                sourceId: s.id,
+                                detailId: e.id,
+                                uacsCode: e.uacsCode,
+                                objectType: e.objectType || 'MOOE',
+                                expenseParticular: e.expenseParticular || 'Salaries & Wages',
+                                sourceName: s.personnelPosition,
+                                targetObligationMonth: e.obligationDate,
+                                targetObligationAmount: e.amount,
+                                targetDisbursementMonth: 'Monthly',
+                                targetDisbursementAmount: e.amount,
+                                actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
+                                actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (e.actualObligationAmount || 0),
+                                actualDisbursementMonth: e.actualDisbursementDate || '',
+                                actualDisbursementAmount: e.actualDisbursementAmount || 0,
+                                obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
+                                disbursements: [],
+                                status: s.hiringStatus,
+                                ...defaultMonthly,
+                                ...monthlyActuals,
+                                isConfirmed: false
+                            });
+                        });
+                    } else {
+                         const obs = getObligations('Staffing', s.id);
+                         const monthlyActuals: any = {};
+                         SHORT_MONTHS.forEach(m => {
+                             monthlyActuals[`actualDisbursement${m}`] = (s as any)[`actualDisbursement${m}`] || 0;
+                         });
+
+                         loadedItems.push({
+                            uniqueId: `staff-${s.id}`,
+                            sourceType: 'Staffing',
+                            sourceId: s.id,
+                            uacsCode: s.uacsCode,
+                            objectType: 'MOOE',
+                            expenseParticular: 'Salaries & Wages',
+                            sourceName: s.personnelPosition,
+                            targetObligationMonth: s.obligationDate,
+                            targetObligationAmount: s.annualSalary,
+                            targetDisbursementMonth: 'Monthly',
+                            targetDisbursementAmount: s.annualSalary,
+                            actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (s.actualObligationDate || ''),
+                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (s.actualObligationAmount || 0),
+                            actualDisbursementMonth: s.actualDisbursementDate || '',
+                            actualDisbursementAmount: s.actualDisbursementAmount || 0,
+                            obligations: obs.length > 0 ? obs : getInitialObligations(s.obligations, s.actualObligationDate || '', s.actualObligationAmount || 0),
+                            disbursements: [],
+                            status: s.hiringStatus,
+                            ...defaultMonthly,
+                            ...monthlyActuals,
+                            isConfirmed: false
+                        });
+                    }
+                });
+
+                // Other
+                (otherProgramExpenses || []).filter(matchesFilters).forEach(ope => {
+                    const obs = getObligations('Other', ope.id);
+                    const dibs = getDisbursements('Other', ope.id);
                     const monthlyActuals: any = {};
                     SHORT_MONTHS.forEach(m => {
-                        monthlyActuals[`actualDisbursement${m}`] = (e as any)[`actualDisbursement${m}`] || 0;
+                        monthlyActuals[`actualDisbursement${m}`] = (ope as any)[`actualDisbursement${m}`] || 0;
                     });
 
                     loadedItems.push({
-                        uniqueId: `staff-${s.id}-${e.id}`,
-                        sourceType: 'Staffing',
-                        sourceId: s.id,
-                        detailId: e.id,
-                        uacsCode: e.uacsCode,
-                        objectType: e.objectType || 'MOOE',
-                        expenseParticular: e.expenseParticular || 'Salaries & Wages',
-                        sourceName: s.personnelPosition,
-                        targetObligationMonth: e.obligationDate,
-                        targetObligationAmount: e.amount,
-                        targetDisbursementMonth: 'Monthly',
-                        targetDisbursementAmount: e.amount,
-                        actualObligationMonth: e.actualObligationDate || '',
-                        actualObligationAmount: e.actualObligationAmount || 0,
-                        actualDisbursementMonth: e.actualDisbursementDate || '',
-                        actualDisbursementAmount: e.actualDisbursementAmount || 0,
-                        obligations: getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
-                        status: s.hiringStatus,
+                        uniqueId: `other-${ope.id}`,
+                        sourceType: 'Other',
+                        sourceId: ope.id,
+                        uacsCode: ope.uacsCode,
+                        objectType: 'MOOE',
+                        expenseParticular: 'Other Expenses',
+                        sourceName: ope.particulars,
+                        targetObligationMonth: ope.obligationDate,
+                        targetObligationAmount: ope.amount,
+                        targetDisbursementMonth: ope.disbursementDate,
+                        targetDisbursementAmount: ope.amount,
+                        actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (ope.actualObligationDate || ''),
+                        actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (ope.actualObligationAmount || 0),
+                        actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (ope.actualDisbursementDate || ''),
+                        actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (ope.actualDisbursementAmount || 0),
+                        obligations: obs.length > 0 ? obs : getInitialObligations(ope.obligations, ope.actualObligationDate || '', ope.actualObligationAmount || 0),
+                        disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(ope.disbursements, ope.actualDisbursementDate || '', ope.actualDisbursementAmount || 0),
+                        status: ope.status,
                         ...defaultMonthly,
                         ...monthlyActuals,
                         isConfirmed: false
                     });
                 });
-            } else {
-                 // Map Monthly Actuals
-                 const monthlyActuals: any = {};
-                 SHORT_MONTHS.forEach(m => {
-                     monthlyActuals[`actualDisbursement${m}`] = (s as any)[`actualDisbursement${m}`] || 0;
-                 });
 
-                 loadedItems.push({
-                    uniqueId: `staff-${s.id}`,
-                    sourceType: 'Staffing',
-                    sourceId: s.id,
-                    uacsCode: s.uacsCode,
-                    objectType: 'MOOE',
-                    expenseParticular: 'Salaries & Wages',
-                    sourceName: s.personnelPosition,
-                    targetObligationMonth: s.obligationDate,
-                    targetObligationAmount: s.annualSalary,
-                    targetDisbursementMonth: 'Monthly',
-                    targetDisbursementAmount: s.annualSalary,
-                    actualObligationMonth: s.actualObligationDate || '',
-                    actualObligationAmount: s.actualObligationAmount || 0,
-                    actualDisbursementMonth: s.actualDisbursementDate || '',
-                    actualDisbursementAmount: s.actualDisbursementAmount || 0,
-                    obligations: getInitialObligations(s.obligations, s.actualObligationDate || '', s.actualObligationAmount || 0),
-                    disbursements: getInitialDisbursements(s.disbursements, s.actualDisbursementDate || '', s.actualDisbursementAmount || 0),
-                    status: s.hiringStatus,
-                    ...defaultMonthly, // Default
-                    ...monthlyActuals, // Overwrite
-                    isConfirmed: false
-                });
+                setItems(loadedItems);
+                setOriginalItems(loadedItems);
+            } catch (error) {
+                console.error("Error loading data:", error);
+            } finally {
+                setIsLoading(false);
             }
-        });
+        };
 
-        // Other Program Expenses (Supports Monthly Breakdown)
-        (otherProgramExpenses || []).filter(matchesFilters).forEach(ope => {
-            const monthlyActuals: any = {};
-             SHORT_MONTHS.forEach(m => {
-                 monthlyActuals[`actualDisbursement${m}`] = (ope as any)[`actualDisbursement${m}`] || 0;
-             });
-
-            loadedItems.push({
-                uniqueId: `other-${ope.id}`,
-                sourceType: 'Other',
-                sourceId: ope.id,
-                uacsCode: ope.uacsCode,
-                objectType: 'MOOE',
-                expenseParticular: 'Other Expenses',
-                sourceName: ope.particulars,
-                targetObligationMonth: ope.obligationDate,
-                targetObligationAmount: ope.amount,
-                targetDisbursementMonth: ope.disbursementDate,
-                targetDisbursementAmount: ope.amount,
-                actualObligationMonth: ope.actualObligationDate || '',
-                actualObligationAmount: ope.actualObligationAmount || 0,
-                actualDisbursementMonth: ope.actualDisbursementDate || '',
-                actualDisbursementAmount: ope.actualDisbursementAmount || 0,
-                obligations: getInitialObligations(ope.obligations, ope.actualObligationDate || '', ope.actualObligationAmount || 0),
-                disbursements: getInitialDisbursements(ope.disbursements, ope.actualDisbursementDate || '', ope.actualDisbursementAmount || 0),
-                status: ope.status,
-                ...defaultMonthly,
-                ...monthlyActuals,
-                isConfirmed: false
-            });
-        });
-
-        setItems(loadedItems);
-        setOriginalItems(loadedItems);
-        setIsLoading(false);
-        }, 10);
-        return () => clearTimeout(timer);
+        fetchData();
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, subprojects, activities, officeReqs, staffingReqs, otherProgramExpenses]);
 
 
@@ -661,19 +728,26 @@ const FinancialAccomplishment: React.FC<Props> = ({
                           item.sourceType === 'Staffing' ? 'staffing_expense' :
                           item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
         
-        const parentId = item.sourceId; // The ID of the row in the table
-        const itemId = item.detailId?.toString() || null; // The ID inside the JSONB if applicable
+        const parentId = item.sourceId;
+        const itemId = item.detailId?.toString() || null;
 
         // 1. Delete existing records for this specific item
-        const { error: deleteError } = await supabase.from('financial_obligations')
+        let deleteQuery = supabase.from('financial_obligations')
             .delete()
             .eq('entity_type', entityType)
-            .eq('parent_id', parentId)
-            .filter('item_id', itemId === null ? 'is' : 'eq', itemId);
+            .eq('parent_id', parentId);
+        
+        if (itemId === null) {
+            deleteQuery = deleteQuery.is('item_id', null);
+        } else {
+            deleteQuery = deleteQuery.eq('item_id', itemId);
+        }
+        
+        const { error: deleteError } = await deleteQuery;
         
         if (deleteError) {
             console.error("Error deleting old obligations:", deleteError);
-            return;
+            throw deleteError;
         }
 
         if (!item.obligations || item.obligations.length === 0) return;
@@ -689,7 +763,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
         }));
 
         const { error: insertError } = await supabase.from('financial_obligations').insert(payload);
-        if (insertError) console.error("Error inserting obligations:", insertError);
+        if (insertError) {
+            console.error("Error inserting obligations:", insertError);
+            throw insertError;
+        }
     };
 
     const syncDisbursementsToCentralTable = async (item: FinancialItem) => {
@@ -703,15 +780,22 @@ const FinancialAccomplishment: React.FC<Props> = ({
         const parentId = item.sourceId;
         const itemId = item.detailId?.toString() || null;
 
-        const { error: deleteError } = await supabase.from('financial_disbursements')
+        let deleteQuery = supabase.from('financial_disbursements')
             .delete()
             .eq('entity_type', entityType)
-            .eq('parent_id', parentId)
-            .filter('item_id', itemId === null ? 'is' : 'eq', itemId);
+            .eq('parent_id', parentId);
+        
+        if (itemId === null) {
+            deleteQuery = deleteQuery.is('item_id', null);
+        } else {
+            deleteQuery = deleteQuery.eq('item_id', itemId);
+        }
+
+        const { error: deleteError } = await deleteQuery;
         
         if (deleteError) {
             console.error("Error deleting old disbursements:", deleteError);
-            return;
+            throw deleteError;
         }
 
         if (!item.disbursements || item.disbursements.length === 0) return;
@@ -726,7 +810,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
         }));
 
         const { error: insertError } = await supabase.from('financial_disbursements').insert(payload);
-        if (insertError) console.error("Error inserting disbursements:", insertError);
+        if (insertError) {
+            console.error("Error inserting disbursements:", insertError);
+            throw insertError;
+        }
     };
 
     const saveItemToDB = async (item: FinancialItem) => {
@@ -757,7 +844,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 return d;
             });
             
-            if (supabase) await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
+            if (supabase) {
+                const { error: updateError } = await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
+                if (updateError) throw updateError;
+            }
             setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
 
         } else if (item.sourceType === 'Activity') {
@@ -786,7 +876,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 return e;
             });
 
-            if (supabase) await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
+            if (supabase) {
+                const { error: updateError } = await supabase.from('activities').update({ expenses: updatedExpenses }).eq('id', act.id);
+                if (updateError) throw updateError;
+            }
             setActivities(prev => prev.map(a => a.id === act.id ? { ...a, expenses: updatedExpenses } : a));
 
         } else if (item.sourceType === 'Staffing') {
@@ -866,7 +959,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 }
             }
 
-            if (supabase) await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
+            if (supabase) {
+                const { error: updateError } = await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
+                if (updateError) throw updateError;
+            }
             setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
 
         } else if (item.sourceType === 'Other') {
@@ -889,7 +985,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload.amount = item.targetObligationAmount;
             }
 
-            if (supabase) await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
+            if (supabase) {
+                const { error: updateError } = await supabase.from('other_program_expenses').update(payload).eq('id', item.sourceId);
+                if (updateError) throw updateError;
+            }
             setOtherProgramExpenses(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
         } else if (item.sourceType === 'Office') {
             const payload: any = {
@@ -906,7 +1005,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload.pricePerUnit = item.targetObligationAmount;
                 payload.numberOfUnits = 1;
             }
-            if (supabase) await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
+            if (supabase) {
+                const { error: updateError } = await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
+                if (updateError) throw updateError;
+            }
             setOfficeReqs(prev => prev.map(o => o.id === item.sourceId ? { ...o, ...payload } : o));
         }
 
@@ -975,6 +1077,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const handleConfirmItem = async (item: FinancialItem) => {
         if (!canEdit) return;
 
+        setLocalSavingIds(prev => new Set(prev).add(item.uniqueId));
         try {
             await saveItemToDB(item);
             
@@ -987,7 +1090,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
         } catch (error: any) {
             console.error("Error saving accomplishment:", error);
-            alert("Failed to save changes. " + error.message);
+            alert("Failed to save changes: " + (error.message || "Unknown error"));
+        } finally {
+            setLocalSavingIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(item.uniqueId);
+                return newSet;
+            });
         }
     };
 
@@ -1372,31 +1481,35 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             )}
                                                                         </td>
 
-                                                                        {/* Actual Disb */}
+                                                                        {/* Actual Disbursement */}
                                                                         {supportsMonthly ? (
-                                                                            <>
-                                                                                <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">
-                                                                                    <span className="block text-right text-xs font-semibold px-2">{formatCurrency(item.actualDisbursementAmount)}</span>
-                                                                                </td>
-                                                                                <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">
-                                                                                    <span className="block text-center text-[10px] text-gray-500">See below</span>
-                                                                                </td>
-                                                                            </>
-                                                                        ) : (
                                                                             <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
-                                                                                <DisbursementsEditor
-                                                                                    disbursements={item.disbursements || []}
-                                                                                    onChange={(newDb, total) => updateLocalItem(item.uniqueId, { disbursements: newDb, actualDisbursementAmount: total })}
-                                                                                    defaultYear={selectedYear}
-                                                                                    readOnly={!canEdit}
-                                                                                />
+                                                                                 <div className="flex flex-col items-center">
+                                                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                        {formatCurrency(item.actualDisbursementAmount)}
+                                                                                    </span>
+                                                                                    <span className="text-[9px] text-gray-400 uppercase font-medium">Monthly Breakdown</span>
+                                                                                </div>
+                                                                            </td>
+                                                                        ) : (
+                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5 text-center" colSpan={2}>
+                                                                                <div className="flex flex-col items-center">
+                                                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                        {formatCurrency(item.actualDisbursementAmount)}
+                                                                                    </span>
+                                                                                    {item.actualDisbursementMonth && (
+                                                                                        <span className="text-[9px] text-gray-500 uppercase font-medium leading-tight text-center">
+                                                                                            {new Date(item.actualDisbursementMonth).toLocaleDateString(undefined, {month:'short', year:'numeric'})}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             </td>
                                                                         )}
 
                                                                         <td className="px-4 py-1.5 text-right">
                                                                             {canEdit && (
                                                                                 <div className="flex items-center gap-1 justify-end">
-                                                                                    {isChanged && (
+                                                                                    {isChanged && !localSavingIds.has(item.uniqueId) && (
                                                                                         <button
                                                                                             onClick={() => undoLocalItem(item.uniqueId)}
                                                                                             className="p-1.5 rounded text-gray-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
@@ -1407,9 +1520,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     )}
                                                                                     <button 
                                                                                         onClick={() => handleConfirmItem(item)}
-                                                                                        className="px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                                                                                        disabled={localSavingIds.has(item.uniqueId)}
+                                                                                        className="px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 min-w-[60px]"
                                                                                     >
-                                                                                        Save
+                                                                                        {localSavingIds.has(item.uniqueId) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
                                                                                     </button>
                                                                                 </div>
                                                                             )}
