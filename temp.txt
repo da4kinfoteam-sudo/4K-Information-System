@@ -1,0 +1,70 @@
+15:    item: StaffingRequirement;
+18:    onUpdate: (item: StaffingRequirement) => void;
+49:const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
+55:    const [formData, setFormData] = useState<StaffingRequirement>(item);
+59:        let expenses = (item.expenses && item.expenses.length > 0) ? [...item.expenses] : [];
+62:        if (expenses.length === 0 && (item.annualSalary > 0 || item.uacsCode)) {
+67:                uacsCode: item.uacsCode || '',
+68:                obligationDate: item.obligationDate,
+69:                amount: item.annualSalary,
+72:                disbursementJan: item.disbursementJan || 0, disbursementFeb: item.disbursementFeb || 0, disbursementMar: item.disbursementMar || 0,
+73:                disbursementApr: item.disbursementApr || 0, disbursementMay: item.disbursementMay || 0, disbursementJun: item.disbursementJun || 0,
+74:                disbursementJul: item.disbursementJul || 0, disbursementAug: item.disbursementAug || 0, disbursementSep: item.disbursementSep || 0,
+75:                disbursementOct: item.disbursementOct || 0, disbursementNov: item.disbursementNov || 0, disbursementDec: item.disbursementDec || 0,
+78:                actualObligationAmount: item.actualObligationAmount,
+79:                actualObligationDate: item.actualObligationDate,
+80:                actualDisbursementAmount: item.actualDisbursementAmount,
+81:                actualDisbursementDate: item.actualDisbursementDate,
+84:                actualDisbursementJan: item.actualDisbursementJan || 0, actualDisbursementFeb: item.actualDisbursementFeb || 0, actualDisbursementMar: item.actualDisbursementMar || 0,
+85:                actualDisbursementApr: item.actualDisbursementApr || 0, actualDisbursementMay: item.actualDisbursementMay || 0, actualDisbursementJun: item.actualDisbursementJun || 0,
+86:                actualDisbursementJul: item.actualDisbursementJul || 0, actualDisbursementAug: item.actualDisbursementAug || 0, actualDisbursementSep: item.actualDisbursementSep || 0,
+87:                actualDisbursementOct: item.actualDisbursementOct || 0, actualDisbursementNov: item.actualDisbursementNov || 0, actualDisbursementDec: item.actualDisbursementDec || 0,
+104:    }, [item]);
+159:    // Reset form data and hydrate expenses list (including legacy fix) when item changes
+161:        setFormData(item);
+163:    }, [item]);
+332:            alert("At least one financial requirement item is required.");
+380:                const itemActualDisbursement = calculateActualDisbursementTotal(exp);
+381:                aggregatedTotals.actualDisbursementAmount += itemActualDisbursement;
+382:                exp.actualDisbursementAmount = itemActualDisbursement;
+409:            const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
+417:            const parentId = item.id;
+433:                            item_id: exp.id?.toString() || null,
+446:            const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');
+447:            logAction('Updated Staffing Requirement', updatedItem.particulars || updatedItem.position, undefined, 'Staffing Requirement', String(item.id), metadata);
+458:                <div className="flex justify-between items-center mb-4">
+459:                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Details: {item.personnelPosition}</h1>
+460:                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+502:                                    <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-600 flex justify-between items-start">
+507:                                        <div className="flex items-center gap-4">
+520:                                {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
+613:                                    <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+656:                <div className="flex justify-between items-center mb-4">
+657:                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Accomplishment: {item.personnelPosition}</h1>
+658:                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+702:                                        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
+709:                            {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
+712:                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-md border border-emerald-200 dark:border-emerald-800 flex justify-between items-center">
+734:    const totalTargetDisbursement = months.reduce((sum, m) => sum + (Number((item as any)[`disbursement${m}`]) || 0), 0);
+739:            <header className="flex flex-wrap items-center justify-between gap-4">
+741:                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{item.personnelPosition}</h1>
+742:                    <p className="text-md text-gray-500 dark:text-gray-400">{item.operatingUnit} | {item.uid}</p>
+744:                <div className="flex items-center gap-4">
+746:                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-teal-600 hover:bg-teal-700">
+752:                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
+757:                    <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
+771:                        <DetailItem label="Position" value={item.personnelPosition} />
+772:                        <DetailItem label="Component" value={item.component} />
+773:                        <DetailItem label="Status" value={<span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span>} />
+774:                        <DetailItem label="Employment" value={item.status} />
+775:                        <DetailItem label="Salary Grade" value={`SG-${item.salaryGrade}`} />
+776:                        <DetailItem label="Type" value={item.personnelType} />
+777:                        <DetailItem label="Fund Source" value={`${item.fundType} ${item.fundYear} - ${item.tier}`} />
+778:                        <DetailItem label="Total Annual Requirement" value={formatCurrency(item.annualSalary)} />
+779:                        <DetailItem label="Encoded By" value={item.encodedBy} />
+789:                                        <div className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleExpenseExpand(exp.id)}>
+794:                                            <div className="flex items-center gap-3">
+837:                                    <DetailItem label="Amount" value={formatCurrency(item.actualObligationAmount || 0)} />
+841:                                    <DetailItem label="Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
+849:                                <DetailItem label="Date Hired" value={formatDate(item.actualObligationDate)} />
+859:                                            <div className="flex justify-between items-center mb-2">

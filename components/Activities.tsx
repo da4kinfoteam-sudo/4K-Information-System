@@ -305,6 +305,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             budget: [], // Budget is numeric
             operatingUnit: getUnique('operatingUnit'),
             component: getUnique('component'),
+            tier: getUnique('tier'),
             fundingYear: filterYears,
             fundType: fundTypes
         };
@@ -739,6 +740,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     uniqueValues={uniqueValues.fundType} 
                                 />
                                 <ActivityColumnHeader 
+                                    label="Tier" 
+                                    columnKey="tier" 
+                                    sortConfig={sortConfig} 
+                                    onSort={handleSort} 
+                                    filters={columnFilters['tier'] || []} 
+                                    onFilterChange={(v) => handleColumnFilterChange('tier', v)} 
+                                    uniqueValues={uniqueValues.tier} 
+                                />
+                                <ActivityColumnHeader 
                                     label="Project Status" 
                                     columnKey="status" 
                                     sortConfig={sortConfig} 
@@ -812,6 +822,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.component}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundingYear || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.fundType || 'N/A'}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{activity.tier || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(activity.status)}>{activity.status}</span></td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                             {new Date(activity.date).toLocaleDateString()}

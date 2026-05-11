@@ -115,7 +115,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
             for (const type of objectTypes) { 
                 if(uacsCodes[type]) { 
                     for (const part in uacsCodes[type]) { 
-                        if (uacsCodes[type][part].hasOwnProperty(item.uacsCode)) { 
+                        if (item.uacsCode && uacsCodes[type][part].hasOwnProperty(item.uacsCode)) { 
                             foundType = type; 
                             foundParticular = part; 
                             break outerLoop; 

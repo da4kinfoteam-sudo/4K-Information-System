@@ -63,7 +63,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         };
 
         // Helper to aggregate items with same name/indicator
-        const addItemToGroup = (list: any[], newItem: any, isExcluded: boolean) => {
+        const addItemToGroup = (list: any[], newItem: any, isExcluded: boolean = false) => {
             const existing = list.find(i => i.indicator === newItem.indicator);
             if (existing) {
                 if (!isExcluded) {

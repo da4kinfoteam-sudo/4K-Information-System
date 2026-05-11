@@ -1021,6 +1021,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             <OtherExpenseColumnHeader label="Amount" columnKey="amount" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['amount'] || []} onFilterChange={(v) => handleColumnFilterChange('amount', v)} uniqueValues={[]} isNumeric />
                             <OtherExpenseColumnHeader label="Fund Year" columnKey="fundYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundYear', v)} uniqueValues={uniqueValues['fundYear']} />
                             <OtherExpenseColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundType'] || []} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues['fundType']} />
+                            <OtherExpenseColumnHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['tier'] || []} onFilterChange={(v) => handleColumnFilterChange('tier', v)} uniqueValues={uniqueValues['tier']} />
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
@@ -1046,10 +1047,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <td className="px-6 py-4 text-sm text-gray-900 dark:text-white"><div className="truncate w-64" title={item.particulars}>{item.particulars}</div></td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.amount)}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.fundYear}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                    <div>{item.fundType}</div>
-                                    <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.tier}</div>
-                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.fundType}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.tier}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs">
                                     <div className="flex flex-col gap-1 items-start">
                                         {getWorkflowStatusBadge(item.workflow_status)}

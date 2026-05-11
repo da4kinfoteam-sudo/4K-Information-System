@@ -294,6 +294,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             packageType: getUnique('packageType'),
             fundingYear: filterYears,
             fundType: getUnique('fundType'),
+            tier: getUnique('tier'),
             estimatedCompletionDate: getUnique('estimatedCompletionDate'),
             actualCompletionDate: getUnique('actualCompletionDate')
         };
@@ -733,6 +734,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                 <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
                                 <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundingYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
                                 <SubprojectColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundType'] || []} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues.fundType} />
+                                <SubprojectColumnHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['tier'] || []} onFilterChange={(v) => handleColumnFilterChange('tier', v)} uniqueValues={uniqueValues.tier} />
                                 <SubprojectColumnHeader label="Project Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
                                 <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
@@ -771,9 +773,10 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.operatingUnit || 'N/A'}</td>
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300">{s.indigenousPeopleOrganization || 'N/A'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundType || 'N/A'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundingYear || 'N/A'}</td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.fundType || 'N/A'}</td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{s.tier || 'N/A'}</td>
+                                         <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={getStatusBadge(s.status)}>{s.status || 'Unknown'}</span></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm text-gray-500 dark:text-gray-300 min-w-[150px]">{commodities}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatCurrency(budget)}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">

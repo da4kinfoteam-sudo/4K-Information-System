@@ -48,6 +48,7 @@ const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
 
 const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
     const isAdmin = currentUser?.role === 'Administrator';
     

@@ -1150,6 +1150,15 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 onFilterChange={(val) => handleColumnFilterChange('fundType', val)} 
                                 uniqueValues={uniqueValues.fundType} 
                             />
+                            <StaffingRequirementColumnHeader 
+                                label="Tier" 
+                                columnKey="tier" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort} 
+                                filters={columnFilters.tier || []} 
+                                onFilterChange={(val) => handleColumnFilterChange('tier', val)} 
+                                uniqueValues={uniqueValues.tier} 
+                            />
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                 {isSelectionMode ? "Select" : "Actions"}
@@ -1170,6 +1179,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.annualSalary)}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundYear}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.fundType}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{item.tier}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs">
                                     <div className="flex flex-col gap-1 items-start">
                                         {getWorkflowStatusBadge(item.workflow_status)}

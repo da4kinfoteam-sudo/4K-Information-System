@@ -679,7 +679,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Office Requirements");
-        XLSX.utils.book_append_sheet(wb, "Office_Requirements_Report.xlsx");
+        XLSX.writeFile(wb, "Office_Requirements_Report.xlsx");
     };
 
     const handleDownloadTemplate = () => {
@@ -1139,6 +1139,15 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                 onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, fundType: vals }))}
                                 uniqueValues={uniqueValues['fundType'] || []}
                             />
+                            <OfficeRequirementColumnHeader 
+                                label="Tier" 
+                                columnKey="tier" 
+                                sortConfig={sortConfig} 
+                                onSort={handleSort}
+                                filters={columnFilters['tier'] || []}
+                                onFilterChange={(vals) => setColumnFilters(prev => ({ ...prev, tier: vals }))}
+                                uniqueValues={uniqueValues['tier'] || []}
+                            />
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">{isSelectionMode ? "Select" : "Actions"}</th>
                         </tr>
@@ -1161,6 +1170,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900 dark:text-white">{formatCurrency(item.numberOfUnits * item.pricePerUnit)}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundYear}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.fundType}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.tier}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs">
                                         <div className="flex flex-col gap-1 items-start">
                                             {getWorkflowStatusBadge(item.workflow_status)}

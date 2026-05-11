@@ -129,6 +129,9 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
         IPO: s.indigenousPeopleOrganization,
         Location: s.location,
         Status: s.status,
+        'Fund Year': s.fundingYear,
+        'Fund Type': s.fundType,
+        'Tier': s.tier,
         Budget: calculateTotalBudget(s.details),
         'End Date': s.estimatedCompletionDate,
         'Operating Unit': s.operatingUnit
@@ -136,7 +139,7 @@ export const downloadSubprojectsReport = (subprojects: Subproject[]) => {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Subprojects");
-    XLSX.utils.book_append_sheet(wb, "Subprojects_Report.xlsx");
+    XLSX.writeFile(wb, "Subprojects_Report.xlsx");
 };
 
 export const downloadSubprojectsTemplate = () => {
