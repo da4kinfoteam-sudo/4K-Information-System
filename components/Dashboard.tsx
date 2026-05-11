@@ -777,9 +777,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                                     .slice(0, 5)
                                     .map(s => (
-                                        <li key={s.id} className="flex justify-between border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm">
-                                            <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
-                                            <span className="text-gray-600 dark:text-gray-300 text-xs">{formatDate(s.date)}</span>
+                                        <li key={s.id}>
+                                            <button
+                                                type="button"
+                                                onClick={() => onSelectActivity(s)}
+                                                className="w-full text-left border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors"
+                                                aria-label={`View details for ${s.name}`}
+                                            >
+                                                <div className="flex justify-between gap-3">
+                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
+                                                    <span className="text-gray-600 dark:text-gray-300 text-xs whitespace-nowrap">{formatDate(s.date)}</span>
+                                                </div>
+                                                {s.description && (
+                                                    <p className="mt-1 text-xs italic text-gray-600 dark:text-gray-300 line-clamp-2">
+                                                        {s.description}
+                                                    </p>
+                                                )}
+                                            </button>
                                         </li>
                                     ))}
                             </ul>
