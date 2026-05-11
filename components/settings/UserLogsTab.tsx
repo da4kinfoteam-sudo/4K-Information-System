@@ -13,6 +13,7 @@ interface UserLog {
     created_at: string;
     entity_type?: string;
     entity_id?: string;
+    action_metadata?: any;
 }
 
 interface UserLogsTabProps {
@@ -38,6 +39,7 @@ const UserLogsTab: React.FC<UserLogsTabProps> = ({
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof UserLog; direction: 'asc' | 'desc' }>({ key: 'created_at', direction: 'desc' });
+    const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
 
     useEffect(() => {
         const fetchLogs = async () => {
@@ -131,6 +133,63 @@ const UserLogsTab: React.FC<UserLogsTabProps> = ({
         </th>
     );
 
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    };
+
+    const renderMetadata = (metadata: any) => {
+        if (!metadata || (!metadata.targets && !metadata.accomplishments)) return null;
+
+        return (
+            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 animate-fadeIn">
+                <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                    Monetary Variations
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {metadata.targets && (
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 mb-2 uppercase">Targets</p>
+                            <div className="space-y-2">
+                                {Object.entries(metadata.targets).map(([key, val]: [string, any]) => (
+                                    <div key={key} className="flex flex-col text-xs">
+                                        <span className="font-semibold text-gray-600 dark:text-gray-400">{key}:</span>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-gray-400 line-through decoration-red-300/50">{formatCurrency(val.old)}</span>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatCurrency(val.new)}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {metadata.accomplishments && (
+                        <div>
+                            <p className="text-xs font-bold text-gray-400 mb-2 uppercase">Accomplishments</p>
+                            <div className="space-y-2">
+                                {Object.entries(metadata.accomplishments).map(([key, val]: [string, any]) => (
+                                    <div key={key} className="flex flex-col text-xs">
+                                        <span className="font-semibold text-gray-600 dark:text-gray-400">{key}:</span>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-gray-400 line-through decoration-red-300/50">{formatCurrency(val.old)}</span>
+                                            <span className="text-gray-400">→</span>
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-bold">{formatCurrency(val.new)}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    const toggleExpand = (id: number) => {
+        setExpandedLogId(expandedLogId === id ? null : id);
+    };
+
     return (
         <div>
             <div className="flex justify-between items-center mb-4">
@@ -162,25 +221,47 @@ const UserLogsTab: React.FC<UserLogsTabProps> = ({
                         ) : paginatedLogs.length === 0 ? (
                             <tr><td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">No logs found.</td></tr>
                         ) : (
-                            paginatedLogs.map(log => (
-                                <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                                        {log.entity_type && log.entity_id ? (
-                                            <button 
-                                                onClick={() => handleLogClick(log)}
-                                                className="text-emerald-600 hover:underline text-left font-medium"
-                                            >
-                                                {log.description}
-                                            </button>
-                                        ) : (
-                                            log.description
+                            paginatedLogs.map(log => {
+                                const hasMetadata = log.action_metadata && (log.action_metadata.targets || log.action_metadata.accomplishments);
+                                return (
+                                    <React.Fragment key={log.id}>
+                                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                                                <div className="flex items-center gap-3">
+                                                    {hasMetadata && (
+                                                        <button 
+                                                            onClick={() => toggleExpand(log.id)}
+                                                            className={`p-1 rounded-full transition-transform ${expandedLogId === log.id ? 'rotate-90 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40' : 'text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                                        </button>
+                                                    )}
+                                                    {log.entity_type && log.entity_id ? (
+                                                        <button 
+                                                            onClick={() => handleLogClick(log)}
+                                                            className="text-emerald-600 hover:underline text-left font-medium"
+                                                        >
+                                                            {log.description}
+                                                        </button>
+                                                    ) : (
+                                                        log.description
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.username}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.operating_unit}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{formatDate(log.created_at)}</td>
+                                        </tr>
+                                        {expandedLogId === log.id && hasMetadata && (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-0 pb-4 bg-gray-50/50 dark:bg-gray-900/20 shadow-inner">
+                                                    {renderMetadata(log.action_metadata)}
+                                                </td>
+                                            </tr>
                                         )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.username}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{log.operating_unit}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{formatDate(log.created_at)}</td>
-                                </tr>
-                            ))
+                                    </React.Fragment>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>

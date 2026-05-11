@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
-import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
+import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
@@ -440,7 +441,11 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             if (syncPayload.length > 0) {
                 await supabase.from('financial_obligations').insert(syncPayload);
             }
+
+            const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');
+            logAction('Updated Staffing Requirement', updatedItem.particulars || updatedItem.position, undefined, 'Staffing Requirement', String(item.id), metadata);
         }
+
         
         onUpdate(updatedItem as StaffingRequirement);
         setEditMode('none');

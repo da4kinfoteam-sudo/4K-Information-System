@@ -5,6 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker'; 
@@ -187,7 +188,9 @@ interface OfficeRequirementsTabProps {
 }
 
 export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
+    const { locale } = useAuth(); // Assume it exists or just use default
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
     const isAdmin = currentUser?.role === 'Administrator';
     
@@ -449,7 +452,10 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 alert(`Failed to create: ${error.message}`); 
                 return; 
             }
-            if (data) setItems(prev => [data, ...prev]);
+            if (data) {
+                setItems(prev => [data, ...prev]);
+                logAction('Created Office Requirement', data.particulars || data.equipment || data.uid, undefined, 'Office Requirement', String(data.id));
+            }
         } else {
             // Offline
             const newItem = { ...submissionData, id: Date.now() };
@@ -522,6 +528,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 const { error: deleteError } = await supabase.from('office_requirements').delete().in('id', deletableIds);
                 if (deleteError) throw deleteError;
 
+                logAction('Deleted Office Requirements', `${deletableIds.length} items deleted`, undefined, 'Office Requirement');
                 setItems(prev => prev.filter(i => !deletableIds.includes(i.id)));
             } catch (error: any) {
                 console.error("Error archiving/deleting selected:", error);
@@ -624,6 +631,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 alert('Failed to approve: ' + error.message);
             } else {
                 setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+                logAction('Approved Office Requirement', String(id), undefined, 'Office Requirement', String(id));
             }
         } else {
             setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));

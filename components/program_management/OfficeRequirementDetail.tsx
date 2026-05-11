@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
-import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
+import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
@@ -44,6 +45,7 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
 const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
+    const { logAction } = useLogAction();
     const isAdmin = currentUser?.role === 'Administrator';
     const canEditDetails = canEdit;
     const canEditAccomplishment = canEdit;
@@ -297,6 +299,9 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 }));
                 await supabase.from('financial_obligations').insert(syncPayload);
             }
+
+            const metadata = getMonetaryChanges(item, updatedItem, 'Office');
+            logAction('Updated Office Requirement', updatedItem.equipment, undefined, 'Office Requirement', String(item.id), metadata);
         }
         
         onUpdate(updatedItem as OfficeRequirement);

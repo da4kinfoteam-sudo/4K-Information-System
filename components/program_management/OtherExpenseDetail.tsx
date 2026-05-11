@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
-import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
+import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
@@ -29,6 +30,7 @@ const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, uacsCodes, onUpdate }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
+    const { logAction } = useLogAction();
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
@@ -263,7 +265,11 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                 }));
                 await supabase.from('financial_obligations').insert(syncPayload);
             }
+
+            const metadata = getMonetaryChanges(item, updatedItem, 'Other');
+            logAction('Updated Other Program Expense', updatedItem.particulars, undefined, 'Other Program Expense', String(item.id), metadata);
         }
+
         
         onUpdate(updatedItem as OtherProgramExpense);
         setEditMode('none');

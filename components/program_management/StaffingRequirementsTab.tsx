@@ -5,6 +5,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { StaffingRequirement, StaffingExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType, otherActivityComponents, ActivityComponentType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
@@ -195,6 +196,7 @@ const StaffingRequirementColumnHeader: React.FC<StaffingRequirementColumnHeaderP
 
 export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
     
     // Local State
@@ -509,7 +511,10 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 alert(`Failed to create: ${error.message}`); 
                 return; 
             }
-            if (data) setItems(prev => [data, ...prev]);
+            if (data) {
+                setItems(prev => [data, ...prev]);
+                logAction('Created Staffing Requirement', data.personnelPosition || data.uid, undefined, 'Staffing Requirement', String(data.id));
+            }
         } else {
             const newItem = { ...submissionData, id: Date.now() } as StaffingRequirement;
             setItems(prev => [newItem, ...prev]);
@@ -533,6 +538,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 const { error: deleteError } = await supabase.from('staffing_requirements').delete().eq('id', itemToDelete.id);
                 if (deleteError) throw deleteError;
 
+                logAction('Deleted Staffing Requirement', itemToDelete.personnelPosition || itemToDelete.uid, undefined, 'Staffing Requirement', String(itemToDelete.id));
                 setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
             } catch (error: any) {
                 console.error("Error archiving/deleting:", error);
@@ -684,6 +690,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 alert('Failed to approve: ' + error.message);
             } else {
                 setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+                logAction('Approved Staffing Requirement', String(id), undefined, 'Staffing Requirement', String(id));
             }
         } else {
             setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));

@@ -5,6 +5,7 @@ import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, Fun
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
+import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
@@ -574,7 +575,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     } else {
                          const { error } = await supabase.from('activities').update(sanitizedPayload).eq('id', activity!.id);
                          if (error) throw error;
-                         logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id));
+                         
+                         const metadata = getMonetaryChanges(activity, sanitizedPayload, 'Activity');
+                         logAction(`Updated ${act.type}`, act.name, undefined, act.type, String(activity!.id), metadata);
                          
                          // Sync obligations for updated activity
                          await syncActivityObligations(activity!.id, act.expenses);

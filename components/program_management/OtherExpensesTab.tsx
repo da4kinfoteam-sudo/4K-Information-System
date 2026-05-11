@@ -4,6 +4,7 @@ import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OtherProgramExpense, operatingUnits, fundTypes, tiers, objectTypes, FundType, Tier, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLogAction } from '../../hooks/useLogAction';
 import { useSelection, useUserAccess, usePagination } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
@@ -186,6 +187,7 @@ interface OtherExpensesTabProps {
 
 export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setItems, uacsCodes, onSelect }) => {
     const { currentUser } = useAuth();
+    const { logAction } = useLogAction();
     const { canEdit, canViewAll } = useUserAccess('Program Management');
     
     // Local State
@@ -497,7 +499,10 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 alert(`Failed to create: ${error.message}`); 
                 return; 
             }
-            if (data) setItems(prev => [data, ...prev]);
+            if (data) {
+                setItems(prev => [data, ...prev]);
+                logAction('Created Other Program Expense', data.particulars || data.uid, undefined, 'Other Program Expense', String(data.id));
+            }
         } else {
             const newItem = { ...submissionData, id: Date.now() } as OtherProgramExpense;
             setItems(prev => [newItem, ...prev]);
@@ -521,6 +526,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 const { error: deleteError } = await supabase.from('other_program_expenses').delete().eq('id', itemToDelete.id);
                 if (deleteError) throw deleteError;
 
+                logAction('Deleted Other Program Expense', itemToDelete.particulars || itemToDelete.uid, undefined, 'Other Program Expense', String(itemToDelete.id));
                 setItems(prev => prev.filter(i => i.id !== itemToDelete.id));
             } catch (error: any) {
                 console.error("Error archiving/deleting:", error);
@@ -656,6 +662,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 alert('Failed to approve: ' + error.message);
             } else {
                 setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));
+                logAction('Approved Other Program Expense', String(id), undefined, 'Other Program Expense', String(id));
             }
         } else {
             setItems(prev => prev.map(s => s.id === id ? { ...s, workflow_status: 'APPROVED' } : s));

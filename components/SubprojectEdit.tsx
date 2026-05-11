@@ -6,6 +6,7 @@ import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, 
 import LocationPicker from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useLogAction } from '../hooks/useLogAction';
+import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 
@@ -534,7 +535,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 if (error) { alert("Error saving: " + error.message); return; }
                 if (data) {
                     onUpdateSubproject(data);
-                    logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id));
+                    const metadata = getMonetaryChanges(subproject, data, 'Subproject');
+                    logAction('Updated Subproject', data.name, data.indigenousPeopleOrganization, 'Subproject', String(data.id), metadata);
                 }
             }
         } else {
