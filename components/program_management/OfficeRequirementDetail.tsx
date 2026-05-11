@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { OfficeRequirement, operatingUnits, fundTypes, tiers, objectTypes, ObjectType } from '../../constants';
 import { formatCurrency } from '../reports/ReportUtils';
+import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
