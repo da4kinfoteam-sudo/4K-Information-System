@@ -42,6 +42,22 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
 
+const formatCompactNumber = (amount: number, maximumFractionDigits = 1) => {
+    return new Intl.NumberFormat('en-US', {
+        notation: 'compact',
+        maximumFractionDigits
+    }).format(amount);
+};
+
+const formatCompactCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-PH', {
+        style: 'currency',
+        currency: 'PHP',
+        notation: 'compact',
+        maximumFractionDigits: 1
+    }).format(amount);
+};
+
 const getStatusBadge = (status: Subproject['status']) => {
     const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
@@ -65,11 +81,32 @@ const getTrainingStatusBadge = (status: string) => {
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; half?: boolean }> = ({ label, value, half }) => (
-    <div className={half ? 'sm:col-span-1' : 'sm:col-span-2'}>
+    <div className={`${half ? 'sm:col-span-1' : 'sm:col-span-2'} min-w-0`}>
         <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-        <dd className="mt-1 text-sm text-gray-900 dark:text-white">{value || 'N/A'}</dd>
+        <dd className="mt-1 text-sm text-gray-900 dark:text-white break-words">{value || 'N/A'}</dd>
     </div>
 );
+
+const OverviewMetric: React.FC<{ label: string; value: string; fullValue?: string }> = ({ label, value, fullValue }) => (
+    <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
+        <p className="text-xs font-medium leading-snug text-gray-500 dark:text-gray-400">{label}</p>
+        <p className="mt-1 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white" title={fullValue || value}>
+            {value}
+        </p>
+    </div>
+);
+
+const MembershipRow: React.FC<{ label: string; value?: number }> = ({ label, value = 0 }) => {
+    const fullValue = value.toLocaleString();
+    const displayValue = Math.abs(value) >= 100000 ? formatCompactNumber(value) : fullValue;
+
+    return (
+        <div className="flex min-w-0 flex-col gap-1 border-b border-gray-200 pb-2 dark:border-gray-700 sm:flex-row sm:items-start sm:justify-between">
+            <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
+            <dd className="font-semibold text-gray-900 dark:text-white sm:text-right" title={fullValue}>{displayValue}</dd>
+        </div>
+    );
+};
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
 
@@ -110,7 +147,7 @@ const PaginationControls: React.FC<{
     onItemsPerPageChange: (val: number) => void;
     totalItems: number;
 }> = ({ currentPage, totalPages, onPageChange, itemsPerPage, onItemsPerPageChange, totalItems }) => (
-    <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4 text-xs">
+    <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3 text-xs">
         <div className="flex items-center gap-2">
             <span className="text-gray-600 dark:text-gray-400">Show</span>
             <select
@@ -124,7 +161,7 @@ const PaginationControls: React.FC<{
             </select>
             <span className="text-gray-600 dark:text-gray-400">entries</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-4 sm:text-left">
             <span className="text-gray-600 dark:text-gray-400">
                 {totalItems === 0 ? 'No entries' : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, totalItems)} of ${totalItems}`}
             </span>
@@ -560,7 +597,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     }
     
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
-    const filterSelectClasses = "bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500";
+    const filterSelectClasses = "w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500";
 
 
     if (isEditing) {
@@ -578,7 +615,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         </div>
                     </div>
                 )}
-                <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing: {ipo.name}</h1>
+                <h1 className="break-words text-2xl font-bold text-gray-800 dark:text-white sm:text-3xl">Editing: {ipo.name}</h1>
                  <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
@@ -658,10 +695,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
                         <div className="space-y-2 mb-4">
                             {editedIpo.commodities.map((commodity, index) => (
-                                <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                    <div className="flex flex-col">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-semibold">{commodity.particular}</span>
+                                <div key={index} className={`flex flex-col gap-3 p-2 rounded-md text-sm sm:flex-row sm:items-center sm:justify-between ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                                    <div className="flex min-w-0 flex-col">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="font-semibold break-words">{commodity.particular}</span>
                                             <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                             <span>
                                                 {commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
@@ -669,13 +706,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                             </span>
                                             {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                         </div>
-                                        <div className="text-xs text-gray-500 mt-1 pl-1">
+                                        <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500 mt-1 pl-1">
                                             {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
-                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {commodity.foodSecurityPercentage}%</span>}
-                                            {(commodity.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{commodity.averageIncome?.toLocaleString()}</span>}
+                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span>FS: {commodity.foodSecurityPercentage}%</span>}
+                                            {(commodity.averageIncome || 0) > 0 && <span title={formatCurrency(commodity.averageIncome || 0)}>Inc: {formatCompactCurrency(commodity.averageIncome || 0)}</span>}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-shrink-0 items-center gap-2 self-end sm:self-center">
                                         <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                         </button>
@@ -805,12 +842,12 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     // ... (rest of view mode)
     return (
         <div className="space-y-8">
-            <header className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{ipo.name}</h1>
-                    <p className="text-md text-gray-500 dark:text-gray-400">{ipo.location}</p>
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                    <h1 className="break-words text-2xl font-bold text-gray-800 dark:text-white sm:text-3xl">{ipo.name}</h1>
+                    <p className="text-md break-words text-gray-500 dark:text-gray-400">{ipo.location}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                      {canEdit && (
                          <button
                             onClick={() => setIsEditing(true)}
@@ -839,33 +876,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Overview</h3>
                         
                         {/* New Stats Grid */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Investment</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(overviewStats.totalInvestment)}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Allocation</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(overviewStats.totalAllocation)}</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Area (Agri)</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.totalArea.toLocaleString()} ha</p>
-                            </div>
-                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Avg. Annual Income</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">
-                                    {overviewStats.totalIncome > 0 ? formatCurrency(overviewStats.totalIncome) : "No Income"}
-                                </p>
-                            </div>
-                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Subprojects (Completed)</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.completedSPCount}</p>
-                            </div>
-                             <div>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Trainings (Completed)</p>
-                                <p className="text-lg font-bold text-gray-900 dark:text-white">{overviewStats.completedTRCount}</p>
-                            </div>
+                         <div className="grid grid-cols-1 gap-3 mb-6 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/30 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+                            <OverviewMetric label="Total Investment" value={formatCompactCurrency(overviewStats.totalInvestment)} fullValue={formatCurrency(overviewStats.totalInvestment)} />
+                            <OverviewMetric label="Total Allocation" value={formatCompactCurrency(overviewStats.totalAllocation)} fullValue={formatCurrency(overviewStats.totalAllocation)} />
+                            <OverviewMetric label="Total Area (Agri)" value={`${formatCompactNumber(overviewStats.totalArea)} ha`} fullValue={`${overviewStats.totalArea.toLocaleString()} ha`} />
+                            <OverviewMetric label="Avg. Annual Income" value={overviewStats.totalIncome > 0 ? formatCompactCurrency(overviewStats.totalIncome) : 'No Income'} fullValue={overviewStats.totalIncome > 0 ? formatCurrency(overviewStats.totalIncome) : 'No Income'} />
+                            <OverviewMetric label="Subprojects (Completed)" value={formatCompactNumber(overviewStats.completedSPCount)} fullValue={overviewStats.completedSPCount.toLocaleString()} />
+                            <OverviewMetric label="Trainings (Completed)" value={formatCompactNumber(overviewStats.completedTRCount)} fullValue={overviewStats.completedTRCount.toLocaleString()} />
                         </div>
 
                         <div className="mb-4">
@@ -892,20 +909,20 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                             {ipo.commodities && ipo.commodities.length > 0 ? (
                                 <ul className="space-y-2 text-sm">
                                     {ipo.commodities.map((c, i) => (
-                                        <li key={i} className="flex justify-between p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
+                                        <li key={i} className="flex flex-col gap-2 rounded bg-gray-50 p-2 dark:bg-gray-700/50 sm:flex-row sm:items-start sm:justify-between">
+                                            <div className="flex min-w-0 flex-col">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="break-words">{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
                                                     {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
                                                 </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-1">
+                                                <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 pl-1 text-xs text-gray-500 dark:text-gray-400">
                                                     {(c.marketingPercentage || 0) > 0 && <span>Mktg: {c.marketingPercentage}%</span>}
-                                                    {(c.foodSecurityPercentage || 0) > 0 && <span className="ml-2">FS: {c.foodSecurityPercentage}%</span>}
-                                                    {(c.averageIncome || 0) > 0 && <span className="ml-2">Inc: ₱{c.averageIncome?.toLocaleString()}</span>}
+                                                    {(c.foodSecurityPercentage || 0) > 0 && <span>FS: {c.foodSecurityPercentage}%</span>}
+                                                    {(c.averageIncome || 0) > 0 && <span title={formatCurrency(c.averageIncome || 0)}>Inc: {formatCompactCurrency(c.averageIncome || 0)}</span>}
                                                 </div>
                                             </div>
-                                            <span className="font-medium text-right">
-                                                {c.value.toLocaleString()} {c.type === 'Livestock' ? 'heads' : 'ha'}
+                                            <span className="font-medium sm:text-right" title={`${c.value.toLocaleString()} ${c.type === 'Livestock' ? 'heads' : 'ha'}${c.yield ? ` | Y: ${c.yield}` : ''}`}>
+                                                {formatCompactNumber(c.value)} {c.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {c.yield ? ` | Y: ${c.yield}` : ''}
                                             </span>
                                         </li>
@@ -919,7 +936,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Subprojects</h3>
-                            <div className="flex gap-2">
+                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                                 <select 
                                     value={spYearFilter} 
                                     onChange={(e) => setSpYearFilter(e.target.value)} 
@@ -947,22 +964,21 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 <ul className="space-y-4">
                                     {spPagination.paginatedData.map(p => (
                                         <li key={p.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                            <div className="flex justify-between items-start">
-                                                <div>
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0">
                                                     <button 
                                                         onClick={() => onSelectSubproject(p)}
-                                                        className="font-bold text-gray-800 dark:text-gray-100 hover:text-emerald-600 dark:hover:text-emerald-400 focus:outline-none focus:underline text-left"
+                                                        className="break-words text-left font-bold text-gray-800 hover:text-emerald-600 focus:outline-none focus:underline dark:text-gray-100 dark:hover:text-emerald-400"
                                                     >
                                                         {p.name}
                                                     </button>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">{p.location}</p>
+                                                    <p className="break-words text-sm text-gray-500 dark:text-gray-400">{p.location}</p>
                                                 </div>
-                                                <span className={getStatusBadge(p.status)}>{p.status}</span>
+                                                <span className={`${getStatusBadge(p.status)} self-start flex-shrink-0`}>{p.status}</span>
                                             </div>
-                                            <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
-                                                <span className="font-semibold text-emerald-700 dark:text-emerald-400">Budget:</span> {formatCurrency(calculateTotalBudget(p.details))}
-                                                <span className="mx-2">|</span>
-                                                <span className="font-semibold text-emerald-700 dark:text-emerald-400">Timeline:</span> {formatDate(p.startDate)} to {formatDate(p.estimatedCompletionDate)}
+                                            <div className="mt-2 flex flex-col gap-1 text-sm text-gray-600 dark:text-gray-300 sm:flex-row sm:flex-wrap sm:gap-x-3">
+                                                <span title={formatCurrency(calculateTotalBudget(p.details))}><span className="font-semibold text-emerald-700 dark:text-emerald-400">Budget:</span> {formatCompactCurrency(calculateTotalBudget(p.details))}</span>
+                                                <span><span className="font-semibold text-emerald-700 dark:text-emerald-400">Timeline:</span> {formatDate(p.startDate)} to {formatDate(p.estimatedCompletionDate)}</span>
                                             </div>
                                         </li>
                                     ))}
@@ -985,7 +1001,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Trainings</h3>
-                             <div className="flex gap-2">
+                             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                                 <select 
                                     value={trYearFilter} 
                                     onChange={(e) => setTrYearFilter(e.target.value)} 
@@ -1013,17 +1029,17 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 <ul className="space-y-4">
                                     {trPagination.paginatedData.map(t => (
                                         <li key={t.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                            <div className="flex justify-between items-start">
-                                                <div>
+                                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0">
                                                     <button 
                                                         onClick={() => onSelectActivity(t)}
-                                                        className="font-bold text-gray-800 dark:text-gray-100 hover:text-emerald-600 dark:hover:text-emerald-400 focus:outline-none focus:underline text-left"
+                                                        className="break-words text-left font-bold text-gray-800 hover:text-emerald-600 focus:outline-none focus:underline dark:text-gray-100 dark:hover:text-emerald-400"
                                                     >
                                                         {t.name}
                                                     </button>
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
+                                                    <p className="break-words text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
                                                 </div>
-                                                <div className="flex flex-col items-end gap-1">
+                                                <div className="flex flex-shrink-0 flex-col items-start gap-1 sm:items-end">
                                                     <span className={getTrainingStatusBadge(t.status)}>{t.status}</span>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
                                                 </div>
@@ -1054,9 +1070,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 <div className="grid grid-cols-1 gap-4">
                                     {mlPagination.paginatedData.map((item, idx) => (
                                         <div key={idx} className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-800 hover:shadow-md transition-shadow">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="font-bold text-teal-800 dark:text-teal-200">{item.partner.companyName}</h4>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${item.link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <h4 className="break-words font-bold text-teal-800 dark:text-teal-200">{item.partner.companyName}</h4>
+                                                <span className={`self-start text-[10px] px-2 py-0.5 rounded font-bold uppercase sm:flex-shrink-0 ${item.link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                                     {item.link.negotiationStatus}
                                                 </span>
                                             </div>
@@ -1148,34 +1164,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                         <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Membership Information</h3>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 text-sm">
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Total Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">IP Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalIpMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Male Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalMaleMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Female Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalFemaleMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Youth Members</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalYouthMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">Senior Citizens</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.totalSeniorMembers}</dd>
-                            </div>
-                            <div className="flex justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-                                <dt className="text-gray-500 dark:text-gray-400">4Ps Beneficiaries</dt>
-                                <dd className="font-semibold text-gray-900 dark:text-white">{ipo.total4PsMembers}</dd>
-                            </div>
+                            <MembershipRow label="Total Members" value={ipo.totalMembers} />
+                            <MembershipRow label="IP Members" value={ipo.totalIpMembers} />
+                            <MembershipRow label="Male Members" value={ipo.totalMaleMembers} />
+                            <MembershipRow label="Female Members" value={ipo.totalFemaleMembers} />
+                            <MembershipRow label="Youth Members" value={ipo.totalYouthMembers} />
+                            <MembershipRow label="Senior Citizens" value={ipo.totalSeniorMembers} />
+                            <MembershipRow label="4Ps Beneficiaries" value={ipo.total4PsMembers} />
                         </dl>
                     </div>
                 </div>
