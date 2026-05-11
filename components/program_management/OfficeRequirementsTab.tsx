@@ -203,9 +203,9 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Search and Column Filtering/Sorting
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'id', direction: 'descending' });
-    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string[] }>({});
+    const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_office_searchTerm', '');
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_office_sortConfig', { key: 'id', direction: 'descending' });
+    const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_office_columnFilters', {});
 
     // Selection Hook
     const { 

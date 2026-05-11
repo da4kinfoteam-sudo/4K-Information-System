@@ -213,11 +213,11 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     };
 
     // Filters - Persistent
-    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string[] }>({});
+    const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_staffing_columnFilters', {});
 
     // Search and Column Filtering/Sorting
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'id', direction: 'descending' });
+    const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_staffing_searchTerm', '');
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_staffing_sortConfig', { key: 'id', direction: 'descending' });
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 

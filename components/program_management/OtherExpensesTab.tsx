@@ -204,9 +204,9 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [selectionIntent, setSelectionIntent] = useState<'delete' | 'clone'>('delete');
 
     // Search and Column Filtering/Sorting
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'id', direction: 'descending' });
-    const [columnFilters, setColumnFilters] = useState<{ [key: string]: string[] }>({});
+    const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_other_searchTerm', '');
+    const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_other_sortConfig', { key: 'id', direction: 'descending' });
+    const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_other_columnFilters', {});
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 
@@ -357,7 +357,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
         });
     }, [items, searchTerm, sortConfig, columnFilters]);
 
-    const handleSort = (key: keyof OtherProgramExpense, direction: 'asc' | 'desc') => {
+    const handleSort = (key: keyof OtherProgramExpense, direction: 'ascending' | 'descending') => {
         setSortConfig({ key, direction });
     };
 
