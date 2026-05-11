@@ -271,42 +271,57 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
         };
 
         if (supabase) {
-            // Exclude ID and obligations from update payload
-            const { id, obligations, disbursements, ...payload } = updatedItem;
-            const { error } = await supabase.from('office_requirements').update(payload).eq('id', item.id);
-            if (error) {
-                alert('Failed to update: ' + error.message);
-                return;
-            }
+            try {
+                setIsSaving(true);
+                // Exclude ID and obligations from update payload
+                const { id, obligations, disbursements, ...payload } = updatedItem;
+                
+                console.log("Saving Office Requirement...", { id: item.id, payload });
+                const { error: updateError } = await supabase.from('office_requirements').update(payload).eq('id', item.id);
+                if (updateError) throw updateError;
 
-            // Sync obligations to centralized table
-            const entityType = 'office_requirement';
-            const parentId = item.id;
-            
-            // Delete old
-            await supabase.from('financial_obligations')
-                .delete()
-                .eq('entity_type', entityType)
-                .eq('parent_id', parentId);
-            
-            // Insert new
-            if (obligations && obligations.length > 0) {
-                const syncPayload = obligations.map((o: any) => ({
-                    entity_type: entityType,
-                    parent_id: parentId,
-                    obligation_date: o.date,
-                    amount: o.amount || 0,
-                    remarks: o.remarks || ''
-                }));
-                await supabase.from('financial_obligations').insert(syncPayload);
-            }
+                // Sync obligations to centralized table
+                const entityType = 'office_requirement';
+                const parentId = item.id;
+                
+                // Delete old
+                const { error: deleteError } = await supabase.from('financial_obligations')
+                    .delete()
+                    .eq('entity_type', entityType)
+                    .eq('parent_id', parentId);
+                
+                if (deleteError) {
+                    console.error("Error deleting old obligations:", deleteError);
+                    // We continue anyway, or we could throw. 
+                    // Usually best to at least try inserting the new ones.
+                }
+                
+                // Insert new
+                if (obligations && obligations.length > 0) {
+                    const syncPayload = obligations.map((o: any) => ({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        obligation_date: o.date,
+                        amount: Number(o.amount) || 0,
+                        remarks: o.remarks || ''
+                    }));
+                    
+                    const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
+                    if (insertError) throw insertError;
+                }
 
-            const metadata = getMonetaryChanges(item, updatedItem, 'Office');
-            logAction('Updated Office Requirement', updatedItem.equipment, undefined, 'Office Requirement', String(item.id), metadata);
+                const metadata = getMonetaryChanges(item, updatedItem, 'Office');
+                logAction('Updated Office Requirement', updatedItem.equipment, undefined, 'Office Requirement', String(item.id), metadata);
+                
+                onUpdate(updatedItem as OfficeRequirement);
+                setEditMode('none');
+            } catch (err: any) {
+                console.error("Error in OfficeRequirementDetail handleSubmit:", err);
+                alert("Failed to save changes: " + (err.message || "Unknown error"));
+            } finally {
+                setIsSaving(false);
+            }
         }
-        
-        onUpdate(updatedItem as OfficeRequirement);
-        setEditMode('none');
     };
 
     if (editMode === 'details') {

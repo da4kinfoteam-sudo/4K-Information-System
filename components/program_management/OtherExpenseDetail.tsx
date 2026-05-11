@@ -237,43 +237,56 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
         });
 
         if (supabase) {
-            // Exclude ID and obligations from payload
-            const { id, obligations, disbursements, ...payload } = updatedItem;
-            const { error } = await supabase.from('other_program_expenses').update(payload).eq('id', item.id);
-            if (error) {
-                alert('Failed to update: ' + error.message);
-                return;
-            }
+            try {
+                setIsSaving(true);
+                // Exclude ID and obligations from payload
+                const { id, obligations, disbursements, ...payload } = updatedItem;
+                
+                console.log("Saving Other Program Expense...", { id: item.id, payload });
+                const { error: updateError } = await supabase.from('other_program_expenses').update(payload).eq('id', item.id);
+                if (updateError) throw updateError;
 
-            // Sync obligations to centralized table
-            const entityType = 'other_program_expense';
-            const parentId = item.id;
-            
-            // Delete old
-            await supabase.from('financial_obligations')
-                .delete()
-                .eq('entity_type', entityType)
-                .eq('parent_id', parentId);
-            
-            // Insert new
-            if (obligations && obligations.length > 0) {
-                const syncPayload = obligations.map((o: any) => ({
-                    entity_type: entityType,
-                    parent_id: parentId,
-                    obligation_date: o.date,
-                    amount: o.amount || 0,
-                    remarks: o.remarks || ''
-                }));
-                await supabase.from('financial_obligations').insert(syncPayload);
-            }
+                // Sync obligations to centralized table
+                const entityType = 'other_program_expense';
+                const parentId = item.id;
+                
+                // Delete old
+                const { error: deleteError } = await supabase.from('financial_obligations')
+                    .delete()
+                    .eq('entity_type', entityType)
+                    .eq('parent_id', parentId);
+                
+                if (deleteError) {
+                    console.error("Error deleting old obligations:", deleteError);
+                }
+                
+                // Insert new
+                if (obligations && obligations.length > 0) {
+                    const syncPayload = obligations.map((o: any) => ({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        obligation_date: o.date,
+                        amount: Number(o.amount) || 0,
+                        remarks: o.remarks || ''
+                    }));
+                    
+                    const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
+                    if (insertError) throw insertError;
+                }
 
-            const metadata = getMonetaryChanges(item, updatedItem, 'Other');
-            logAction('Updated Other Program Expense', updatedItem.particulars, undefined, 'Other Program Expense', String(item.id), metadata);
+                const metadata = getMonetaryChanges(item, updatedItem, 'Other');
+                logAction('Updated Other Program Expense', updatedItem.particulars, undefined, 'Other Program Expense', String(item.id), metadata);
+                
+                onUpdate(updatedItem as OtherProgramExpense);
+                setEditMode('none');
+                console.log("Save successful!");
+            } catch (err: any) {
+                console.error("Error saving other program expense:", err);
+                alert("Failed to save changes: " + (err.message || "Unknown error"));
+            } finally {
+                setIsSaving(false);
+            }
         }
-
-        
-        onUpdate(updatedItem as OtherProgramExpense);
-        setEditMode('none');
     };
 
     if (editMode === 'details') {

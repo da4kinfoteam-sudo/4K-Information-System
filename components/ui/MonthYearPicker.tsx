@@ -69,8 +69,10 @@ export function MonthYearPicker({
           )}
           disabled={disabled}
         >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, "MMMM yyyy") : <span>{placeholder}</span>}
+          <CalendarIcon className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {date ? format(date, "MMM yyyy") : <span>{placeholder}</span>}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xl rounded-lg" align="start">

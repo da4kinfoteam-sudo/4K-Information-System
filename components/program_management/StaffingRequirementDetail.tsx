@@ -123,6 +123,51 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const [selectedParticular, setSelectedParticular] = useState('');
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+    // Virtualize legacy obligations on load and fetch from centralized table
+    useEffect(() => {
+        const fetchObligations = async () => {
+            if (!item?.id || !supabase) return;
+
+            console.log("Fetching obligations for Staffing Req...", item.id);
+            // Fetch from centralized table first
+            const { data, error } = await supabase
+                .from('financial_obligations')
+                .select('*')
+                .eq('entity_type', 'staffing_expense')
+                .eq('parent_id', item.id);
+
+            if (!error && data && data.length > 0) {
+                console.log("Fetched obligations from centralized table:", data.length);
+                // Group fetched obligations by item_id (which is the expense.id)
+                const obligationsByItem: { [key: string]: any[] } = {};
+                data.forEach(o => {
+                    const itemId = o.item_id || 'legacy';
+                    if (!obligationsByItem[itemId]) obligationsByItem[itemId] = [];
+                    obligationsByItem[itemId].push({
+                        id: o.id,
+                        date: o.obligation_date,
+                        amount: o.amount,
+                        remarks: o.remarks
+                    });
+                });
+
+                setExpensesList(prev => prev.map(exp => {
+                    const itemId = exp.id?.toString() || 'legacy';
+                    if (obligationsByItem[itemId]) {
+                        const obs = obligationsByItem[itemId];
+                        const total = obs.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+                        return { ...exp, obligations: obs, actualObligationAmount: total };
+                    }
+                    return exp;
+                }));
+            }
+        };
+
+        if (editMode !== 'none') {
+            fetchObligations();
+        }
+    }, [editMode, item.id]);
+
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
     const getInputClasses = (fieldName: string) => {
@@ -406,51 +451,62 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         };
 
         if (supabase) {
-            const { id, obligations, disbursements, ...payload } = updatedItem;
-            const { error } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
-            if (error) {
-                alert('Failed to update: ' + error.message);
-                return;
-            }
+            try {
+                setIsSaving(true);
+                const { id, obligations, disbursements, ...payload } = updatedItem;
+                
+                console.log("Saving Staffing Requirement...", { id: item.id, payload });
+                const { error: updateError } = await supabase.from('staffing_requirements').update(payload).eq('id', item.id);
+                if (updateError) throw updateError;
 
-            // Sync obligations to centralized table
-            const entityType = 'staffing_expense';
-            const parentId = item.id;
-            
-            // Delete all for this parent first
-            await supabase.from('financial_obligations')
-                .delete()
-                .eq('entity_type', entityType)
-                .eq('parent_id', parentId);
-            
-            // Insert all from all expenses
-            const syncPayload: any[] = [];
-            expensesList.forEach(exp => {
-                if (exp.obligations && exp.obligations.length > 0) {
-                    exp.obligations.forEach(o => {
-                        syncPayload.push({
-                            entity_type: entityType,
-                            parent_id: parentId,
-                            item_id: exp.id?.toString() || null,
-                            obligation_date: o.date,
-                            amount: o.amount || 0,
-                            remarks: o.remarks || ''
-                        });
-                    });
+                // Sync obligations to centralized table
+                const entityType = 'staffing_expense';
+                const parentId = item.id;
+                
+                // Delete old
+                const { error: deleteError } = await supabase.from('financial_obligations')
+                    .delete()
+                    .eq('entity_type', entityType)
+                    .eq('parent_id', parentId);
+                
+                if (deleteError) {
+                    console.error("Error deleting old obligations:", deleteError);
                 }
-            });
+                
+                // Insert new
+                const syncPayload: any[] = [];
+                expensesList.forEach(exp => {
+                    if (exp.obligations && exp.obligations.length > 0) {
+                        exp.obligations.forEach(o => {
+                            syncPayload.push({
+                                entity_type: entityType,
+                                parent_id: parentId,
+                                item_id: exp.id?.toString() || null,
+                                obligation_date: o.date,
+                                amount: Number(o.amount) || 0,
+                                remarks: o.remarks || ''
+                            });
+                        });
+                    }
+                });
 
-            if (syncPayload.length > 0) {
-                await supabase.from('financial_obligations').insert(syncPayload);
+                if (syncPayload.length > 0) {
+                    const { error: insertError } = await supabase.from('financial_obligations').insert(syncPayload);
+                    if (insertError) throw insertError;
+                }
+
+                const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');
+                logAction('Updated Staffing Requirement', updatedItem.particulars || updatedItem.position, undefined, 'Staffing Requirement', String(item.id), metadata);
+                
+                onUpdate(updatedItem as StaffingRequirement);
+                setEditMode('none');
+            } catch (err: any) {
+                console.error("Error saving staffing requirement:", err);
+                alert("Failed to save changes: " + (err.message || "Unknown error"));
+            } finally {
+                setIsSaving(false);
             }
-
-            const metadata = getMonetaryChanges(item, updatedItem, 'Staffing');
-            logAction('Updated Staffing Requirement', updatedItem.particulars || updatedItem.position, undefined, 'Staffing Requirement', String(item.id), metadata);
         }
-
-        
-        onUpdate(updatedItem as StaffingRequirement);
-        setEditMode('none');
     };
 
     if (editMode === 'details') {

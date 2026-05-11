@@ -1327,13 +1327,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Actual Obli */}
-                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
-                                                                            <ObligationsEditor 
-                                                                                obligations={item.obligations || []}
-                                                                                onChange={(newObs, total) => updateLocalItem(item.uniqueId, { obligations: newObs, actualObligationAmount: total })}
-                                                                                defaultYear={selectedYear}
-                                                                                readOnly={!canEdit}
-                                                                            />
+                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5 text-center" colSpan={2}>
+                                                                            <div className="flex flex-col items-center">
+                                                                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                                                                    {formatCurrency(item.actualObligationAmount)}
+                                                                                </span>
+                                                                                {item.actualObligationMonth && (
+                                                                                    <span className="text-[9px] text-gray-500 uppercase font-medium">
+                                                                                        {new Date(item.actualObligationMonth).toLocaleDateString(undefined, {month:'short', year:'numeric'})}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
                                                                         </td>
 
                                                                         {/* Target Disb */}
