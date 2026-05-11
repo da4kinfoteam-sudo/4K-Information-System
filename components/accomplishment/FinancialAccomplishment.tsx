@@ -107,7 +107,11 @@ const formatCurrency = (amount: number) => {
 
 // Helper to normalize legacy obligations to the new array structure
 const getInitialObligations = (existingArr: ObligationRecord[] | undefined, date: string, amount: number) => {
+    // If we have an existing array with elements, use it. 
+    // This preserves multiple entries if they were saved in the JSONB field.
     if (existingArr && existingArr.length > 0) return existingArr;
+    
+    // Fallback for truly legacy single-entry fields
     if (amount > 0) {
         return [{
             id: Date.now() + Math.floor(Math.random() * 1000),
@@ -120,7 +124,9 @@ const getInitialObligations = (existingArr: ObligationRecord[] | undefined, date
 };
 
 const getInitialDisbursements = (existingArr: DisbursementRecord[] | undefined, date: string, amount: number) => {
+    // Similarly for disbursements
     if (existingArr && existingArr.length > 0) return existingArr;
+    
     if (amount > 0) {
         return [{
             id: Date.now() + Math.floor(Math.random() * 1000),
@@ -1429,20 +1435,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Actual Obli */}
-                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5 text-center" colSpan={2}>
-                                                                            <div className="flex flex-col items-center">
-                                                                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                                                                    {formatCurrency(item.actualObligationAmount)}
-                                                                                </span>
-                                                                                {item.actualObligationMonth && (
-                                                                                    <span className="text-[9px] text-gray-500 uppercase font-medium leading-tight text-center">
-                                                                                        {(() => {
-                                                                                            const date = new Date(item.actualObligationMonth);
-                                                                                            return isNaN(date.getTime()) ? item.actualObligationMonth : date.toLocaleDateString(undefined, {month:'short', year:'numeric'});
-                                                                                        })()}
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
+                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
+                                                                            <ObligationsEditor
+                                                                                obligations={item.obligations || []}
+                                                                                onChange={(newObs, total) => updateLocalItem(item.uniqueId, { obligations: newObs, actualObligationAmount: total })}
+                                                                                defaultYear={selectedYear?.toString()}
+                                                                                readOnly={!canEdit}
+                                                                            />
                                                                         </td>
 
                                                                         {/* Target Disb */}
@@ -1486,17 +1485,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 </div>
                                                                             </td>
                                                                         ) : (
-                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5 text-center" colSpan={2}>
-                                                                                <div className="flex flex-col items-center">
-                                                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                                                                        {formatCurrency(item.actualDisbursementAmount)}
-                                                                                    </span>
-                                                                                    {item.actualDisbursementMonth && (
-                                                                                        <span className="text-[9px] text-gray-500 uppercase font-medium leading-tight text-center">
-                                                                                            {new Date(item.actualDisbursementMonth).toLocaleDateString(undefined, {month:'short', year:'numeric'})}
-                                                                                        </span>
-                                                                                    )}
-                                                                                </div>
+                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
+                                                                                <DisbursementsEditor
+                                                                                    disbursements={item.disbursements || []}
+                                                                                    onChange={(newDibs, total) => updateLocalItem(item.uniqueId, { disbursements: newDibs, actualDisbursementAmount: total })}
+                                                                                    defaultYear={selectedYear?.toString()}
+                                                                                    readOnly={!canEdit}
+                                                                                />
                                                                             </td>
                                                                         )}
 

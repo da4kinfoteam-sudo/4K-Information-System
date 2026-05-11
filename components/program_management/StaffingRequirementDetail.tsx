@@ -133,6 +133,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             if (expensesList.length === 0) {
                 setExpensesList(displayExpenses);
             }
+            
             // Fetch from centralized table first
             const { data, error } = await supabase
                 .from('financial_obligations')
@@ -142,28 +143,34 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
             if (!error && data && data.length > 0) {
                 console.log("Fetched obligations from centralized table:", data.length);
-                // Group fetched obligations by item_id (which is the expense.id)
+                // Group fetched obligations by item_id (which corresponds to the expense index or id)
                 const obligationsByItem: { [key: string]: any[] } = {};
                 data.forEach(o => {
-                    const itemId = o.item_id || 'legacy';
-                    if (!obligationsByItem[itemId]) obligationsByItem[itemId] = [];
-                    obligationsByItem[itemId].push({
-                        id: o.id,
-                        date: o.obligation_date,
-                        amount: o.amount,
-                        remarks: o.remarks
-                    });
+                    // Use item_id as the key
+                    const itemId = o.item_id;
+                    if (itemId) {
+                        if (!obligationsByItem[itemId]) obligationsByItem[itemId] = [];
+                        obligationsByItem[itemId].push({
+                            id: o.id,
+                            date: o.obligation_date,
+                            amount: o.amount,
+                            remarks: o.remarks
+                        });
+                    }
                 });
 
-                setExpensesList(prev => prev.map(exp => {
-                    const itemId = exp.id?.toString() || 'legacy';
-                    if (obligationsByItem[itemId]) {
-                        const obs = obligationsByItem[itemId];
-                        const total = obs.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
-                        return { ...exp, obligations: obs, actualObligationAmount: total };
-                    }
-                    return exp;
-                }));
+                setExpensesList(prev => {
+                    const currentList = prev.length > 0 ? prev : displayExpenses;
+                    return currentList.map(exp => {
+                        const itemId = exp.id?.toString();
+                        if (itemId && obligationsByItem[itemId]) {
+                            const obs = obligationsByItem[itemId];
+                            const total = obs.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+                            return { ...exp, obligations: obs, actualObligationAmount: total };
+                        }
+                        return exp;
+                    });
+                });
             }
         };
 

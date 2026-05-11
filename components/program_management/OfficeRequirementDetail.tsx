@@ -75,7 +75,13 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     amount: o.amount,
                     remarks: o.remarks
                 }));
-                setFormData(prev => ({ ...prev, obligations: mappedObligations }));
+                // CRITICAL: Also update the actualObligationAmount to match the sum of centralized records
+                const totalAmount = mappedObligations.reduce((sum, ob) => sum + (Number(ob.amount) || 0), 0);
+                setFormData(prev => ({ 
+                    ...prev, 
+                    obligations: mappedObligations,
+                    actualObligationAmount: totalAmount 
+                }));
             } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
                 // Legacy Fallback: Only if centralized table is empty
                 const virtualObligations = [{
