@@ -39,23 +39,32 @@ const formatDate = (dateString?: string | null) => {
 
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(toSafeNumber(amount));
 }
 
-const formatCompactNumber = (amount: number, maximumFractionDigits = 1) => {
+const toSafeNumber = (value: number | string | null | undefined) => {
+    const parsed = Number(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatFullNumber = (value: number | string | null | undefined) => {
+    return toSafeNumber(value).toLocaleString();
+};
+
+const formatCompactNumber = (amount: number | string | null | undefined, maximumFractionDigits = 1) => {
     return new Intl.NumberFormat('en-US', {
         notation: 'compact',
         maximumFractionDigits
-    }).format(amount);
+    }).format(toSafeNumber(amount));
 };
 
-const formatCompactCurrency = (amount: number) => {
+const formatCompactCurrency = (amount: number | string | null | undefined) => {
     return new Intl.NumberFormat('en-PH', {
         style: 'currency',
         currency: 'PHP',
         notation: 'compact',
         maximumFractionDigits: 1
-    }).format(amount);
+    }).format(toSafeNumber(amount));
 };
 
 const getStatusBadge = (status: Subproject['status']) => {
@@ -96,9 +105,10 @@ const OverviewMetric: React.FC<{ label: string; value: string; fullValue?: strin
     </div>
 );
 
-const MembershipRow: React.FC<{ label: string; value?: number }> = ({ label, value = 0 }) => {
-    const fullValue = value.toLocaleString();
-    const displayValue = Math.abs(value) >= 100000 ? formatCompactNumber(value) : fullValue;
+const MembershipRow: React.FC<{ label: string; value?: number | string | null }> = ({ label, value }) => {
+    const numericValue = toSafeNumber(value);
+    const fullValue = formatFullNumber(numericValue);
+    const displayValue = Math.abs(numericValue) >= 100000 ? formatCompactNumber(numericValue) : fullValue;
 
     return (
         <div className="flex min-w-0 flex-col gap-1 border-b border-gray-200 pb-2 dark:border-gray-700 sm:flex-row sm:items-start sm:justify-between">
@@ -305,22 +315,22 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
         // 2. Investment Calculation
         const subprojectInvestment = completedSubprojects.reduce((sum, sp) => {
-            return sum + (sp.details || []).reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+            return sum + (sp.details || []).reduce((dSum, d) => dSum + (toSafeNumber(d.pricePerUnit) * toSafeNumber(d.numberOfUnits)), 0);
         }, 0);
 
         const trainingInvestment = completedTrainings.reduce((sum, t) => {
-            return sum + (t.expenses || []).reduce((eSum, e) => eSum + e.amount, 0);
+            return sum + (t.expenses || []).reduce((eSum, e) => eSum + toSafeNumber(e.amount), 0);
         }, 0);
 
         const totalInvestment = subprojectInvestment + trainingInvestment;
 
         // 4. Total Allocation (regardless of status)
         const subprojectAllocation = (subprojects || []).reduce((sum, sp) => {
-            return sum + (sp.details || []).reduce((dSum, d) => dSum + (d.pricePerUnit * d.numberOfUnits), 0);
+            return sum + (sp.details || []).reduce((dSum, d) => dSum + (toSafeNumber(d.pricePerUnit) * toSafeNumber(d.numberOfUnits)), 0);
         }, 0);
 
         const trainingAllocation = (trainings || []).reduce((sum, t) => {
-            return sum + (t.expenses || []).reduce((eSum, e) => eSum + e.amount, 0);
+            return sum + (t.expenses || []).reduce((eSum, e) => eSum + toSafeNumber(e.amount), 0);
         }, 0);
 
         const totalAllocation = subprojectAllocation + trainingAllocation;
@@ -328,13 +338,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
         // 5. Total Area (Crops only)
         const totalArea = (ipo.commodities || [])?.reduce((sum, c) => {
             if (c.type !== 'Livestock') {
-                return sum + (c.value || 0);
+                return sum + toSafeNumber(c.value);
             }
             return sum;
         }, 0) || 0;
 
         // 3. Income Calculation
-        const totalIncome = (ipo.commodities || [])?.reduce((sum, c) => sum + (c.averageIncome || 0), 0) || 0;
+        const totalIncome = (ipo.commodities || [])?.reduce((sum, c) => sum + toSafeNumber(c.averageIncome), 0) || 0;
 
         return {
             completedSPCount: completedSubprojects.length,
@@ -592,8 +602,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
         }
     };
 
-    const calculateTotalBudget = (details: Subproject['details']) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    const calculateTotalBudget = (details?: Subproject['details'] | null) => {
+        return (details || []).reduce((total, item) => total + (toSafeNumber(item.pricePerUnit) * toSafeNumber(item.numberOfUnits)), 0);
     }
     
     const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
@@ -701,7 +711,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                             <span className="font-semibold break-words">{commodity.particular}</span>
                                             <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                             <span>
-                                                {commodity.value.toLocaleString()} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
+                                                {formatFullNumber(commodity.value)} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                             </span>
                                             {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
@@ -921,7 +931,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                     {(c.averageIncome || 0) > 0 && <span title={formatCurrency(c.averageIncome || 0)}>Inc: {formatCompactCurrency(c.averageIncome || 0)}</span>}
                                                 </div>
                                             </div>
-                                            <span className="font-medium sm:text-right" title={`${c.value.toLocaleString()} ${c.type === 'Livestock' ? 'heads' : 'ha'}${c.yield ? ` | Y: ${c.yield}` : ''}`}>
+                                            <span className="font-medium sm:text-right" title={`${formatFullNumber(c.value)} ${c.type === 'Livestock' ? 'heads' : 'ha'}${c.yield ? ` | Y: ${c.yield}` : ''}`}>
                                                 {formatCompactNumber(c.value)} {c.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {c.yield ? ` | Y: ${c.yield}` : ''}
                                             </span>
