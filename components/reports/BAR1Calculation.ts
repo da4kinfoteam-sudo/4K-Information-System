@@ -18,6 +18,10 @@ export interface BAR1Counter {
     m10_items: string[]; m11_items: string[]; m12_items: string[];
 }
 
+interface BAR1CalculationOptions {
+    asOfDate?: string;
+}
+
 export const initializeCounter = (): BAR1Counter => ({
     m1: 0, m2: 0, m3: 0, q1: 0,
     m4: 0, m5: 0, m6: 0, q2: 0,
@@ -95,7 +99,21 @@ export const calculateBAR1ReportData = (data: {
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
     ipos: IPO[];
-}, selectedYear: string, selectedOu: string) => {
+}, selectedYear: string, selectedOu: string, options: BAR1CalculationOptions = {}) => {
+    const asOfCutoff = options.asOfDate ? new Date(`${options.asOfDate}T23:59:59.999`) : null;
+    const isSubmittedByAsOf = (item: { updated_at?: string; created_at?: string }) => {
+        if (!asOfCutoff) return true;
+        const submissionDate = item.updated_at || item.created_at;
+        if (!submissionDate) return true;
+        const submittedAt = new Date(submissionDate);
+        if (Number.isNaN(submittedAt.getTime())) return true;
+        return submittedAt <= asOfCutoff;
+    };
+    const actualDateIfSubmitted = <T extends { updated_at?: string; created_at?: string }>(item: T, actualDate?: string) => {
+        if (!actualDate) return undefined;
+        return isSubmittedByAsOf(item) ? actualDate : undefined;
+    };
+
     const finalData: { [key: string]: any } = {
         'Social Preparation': [],
         'Production and Livelihood': { isNestedExpandable: true, packages: {} },
@@ -124,7 +142,7 @@ export const calculateBAR1ReportData = (data: {
     const allActualADs = data.subprojects.map(sp => ({
         id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-        date: sp.actualCompletionDate
+        date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
     })).filter(x => x.id);
 
     const allTargetIPOs = data.subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
@@ -135,7 +153,7 @@ export const calculateBAR1ReportData = (data: {
     const allActualIPOs = data.subprojects.map(sp => ({
         id: sp.indigenousPeopleOrganization,
         label: sp.indigenousPeopleOrganization,
-        date: sp.actualCompletionDate
+        date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
     }));
 
     finalData['Production and Livelihood'].packages['Subproject Reach'] = {
@@ -174,7 +192,7 @@ export const calculateBAR1ReportData = (data: {
         const actualADs = subprojects.map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            date: sp.actualCompletionDate
+            date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
         })).filter(x => x.id);
 
         pkgItems.push({
@@ -191,7 +209,7 @@ export const calculateBAR1ReportData = (data: {
         const actualIPOs = subprojects.map(sp => ({
             id: sp.indigenousPeopleOrganization,
             label: sp.indigenousPeopleOrganization,
-            date: sp.actualCompletionDate
+            date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
         }));
 
         pkgItems.push({
@@ -201,7 +219,7 @@ export const calculateBAR1ReportData = (data: {
         });
 
         const targetSPs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
-        const actualSPs = subprojects.map(sp => ({ val: 1, date: sp.actualCompletionDate, label: sp.name }));
+        const actualSPs = subprojects.map(sp => ({ val: 1, date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name }));
         pkgItems.push({
             indicator: "Number of Subprojects",
             target: calculateSumOverTime(targetSPs),
@@ -215,7 +233,7 @@ export const calculateBAR1ReportData = (data: {
         if (relevantTrainings.length === 0 && !isPackage) return; // Skip empty groups? Original didn't skip, but it keeps it clean. Wait, original didn't skip.
 
         const getTargetDate = (t: Training) => t.endDate || t.date;
-        const getActualDate = (t: Training) => t.actualDate;
+        const getActualDate = (t: Training) => actualDateIfSubmitted(t, t.actualDate);
         const targetTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
         const actualTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getActualDate(t) }));
         const targetIPOs: { id: string, label: string, date?: string }[] = [];
@@ -285,7 +303,7 @@ export const calculateBAR1ReportData = (data: {
 
         Object.entries(groups).forEach(([name, activities]) => {
             const targetConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
-            const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.actualDate }));
+            const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate) }));
 
             const targetIPOs: { id: string, label: string, date?: string }[] = [];
             const actualIPOs: { id: string, label: string, date?: string }[] = [];
@@ -294,7 +312,8 @@ export const calculateBAR1ReportData = (data: {
                 if (a.participatingIpos) {
                     a.participatingIpos.forEach(ipo => {
                         targetIPOs.push({ id: ipo, label: ipo, date: a.date });
-                        if (a.actualDate) actualIPOs.push({ id: ipo, label: ipo, date: a.actualDate });
+                        const actualDate = actualDateIfSubmitted(a, a.actualDate);
+                        if (actualDate) actualIPOs.push({ id: ipo, label: ipo, date: actualDate });
                     });
                 }
             });
@@ -383,7 +402,8 @@ export const calculateBAR1ReportData = (data: {
             const indicator = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
             const count = isStaff ? 1 : (pm.numberOfUnits || 1);
             const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
-            const item = createBar1Item(indicator, count, pm.obligationDate, pm.actualDate || pm.actualObligationDate, itemName);
+            const actualDate = actualDateIfSubmitted(pm, pm.actualDate || pm.actualObligationDate);
+            const item = createBar1Item(indicator, count, pm.obligationDate, actualDate, itemName);
             addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
         });
     }

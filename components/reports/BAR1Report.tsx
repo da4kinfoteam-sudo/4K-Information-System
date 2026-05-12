@@ -1,10 +1,9 @@
 
 // Author: 4K 
-import React, { useMemo, useState, useEffect } from 'react';
-import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
+import React, { useMemo, useState } from 'react';
+import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
 import { XLSX } from './ReportUtils';
 import { calculateBAR1ReportData } from './BAR1Calculation';
-import { supabase } from '../../supabaseClient';
 
 interface DetailPopup {
     indicator: string;
@@ -28,78 +27,17 @@ interface BAR1ReportProps {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    deadlines: Deadline[];
 }
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType, deadlines }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
 
-    // Snapshot States
-    const [selectedSnapshotDate, setSelectedSnapshotDate] = useState<string>('live');
-    const [availableSnapshotDates, setAvailableSnapshotDates] = useState<string[]>([]);
-    const [snapshotData, setSnapshotData] = useState<any>(null);
-    const [isLoadingSnapshot, setIsLoadingSnapshot] = useState(false);
-
-    // Fetch available snapshot dates when filters change
-    useEffect(() => {
-        if (!supabase) return;
-        
-        async function fetchAvailableDates() {
-            const { data: snapshots, error } = await supabase
-                .from('bar1_report_snapshots')
-                .select('snapshot_date')
-                .eq('operating_unit', selectedOu)
-                .eq('fund_year', parseInt(selectedYear))
-                .eq('fund_type', selectedFundType)
-                .eq('tier', selectedTier)
-                .order('snapshot_date', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching snapshot dates:', error);
-                return;
-            }
-
-            const dates = snapshots.map(s => s.snapshot_date);
-            setAvailableSnapshotDates(dates);
-            
-            // If the currently selected snapshot date is no longer in the list, reset to live
-            if (selectedSnapshotDate !== 'live' && !dates.includes(selectedSnapshotDate)) {
-                setSelectedSnapshotDate('live');
-            }
-        }
-
-        fetchAvailableDates();
-    }, [selectedOu, selectedYear, selectedFundType, selectedTier]);
-
-    // Fetch specific snapshot data when selected
-    useEffect(() => {
-        if (selectedSnapshotDate === 'live' || !supabase) {
-            setSnapshotData(null);
-            return;
-        }
-
-        async function fetchSnapshot() {
-            setIsLoadingSnapshot(true);
-            const { data: snapshot, error } = await supabase
-                .from('bar1_report_snapshots')
-                .select('report_data')
-                .eq('operating_unit', selectedOu)
-                .eq('fund_year', parseInt(selectedYear))
-                .eq('fund_type', selectedFundType)
-                .eq('tier', selectedTier)
-                .eq('snapshot_date', selectedSnapshotDate)
-                .single();
-
-            if (error) {
-                console.error('Error fetching snapshot data:', error);
-            } else {
-                setSnapshotData(snapshot.report_data);
-            }
-            setIsLoadingSnapshot(false);
-        }
-
-        fetchSnapshot();
-    }, [selectedSnapshotDate, selectedOu, selectedYear, selectedFundType, selectedTier]);
+    const [selectedAsOfDate, setSelectedAsOfDate] = useState<string>('');
+    const sortedDeadlines = useMemo(() => {
+        return [...deadlines].sort((a, b) => a.date.localeCompare(b.date));
+    }, [deadlines]);
 
     const toggleRow = (key: string) => {
         setExpandedRows(prev => {
@@ -113,11 +51,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
 
     const bar1Data = useMemo(() => {
-        if (selectedSnapshotDate !== 'live' && snapshotData) {
-            return snapshotData;
-        }
-        return calculateBAR1ReportData(data, selectedYear, selectedOu);
-    }, [data, selectedSnapshotDate, snapshotData, selectedYear, selectedOu]);
+        return calculateBAR1ReportData(data, selectedYear, selectedOu, { asOfDate: selectedAsOfDate || undefined });
+    }, [data, selectedYear, selectedOu, selectedAsOfDate]);
 
     const calculateTotals = (items: any[]) => {
         const initial = {
@@ -599,26 +534,35 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
                     
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 rounded-lg shadow-sm">
-                        <label htmlFor="snapshot-date" className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap">View Date:</label>
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 rounded-lg shadow-sm">
+                        <label htmlFor="as-of-date-preset" className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap">As of:</label>
                         <select
-                            id="snapshot-date"
-                            value={selectedSnapshotDate}
-                            onChange={(e) => setSelectedSnapshotDate(e.target.value)}
+                            id="as-of-date-preset"
+                            value={selectedAsOfDate || 'current'}
+                            onChange={(e) => setSelectedAsOfDate(e.target.value === 'current' ? '' : e.target.value)}
                             className="bg-transparent border-none text-xs font-bold text-emerald-900 dark:text-white focus:ring-0 cursor-pointer p-0 pr-6"
                         >
-                            <option value="live" className="text-gray-900 dark:text-white dark:bg-gray-800">Current Live Data</option>
-                            {availableSnapshotDates.map(date => (
-                                <option key={date} value={date} className="text-gray-900 dark:text-white dark:bg-gray-800">
-                                    Snapshot: {new Date(date).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            <option value="current" className="text-gray-900 dark:text-white dark:bg-gray-800">Current approved data</option>
+                            {sortedDeadlines.map(deadline => (
+                                <option key={deadline.id} value={deadline.date} className="text-gray-900 dark:text-white dark:bg-gray-800">
+                                    {deadline.name}: {new Date(deadline.date + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                                 </option>
                             ))}
                         </select>
-                        {isLoadingSnapshot && (
-                            <svg className="animate-spin h-3 w-3 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                        <input
+                            type="date"
+                            value={selectedAsOfDate}
+                            onChange={(e) => setSelectedAsOfDate(e.target.value)}
+                            className="bg-white/70 dark:bg-gray-800/80 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 text-xs font-bold text-emerald-900 dark:text-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                        {selectedAsOfDate && (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedAsOfDate('')}
+                                className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
+                            >
+                                Clear
+                            </button>
                         )}
                     </div>
                 </div>

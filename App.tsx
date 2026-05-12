@@ -851,6 +851,7 @@ const AppContent: React.FC = () => {
                             officeReqs={visibleOfficeReqs}
                             staffingReqs={visibleStaffingReqs}
                             otherProgramExpenses={visibleOtherExpenses}
+                            deadlines={deadlines}
                             uacsCodes={derivedUacsCodes}
                         />;
             case '/subproject-detail':

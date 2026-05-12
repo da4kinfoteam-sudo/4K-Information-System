@@ -348,6 +348,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         if (!canEdit) return;
 
         try {
+            const submittedAt = new Date().toISOString();
+
             if (item.sourceType === 'Subproject') {
                 if (item.isParent) {
                     // Save parent status/date AND children cascading
@@ -376,12 +378,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             actualCompletionDate: item.actualDateStart || null,
                             estimatedCompletionDate: item.targetDateStart || null,
                             status: newStatus,
-                            details: updatedDetails
+                            details: updatedDetails,
+                            updated_at: submittedAt
                         }).eq('id', sp.id);
                     }
 
                     // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails, updated_at: submittedAt } : s));
 
                 } else {
                     // Save Individual Child Row
@@ -404,9 +407,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     });
 
                     if (supabase) {
-                        await supabase.from('subprojects').update({ details: updatedDetails }).eq('id', sp.id);
+                        await supabase.from('subprojects').update({ details: updatedDetails, updated_at: submittedAt }).eq('id', sp.id);
                     }
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails, updated_at: submittedAt } : s));
                 }
 
             } else if (item.sourceType === 'Activity') {
@@ -422,7 +425,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     endDate: item.targetDateEnd || item.targetDateStart,
                     participantsMale: item.targetMale,
                     participantsFemale: item.targetFemale,
-                    status: newStatus
+                    status: newStatus,
+                    updated_at: submittedAt
                 };
 
                 if (supabase) {
@@ -434,8 +438,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                  // Update Date Hired and Target Date
                  const payload = { 
                      actualObligationDate: item.actualDateStart,
-                     obligationDate: item.targetDateStart
-                 };
+                     obligationDate: item.targetDateStart,
+                     updated_at: submittedAt
+                  };
                  if (supabase) {
                     await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
                  }
@@ -446,7 +451,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 const payload = { 
                     actualObligationDate: item.actualDateStart,
                     obligationDate: item.targetDateStart,
-                    numberOfUnits: item.targetQty
+                    numberOfUnits: item.targetQty,
+                    updated_at: submittedAt
                 }; 
                 if (supabase) {
                     await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);

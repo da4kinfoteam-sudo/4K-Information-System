@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, tiers, fundTypes, operatingUnits, ouToRegionMap, filterYears } from '../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, Deadline, tiers, fundTypes, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import WFPReport from './reports/WFPReport';
 import BPFormsReport from './reports/BPFormsReport';
 import BEDSReport from './reports/BEDSReport';
@@ -19,14 +19,13 @@ interface ReportsProps {
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
+    deadlines: Deadline[];
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix';
 
-import { generateBar1Snapshots } from '../services/snapshotService';
-
-const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, uacsCodes }) => {
+const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, deadlines, uacsCodes }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Reports');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
@@ -43,31 +42,6 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser, isLockedToOwnOu]);
-    
-    // Snapshot Management
-    const [isGeneratingSnapshots, setIsGeneratingSnapshots] = useState(false);
-    const [snapshotStatus, setSnapshotStatus] = useState<{success?: boolean, error?: string, count?: number} | null>(null);
-
-    const handleGenerateSnapshots = async () => {
-        setIsGeneratingSnapshots(true);
-        setSnapshotStatus(null);
-        const result = await generateBar1Snapshots();
-        setSnapshotStatus(result);
-        setIsGeneratingSnapshots(false);
-    };
-
-    // Auto-capture logic: Run once a day if Admin is viewing reports
-    useEffect(() => {
-        const lastCapture = localStorage.getItem('last_bar1_snapshot_capture');
-        const today = new Date().toISOString().split('T')[0];
-        
-        if (currentUser?.role === 'Administrator' && lastCapture !== today && activeTab === 'BAR1') {
-            handleGenerateSnapshots().then(() => {
-                localStorage.setItem('last_bar1_snapshot_capture', today);
-            });
-        }
-    }, [currentUser, activeTab]);
-
     // Enforce User OU restriction on mount/change
     useEffect(() => {
         if (currentUser && currentUser.role === 'User') {
@@ -198,7 +172,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             case 'PICS':
                 return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BAR1':
-                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
+                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} />;
             case 'Budget Utilization Report':
                 return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Monthly Matrix':
