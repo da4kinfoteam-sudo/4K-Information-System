@@ -39,6 +39,8 @@ export type FinancialLine = {
     uacsCode?: string;
     obligationMonth?: string;
     obligationDate?: string;
+    disbursementMonth?: string;
+    disbursementDate?: string;
     actualObligationAmount?: number;
     actualObligationDate?: string;
     actualDisbursementAmount?: number;
@@ -169,38 +171,47 @@ export const getFinancialAllocation = (line: FinancialLine) => {
 
 const createMonthlyArray = () => Array.from({ length: 12 }, () => 0);
 
+type MonthlyActualOptions = {
+    year: YearFilter;
+    fallbackYear?: string | number;
+    fallbackDate?: string;
+};
+
+const getActualMonthIndex = (actualDate?: string, fallbackDate?: string) =>
+    getFinancialMonthIndex(actualDate) ?? getFinancialMonthIndex(fallbackDate) ?? 11;
+
 export const getActualObligationsByMonth = (
     line: FinancialLine,
-    options: { year: YearFilter; fallbackYear?: string | number }
+    options: MonthlyActualOptions
 ) => {
     const monthly = createMonthlyArray();
 
     if (line.obligations && line.obligations.length > 0) {
         line.obligations.forEach(obligation => {
             if (!matchesActualYear(obligation.date, options.fallbackYear, options.year)) return;
-            const month = getFinancialMonthIndex(obligation.date);
-            if (month !== undefined) monthly[month] += toNumber(obligation.amount);
+            const month = getActualMonthIndex(obligation.date, options.fallbackDate);
+            monthly[month] += toNumber(obligation.amount);
         });
         return monthly;
     }
 
     if (!matchesActualYear(line.actualObligationDate, options.fallbackYear, options.year)) return monthly;
-    const month = getFinancialMonthIndex(line.actualObligationDate);
-    if (month !== undefined) monthly[month] += toNumber(line.actualObligationAmount);
+    const month = getActualMonthIndex(line.actualObligationDate, options.fallbackDate);
+    monthly[month] += toNumber(line.actualObligationAmount);
     return monthly;
 };
 
 export const getActualDisbursementsByMonth = (
     line: FinancialLine,
-    options: { year: YearFilter; fallbackYear?: string | number }
+    options: MonthlyActualOptions
 ) => {
     const monthly = createMonthlyArray();
 
     if (line.disbursements && line.disbursements.length > 0) {
         line.disbursements.forEach(disbursement => {
             if (!matchesActualYear(disbursement.date, options.fallbackYear, options.year)) return;
-            const month = getFinancialMonthIndex(disbursement.date);
-            if (month !== undefined) monthly[month] += toNumber(disbursement.amount);
+            const month = getActualMonthIndex(disbursement.date, options.fallbackDate);
+            monthly[month] += toNumber(disbursement.amount);
         });
         return monthly;
     }
@@ -215,8 +226,8 @@ export const getActualDisbursementsByMonth = (
     }
 
     if (!matchesActualYear(line.actualDisbursementDate, options.fallbackYear, options.year)) return monthly;
-    const month = getFinancialMonthIndex(line.actualDisbursementDate);
-    if (month !== undefined) monthly[month] += toNumber(line.actualDisbursementAmount);
+    const month = getActualMonthIndex(line.actualDisbursementDate, options.fallbackDate);
+    monthly[month] += toNumber(line.actualDisbursementAmount);
     return monthly;
 };
 
@@ -292,8 +303,10 @@ const addLineItem = (
     const alloc = includeTarget ? getFinancialAllocation(line) : 0;
     const obli = includeActual ? getActualObligationTotal(line, { year: filters.year, fallbackYear }) : 0;
     const disb = includeActual ? getActualDisbursementTotal(line, { year: filters.year, fallbackYear }) : 0;
-    const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: filters.year, fallbackYear }) : createMonthlyArray();
-    const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: filters.year, fallbackYear }) : createMonthlyArray();
+    const targetDate = metadata.targetDate || line.obligationMonth || line.obligationDate;
+    const disbursementTargetDate = line.disbursementMonth || line.disbursementDate || targetDate;
+    const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: targetDate }) : createMonthlyArray();
+    const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: disbursementTargetDate }) : createMonthlyArray();
 
     if (alloc === 0 && obli === 0 && disb === 0) return;
 
@@ -313,7 +326,7 @@ const addLineItem = (
         alloc,
         obli,
         disb,
-        targetMonth: includeTarget ? getFinancialMonthIndex(metadata.targetDate || line.obligationMonth || line.obligationDate) : undefined,
+        targetMonth: includeTarget ? getFinancialMonthIndex(targetDate) : undefined,
         obligationByMonth,
         disbursementByMonth,
     });
