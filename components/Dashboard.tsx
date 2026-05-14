@@ -7,6 +7,8 @@ import { Subproject, IPO, Activity, OfficeRequirement, StaffingRequirement, Othe
 import Calendar, { CalendarEvent } from './Calendar'; // Updated Import
 import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
+import { aggregateHomepageFinancials } from '../lib/financialAggregation';
+import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -374,126 +376,41 @@ const Dashboard: React.FC<DashboardProps> = ({
     // ... (Dashboard Calculations and Helper functions remain same)
 
     const dashboardStats = useMemo(() => {
-        // 4. Ancestral Domains (ADs)
-        const ipoRegistryMap = new Map<string, IPO>(ipos.map(i => [i.name, i]));
-
-        const getAds = (ipoNames: Set<string>) => {
-            const ads = new Set<string>();
-            ipoNames.forEach(name => {
-                const ipo = ipoRegistryMap.get(name);
-                if (ipo && ipo.ancestralDomainNo) ads.add(ipo.ancestralDomainNo);
-            });
-            return ads;
+        const aggregationFilters = {
+            year: selectedYear,
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
         };
-
-        const getObligationTotal = (item: any) => {
-            if (item.obligations && item.obligations.length > 0) {
-                return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
-            }
-            return Number(item.actualObligationAmount) || 0;
-        };
-
-        const getDisbursementTotal = (item: any) => {
-            if (item.disbursements && item.disbursements.length > 0) {
-                return item.disbursements.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
-            }
-            const legacyTotal = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                .reduce((sum, m) => sum + (Number(item[`actualDisbursement${m}`]) || 0), 0);
-            return legacyTotal || Number(item.actualDisbursementAmount) || 0;
-        };
-
-        // 1. Financials
-        let spAlloc = 0, spObli = 0, spDisb = 0;
-        (filteredData.subprojects || []).forEach(sp => {
-            const alloc = (sp.details || []).reduce((acc, d) => acc + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = (sp.details || []).reduce((acc, d) => acc + getObligationTotal(d), 0);
-            const disb = (sp.details || []).reduce((acc, d) => acc + getDisbursementTotal(d), 0);
-            
-            if (!sp.isRealignment && !sp.isSavings) spAlloc += alloc;
-            spObli += obli; spDisb += disb;
-        });
-
-        let trAlloc = 0, trObli = 0, trDisb = 0;
-        (filteredData.activities || []).filter(a => a.type === 'Training').forEach(t => {
-            const alloc = (t.expenses || []).reduce((acc, e) => acc + e.amount, 0);
-            const obli = (t.expenses || []).reduce((acc, e) => acc + getObligationTotal(e), 0);
-            const disb = (t.expenses || []).reduce((acc, e) => acc + getDisbursementTotal(e), 0);
-            
-            if (!t.isRealignment && !t.isSavings) trAlloc += alloc;
-            trObli += obli; trDisb += disb;
-        });
-
-        let oaAlloc = 0, oaObli = 0, oaDisb = 0;
-        (filteredData.activities || []).filter(a => a.type === 'Activity').forEach(oa => {
-            const alloc = (oa.expenses || []).reduce((acc, e) => acc + e.amount, 0);
-            const obli = (oa.expenses || []).reduce((acc, e) => acc + getObligationTotal(e), 0);
-            const disb = (oa.expenses || []).reduce((acc, e) => acc + getDisbursementTotal(e), 0);
-            
-            if (!oa.isRealignment && !oa.isSavings) oaAlloc += alloc;
-            oaObli += obli; oaDisb += disb;
-        });
-
-        let pmAlloc = 0, pmObli = 0, pmDisb = 0;
-        const processPm = (items: any[], isStaff = false) => {
-            (items || []).forEach(item => {
-                let alloc = 0;
-                if (isStaff && item.expenses && item.expenses.length > 0) {
-                    alloc = item.expenses.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
-                } else {
-                    alloc = isStaff ? (Number(item.annualSalary) || 0) : (item.amount || (item.pricePerUnit * item.numberOfUnits) || 0);
-                }
-                const obli = getObligationTotal(item);
-                const disb = getDisbursementTotal(item);
-                
-                if (!item.isRealignment && !item.isSavings) pmAlloc += alloc;
-                pmObli += obli; pmDisb += disb;
-            });
-        };
-        processPm(filteredData.officeReqs);
-        processPm(filteredData.staffingReqs, true);
-        processPm(filteredData.otherProgramExpenses);
-
-        const totalAlloc = spAlloc + trAlloc + oaAlloc + pmAlloc;
-        const totalObli = spObli + trObli + oaObli + pmObli;
-        const totalDisb = spDisb + trDisb + oaDisb + pmDisb;
-
-        // 2. Physical Counts
-        const completedSubprojects = (filteredData.subprojects || []).filter(sp => sp.status === 'Completed').length;
-        const totalSubprojects = (filteredData.subprojects || []).filter(sp => !sp.isRealignment && !sp.isSavings).length;
-
-        const completedTrainings = (filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).length;
-        const totalTrainings = (filteredData.activities || []).filter(a => a.type === 'Training' && !a.isRealignment && !a.isSavings).length;
-
-        // 3. IPO Analysis
-        const targetIposWithSp = new Set((filteredData.subprojects || []).filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => sp.indigenousPeopleOrganization));
-        const actualIposWithSp = new Set((filteredData.subprojects || []).filter(sp => sp.status === 'Completed').map(sp => sp.indigenousPeopleOrganization));
-
-        const targetIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training' && !a.isRealignment && !a.isSavings).flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
-        const actualIposWithTr = new Set<string>(((filteredData.activities || []).filter(a => a.type === 'Training' && a.actualDate).flatMap(t => (t as Activity).participatingIpos || [])) as string[]);
-
-        const actualIposAssisted = new Set<string>(Array.from(actualIposWithSp as Set<string>).concat(Array.from(actualIposWithTr as Set<string>)));
-        const targetIposAssisted = new Set<string>(Array.from(targetIposWithSp as Set<string>).concat(Array.from(targetIposWithTr as Set<string>)));
-
-        const actualAdsAssisted = getAds(actualIposAssisted);
-        const targetAdsAssisted = getAds(targetIposAssisted);
-
-        const c = Math.ceil;
 
         return {
-            financials: {
-                total: { alloc: c(totalAlloc), obli: c(totalObli), disb: c(totalDisb) },
-                subprojects: { alloc: c(spAlloc), obli: c(spObli), disb: c(spDisb) },
-                trainings: { alloc: c(trAlloc), obli: c(trObli), disb: c(trDisb) }
-            },
-            physical: {
-                subprojects: { target: totalSubprojects, actual: completedSubprojects },
-                trainings: { target: totalTrainings, actual: completedTrainings },
-                iposAssisted: { target: targetIposAssisted.size, actual: actualIposAssisted.size },
-                iposWithSp: { target: targetIposWithSp.size, actual: actualIposWithSp.size },
-                adsAssisted: { target: targetAdsAssisted.size, actual: actualAdsAssisted.size }
-            }
+            financials: aggregateHomepageFinancials({
+                subprojects,
+                activities,
+                officeReqs,
+                staffingReqs,
+                otherProgramExpenses,
+            }, aggregationFilters),
+            physical: aggregateHomepagePhysicalStats({
+                subprojects,
+                ipos,
+                activities,
+                officeReqs,
+                staffingReqs,
+            }, aggregationFilters),
         };
-    }, [filteredData, ipos]);
+    }, [
+        selectedYear,
+        selectedOu,
+        selectedTier,
+        selectedFundType,
+        subprojects,
+        ipos,
+        activities,
+        officeReqs,
+        staffingReqs,
+        otherProgramExpenses,
+    ]);
 
     // ... (allActivities, displayedActivities, pagination logic) ...
 
