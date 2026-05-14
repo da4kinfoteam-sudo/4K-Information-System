@@ -1,8 +1,9 @@
 // Author: 4K 
 import React, { useMemo } from 'react';
-import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, tiers, fundTypes, filterYears } from '../../constants';
+import { Subproject, Training, OtherActivity, IPO, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { useAuth } from '../../contexts/AuthContext';
+import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
 
 declare const PptxGenJS: any;
 
@@ -153,31 +154,14 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
     const selectedTier = selectedTierProp || 'Tier 1';
     const selectedFundType = selectedFundTypeProp || 'Current';
 
-    const getObligationTotal = (item: any) => {
-        if (item.obligations && item.obligations.length > 0) {
-            return item.obligations.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
-        }
-        return Number(item.actualObligationAmount) || 0;
-    };
-
-    const getDisbursementTotal = (item: any) => {
-        if (item.disbursements && item.disbursements.length > 0) {
-            return item.disbursements.reduce((sum: number, o: any) => sum + (Number(o.amount) || 0), 0);
-        }
-        const legacyTotal = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-            .reduce((sum, m) => sum + (Number(item[`actualDisbursement${m}`]) || 0), 0);
-        return legacyTotal || Number(item.actualDisbursementAmount) || 0;
-    };
+    const dashboardFilters = useMemo<FinancialAggregationFilters>(() => ({
+        year: selectedYear,
+        operatingUnit: selectedOu,
+        tier: selectedTier,
+        fundType: selectedFundType,
+    }), [selectedYear, selectedOu, selectedTier, selectedFundType]);
 
     const financialData = useMemo<FinancialData>(() => {
-        // Data is ALREADY filtered by parent DashboardsPage, so we use it directly
-        const filteredSubprojects = data.subprojects || [];
-        const filteredTrainings = data.trainings || [];
-        const filteredOtherActivities = data.otherActivities || [];
-        const filteredOfficeReqs = data.officeReqs || [];
-        const filteredStaffingReqs = data.staffingReqs || [];
-        const filteredOtherExpenses = data.otherProgramExpenses || [];
-
         const components: { [key: string]: { target: number; obligation: number; disbursement: number } } = {
             'Social Preparation': { target: 0, obligation: 0, disbursement: 0 },
             'Production and Livelihood': { target: 0, obligation: 0, disbursement: 0 },
@@ -196,25 +180,13 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
             monthlyData[i] = { target: 0, obligation: 0, disbursement: 0 };
         }
 
-        const getMonth = (dateStr?: string) => {
-            if (!dateStr) return -1;
-            const parts = dateStr.split('-');
-            if (parts.length >= 2) {
-                const month = parseInt(parts[1], 10);
-                if (!isNaN(month) && month >= 1 && month <= 12) return month - 1;
-            }
-            const date = new Date(dateStr);
-            if (isNaN(date.getTime())) return -1;
-            return date.getUTCMonth();
-        };
-
         const ipoToADMap: { [key: string]: string } = {};
         (data.ipos || []).forEach(ipo => {
             ipoToADMap[ipo.name] = ipo.ancestralDomainNo || 'Unspecified AD';
         });
 
-        const addToProvince = (loc: string, ipoName: string | string[] | undefined, alloc: number, obli: number, disb: number) => {
-            const { province } = parseLocation(loc);
+        const addToProvince = (loc: string | undefined, ipoNames: string[] | undefined, alloc: number, obli: number, disb: number) => {
+            const { province } = parseLocation(loc || '');
             const pKey = province || 'Unspecified';
             
             if (!provinceData[pKey]) {
@@ -224,7 +196,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
             provinceData[pKey].obli += obli;
             provinceData[pKey].disb += disb;
 
-            const ipos = Array.isArray(ipoName) ? ipoName : (ipoName ? [ipoName] : ['Unspecified IPO']);
+            const ipos = (ipoNames || []).filter(Boolean);
+            if (ipos.length === 0) ipos.push('Unspecified IPO');
             const perIpoAlloc = alloc / (ipos.length || 1);
             const perIpoObli = obli / (ipos.length || 1);
             const perIpoDisb = disb / (ipos.length || 1);
@@ -248,193 +221,35 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
             });
         };
 
-        const aggregateObligations = (item: any) => {
-            if (item.obligations && item.obligations.length > 0) {
-                item.obligations.forEach((o: any) => {
-                    const obMonth = getMonth(o.date);
-                    if (obMonth !== -1) {
-                        monthlyData[obMonth].obligation += (Number(o.amount) || 0);
-                    }
-                });
-            } else {
-                const obMonth = getMonth(item.actualObligationDate);
-                if (obMonth !== -1) {
-                    monthlyData[obMonth].obligation += (item.actualObligationAmount || 0);
-                }
-            }
-        };
+        const lineItems = collectFinancialLineItems({
+            subprojects: data.subprojects || [],
+            activities: [...(data.trainings || []), ...(data.otherActivities || [])],
+            officeReqs: data.officeReqs || [],
+            staffingReqs: data.staffingReqs || [],
+            otherProgramExpenses: data.otherProgramExpenses || [],
+        }, dashboardFilters);
 
-        const aggregateDisbursements = (item: any) => {
-            if (item.disbursements && item.disbursements.length > 0) {
-                item.disbursements.forEach((d: any) => {
-                    const dbMonth = getMonth(d.date);
-                    if (dbMonth !== -1) {
-                        monthlyData[dbMonth].disbursement += (Number(d.amount) || 0);
-                    }
-                });
-            } else {
-                const dbMonth = getMonth(item.actualDisbursementDate);
-                if (dbMonth !== -1) {
-                    monthlyData[dbMonth].disbursement += (item.actualDisbursementAmount || 0);
-                }
-                // Legacy monthly properties
-                ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].forEach((m, idx) => {
-                    const val = Number(item[`actualDisbursement${m}`]) || 0;
-                    if (val > 0) monthlyData[idx].disbursement += val;
-                });
-            }
-        };
+        lineItems.forEach(item => {
+            components[item.component].target += item.alloc;
+            components[item.component].obligation += item.obli;
+            components[item.component].disbursement += item.disb;
+            totalAllocation += item.alloc;
+            totalObligation += item.obli;
+            totalDisbursement += item.disb;
 
-        // 1. Process Subprojects
-        filteredSubprojects.forEach(sp => {
-            const spBudget = (sp.details || []).reduce((sum, d) => {
-                const amount = d.pricePerUnit * d.numberOfUnits;
-                const targetMonth = getMonth(d.obligationMonth);
-                if (!sp.isRealignment && !sp.isSavings) {
-                    if (targetMonth !== -1) monthlyData[targetMonth].target += amount;
-                }
-                aggregateObligations(d);
-                aggregateDisbursements(d);
-                return sum + amount;
-            }, 0);
+            if (item.targetMonth !== undefined) monthlyData[item.targetMonth].target += item.alloc;
+            item.obligationByMonth.forEach((amount, monthIndex) => {
+                monthlyData[monthIndex].obligation += amount;
+            });
+            item.disbursementByMonth.forEach((amount, monthIndex) => {
+                monthlyData[monthIndex].disbursement += amount;
+            });
 
-            const spObligation = (sp.details || []).reduce((sum, d) => sum + getObligationTotal(d), 0);
-            const spDisbursement = (sp.details || []).reduce((sum, d) => sum + getDisbursementTotal(d), 0);
-
-            if (!sp.isRealignment && !sp.isSavings) {
-                components['Production and Livelihood'].target += spBudget;
-                totalAllocation += spBudget;
-            }
-            components['Production and Livelihood'].obligation += spObligation;
-            components['Production and Livelihood'].disbursement += spDisbursement;
-            addToProvince(sp.location, sp.indigenousPeopleOrganization, !sp.isRealignment && !sp.isSavings ? spBudget : 0, spObligation, spDisbursement);
-            totalObligation += spObligation;
-            totalDisbursement += spDisbursement;
-        });
-
-        // 2. Process Trainings & Activities
-        const processActivity = (act: Training | OtherActivity) => {
-            const actBudget = (act.expenses || []).reduce((sum, e) => {
-                const targetMonth = getMonth(e.obligationMonth);
-                if (!act.isRealignment && !act.isSavings) {
-                    if (targetMonth !== -1) monthlyData[targetMonth].target += e.amount;
-                }
-                aggregateObligations(e);
-                aggregateDisbursements(e);
-                return sum + e.amount;
-            }, 0);
-
-            const actObligation = (act.expenses || []).reduce((sum, e) => sum + getObligationTotal(e), 0);
-            const actDisbursement = (act.expenses || []).reduce((sum, e) => sum + getDisbursementTotal(e), 0);
-
-            if (!act.isRealignment && !act.isSavings) {
-                totalAllocation += actBudget;
-            }
-            totalObligation += actObligation;
-            totalDisbursement += actDisbursement;
-
-            const componentName = act.component || 'Program Management';
-            if (components[componentName]) {
-                if (!act.isRealignment && !act.isSavings) components[componentName].target += actBudget;
-                components[componentName].obligation += actObligation;
-                components[componentName].disbursement += actDisbursement;
-            } else {
-                if (!act.isRealignment && !act.isSavings) components['Program Management'].target += actBudget;
-                components['Program Management'].obligation += actObligation;
-                components['Program Management'].disbursement += actDisbursement;
-            }
-
-            addToProvince(act.location, act.participatingIpos, !act.isRealignment && !act.isSavings ? actBudget : 0, actObligation, actDisbursement);
-        };
-
-        filteredTrainings.forEach(processActivity);
-        filteredOtherActivities.forEach(processActivity);
-
-        // 3. Process Office Requirements
-        filteredOfficeReqs.forEach(or => {
-            const targetAmount = or.pricePerUnit * or.numberOfUnits;
-            const actualOb = getObligationTotal(or);
-            const actualDisb = getDisbursementTotal(or);
-
-            const targetMonth = getMonth(or.obligationDate);
-            if (!or.isRealignment && !or.isSavings) {
-                if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-                totalAllocation += targetAmount;
-                components['Program Management'].target += targetAmount;
-            }
-            aggregateObligations(or);
-            aggregateDisbursements(or);
-
-            totalObligation += actualOb;
-            totalDisbursement += actualDisb;
-            components['Program Management'].obligation += actualOb;
-            components['Program Management'].disbursement += actualDisb;
-        });
-
-        // 4. Process Staffing Requirements
-        filteredStaffingReqs.forEach(sr => {
-            const hasDetailedExpenses = sr.expenses && sr.expenses.length > 0;
-            const targetAmount = hasDetailedExpenses 
-                ? sr.expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
-                : sr.annualSalary;
-            
-            let actualOb = 0;
-            if (hasDetailedExpenses) {
-                sr.expenses.forEach(e => {
-                    const targetMonth = getMonth(e.obligationMonth);
-                    if (!sr.isRealignment && !sr.isSavings) {
-                        if (targetMonth !== -1) monthlyData[targetMonth].target += (Number(e.amount) || 0);
-                    }
-                    actualOb += getObligationTotal(e);
-                    aggregateObligations(e);
-                    aggregateDisbursements(e);
-                });
-            } else {
-                const targetMonth = getMonth(sr.obligationMonth);
-                if (!sr.isRealignment && !sr.isSavings) {
-                    if (targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-                }
-                actualOb = getObligationTotal(sr);
-                aggregateObligations(sr);
-                aggregateDisbursements(sr);
-            }
-            
-            const actualDisb = getDisbursementTotal(sr);
-
-            if (!sr.isRealignment && !sr.isSavings) {
-                totalAllocation += targetAmount;
-                components['Program Management'].target += targetAmount;
-            }
-            totalObligation += actualOb;
-            totalDisbursement += actualDisb;
-
-            components['Program Management'].obligation += actualOb;
-            components['Program Management'].disbursement += actualDisb;
-        });
-
-        // 5. Process Other Program Expenses
-        filteredOtherExpenses.forEach(oe => {
-            const targetAmount = oe.amount;
-            const actualOb = getObligationTotal(oe);
-            const actualDisb = getDisbursementTotal(oe);
-
-            const targetMonth = getMonth(oe.obligationDate);
-            if (!oe.isRealignment && !oe.isSavings) {
-                if(targetMonth !== -1) monthlyData[targetMonth].target += targetAmount;
-                totalAllocation += targetAmount;
-                components['Program Management'].target += targetAmount;
-            }
-            aggregateObligations(oe);
-            aggregateDisbursements(oe);
-
-            totalObligation += actualOb;
-            totalDisbursement += actualDisb;
-            components['Program Management'].obligation += actualOb;
-            components['Program Management'].disbursement += actualDisb;
+            addToProvince(item.location, item.ipoNames, item.alloc, item.obli, item.disb);
         });
 
         return { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData };
-    }, [data, selectedYear, selectedOu, selectedTier, selectedFundType]);
+    }, [data, dashboardFilters]);
 
     const matrixData = useMemo<MatrixData>(() => {
         const matrix: MatrixData = {};
@@ -447,19 +262,6 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
             };
         });
 
-        const baseFilter = (item: any) => {
-            if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-            if (selectedFundType !== 'All' && (item.fundType || item.fundingType) !== selectedFundType) return false;
-            // No OU filter here because this is for the OU matrix
-            return true;
-        };
-
-        const yearFilter = (item: any) => {
-            if (selectedYear === 'All') return true;
-            const y = item.fundingYear?.toString() || item.fundYear?.toString();
-            return y === selectedYear;
-        };
-
         const addToMatrix = (ou: string, component: string, alloc: number, obli: number, disb: number) => {
             if (!matrix[ou]) return; 
             const targetComp = component || 'Program Management';
@@ -470,44 +272,20 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
             }
         };
 
-        (data.subprojects || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(sp => {
-            const isExcluded = sp.isRealignment || sp.isSavings;
-            const alloc = isExcluded ? 0 : (sp.details || []).reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = (sp.details || []).reduce((s, d) => s + getObligationTotal(d), 0);
-            const disb = (sp.details || []).reduce((s, d) => s + getDisbursementTotal(d), 0);
-            addToMatrix(sp.operatingUnit, 'Production and Livelihood', alloc, obli, disb);
+        const lineItems = collectFinancialLineItems({
+            subprojects: data.subprojects || [],
+            activities: [...(data.trainings || []), ...(data.otherActivities || [])],
+            officeReqs: data.officeReqs || [],
+            staffingReqs: data.staffingReqs || [],
+            otherProgramExpenses: data.otherProgramExpenses || [],
+        }, dashboardFilters);
+
+        lineItems.forEach(item => {
+            addToMatrix(item.operatingUnit || '', item.component, item.alloc, item.obli, item.disb);
         });
 
-        const processAct = (act: Training | OtherActivity) => {
-            const isExcluded = act.isRealignment || act.isSavings;
-            const alloc = isExcluded ? 0 : (act.expenses || []).reduce((s, e) => s + e.amount, 0);
-            const obli = (act.expenses || []).reduce((s, e) => s + getObligationTotal(e), 0);
-            const disb = (act.expenses || []).reduce((s, e) => s + getDisbursementTotal(e), 0);
-            addToMatrix(act.operatingUnit, act.component, alloc, obli, disb);
-        };
-        (data.trainings || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(processAct);
-        (data.otherActivities || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(processAct);
-
-        const processPM = (item: any, isStaff = false) => {
-            const isExcluded = item.isRealignment || item.isSavings;
-            let alloc = 0;
-            if (!isExcluded) {
-                if (isStaff && item.expenses && item.expenses.length > 0) {
-                    alloc = item.expenses.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
-                } else {
-                    alloc = isStaff ? (Number(item.annualSalary) || 0) : (item.amount || (item.pricePerUnit * item.numberOfUnits) || 0);
-                }
-            }
-            const obli = getObligationTotal(item);
-            const disb = getDisbursementTotal(item);
-            addToMatrix(item.operatingUnit, 'Program Management', alloc, obli, disb);
-        };
-        (data.officeReqs || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item));
-        (data.staffingReqs || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item, true));
-        (data.otherProgramExpenses || []).filter(item => baseFilter(item) && yearFilter(item)).forEach(item => processPM(item));
-
         return matrix;
-    }, [data, selectedYear, selectedTier, selectedFundType]);
+    }, [data, dashboardFilters]);
 
     const { components, provinceData, totalAllocation, totalObligation, totalDisbursement, monthlyData } = financialData;
 

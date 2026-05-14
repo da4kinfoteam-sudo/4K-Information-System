@@ -30,11 +30,15 @@ export interface HomepageFinancialStats {
     trainings: FinancialBucket;
 }
 
-type FinancialLine = {
+export type FinancialLine = {
     amount?: number;
     pricePerUnit?: number;
     numberOfUnits?: number;
     annualSalary?: number;
+    objectType?: string;
+    uacsCode?: string;
+    obligationMonth?: string;
+    obligationDate?: string;
     actualObligationAmount?: number;
     actualObligationDate?: string;
     actualDisbursementAmount?: number;
@@ -68,12 +72,42 @@ type ScopedRecord = {
 };
 
 const MONTH_KEYS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+export const FINANCIAL_COMPONENTS = [
+    'Social Preparation',
+    'Production and Livelihood',
+    'Marketing and Enterprise',
+    'Program Management',
+] as const;
+
+export type FinancialComponent = typeof FINANCIAL_COMPONENTS[number];
+export type FinancialSourceType = 'subproject' | 'training' | 'activity' | 'programManagement';
+
+export interface FinancialLineItem {
+    sourceType: FinancialSourceType;
+    component: FinancialComponent;
+    packageType?: string;
+    activityName: string;
+    objectType?: string;
+    uacsCode?: string;
+    recordYear?: number;
+    fundType?: string;
+    operatingUnit?: string;
+    location?: string;
+    ipoNames?: string[];
+    line: FinancialLine;
+    alloc: number;
+    obli: number;
+    disb: number;
+    targetMonth?: number;
+    obligationByMonth: number[];
+    disbursementByMonth: number[];
+}
 
 const toNumber = (value: unknown) => Number(value) || 0;
 
 const compact = <T,>(items?: Array<T | null | undefined>) => (items || []).filter(Boolean) as T[];
 
-const getRecordYear = (record: ScopedRecord) => record.fundingYear ?? record.fundYear;
+export const getRecordYear = (record: ScopedRecord) => record.fundingYear ?? record.fundYear;
 
 const matchesSelectedYear = (value: string | number | undefined, selectedYear: YearFilter) => {
     if (selectedYear === 'All') return true;
@@ -84,6 +118,17 @@ const getDateYear = (date?: string) => {
     if (!date) return undefined;
     const parsed = new Date(date);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed.getFullYear().toString();
+};
+
+export const getFinancialMonthIndex = (dateStr?: string) => {
+    if (!dateStr) return undefined;
+    const parts = dateStr.split('-');
+    if (parts.length >= 2) {
+        const month = parseInt(parts[1], 10);
+        if (!Number.isNaN(month) && month >= 1 && month <= 12) return month - 1;
+    }
+    const date = new Date(dateStr);
+    return Number.isNaN(date.getTime()) ? undefined : date.getUTCMonth();
 };
 
 const matchesActualYear = (date: string | undefined, fallbackYear: string | number | undefined, selectedYear: YearFilter) => {
@@ -114,12 +159,253 @@ const isTargetRecord = (record: ScopedRecord, filters: FinancialAggregationFilte
 
 const isActualRecord = (record: ScopedRecord, filters: FinancialAggregationFilters) => matchesBaseFilters(record, filters);
 
-const getAllocation = (line: FinancialLine) => {
+export const getFinancialAllocation = (line: FinancialLine) => {
     if (line.amount !== undefined) return toNumber(line.amount);
     if (line.pricePerUnit !== undefined || line.numberOfUnits !== undefined) {
         return toNumber(line.pricePerUnit) * toNumber(line.numberOfUnits);
     }
     return toNumber(line.annualSalary);
+};
+
+const createMonthlyArray = () => Array.from({ length: 12 }, () => 0);
+
+export const getActualObligationsByMonth = (
+    line: FinancialLine,
+    options: { year: YearFilter; fallbackYear?: string | number }
+) => {
+    const monthly = createMonthlyArray();
+
+    if (line.obligations && line.obligations.length > 0) {
+        line.obligations.forEach(obligation => {
+            if (!matchesActualYear(obligation.date, options.fallbackYear, options.year)) return;
+            const month = getFinancialMonthIndex(obligation.date);
+            if (month !== undefined) monthly[month] += toNumber(obligation.amount);
+        });
+        return monthly;
+    }
+
+    if (!matchesActualYear(line.actualObligationDate, options.fallbackYear, options.year)) return monthly;
+    const month = getFinancialMonthIndex(line.actualObligationDate);
+    if (month !== undefined) monthly[month] += toNumber(line.actualObligationAmount);
+    return monthly;
+};
+
+export const getActualDisbursementsByMonth = (
+    line: FinancialLine,
+    options: { year: YearFilter; fallbackYear?: string | number }
+) => {
+    const monthly = createMonthlyArray();
+
+    if (line.disbursements && line.disbursements.length > 0) {
+        line.disbursements.forEach(disbursement => {
+            if (!matchesActualYear(disbursement.date, options.fallbackYear, options.year)) return;
+            const month = getFinancialMonthIndex(disbursement.date);
+            if (month !== undefined) monthly[month] += toNumber(disbursement.amount);
+        });
+        return monthly;
+    }
+
+    const monthlyTotal = MONTH_KEYS.reduce((sum, month) => sum + toNumber(line[`actualDisbursement${month}`]), 0);
+    if (monthlyTotal > 0) {
+        if (!matchesSelectedYear(options.fallbackYear, options.year)) return monthly;
+        MONTH_KEYS.forEach((monthKey, index) => {
+            monthly[index] += toNumber(line[`actualDisbursement${monthKey}`]);
+        });
+        return monthly;
+    }
+
+    if (!matchesActualYear(line.actualDisbursementDate, options.fallbackYear, options.year)) return monthly;
+    const month = getFinancialMonthIndex(line.actualDisbursementDate);
+    if (month !== undefined) monthly[month] += toNumber(line.actualDisbursementAmount);
+    return monthly;
+};
+
+const normalizeComponent = (component?: string): FinancialComponent => {
+    return FINANCIAL_COMPONENTS.includes(component as FinancialComponent)
+        ? component as FinancialComponent
+        : 'Program Management';
+};
+
+export const getActualObligationTotalInWindow = (
+    line: FinancialLine,
+    isDateIncluded: (date?: string) => boolean
+) => {
+    if (line.obligations && line.obligations.length > 0) {
+        return line.obligations.reduce((sum, obligation) => {
+            if (!isDateIncluded(obligation.date)) return sum;
+            return sum + toNumber(obligation.amount);
+        }, 0);
+    }
+
+    return isDateIncluded(line.actualObligationDate) ? toNumber(line.actualObligationAmount) : 0;
+};
+
+export const getActualDisbursementTotalAsOf = (
+    line: FinancialLine,
+    options: {
+        targetYear: number;
+        selectedMonth: number;
+        fallbackYear?: string | number;
+        isDateIncluded: (date?: string) => boolean;
+    }
+) => {
+    if (line.disbursements && line.disbursements.length > 0) {
+        return line.disbursements.reduce((sum, disbursement) => {
+            if (!options.isDateIncluded(disbursement.date)) return sum;
+            return sum + toNumber(disbursement.amount);
+        }, 0);
+    }
+
+    const monthlyTotal = MONTH_KEYS.reduce((sum, month) => sum + toNumber(line[`actualDisbursement${month}`]), 0);
+    if (monthlyTotal > 0) {
+        const fallbackYear = Number(options.fallbackYear);
+        if (!Number.isFinite(fallbackYear) || fallbackYear > options.targetYear) return 0;
+        const monthLimit = fallbackYear < options.targetYear ? 11 : options.selectedMonth;
+        return MONTH_KEYS.reduce((sum, month, index) => {
+            if (index > monthLimit) return sum;
+            return sum + toNumber(line[`actualDisbursement${month}`]);
+        }, 0);
+    }
+
+    return options.isDateIncluded(line.actualDisbursementDate) ? toNumber(line.actualDisbursementAmount) : 0;
+};
+
+const addLineItem = (
+    items: FinancialLineItem[],
+    record: ScopedRecord,
+    line: FinancialLine,
+    filters: FinancialAggregationFilters,
+    metadata: {
+        sourceType: FinancialSourceType;
+        component: FinancialComponent | string;
+        packageType?: string;
+        activityName: string;
+        operatingUnit?: string;
+        location?: string;
+        ipoNames?: string[];
+        targetDate?: string;
+    }
+) => {
+    const fallbackYear = getRecordYear(record);
+    const includeTarget = isTargetRecord(record, filters) && !record.isRealignment && !record.isSavings;
+    const includeActual = isActualRecord(record, filters);
+    const alloc = includeTarget ? getFinancialAllocation(line) : 0;
+    const obli = includeActual ? getActualObligationTotal(line, { year: filters.year, fallbackYear }) : 0;
+    const disb = includeActual ? getActualDisbursementTotal(line, { year: filters.year, fallbackYear }) : 0;
+    const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: filters.year, fallbackYear }) : createMonthlyArray();
+    const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: filters.year, fallbackYear }) : createMonthlyArray();
+
+    if (alloc === 0 && obli === 0 && disb === 0) return;
+
+    items.push({
+        sourceType: metadata.sourceType,
+        component: normalizeComponent(metadata.component),
+        packageType: metadata.packageType,
+        activityName: metadata.activityName,
+        objectType: line.objectType,
+        uacsCode: line.uacsCode,
+        recordYear: fallbackYear,
+        fundType: record.fundType,
+        operatingUnit: metadata.operatingUnit,
+        location: metadata.location,
+        ipoNames: metadata.ipoNames,
+        line,
+        alloc,
+        obli,
+        disb,
+        targetMonth: includeTarget ? getFinancialMonthIndex(metadata.targetDate || line.obligationMonth || line.obligationDate) : undefined,
+        obligationByMonth,
+        disbursementByMonth,
+    });
+};
+
+export const collectFinancialLineItems = (
+    data: FinancialAggregationInput,
+    filters: FinancialAggregationFilters
+): FinancialLineItem[] => {
+    const items: FinancialLineItem[] = [];
+
+    (data.subprojects || []).forEach(subproject => {
+        compact(subproject.details).forEach(detail => {
+            addLineItem(items, subproject, detail, filters, {
+                sourceType: 'subproject',
+                component: 'Production and Livelihood',
+                packageType: subproject.packageType || 'Other',
+                activityName: subproject.name,
+                operatingUnit: subproject.operatingUnit,
+                location: subproject.location,
+                ipoNames: Array.isArray(subproject.indigenousPeopleOrganization)
+                    ? subproject.indigenousPeopleOrganization
+                    : [subproject.indigenousPeopleOrganization],
+                targetDate: detail.obligationMonth,
+            });
+        });
+    });
+
+    (data.activities || []).forEach(activity => {
+        compact(activity.expenses).forEach(expense => {
+            addLineItem(items, activity, expense, filters, {
+                sourceType: activity.type === 'Training' ? 'training' : 'activity',
+                component: activity.component,
+                packageType: activity.component === 'Program Management' ? 'Activities' : undefined,
+                activityName: activity.name,
+                operatingUnit: activity.operatingUnit,
+                location: activity.location,
+                ipoNames: activity.participatingIpos,
+                targetDate: expense.obligationMonth,
+            });
+        });
+    });
+
+    (data.officeReqs || []).forEach(item => {
+        addLineItem(items, item, item, filters, {
+            sourceType: 'programManagement',
+            component: 'Program Management',
+            packageType: 'Office Requirements',
+            activityName: item.equipment,
+            operatingUnit: item.operatingUnit,
+            targetDate: item.obligationDate,
+        });
+    });
+
+    (data.staffingReqs || []).forEach(item => {
+        const expenses = compact(item.expenses);
+        if (expenses.length > 0) {
+            expenses.forEach(expense => {
+                addLineItem(items, item, expense, filters, {
+                    sourceType: 'programManagement',
+                    component: 'Program Management',
+                    packageType: 'Staff Requirements',
+                    activityName: item.personnelPosition,
+                    operatingUnit: item.operatingUnit,
+                    targetDate: expense.obligationDate,
+                });
+            });
+            return;
+        }
+
+        addLineItem(items, item, { ...item, annualSalary: item.annualSalary, obligationDate: item.obligationDate }, filters, {
+            sourceType: 'programManagement',
+            component: 'Program Management',
+            packageType: 'Staff Requirements',
+            activityName: item.personnelPosition,
+            operatingUnit: item.operatingUnit,
+            targetDate: item.obligationDate,
+        });
+    });
+
+    (data.otherProgramExpenses || []).forEach(item => {
+        addLineItem(items, item, item, filters, {
+            sourceType: 'programManagement',
+            component: 'Program Management',
+            packageType: 'Office Requirements',
+            activityName: item.particulars,
+            operatingUnit: item.operatingUnit,
+            targetDate: item.obligationDate,
+        });
+    });
+
+    return items;
 };
 
 export const getActualObligationTotal = (
@@ -183,7 +469,7 @@ export const aggregateHomepageFinancials = (
         const details = compact(subproject.details);
 
         if (isTargetRecord(subproject, filters) && !subproject.isRealignment && !subproject.isSavings) {
-            subprojectsBucket.alloc += details.reduce((sum, detail) => sum + getAllocation(detail), 0);
+            subprojectsBucket.alloc += details.reduce((sum, detail) => sum + getFinancialAllocation(detail), 0);
         }
 
         if (isActualRecord(subproject, filters)) {
@@ -198,7 +484,7 @@ export const aggregateHomepageFinancials = (
         const targetBucket = activity.type === 'Training' ? trainingsBucket : otherActivitiesBucket;
 
         if (isTargetRecord(activity, filters) && !activity.isRealignment && !activity.isSavings) {
-            targetBucket.alloc += expenses.reduce((sum, expense) => sum + getAllocation(expense), 0);
+            targetBucket.alloc += expenses.reduce((sum, expense) => sum + getFinancialAllocation(expense), 0);
         }
 
         if (isActualRecord(activity, filters)) {
@@ -210,7 +496,7 @@ export const aggregateHomepageFinancials = (
     (data.officeReqs || []).forEach(item => {
         const fallbackYear = getRecordYear(item);
         if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
-            programManagementBucket.alloc += getAllocation(item);
+            programManagementBucket.alloc += getFinancialAllocation(item);
         }
         if (isActualRecord(item, filters)) {
             programManagementBucket.obli += getActualObligationTotal(item, { year: filters.year, fallbackYear });
@@ -225,8 +511,8 @@ export const aggregateHomepageFinancials = (
 
         if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
             programManagementBucket.alloc += hasExpenseRows
-                ? expenses.reduce((sum, expense) => sum + getAllocation(expense), 0)
-                : getAllocation({ annualSalary: item.annualSalary });
+                ? expenses.reduce((sum, expense) => sum + getFinancialAllocation(expense), 0)
+                : getFinancialAllocation({ annualSalary: item.annualSalary });
         }
 
         if (isActualRecord(item, filters)) {
@@ -243,7 +529,7 @@ export const aggregateHomepageFinancials = (
     (data.otherProgramExpenses || []).forEach(item => {
         const fallbackYear = getRecordYear(item);
         if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
-            programManagementBucket.alloc += getAllocation(item);
+            programManagementBucket.alloc += getFinancialAllocation(item);
         }
         if (isActualRecord(item, filters)) {
             programManagementBucket.obli += getActualObligationTotal(item, { year: filters.year, fallbackYear });

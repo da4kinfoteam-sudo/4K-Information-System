@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
 import { formatCurrency, XLSX } from './ReportUtils';
+import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 
 interface MonthlyReportMatrixProps {
     data: {
@@ -247,11 +248,9 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
     }, [data, selectedYear, selectedMonth]);
 
 
-    // --- TABLE 2: Financial History (unchanged logic) ---
+    // --- TABLE 2: Financial History ---
     const financialHistoryData = useMemo(() => {
         if (!isYearSelected) return [];
-
-        const reportDateLimit = new Date(targetYearInt, selectedMonth + 1, 0);
 
         interface RowData {
             label: string;
@@ -316,6 +315,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                 return (month - 1) <= selectedMonth;
             }
             const d = new Date(dateStr);
+            const reportDateLimit = new Date(targetYearInt, selectedMonth + 1, 0);
             return d <= reportDateLimit;
         };
 
@@ -339,68 +339,30 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             entry.disb += disb;
         };
 
-        const getObligationAmountInWindow = (item: any) => {
-            let total = 0;
-            if (item.obligations && item.obligations.length > 0) {
-                total += item.obligations.reduce((sum: number, o: any) => sum + (isDateInReportWindow(o.date) ? (Number(o.amount) || 0) : 0), 0);
-            } else if (isDateInReportWindow(item.actualObligationDate)) {
-                total += (item.actualObligationAmount || 0);
-            }
-            return total;
-        };
-
-        financialData.subprojects.forEach(sp => {
-            const y = sp.fundingYear || 0;
-            const ft = sp.fundType || 'Current';
-            const isExcluded = sp.isRealignment || sp.isSavings;
-            const alloc = isExcluded ? 0 : sp.details.reduce((s, d) => s + (d.pricePerUnit * d.numberOfUnits), 0);
-            const obli = sp.details.reduce((s, d) => s + getObligationAmountInWindow(d), 0);
-            const disb = sp.details.reduce((s, d) => s + (isDateInReportWindow(d.actualDisbursementDate) ? (d.actualDisbursementAmount || d.actualAmount || 0) : 0), 0);
-            aggregate(y, ft, alloc, obli, disb);
+        const lineItems = collectFinancialLineItems({
+            subprojects: financialData.subprojects,
+            activities: [...financialData.trainings, ...financialData.otherActivities],
+            officeReqs: financialData.officeReqs,
+            staffingReqs: financialData.staffingReqs,
+            otherProgramExpenses: financialData.otherProgramExpenses,
+        }, {
+            year: 'All',
+            operatingUnit: 'All',
+            tier: 'All',
+            fundType: 'All',
         });
 
-        const processAct = (act: any) => {
-            const y = act.fundingYear || 0;
-            const ft = act.fundType || 'Current';
-            const isExcluded = act.isRealignment || act.isSavings;
-            const alloc = isExcluded ? 0 : act.expenses.reduce((s:number, e:any) => s + e.amount, 0);
-            const obli = act.expenses.reduce((s:number, e:any) => s + getObligationAmountInWindow(e), 0);
-            const disb = act.expenses.reduce((s:number, e:any) => s + (isDateInReportWindow(e.actualDisbursementDate) ? (e.actualDisbursementAmount || 0) : 0), 0);
-            aggregate(y, ft, alloc, obli, disb);
-        };
-        financialData.trainings.forEach(processAct);
-        financialData.otherActivities.forEach(processAct);
-
-        const processPM = (item: any, isStaff = false) => {
-            const y = item.fundYear || 0;
-            const ft = item.fundType || 'Current';
-            const alloc = isStaff ? item.annualSalary : (item.amount || (item.pricePerUnit * item.numberOfUnits));
-            
-            let obli = 0;
-            if (isStaff && item.expenses && item.expenses.length > 0) {
-                obli = item.expenses.reduce((sum: number, e: any) => sum + getObligationAmountInWindow(e), 0);
-            } else {
-                obli = getObligationAmountInWindow(item);
-            }
-            let disb = 0;
-            if (isStaff || item.particulars) {
-                 if (y === targetYearInt) {
-                     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                     months.forEach((m, idx) => {
-                         if (idx <= selectedMonth) disb += (Number(item[`actualDisbursement${m}`]) || 0);
-                     });
-                 } else if (y < targetYearInt) {
-                     disb = item.actualDisbursementAmount || 0;
-                 }
-            } else {
-                disb = isDateInReportWindow(item.actualDisbursementDate) ? (item.actualDisbursementAmount || 0) : 0;
-            }
-            aggregate(y, ft, alloc, obli, disb);
-        };
-        
-        financialData.staffingReqs.forEach(s => processPM(s, true));
-        financialData.officeReqs.forEach(s => processPM(s));
-        financialData.otherProgramExpenses.forEach(s => processPM(s));
+        lineItems.forEach(item => {
+            const year = Number(item.recordYear) || 0;
+            const obligation = getActualObligationTotalInWindow(item.line, isDateInReportWindow);
+            const disbursement = getActualDisbursementTotalAsOf(item.line, {
+                targetYear: targetYearInt,
+                selectedMonth,
+                fallbackYear: item.recordYear,
+                isDateIncluded: isDateInReportWindow,
+            });
+            aggregate(year, item.fundType || 'Current', item.alloc, obligation, disbursement);
+        });
 
         const rows = Array.from(rowMap.entries()).map(([key, row]) => {
             const alloc = Math.ceil(row.alloc);

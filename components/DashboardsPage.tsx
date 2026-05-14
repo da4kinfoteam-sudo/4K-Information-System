@@ -120,6 +120,21 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
         };
     }, [selectedYear, selectedOu, selectedTier, selectedFundType, props]);
 
+    const financialSourceData = useMemo(() => {
+        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+
+        return {
+            subprojects: props.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            ipos: props.ipos.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            trainings: props.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: props.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            officeReqs: props.officeReqs,
+            staffingReqs: props.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+            otherProgramExpenses: props.otherProgramExpenses,
+        };
+    }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses]);
+
     const TabButton: React.FC<{ tabName: DashboardTab; label: string }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
         return (
@@ -234,7 +249,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 )}
                 {activeTab === 'Financial' && (
                     <FinancialDashboard 
-                        data={filteredData} 
+                        data={financialSourceData} 
                         selectedYearProp={selectedYear}
                         selectedOuProp={selectedOu}
                         selectedTierProp={selectedTier}

@@ -200,11 +200,15 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
 
         const lineItems: any[] = [];
+        const addLineItem = (item: any) => {
+            if (item.amount <= 0 || item.isRealignment || item.isSavings) return;
+            ensureHeader(item.objectType, item.particularName, item.uacsCode, item.amount);
+            lineItems.push(item);
+        };
         
         data.subprojects.forEach(sp => {
             sp.details.forEach(d => {
-                ensureHeader(d.objectType, d.expenseParticular, d.uacsCode, d.pricePerUnit * d.numberOfUnits);
-                lineItems.push({
+                addLineItem({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
                     objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits,
                     particularName: d.expenseParticular,
@@ -216,12 +220,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
         
         data.trainings.forEach(t => {
-            if (t.component === 'Program Management') return; // Skip Program Management Trainings
-
             t.expenses.forEach(e => {
-                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
-                lineItems.push({
-                    component: t.component, packageType: undefined, activityName: t.name,
+                addLineItem({
+                    component: t.component, packageType: t.component === 'Program Management' ? 'Activities' : undefined, activityName: t.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
                     isTraining: true, particularName: e.expenseParticular,
                     isRealignment: t.isRealignment,
@@ -232,9 +233,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         
         data.otherActivities.forEach(oa => {
             oa.expenses.forEach(e => {
-                ensureHeader(e.objectType, e.expenseParticular, e.uacsCode, e.amount);
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
-                lineItems.push({
+                addLineItem({
                     component: oa.component, packageType, activityName: oa.name,
                     objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
                     particularName: e.expenseParticular,
@@ -245,29 +245,58 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         });
         
         data.staffingReqs.forEach(sr => {
+            if (sr.expenses && sr.expenses.length > 0) {
+                sr.expenses.forEach(expense => {
+                    const objType = expense.objectType || getObjectTypeByCode(expense.uacsCode, uacsCodes);
+                    addLineItem({
+                        component: 'Program Management',
+                        packageType: 'Staff Requirements',
+                        activityName: sr.personnelPosition,
+                        objectType: objType,
+                        uacsCode: expense.uacsCode,
+                        amount: expense.amount,
+                        particularName: expense.expenseParticular || 'Salaries & Wages',
+                        itemParticular: expense.expenseParticular,
+                        isRealignment: sr.isRealignment,
+                        isSavings: sr.isSavings
+                    });
+                });
+                return;
+            }
+
             const objType = getObjectTypeByCode(sr.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Salaries & Wages', sr.uacsCode, sr.annualSalary);
-            lineItems.push({
-                component: 'Program Management', packageType: 'Staff Requirements', activityName: sr.personnelPosition,
-                objectType: objType, uacsCode: sr.uacsCode, amount: sr.annualSalary
+            addLineItem({
+                component: 'Program Management',
+                packageType: 'Staff Requirements',
+                activityName: sr.personnelPosition,
+                objectType: objType,
+                uacsCode: sr.uacsCode,
+                amount: sr.annualSalary,
+                particularName: 'Salaries & Wages',
+                isRealignment: sr.isRealignment,
+                isSavings: sr.isSavings
             });
         });
         
         data.officeReqs.forEach(or => {
             const objType = getObjectTypeByCode(or.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Office Equipment', or.uacsCode, or.pricePerUnit * or.numberOfUnits);
-            lineItems.push({
+            addLineItem({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: or.equipment,
-                objectType: objType, uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits
+                objectType: objType, uacsCode: or.uacsCode, amount: or.pricePerUnit * or.numberOfUnits,
+                particularName: 'Office Equipment',
+                isRealignment: or.isRealignment,
+                isSavings: or.isSavings
             });
         });
         
         data.otherProgramExpenses.forEach(ope => {
             const objType = getObjectTypeByCode(ope.uacsCode, uacsCodes);
-            ensureHeader(objType, 'Other Expenses', ope.uacsCode, ope.amount);
-            lineItems.push({
+            addLineItem({
                 component: 'Program Management', packageType: 'Office Requirements', activityName: ope.particulars,
-                objectType: objType, uacsCode: ope.uacsCode, amount: ope.amount
+                objectType: objType, uacsCode: ope.uacsCode, amount: ope.amount,
+                particularName: 'Other Expenses',
+                isRealignment: ope.isRealignment,
+                isSavings: ope.isSavings
             });
         });
 
