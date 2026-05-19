@@ -3,8 +3,10 @@
 // OS support: Any
 import { 
     Subproject, Activity, OfficeRequirement, 
-    StaffingRequirement, OtherProgramExpense, initialUacsCodes, 
-    initialParticularTypes, ReferenceUacs, ReferenceParticular, ReferenceCommodity
+    StaffingRequirement, OtherProgramExpense, ReferenceUacs,
+    ReferenceParticular, ReferenceCommodity, MarketingPartner,
+    RefCommodity, RefLivestock, RefEquipment, RefInput,
+    RefInfrastructure, RefTrainingReference, GidaArea, ElcacArea
 } from './constants';
 
 // --- Helper Functions for Reference Lists ---
@@ -26,10 +28,19 @@ const flattenCommodities = () => {
 export const sampleReferenceUacsList: ReferenceUacs[] = [];
 export const sampleReferenceParticularList: ReferenceParticular[] = flattenParticulars();
 export const sampleReferenceCommodityList: ReferenceCommodity[] = flattenCommodities();
+export const sampleRefCommodities: RefCommodity[] = [];
+export const sampleRefLivestock: RefLivestock[] = [];
+export const sampleRefEquipment: RefEquipment[] = [];
+export const sampleRefInputs: RefInput[] = [];
+export const sampleRefInfrastructure: RefInfrastructure[] = [];
+export const sampleRefTrainings: RefTrainingReference[] = [];
+export const sampleGidaAreas: GidaArea[] = [];
+export const sampleElcacAreas: ElcacArea[] = [];
 
 // --- Sample Data: Cleared for DB Connection ---
 export const sampleSubprojects: Subproject[] = [];
 export const sampleActivities: Activity[] = [];
+export const sampleMarketingPartners: MarketingPartner[] = [];
 export const sampleOfficeRequirements: OfficeRequirement[] = [];
 export const sampleStaffingRequirements: StaffingRequirement[] = [];
 export const sampleOtherProgramExpenses: OtherProgramExpense[] = [];
