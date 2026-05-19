@@ -8,13 +8,14 @@ import { useLogAction } from '../../hooks/useLogAction';
 interface LODDetailsProps {
     ipo: IPO;
     onBack: () => void;
+    initialYear?: number | null;
 }
 
-const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
+const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
 
-    const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+    const [selectedYear, setSelectedYear] = useState<number>(initialYear ?? new Date().getFullYear());
     
     // Structure
     const [sections, setSections] = useState<LodSection[]>([]);
@@ -46,6 +47,10 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
     useEffect(() => {
         fetchStructure();
     }, []);
+
+    useEffect(() => {
+        if (initialYear) setSelectedYear(initialYear);
+    }, [initialYear]);
 
     useEffect(() => {
         if (ipo) {
@@ -409,7 +414,9 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack }) => {
                         onChange={(e) => setSelectedYear(Number(e.target.value))}
                         className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white font-bold"
                     >
-                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i + 1).map(y => (
+                        {Array.from(new Set([selectedYear, ...Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i + 1)]))
+                            .sort((a, b) => b - a)
+                            .map(y => (
                             <option key={y} value={y}>{y}</option>
                         ))}
                     </select>

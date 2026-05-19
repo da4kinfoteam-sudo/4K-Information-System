@@ -21,6 +21,8 @@ interface IPODetailProps {
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Training) => void;
+    onSelectLodYear?: (ipo: IPO, year: number) => void;
+    onSelectMarketingPartner?: (partner: MarketingPartner) => void;
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
 }
@@ -205,7 +207,7 @@ const PaginationControls: React.FC<{
     </div>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('IPO Management');
     const [isEditing, setIsEditing] = useState(false);
@@ -214,6 +216,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     const [otherRegisteringBody, setOtherRegisteringBody] = useState('');
     const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
     const [lodAssessments, setLodAssessments] = useState<LodAssessment[]>([]);
+    const [expandedMarketLinkageId, setExpandedMarketLinkageId] = useState<string | number | null>(null);
     
     // History Hook
     const { history, addIpoHistory } = useIpoHistory(ipo.id);
@@ -908,15 +911,21 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         <div className="mb-4">
                             <h4 className="detail-section-title">Level of Development</h4>
                             {lodAssessments.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
+                                <div className="detail-metric-grid">
                                     {lodAssessments.map(assessment => {
                                         const isCurrentYear = assessment.year === new Date().getFullYear();
                                         const level = assessment.manual_level || assessment.computed_level || 'N/A';
                                         return (
-                                            <div key={assessment.id} className={`detail-metric text-center ${isCurrentYear ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/40' : ''}`}>
-                                                <span className={`text-xs font-medium ${isCurrentYear ? 'text-emerald-800 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>{assessment.year}</span>
-                                                <span className={`font-bold ${isCurrentYear ? 'text-emerald-700 dark:text-emerald-400 text-lg' : 'text-gray-700 dark:text-gray-300'}`}>Level {level}</span>
-                                            </div>
+                                            <button
+                                                key={assessment.id}
+                                                type="button"
+                                                onClick={() => onSelectLodYear?.(ipo, assessment.year)}
+                                                className={`detail-metric detail-metric--button transition-colors hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 ${isCurrentYear ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/40' : ''}`}
+                                                title={`Open ${assessment.year} LOD assessment`}
+                                            >
+                                                <span className="detail-metric-label">{assessment.year}</span>
+                                                <span className="detail-metric-value">Level {level}</span>
+                                            </button>
                                         );
                                     })}
                                 </div>
@@ -1106,43 +1115,82 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 <div className="grid grid-cols-1 gap-4">
                                     {mlPagination.paginatedData.map((item, idx) => {
                                         const matchedBuyerNeeds = getMatchedBuyerCommodityNeeds(item.partner, ipo);
+                                        const linkageKey = item.link.id || `${item.partner.id}-${idx}`;
+                                        const isExpanded = expandedMarketLinkageId === linkageKey;
                                         return (
-                                        <div key={idx} className="detail-list-item">
-                                            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                                <h4 className="detail-list-title">{item.partner.companyName}</h4>
-                                                <span className={`status-badge status-badge--compact self-start sm:flex-shrink-0 ${item.link.negotiationStatus === 'Contract Signed' ? 'status-badge--completed' : 'status-badge--pending'}`}>
-                                                    {item.link.negotiationStatus}
-                                                </span>
+                                        <div
+                                            key={linkageKey}
+                                            className="detail-list-item cursor-pointer transition-colors hover:border-emerald-200 hover:bg-emerald-50/40 dark:hover:border-emerald-800 dark:hover:bg-emerald-900/10"
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-expanded={isExpanded}
+                                            onClick={() => setExpandedMarketLinkageId(prev => prev === linkageKey ? null : linkageKey)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter' || event.key === ' ') {
+                                                    event.preventDefault();
+                                                    setExpandedMarketLinkageId(prev => prev === linkageKey ? null : linkageKey);
+                                                }
+                                            }}
+                                        >
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            onSelectMarketingPartner?.(item.partner);
+                                                        }}
+                                                        className="detail-list-title table-link text-left focus:outline-none focus:underline"
+                                                        title="Open buyer profile"
+                                                    >
+                                                        {item.partner.companyName}
+                                                    </button>
+                                                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                        <span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantityKg)} Kg ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerKg)}/Kg
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                                                    <span className={`status-badge status-badge--compact ${item.link.negotiationStatus === 'Contract Signed' ? 'status-badge--completed' : 'status-badge--pending'}`}>
+                                                        {item.link.negotiationStatus}
+                                                    </span>
+                                                    <span className="rounded-md bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200">
+                                                        {formatCurrency(item.salesValue)}
+                                                    </span>
+                                                    <span className="text-xs font-bold text-gray-400">{isExpanded ? 'Collapse' : 'Expand'}</span>
+                                                </div>
                                             </div>
-                                            <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
-                                                <p><span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantityKg)} Kg ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerKg)}/Kg</p>
-                                                <p><span className="font-semibold">Sales Value:</span> {formatCurrency(item.salesValue)}</p>
-                                                <p><span className="font-semibold">Type:</span> {item.link.agreementType}</p>
-                                                <p><span className="font-semibold">Date:</span> {item.link.agreementDate ? new Date(item.link.agreementDate).toLocaleDateString() : 'N/A'}</p>
-                                            </div>
-                                            <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-700">
-                                                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Commodity Bought by Buyer</p>
-                                                {matchedBuyerNeeds.length > 0 ? (
-                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                        {matchedBuyerNeeds.map(need => {
-                                                            const annualVolume = getCommodityNeedAnnualVolume(need);
-                                                            return (
-                                                                <div key={need.id} className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs dark:border-teal-800 dark:bg-teal-900/20">
-                                                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                        <span className="font-bold text-teal-700 dark:text-teal-300">{need.name}</span>
-                                                                        <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-300">{need.type}</span>
-                                                                    </div>
-                                                                    <p className="mt-1 text-gray-600 dark:text-gray-300"><span className="font-semibold">Source:</span> {need.sourceProvince || 'Any Province'}, {need.sourceRegion || 'Any Region'}</p>
-                                                                    <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Annual Need:</span> {formatFullNumber(annualVolume)} Kg/Yr</p>
-                                                                    <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Quality:</span> {need.qualityStandard || 'Not specified'}</p>
-                                                                </div>
-                                                            );
-                                                        })}
+                                            {isExpanded && (
+                                                <div className="mt-3 space-y-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+                                                    <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                                                        <p><span className="font-semibold">Sales Value:</span> {formatCurrency(item.salesValue)}</p>
+                                                        <p><span className="font-semibold">Type:</span> {item.link.agreementType}</p>
+                                                        <p><span className="font-semibold">Date:</span> {item.link.agreementDate ? new Date(item.link.agreementDate).toLocaleDateString() : 'N/A'}</p>
                                                     </div>
-                                                ) : (
-                                                    <p className="text-xs italic text-gray-400">No matching commodity requirement is listed for this IPO.</p>
-                                                )}
-                                            </div>
+                                                    <div>
+                                                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Commodity Bought by Buyer</p>
+                                                        {matchedBuyerNeeds.length > 0 ? (
+                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                {matchedBuyerNeeds.map(need => {
+                                                                    const annualVolume = getCommodityNeedAnnualVolume(need);
+                                                                    return (
+                                                                        <div key={need.id} className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs dark:border-teal-800 dark:bg-teal-900/20">
+                                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                <span className="font-bold text-teal-700 dark:text-teal-300">{need.name}</span>
+                                                                                <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-300">{need.type}</span>
+                                                                            </div>
+                                                                            <p className="mt-1 text-gray-600 dark:text-gray-300"><span className="font-semibold">Source:</span> {need.sourceProvince || 'Any Province'}, {need.sourceRegion || 'Any Region'}</p>
+                                                                            <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Annual Need:</span> {formatFullNumber(annualVolume)} Kg/Yr</p>
+                                                                            <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Quality:</span> {need.qualityStandard || 'Not specified'}</p>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-xs italic text-gray-400">No matching commodity requirement is listed for this IPO.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         );
                                     })}

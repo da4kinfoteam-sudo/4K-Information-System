@@ -304,6 +304,7 @@ const AppContent: React.FC = () => {
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
+    const [selectedLodYear, setSelectedLodYear] = useState<number | null>(null);
     
     // Activity Edit Mode State
     const [activityEditMode, setActivityEditMode] = useState<'create' | 'details' | 'expenses' | 'accomplishment'>('create');
@@ -344,7 +345,10 @@ const AppContent: React.FC = () => {
             if (leavingPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
             if (leavingPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
             if (leavingPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
-            if (leavingPage === '/lod-details') setSelectedIpo(null);
+            if (leavingPage === '/lod-details') {
+                setSelectedIpo(null);
+                setSelectedLodYear(null);
+            }
 
             if (event.state && event.state.page) {
                 setCurrentPage(event.state.page);
@@ -524,8 +528,9 @@ const AppContent: React.FC = () => {
         return <Login />;
     }
 
-    const handleSelectIpoForLod = (ipo: IPO) => {
+    const handleSelectIpoForLod = (ipo: IPO, year?: number) => {
         setSelectedIpo(ipo);
+        setSelectedLodYear(year ?? null);
         navigateTo('/lod-details');
     };
 
@@ -915,6 +920,8 @@ const AppContent: React.FC = () => {
                             }}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            onSelectLodYear={handleSelectIpoForLod}
+                            onSelectMarketingPartner={handleSelectMarketingPartner}
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
                         />;
@@ -1003,7 +1010,7 @@ const AppContent: React.FC = () => {
                 return <LODPage ipos={ipos} onSelectIpo={handleSelectIpoForLod} />;
             case '/lod-details':
                 if (!selectedIpo) return <div>Select an IPO</div>;
-                return <LODDetails ipo={selectedIpo} onBack={handleBack} />;
+                return <LODDetails ipo={selectedIpo} onBack={handleBack} initialYear={selectedLodYear} />;
             case '/commodity-mapping':
                 return <CommodityMappingPage subprojects={subprojects} ipos={ipos} />;
             default:

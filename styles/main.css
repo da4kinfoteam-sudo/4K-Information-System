@@ -3331,6 +3331,14 @@
   padding: 0.75rem;
 }
 
+.detail-metric--button {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
 .detail-metric--inline {
   align-items: center;
   display: flex;
