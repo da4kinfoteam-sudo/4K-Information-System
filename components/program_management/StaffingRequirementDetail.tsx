@@ -18,12 +18,12 @@ interface StaffingRequirementDetailProps {
     onUpdate: (item: StaffingRequirement) => void;
 }
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
+const commonInputClasses = "form-control";
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
-    <div>
-        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-        <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{value || 'N/A'}</dd>
+    <div className="detail-item">
+        <dt className="detail-label">{label}</dt>
+        <dd className="detail-value font-semibold">{value || 'N/A'}</dd>
     </div>
 );
 
@@ -37,12 +37,11 @@ const formatDate = (dateString?: string) => {
 };
 
 const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Filled': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Unfilled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Filled': return 'status-badge status-badge--completed';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Unfilled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
@@ -513,21 +512,21 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     if (editMode === 'details') {
         return (
-            <div className="space-y-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Details: {item.personnelPosition}</h1>
-                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+            <div className="form-page animate-fadeIn">
+                <div className="detail-header">
+                    <h1 className="detail-title">Editing Details: {item.personnelPosition}</h1>
+                    <button onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel Editing</button>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <div className="form-card">
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Group 1: Profile */}
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Component</label><select name="component" value={formData.component} onChange={handleInputChange} className={getInputClasses('component')}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Position Profile</legend>
+                            <div className="program-form-grid program-form-grid--four">
+                                <div><label className="form-label">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
+                                <div><label className="form-label">Component</label><select name="component" value={formData.component} onChange={handleInputChange} className={getInputClasses('component')}>{otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hiring Status</label>
+                                    <label className="form-label">Hiring Status</label>
                                     <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={getInputClasses('hiringStatus')}>
                                         <option value="Proposed">Proposed</option>
                                         <option value="Filled">Filled</option>
@@ -535,63 +534,62 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                     </select>
                                     {formData.hiringStatus === 'Filled' && <p className="text-xs text-green-600 mt-1">Status set to Filled automatically based on Date Hired.</p>}
                                 </div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
-                                <div className="md:col-span-1"><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit <span className="text-red-500">*</span></label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={getInputClasses('operatingUnit')} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
+                                <div><label className="form-label">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
+                                <div><label className="form-label">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
+                                <div><label className="form-label">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
+                                <div><label className="form-label">Operating Unit <span className="text-red-500">*</span></label><select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} className={getInputClasses('operatingUnit')} disabled={!canViewAll}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select></div>
                             </div>
                         </fieldset>
 
                         {/* Group 2: Funding */}
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding Source</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Funding Source</legend>
+                            <div className="form-grid">
+                                <div><label className="form-label">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                                <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                                <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
                             </div>
                         </fieldset>
 
                         {/* Group 3: Financial Requirements */}
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Financial Requirements</legend>
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Financial Requirements</legend>
                             
-                            <div className="space-y-3 mb-6">
+                            <div className="budget-item-list">
                                 {expensesList.map((expense, idx) => (
-                                    <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-600 flex justify-between items-start">
-                                        <div>
-                                            <p className="font-semibold text-gray-800 dark:text-white text-sm">{expense.expenseParticular || 'Unspecified Particular'}</p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
+                                    <div key={idx} className="budget-item-card">
+                                        <div className="budget-item-card__summary">
+                                            <p className="budget-item-card__title">{expense.expenseParticular || 'Unspecified Particular'}</p>
+                                            <p className="budget-item-card__meta">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
                                         </div>
-                                        <div className="flex items-center gap-4">
-                                            <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(expense.amount)}</p>
-                                            <div className="flex gap-2">
-                                                <button type="button" onClick={() => handleEditExpense(expense)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
+                                        <div className="budget-item-card__actions">
+                                            <p className="budget-item-card__total">{formatCurrency(expense.amount)}</p>
+                                            <div className="budget-item-card__buttons">
+                                                <button type="button" onClick={() => handleEditExpense(expense)} className="table-action table-action--edit" aria-label="Edit financial item">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                 </button>
-                                                <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="text-red-500 hover:text-red-700">
+                                                <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="table-action table-action--danger" aria-label="Remove financial item">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
-                                {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
-                                <div className="flex justify-end pt-2 border-t border-gray-300 dark:border-gray-600">
-                                    <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">Total Annual Requirement:</span>
-                                    <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}</span>
+                                {expensesList.length === 0 && <p className="detail-empty detail-empty--compact">No financial items added.</p>}
+                                <div className="budget-item-list__total">
+                                    Total Annual Requirement: {formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}
                                 </div>
                             </div>
 
-                            <div className="bg-white dark:bg-gray-800 p-4 rounded-md border border-emerald-200 dark:border-emerald-800">
-                                <h4 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 border-b border-gray-100 dark:border-gray-700 pb-2">
+                            <div className="form-fieldset">
+                                <h4 className="detail-section-title detail-section-title--ruled">
                                     {editingExpenseId ? 'Edit Financial Item' : 'Add Financial Item'}
                                 </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div className="program-form-grid program-form-grid--four">
+                                    <div><label className="form-label">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                    <div><label className="form-label">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code <span className="text-red-500">*</span></label>
+                                        <label className="form-label">UACS Code <span className="text-red-500">*</span></label>
                                         <input 
                                             list="uacs-codes-list-detail"
                                             name="uacsCode" 
@@ -641,19 +639,16 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         </datalist>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
+                                        <label className="form-label">Description</label>
                                         <input 
                                             type="text" 
                                             value={selectedUacsDesc} 
                                             readOnly 
-                                            className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none sm:text-sm cursor-not-allowed" 
+                                            className={`${commonInputClasses} form-control--readonly`} 
                                         />
                                     </div>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date <span className="text-red-500">*</span></label>
+                                        <label className="form-label">Obligation Date <span className="text-red-500">*</span></label>
                                         <MonthYearPicker 
                                             value={currentExpense.obligationDate} 
                                             onChange={(val) => {
@@ -665,43 +660,45 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                             className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-1 ring-red-500' : ''}
                                         />
                                     </div>
-                                    <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
+                                    <div><label className="form-label">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
                                 </div>
-                                
-                                <div className="mb-3">
-                                    <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+
+                                <div className="budget-item-form-grid budget-item-form-grid--nested">
+                                    <div>
+                                    <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="btn btn-secondary btn-sm">
                                         {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule (Target)
                                     </button>
                                     {isExpenseScheduleOpen && (
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded border border-gray-200 dark:border-gray-700">
+                                        <div className="program-month-grid">
                                             {months.map(month => (
-                                                <div key={`exp-${month}`}>
-                                                    <label className="block text-[10px] font-medium text-gray-500 uppercase">{month}</label>
+                                                <div key={`exp-${month}`} className="program-month-cell">
+                                                    <label className="program-month-cell__label">{month}</label>
                                                     <input type="number" name={`disbursement${month}`} 
                                                     // @ts-ignore
-                                                    value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="w-full px-1 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                    value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="form-control form-control--compact" />
                                                 </div>
                                             ))}
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="flex gap-2">
-                                    <button type="button" onClick={handleAddExpense} className="flex-1 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition-colors">
+                                <div className="budget-item-form-grid__actions">
+                                    <button type="button" onClick={handleAddExpense} className="btn btn-primary">
                                         {editingExpenseId ? 'Update Item' : 'Add Item to List'}
                                     </button>
                                     {editingExpenseId && (
-                                        <button type="button" onClick={handleCancelExpenseEdit} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm hover:bg-gray-300 transition-colors">
+                                        <button type="button" onClick={handleCancelExpenseEdit} className="btn btn-secondary">
                                             Cancel
                                         </button>
                                     )}
                                 </div>
                             </div>
+                            </div>
                         </fieldset>
 
-                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Changes</button>
+                        <div className="detail-edit-footer">
+                            <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
+                            <button type="submit" className="btn btn-primary">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -711,28 +708,28 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
     if (editMode === 'accomplishment') {
         return (
-            <div className="space-y-6">
-                <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Editing Accomplishment: {item.personnelPosition}</h1>
-                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+            <div className="form-page animate-fadeIn">
+                <div className="detail-header">
+                    <h1 className="detail-title">Editing Accomplishment: {item.personnelPosition}</h1>
+                    <button onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel Editing</button>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <div className="form-card">
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Physical Accomplishment</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Physical Accomplishment</legend>
+                            <div className="form-grid">
+                                <div><label className="form-label">Date Hired</label><input type="date" name="actualObligationDate" value={formData.actualObligationDate} onChange={handleInputChange} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
 
-                        <div className="space-y-4">
-                            <h4 className="font-medium text-gray-700 dark:text-gray-300">Financial Accomplishment per Expense Item</h4>
+                        <div className="detail-stack">
+                            <h4 className="detail-section-title">Financial Accomplishment per Expense Item</h4>
                             {expensesList.map((expense, idx) => (
-                                <fieldset key={expense.id} className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
-                                    <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">{expense.expenseParticular || 'Unspecified Particular'} ({expense.uacsCode})</legend>
+                                <fieldset key={expense.id} className="form-fieldset">
+                                    <legend className="form-legend">{expense.expenseParticular || 'Unspecified Particular'} ({expense.uacsCode})</legend>
                                     
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Obligations</label>
+                                    <div className="detail-subsection">
+                                        <label className="form-label">Obligations</label>
                                         <ObligationsEditor
                                             obligations={expense.obligations || []}
                                             onChange={(newObs, total) => {
@@ -743,45 +740,44 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                         />
                                     </div>
 
-                                    <div className="mt-4">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Actual Monthly Disbursement</label>
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                    <div className="detail-subsection detail-subsection--separated">
+                                        <label className="form-label">Actual Monthly Disbursement</label>
+                                        <div className="program-month-grid">
                                             {months.map(month => (
-                                                <div key={`actual-${expense.id}-${month}`}>
-                                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{month}</label>
+                                                <div key={`actual-${expense.id}-${month}`} className="program-month-cell">
+                                                    <label className="program-month-cell__label">{month}</label>
                                                     <input type="number" 
                                                         value={(expense as any)[`actualDisbursement${month}`] || 0} 
                                                         onChange={(e) => handleExpenseAccomplishmentChange(expense.id, `actualDisbursement${month}` as keyof StaffingExpense, Number(e.target.value))} 
                                                         min="0" step="0.01" 
-                                                        className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:ring-emerald-500 focus:border-emerald-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed" 
+                                                        className="form-control form-control--compact" 
                                                     />
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="mt-4 pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-end items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Item Actual Disbursement:</span>
-                                            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(calculateActualDisbursementTotal(expense))}</span>
+                                        <div className="budget-item-list__total">
+                                            Item Actual Disbursement: {formatCurrency(calculateActualDisbursementTotal(expense))}
                                         </div>
                                     </div>
                                 </fieldset>
                             ))}
-                            {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
+                            {expensesList.length === 0 && <p className="detail-empty detail-empty--compact">No financial items added.</p>}
                         </div>
 
-                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-md border border-emerald-200 dark:border-emerald-800 flex justify-between items-center">
-                            <div>
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 block">Total Actual Obligation:</span>
-                                <span className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(formData.actualObligationAmount || 0)}</span>
+                        <div className="detail-metric-grid">
+                            <div className="detail-metric detail-metric--inline">
+                                <span className="detail-metric-label">Total Actual Obligation</span>
+                                <span className="detail-metric-value">{formatCurrency(formData.actualObligationAmount || 0)}</span>
                             </div>
-                            <div className="text-right">
-                                <span className="text-sm font-medium text-gray-600 dark:text-gray-400 block">Total Actual Disbursement:</span>
-                                <span className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
+                            <div className="detail-metric detail-metric--inline">
+                                <span className="detail-metric-label">Total Actual Disbursement</span>
+                                <span className="detail-metric-value">{formatCurrency(formData.actualDisbursementAmount || 0)}</span>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Save Accomplishment</button>
+                        <div className="detail-edit-footer">
+                            <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
+                            <button type="submit" className="btn btn-primary">Save Accomplishment</button>
                         </div>
                     </form>
                 </div>
@@ -793,40 +789,46 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     const totalTargetDisbursement = months.reduce((sum, m) => sum + (Number((item as any)[`disbursement${m}`]) || 0), 0);
 
     return (
-        <div className="space-y-8">
+        <div className="detail-page animate-fadeIn">
             {/* Header */}
-            <header className="flex flex-wrap items-center justify-between gap-4">
+            <header className="detail-header">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{item.personnelPosition}</h1>
-                    <p className="text-md text-gray-500 dark:text-gray-400">{item.operatingUnit} | {item.uid}</p>
+                    <h1 className="detail-title">{item.personnelPosition}</h1>
+                    <p className="detail-subtitle">{item.operatingUnit} | {item.uid}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="detail-actions">
                     {canEdit && (
-                        <button onClick={() => setEditMode('details')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-teal-600 hover:bg-teal-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                        <button onClick={() => setEditMode('details')} className="btn btn-primary btn-responsive">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                            <span className="btn-text">
                             Edit Details
+                            </span>
                         </button>
                     )}
                     {canEdit && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <button onClick={() => setEditMode('accomplishment')} className="btn btn-primary btn-responsive">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span className="btn-text">
                             Edit Accomplishment
+                            </span>
                         </button>
                     )}
-                    <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                    <button onClick={onBack} className="btn btn-secondary btn-responsive">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        <span className="btn-text">
                         Back
+                        </span>
                     </button>
                 </div>
             </header>
 
             {/* Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="detail-grid">
                 
                 {/* Details Section */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                    <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Requirement Details</h3>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                <div className="detail-card">
+                    <h3 className="detail-card-title">Requirement Details</h3>
+                    <div className="detail-dl">
                         <DetailItem label="Position" value={item.personnelPosition} />
                         <DetailItem label="Component" value={item.component} />
                         <DetailItem label="Status" value={<span className={getHiringStatusBadge(item.hiringStatus)}>{item.hiringStatus}</span>} />
@@ -840,37 +842,37 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     
                     {/* Breakdown of Expenses with Toggleable Schedule */}
                     {displayExpenses.length > 0 && (
-                        <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-3">Cost Breakdown</h4>
-                            <ul className="space-y-3 text-sm">
+                        <div className="detail-subsection detail-subsection--separated">
+                            <h4 className="detail-section-title">Cost Breakdown</h4>
+                            <ul className="program-expense-list">
                                 {displayExpenses.map((exp, i) => (
-                                    <li key={i} className="flex flex-col bg-gray-50 dark:bg-gray-700/50 rounded overflow-hidden border border-gray-200 dark:border-gray-600">
-                                        <div className="flex justify-between items-center p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleExpenseExpand(exp.id)}>
-                                            <div>
-                                                <span className="font-semibold text-gray-800 dark:text-gray-200 block">{exp.expenseParticular}</span>
-                                                <span className="text-xs text-gray-500 dark:text-gray-400">{exp.uacsCode}</span>
+                                    <li key={i} className="program-expense-card">
+                                        <button type="button" className="program-expense-card__trigger" onClick={() => toggleExpenseExpand(exp.id)}>
+                                            <div className="program-expense-card__summary">
+                                                <span className="program-expense-card__title">{exp.expenseParticular}</span>
+                                                <span className="program-expense-card__meta">{exp.uacsCode}</span>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(exp.amount)}</span>
-                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 transition-transform ${expandedExpenseIds.has(exp.id) ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <div className="program-expense-card__aside">
+                                                <span className="program-expense-card__amount">{formatCurrency(exp.amount)}</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" className={`program-expense-card__chevron ${expandedExpenseIds.has(exp.id) ? 'is-open' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                                 </svg>
                                             </div>
-                                        </div>
+                                        </button>
                                         {expandedExpenseIds.has(exp.id) && (
-                                            <div className="p-3 border-t border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800">
-                                                <div className="flex justify-between mb-2">
+                                            <div className="program-expense-card__details">
+                                                <div className="program-expense-card__date">
                                                     <div>
-                                                        <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase block">Target Obligation Date</span>
-                                                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">{formatDate(exp.obligationDate)}</span>
+                                                        <span className="detail-kicker">Target Obligation Date</span>
+                                                        <span className="program-expense-card__date-value">{formatDate(exp.obligationDate)}</span>
                                                     </div>
                                                 </div>
-                                                <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Target Monthly Disbursement</p>
-                                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                <p className="detail-kicker">Target Monthly Disbursement</p>
+                                                <div className="program-month-grid">
                                                     {months.map(m => (
-                                                        <div key={m} className="flex flex-col">
-                                                            <span className="text-[10px] text-gray-400">{m}</span>
-                                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{formatCurrency((exp as any)[`disbursement${m}`] || 0)}</span>
+                                                        <div key={m} className="program-month-cell">
+                                                            <span className="program-month-cell__label">{m}</span>
+                                                            <span className="program-month-cell__value">{formatCurrency((exp as any)[`disbursement${m}`] || 0)}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -884,58 +886,58 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 </div>
 
                 {/* Accomplishment Section */}
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                    <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Accomplishment Report</h3>
-                    <div className="space-y-6">
+                <div className="detail-card">
+                    <h3 className="detail-card-title">Accomplishment Report</h3>
+                    <div className="detail-stack">
                         
                         <div>
-                            <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Financial Performance Summary</h4>
-                            <div className="grid grid-cols-2 gap-4 mt-3">
-                                <div className="space-y-3">
-                                    <p className="text-xs font-bold uppercase text-gray-400">Total Obligation</p>
+                            <h4 className="detail-section-title detail-section-title--ruled">Financial Performance Summary</h4>
+                            <div className="detail-metric-grid">
+                                <div className="detail-subsection">
+                                    <p className="detail-kicker">Total Obligation</p>
                                     <DetailItem label="Amount" value={formatCurrency(item.actualObligationAmount || 0)} />
                                 </div>
-                                <div className="space-y-3">
-                                    <p className="text-xs font-bold uppercase text-gray-400">Total Disbursement</p>
+                                <div className="detail-subsection">
+                                    <p className="detail-kicker">Total Disbursement</p>
                                     <DetailItem label="Amount" value={formatCurrency(item.actualDisbursementAmount || 0)} />
                                 </div>
                             </div>
                         </div>
                         
                         <div>
-                            <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Employment Details</h4>
-                            <div className="grid grid-cols-2 gap-4 mt-3">
+                            <h4 className="detail-section-title detail-section-title--ruled">Employment Details</h4>
+                            <div className="detail-metric-grid">
                                 <DetailItem label="Date Hired" value={formatDate(item.actualObligationDate)} />
                             </div>
                         </div>
 
                         {displayExpenses.length > 0 && (
-                            <div className="mt-4">
-                                <h4 className="font-medium text-gray-600 dark:text-gray-300 mb-2 border-b border-gray-200 dark:border-gray-600 pb-1">Per Item Actuals</h4>
-                                <div className="space-y-4">
+                            <div className="detail-subsection">
+                                <h4 className="detail-section-title detail-section-title--ruled">Per Item Actuals</h4>
+                                <div className="program-actual-list">
                                     {displayExpenses.map((exp, idx) => (
-                                        <div key={idx} className="bg-gray-50 dark:bg-gray-700/30 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="font-bold text-sm text-gray-800 dark:text-white">{exp.expenseParticular}</span>
-                                                <div className="text-right text-xs">
-                                                    <div className="text-gray-500">Date: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatDate(exp.actualObligationDate)}</span></div>
-                                                    <div className="text-gray-500">Act. Obli: <span className="font-semibold text-gray-800 dark:text-gray-200">{formatCurrency(exp.actualObligationAmount || 0)}</span></div>
-                                                    <div className="text-emerald-600">Act. Disb: <span className="font-bold">{formatCurrency(calculateActualDisbursementTotal(exp))}</span></div>
+                                        <div key={idx} className="program-actual-card">
+                                            <div className="program-actual-card__header">
+                                                <span className="program-actual-card__title">{exp.expenseParticular}</span>
+                                                <div className="program-actual-card__summary">
+                                                    <div>Date: <span>{formatDate(exp.actualObligationDate)}</span></div>
+                                                    <div>Act. Obli: <span>{formatCurrency(exp.actualObligationAmount || 0)}</span></div>
+                                                    <div className="program-actual-card__disbursement">Act. Disb: <span>{formatCurrency(calculateActualDisbursementTotal(exp))}</span></div>
                                                 </div>
                                             </div>
-                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                            <div className="program-month-grid">
                                                 {months.map(m => {
                                                     const val = (exp as any)[`actualDisbursement${m}`] || 0;
                                                     if (val === 0) return null;
                                                     return (
-                                                        <div key={m} className="flex flex-col bg-white dark:bg-gray-800 p-1 rounded border border-gray-200 dark:border-gray-600">
-                                                            <span className="text-[10px] text-gray-400 text-center">{m}</span>
-                                                            <span className="text-[10px] font-bold text-center text-emerald-600 dark:text-emerald-400">{formatCurrency(val)}</span>
+                                                        <div key={m} className="program-month-cell">
+                                                            <span className="program-month-cell__label">{m}</span>
+                                                            <span className="program-month-cell__value program-month-cell__value--success">{formatCurrency(val)}</span>
                                                         </div>
                                                     )
                                                 })}
                                             </div>
-                                            {calculateActualDisbursementTotal(exp) === 0 && <p className="text-xs text-gray-400 italic text-center">No disbursement recorded</p>}
+                                            {calculateActualDisbursementTotal(exp) === 0 && <p className="detail-empty detail-empty--compact">No disbursement recorded</p>}
                                         </div>
                                     ))}
                                 </div>

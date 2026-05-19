@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
@@ -47,16 +47,15 @@ const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+const commonInputClasses = "form-control";
 
 const getStatusBadge = (status: Activity['status']) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Completed': return 'status-badge status-badge--completed';
+        case 'Ongoing': return 'status-badge status-badge--ongoing';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Cancelled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
@@ -542,13 +541,12 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
-        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+        let classes = 'status-badge status-badge--compact status-badge--neutral';
         switch (status) {
-            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
-            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
-            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
-            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
+            case 'APPROVED': classes = 'status-badge status-badge--compact status-badge--approved'; break;
+            case 'PENDING': classes = 'status-badge status-badge--compact status-badge--pending'; break;
+            case 'REJECTED': classes = 'status-badge status-badge--compact status-badge--rejected'; break;
+            case 'DRAFT': classes = 'status-badge status-badge--compact status-badge--draft'; break;
         }
         return <span className={classes}>{status || 'DRAFT'}</span>;
     };
@@ -594,7 +592,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     };
 
     return (
-        <div>
+        <div className="data-list-page">
             {isDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
@@ -602,7 +600,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                         <p className="my-4">Are you sure you want to delete this activity?</p>
                         <div className="flex justify-end gap-4">
                             <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                            <button onClick={confirmDelete} className="btn btn-danger">Delete</button>
                         </div>
                     </div>
                 </div>
@@ -618,24 +616,25 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                         </p>
                         <div className="flex justify-end gap-4">
                             <button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={confirmMultiDelete} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete All Selected</button>
+                            <button onClick={confirmMultiDelete} className="btn btn-danger">Delete All Selected</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Activities Management</h2>
+            <div className="data-list-header">
+                <h2 className="data-list-title">Activities Management</h2>
                 {canEdit && (
-                    <button onClick={onCreateActivity} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
-                        + Add New Activity
+                    <button onClick={onCreateActivity} className="btn btn-primary btn-responsive" title="Add New Activity">
+                        <Plus className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Add New Activity</span>
                     </button>
                 )}
             </div>
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                 <div className="mb-4 flex flex-col gap-4">
-                    <div className="flex flex-wrap gap-x-4 gap-y-2 items-center justify-between">
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+            <div className="data-table-card">
+                 <div className="data-table-toolbar">
+                    <div className="data-toolbar-row">
+                        <div className="data-toolbar-group">
                             <input 
                                 type="text" 
                                 placeholder="Search Activity..." 
@@ -644,7 +643,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     setSearchTerm(e.target.value);
                                     setSavedSearchTerm(e.target.value);
                                 }} 
-                                className={`w-full md:w-64 ${commonInputClasses} mt-0`} 
+                                className={`data-table-search w-full md:w-64 ${commonInputClasses} mt-0`} 
                             />
                             
                             {Object.keys(columnFilters).length > 0 && (
@@ -654,31 +653,40 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                             )}
                         </div>
                         
-                        <div className="flex items-center gap-2">
+                        <div className="data-toolbar-group data-toolbar-group--actions">
                             {isSelectionMode && selectedIds.length > 0 && (
                                 <button 
                                     onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                                    className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                                    className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
                                 >
                                     {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                                 </button>
                             )}
-                            <button onClick={() => downloadActivitiesReport(processedActivities)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
+                            <button onClick={() => downloadActivitiesReport(processedActivities)} className="btn btn-primary btn-responsive" title="Download Report">
+                                <Download className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Download Report</span>
+                            </button>
                             {canEdit && (
                                 <>
-                                    <button onClick={downloadActivitiesTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                                    <label htmlFor="activity-upload" className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>{isUploading ? 'Uploading...' : 'Upload'}</label>
+                                    <button onClick={downloadActivitiesTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
+                                        <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
+                                        <span className="btn-text">Template</span>
+                                    </button>
+                                    <label htmlFor="activity-upload" className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload'}>
+                                        <Upload className="btn-symbol" aria-hidden="true" />
+                                        <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload'}</span>
+                                    </label>
                                     <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
                                     <button 
                                         onClick={() => handleToggleMode('clone')} 
-                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                        className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
                                         title="Toggle Clone Mode"
                                     >
                                         <DuplicateIcon />
                                     </button>
                                     <button
                                         onClick={() => handleToggleMode('delete')}
-                                        className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                        className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'delete' ? 'is-active-danger' : ''}`}
                                         title="Toggle Multi-Delete Mode"
                                     >
                                         <TrashIcon />
@@ -689,8 +697,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                      </div>
                  </div>
 
-                <div className="overflow-x-visible pb-24">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <div className="data-table-scroll overflow-x-visible pb-24">
+                    <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
@@ -813,7 +821,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
                                         <td className="px-4 py-4 text-gray-400 sticky left-0 bg-white dark:bg-gray-800 z-10"><svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-transform duration-200 ${expandedRowId === activity.id ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg></td>
                                         <td className="px-6 py-4 whitespace-normal text-sm font-medium text-gray-900 dark:text-white">
-                                            <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-left hover:text-emerald-600 hover:underline focus:outline-none">
+                                            <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="table-link">
                                                 {activity.name}
                                             </button>
                                             {activity.uid && <div className="text-xs text-gray-400 font-normal mt-1">{activity.uid}</div>}
@@ -837,14 +845,14 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                     <div className="flex gap-1 mt-1">
                                                         <button 
                                                             onClick={(e) => handleApprove(activity.id, e)} 
-                                                            className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                            className="action-mini action-mini--approve"
                                                             title="Approve"
                                                         >
                                                             <Check className="h-3 w-3" />
                                                         </button>
                                                         <button 
                                                             onClick={(e) => handleReject(activity.id, e)} 
-                                                            className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                            className="action-mini action-mini--reject"
                                                             title="Reject"
                                                         >
                                                             <X className="h-3 w-3" />
@@ -865,11 +873,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                             className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                         />
                                                     )}
-                                                    <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200 border border-emerald-600 px-2 py-1 rounded hover:bg-emerald-50 transition-colors">Profile</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(activity); }} className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200 border border-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors">Delete</button>
+                                                    <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="table-action table-action--primary">Profile</button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(activity); }} className="table-action table-action--danger">Delete</button>
                                                 </div>
                                             ) : (
-                                                <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="text-emerald-600 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200 border border-emerald-600 px-4 py-1 rounded hover:bg-emerald-50 transition-colors">View Profile</button>
+                                                <button onClick={(e) => { e.stopPropagation(); onSelectActivity(activity); }} className="table-action table-action--primary">View Profile</button>
                                             )}
                                         </td>
                                     </tr>
@@ -880,7 +888,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                     <div className="space-y-4">
                                                         <div>
                                                             <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Details</h4>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Type:</strong> <span className={`px-2 py-0.5 rounded-full font-semibold ${activity.type === 'Training' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{activity.type}</span></p>
+                                                            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Type:</strong> <span className={`status-badge ${activity.type === 'Training' ? 'status-badge--completed' : 'status-badge--info'}`}>{activity.type}</span></p>
                                                             <p className="text-sm text-gray-600 dark:text-gray-300 mt-1"><strong>Component:</strong> {activity.component}</p>
                                                             {activity.description && (
                                                                 <div className="mt-2">
@@ -941,7 +949,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     </table>
                 </div>
                  {/* Pagination */}
-                 <div className="py-4 flex items-center justify-between">
+                 <div className="data-table-pagination py-4 flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
                         <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select>

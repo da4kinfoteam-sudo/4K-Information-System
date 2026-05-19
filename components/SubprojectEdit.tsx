@@ -1,6 +1,6 @@
 // Author: 4K
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Info } from 'lucide-react';
+import { ArrowLeft, Info, Pencil, Trash2 } from 'lucide-react';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { Subproject, IPO, SubprojectDetail, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, philippineRegions, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker from './LocationPicker';
@@ -28,7 +28,7 @@ const MONTH_NAMES = [
     "July", "August", "September", "October", "November", "December"
 ];
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed";
+const commonInputClasses = "form-control";
 
 const defaultFormData: Subproject = {
     id: 0,
@@ -566,18 +566,18 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     };
 
     const TabButton = ({ name, label }: { name: any, label: string }): React.ReactNode => (
-        <button type="button" onClick={() => setActiveTab(name)} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === name ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
+        <button type="button" onClick={() => setActiveTab(name)} className={`data-tab ${activeTab === name ? 'is-active' : ''}`}>{label}</button>
     );
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8 animate-fadeIn">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">{subproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
-                <button onClick={onBack} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600">Back to List</button>
+        <div className="form-card form-page animate-fadeIn">
+            <div className="detail-header">
+                <h3 className="detail-title">{subproject ? 'Edit Subproject' : 'Add New Subproject'}</h3>
+                <button onClick={onBack} className="btn btn-secondary"><ArrowLeft className="btn-symbol" aria-hidden="true" />Back to List</button>
             </div>
             <form onSubmit={handleSubmit}>
-                <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-4">
+                <div className="mb-6">
+                    <nav className="data-tabs">
                         <TabButton name="details" label="Subproject Details" />
                         <TabButton name="commodity" label="Subproject Commodity" />
                         <TabButton name="budget" label="Budget Items" />
@@ -588,9 +588,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                     {activeTab === 'details' && (
                          <div className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium">Subproject Name <span className="text-red-500">*</span></label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} required /></div>
+                                <div><label className="form-label">Subproject Name <span className="text-red-500">*</span></label><input type="text" name="name" value={formData.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} required /></div>
                                 <div>
-                                    <label className="block text-sm font-medium">Operating Unit</label>
+                                    <label className="form-label">Operating Unit</label>
                                     <select 
                                         name="operatingUnit" 
                                         value={formData.operatingUnit || ''} 
@@ -603,10 +603,10 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                     </select>
                                 </div>
-                                <div><label className="block text-sm font-medium">Region <span className="text-red-500">*</span></label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !selectedRegion ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium">Indigenous People Organization <span className="text-red-500">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
-                                <div><label className="block text-sm font-medium">Status <span className="text-red-500">*</span></label><select name="status" value={formData.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div>
-                                <div><label className="block text-sm font-medium">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                <div><label className="form-label">Region <span className="text-red-500">*</span></label><select value={selectedRegion} onChange={(e) => { setSelectedRegion(e.target.value); setFormData(prev => ({...prev, indigenousPeopleOrganization: ''})); }} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') && !selectedRegion ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="">Select Region</option>{philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+                                <div><label className="form-label">Indigenous People Organization <span className="text-red-500">*</span></label><select name="indigenousPeopleOrganization" value={formData.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`} disabled={!selectedRegion} required><option value="">Select IPO</option>{filteredIpos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}</select></div>
+                                <div><label className="form-label">Status <span className="text-red-500">*</span></label><select name="status" value={formData.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`}><option value="Proposed">Proposed</option><option value="Ongoing">Ongoing</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select></div>
+                                <div><label className="form-label">Package</label><select name="packageType" value={formData.packageType} onChange={handleInputChange} className={commonInputClasses}>{Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
@@ -687,23 +687,21 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3 ml-4">
-                                            <button type="button" onClick={() => handleEditCommodity(i)} className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                            <button type="button" onClick={() => handleEditCommodity(i)} className="table-action table-action--primary" title="Edit commodity">
+                                                <Pencil className="btn-symbol" aria-hidden="true" />
                                             </button>
-                                            <button type="button" onClick={() => handleRemoveCommodity(i)} className="p-2 text-gray-400 hover:text-red-600 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            <button type="button" onClick={() => handleRemoveCommodity(i)} className="table-action table-action--danger" title="Remove commodity">
+                                                <Trash2 className="btn-symbol" aria-hidden="true" />
                                             </button>
                                         </div>
                                     </div>
                                 ))
                             ) : (
-                                <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/30 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added yet. Use the form below to add one.</p>
-                                </div>
+                                <p className="detail-empty">No commodities added yet. Use the form below to add one.</p>
                             )}
                             
-                            <div className="bg-gray-50 dark:bg-gray-700/30 p-6 rounded-xl border border-gray-200 dark:border-gray-700 mt-6">
-                                <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2">
+                            <div className="detail-list-item mt-6">
+                                <h4 className="detail-section-title flex items-center gap-2">
                                     <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
                                     {editingCommodityIndex !== null ? 'Edit Commodity' : 'Add New Commodity'}
                                 </h4>
@@ -1002,7 +1000,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                 
                                 <div><label className="block text-xs font-medium">Price per Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
                                 <div><label className="block text-xs font-medium">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"} /></div>
-                                <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="cans">cans</option><option value="grams">grams</option><option value="lots">lots</option></select></div>
+                                <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5 text-sm"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="lots">lots</option></select></div>
                                 
                                 <div className="lg:col-span-4 flex gap-2 mt-2">
                                     {editingDetailId !== null && (
@@ -1125,9 +1123,9 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         </div>
                     )}
                 </div>
-                <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="form-footer">
                     {activeTab !== 'details' && (
-                        <button type="button" onClick={handleBackSection} className="px-4 py-2 rounded-md text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">Back Section</button>
+                        <button type="button" onClick={handleBackSection} className="btn btn-secondary">Back Section</button>
                     )}
                     
                     {/* Navigation Buttons */}
@@ -1135,7 +1133,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         <button 
                             type="button" 
                             onClick={handleNextSection} 
-                            className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700"
+                            className="btn btn-primary"
                         >
                             Next Section
                         </button>
@@ -1146,7 +1144,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                         <button 
                             type="submit" 
                             disabled={!subproject && validationErrors.length > 0}
-                            className={`px-4 py-2 rounded-md text-sm font-medium text-white ${(!subproject && validationErrors.length > 0) ? 'bg-gray-400 cursor-not-allowed opacity-50' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                            className={`btn btn-primary ${(!subproject && validationErrors.length > 0) ? 'is-disabled' : ''}`}
                         >
                             {subproject ? 'Update Subproject' : 'Confirm & Save Subproject'}
                         </button>
@@ -1157,15 +1155,15 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             {/* Delivery Date Confirmation Modal */}
             {confirmDeliveryDate && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Confirm Delivery Date</h3>
+                    <div className="dashboard-modal">
+                        <h3 className="detail-card-title">Confirm Delivery Date</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
                             The delivery date you selected is beyond the subproject's estimated completion date. 
                             Do you want to update the subproject's estimated completion date to match this delivery date?
                         </p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={handleCancelDeliveryDate} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={handleConfirmDeliveryDate} className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700">Confirm & Update</button>
+                            <button onClick={handleCancelDeliveryDate} className="btn btn-secondary">Cancel</button>
+                            <button onClick={handleConfirmDeliveryDate} className="btn btn-primary">Confirm & Update</button>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo } from 'react';
+import { ArrowLeft, Check, Edit3, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,38 +69,36 @@ const formatCompactCurrency = (amount: number | string | null | undefined) => {
 };
 
 const getStatusBadge = (status: Subproject['status']) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Completed': return 'status-badge status-badge--completed';
+        case 'Ongoing': return 'status-badge status-badge--ongoing';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Cancelled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
 const getTrainingStatusBadge = (status: string) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Completed': return 'status-badge status-badge--completed';
+        case 'Ongoing': return 'status-badge status-badge--ongoing';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Cancelled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode; half?: boolean }> = ({ label, value, half }) => (
-    <div className={`${half ? 'sm:col-span-1' : 'sm:col-span-2'} min-w-0`}>
-        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-        <dd className="mt-1 text-sm text-gray-900 dark:text-white break-words">{value || 'N/A'}</dd>
+    <div className={`detail-item ${half ? '' : 'detail-item--wide'}`}>
+        <dt className="detail-label">{label}</dt>
+        <dd className="detail-value">{value || 'N/A'}</dd>
     </div>
 );
 
 const OverviewMetric: React.FC<{ label: string; value: string; fullValue?: string }> = ({ label, value, fullValue }) => (
-    <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/80">
-        <p className="text-xs font-medium leading-snug text-gray-500 dark:text-gray-400">{label}</p>
-        <p className="mt-1 truncate text-lg font-bold leading-tight text-gray-900 dark:text-white" title={fullValue || value}>
+    <div className="detail-metric">
+        <p className="detail-metric-label">{label}</p>
+        <p className="detail-metric-value" title={fullValue || value}>
             {value}
         </p>
     </div>
@@ -111,9 +110,9 @@ const MembershipRow: React.FC<{ label: string; value?: number | string | null }>
     const displayValue = Math.abs(numericValue) >= 100000 ? formatCompactNumber(numericValue) : fullValue;
 
     return (
-        <div className="flex min-w-0 flex-col gap-1 border-b border-gray-200 pb-2 dark:border-gray-700 sm:flex-row sm:items-start sm:justify-between">
-            <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
-            <dd className="font-semibold text-gray-900 dark:text-white sm:text-right" title={fullValue}>{displayValue}</dd>
+        <div className="detail-item">
+            <dt className="detail-label">{label}</dt>
+            <dd className="detail-value font-semibold" title={fullValue}>{displayValue}</dd>
         </div>
     );
 };
@@ -606,41 +605,45 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
         return (details || []).reduce((total, item) => total + (toSafeNumber(item.pricePerUnit) * toSafeNumber(item.numberOfUnits)), 0);
     }
     
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
-    const filterSelectClasses = "w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500";
+    const commonInputClasses = "form-control";
+    const filterSelectClasses = "form-control data-table-select data-table-select--compact";
 
 
     if (isEditing) {
         return (
-             <div className="space-y-6">
+             <div className="form-page">
                  {isConfirmModalOpen && (
                     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-md">
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Changes</h3>
+                        <div className="dashboard-modal">
+                            <h3 className="detail-card-title">Confirm Changes</h3>
                             <p className="my-4 text-gray-600 dark:text-gray-300">Are you sure you want to save these changes?</p>
                             <div className="flex justify-end gap-4 mt-6">
-                                <button onClick={() => setIsConfirmModalOpen(false)} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200">Cancel</button>
-                                <button onClick={handleConfirmSave} className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Confirm</button>
+                                <button onClick={() => setIsConfirmModalOpen(false)} className="btn btn-secondary">Cancel</button>
+                                <button onClick={handleConfirmSave} className="btn btn-primary">Confirm</button>
                             </div>
                         </div>
                     </div>
                 )}
-                <h1 className="break-words text-2xl font-bold text-gray-800 dark:text-white sm:text-3xl">Editing: {ipo.name}</h1>
-                 <form onSubmit={handleSubmit} className="space-y-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">IPO Profile</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-3">
-                                <label htmlFor="name" className="block text-sm font-medium">IPO Name</label>
+                <header className="detail-header">
+                    <div className="detail-heading">
+                        <h1 className="detail-title">Editing: {ipo.name}</h1>
+                    </div>
+                </header>
+                 <form onSubmit={handleSubmit} className="form-card form-page">
+                    <fieldset className="form-section">
+                        <legend>IPO Profile</legend>
+                        <div className="form-grid">
+                            <div className="form-field--full">
+                                <label htmlFor="name" className="form-label">IPO Name</label>
                                 <input type="text" name="name" id="name" value={editedIpo.name} onChange={handleInputChange} required className={commonInputClasses} />
                             </div>
-                             <div className="md:col-span-3">
-                                <label htmlFor="indigenousCulturalCommunity" className="block text-sm font-medium">Indigenous Cultural Community (ICC)</label>
+                             <div className="form-field--full">
+                                <label htmlFor="indigenousCulturalCommunity" className="form-label">Indigenous Cultural Community (ICC)</label>
                                 <input type="text" name="indigenousCulturalCommunity" id="indigenousCulturalCommunity" value={editedIpo.indigenousCulturalCommunity} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             
-                            <div className="md:col-span-3">
-                                <label htmlFor="location" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IPO Location</label>
+                            <div className="form-field--full">
+                                <label htmlFor="location" className="form-label">IPO Location</label>
                                 <LocationPicker 
                                     value={editedIpo.location} 
                                     onChange={handleLocationChange} 
@@ -648,13 +651,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                     required 
                                 />
                             </div>
-                            <div className="md:col-span-3">
-                                <label htmlFor="ancestralDomainNo" className="block text-sm font-medium">Ancestral Domain No.</label>
+                            <div className="form-field--full">
+                                <label htmlFor="ancestralDomainNo" className="form-label">Ancestral Domain No.</label>
                                 <input type="text" name="ancestralDomainNo" id="ancestralDomainNo" value={editedIpo.ancestralDomainNo} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
 
                              <div>
-                                <label htmlFor="registeringBody" className="block text-sm font-medium">Registering Body</label>
+                                <label htmlFor="registeringBody" className="form-label">Registering Body</label>
                                 <select name="registeringBody" id="registeringBody" value={editedIpo.registeringBody} onChange={handleInputChange} className={commonInputClasses}>
                                     {registeringBodyOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     <option value="Others">Others</option>
@@ -662,47 +665,47 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                              </div>
                              {editedIpo.registeringBody === 'Others' && (
                                 <div>
-                                    <label htmlFor="otherRegisteringBody" className="block text-sm font-medium">Please Specify</label>
+                                    <label htmlFor="otherRegisteringBody" className="form-label">Please Specify</label>
                                     <input type="text" name="otherRegisteringBody" id="otherRegisteringBody" value={otherRegisteringBody} onChange={(e) => setOtherRegisteringBody(e.target.value)} required className={commonInputClasses} />
                                 </div>
                              )}
-                              <div className={editedIpo.registeringBody === 'Others' ? '' : 'md:col-start-2'}>
-                                <label htmlFor="registrationDate" className="block text-sm font-medium">Registration Date</label>
+                              <div>
+                                <label htmlFor="registrationDate" className="form-label">Registration Date</label>
                                 <input type="date" name="registrationDate" id="registrationDate" value={editedIpo.registrationDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
 
                              <div>
-                                <label htmlFor="contactPerson" className="block text-sm font-medium">Contact Person</label>
+                                <label htmlFor="contactPerson" className="form-label">Contact Person</label>
                                 <input type="text" name="contactPerson" id="contactPerson" value={editedIpo.contactPerson} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="contactNumber" className="block text-sm font-medium">Contact Number</label>
+                                <label htmlFor="contactNumber" className="form-label">Contact Number</label>
                                 <input type="text" name="contactNumber" id="contactNumber" value={editedIpo.contactNumber} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
 
-                            <div className="md:col-span-3 flex items-center flex-wrap gap-x-8 gap-y-2 pt-2">
-                                 <label htmlFor="isWomenLed" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={editedIpo.isWomenLed} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <div className="form-field--full form-check-group">
+                                 <label htmlFor="isWomenLed" className="form-check">
+                                    <input type="checkbox" name="isWomenLed" id="isWomenLed" checked={editedIpo.isWomenLed} onChange={handleInputChange} />
                                     <span>Women-led</span>
                                 </label>
-                                <label htmlFor="isWithinGida" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={editedIpo.isWithinGida} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                <label htmlFor="isWithinGida" className="form-check">
+                                    <input type="checkbox" name="isWithinGida" id="isWithinGida" checked={editedIpo.isWithinGida} onChange={handleInputChange} />
                                     <span>Within GIDA area</span>
                                 </label>
-                                <label htmlFor="isWithinElcac" className="flex items-center gap-2 text-sm font-medium">
-                                    <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={editedIpo.isWithinElcac} onChange={handleInputChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                <label htmlFor="isWithinElcac" className="form-check">
+                                    <input type="checkbox" name="isWithinElcac" id="isWithinElcac" checked={editedIpo.isWithinElcac} onChange={handleInputChange} />
                                     <span>Within ELCAC area</span>
                                 </label>
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-400 dark:text-gray-500">
-                                    <input type="checkbox" name="isWithScad" checked={editedIpo.isWithScad} disabled className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                                <label className="form-check text-gray-400 dark:text-gray-500">
+                                    <input type="checkbox" name="isWithScad" checked={editedIpo.isWithScad} disabled />
                                     <span>With SCAD</span>
                                 </label>
                             </div>
                         </div>
                     </fieldset>
 
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Commodities</legend>
+                    <fieldset className="form-section">
+                        <legend>Commodities</legend>
                         <div className="space-y-2 mb-4">
                             {editedIpo.commodities.map((commodity, index) => (
                                 <div key={index} className={`flex flex-col gap-3 p-2 rounded-md text-sm sm:flex-row sm:items-center sm:justify-between ${editingCommodityIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
@@ -714,7 +717,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                 {formatFullNumber(commodity.value)} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
                                                 {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
                                             </span>
-                                            {commodity.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
+                                            {commodity.isScad && <span className="status-badge status-badge--cyan status-badge--compact">SCAD</span>}
                                         </div>
                                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500 mt-1 pl-1">
                                             {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
@@ -723,11 +726,11 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                         </div>
                                     </div>
                                     <div className="flex flex-shrink-0 items-center gap-2 self-end sm:self-center">
-                                        <button type="button" onClick={() => handleEditCommodity(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                        <button type="button" onClick={() => handleEditCommodity(index)} className="table-action table-action--primary" title="Edit commodity">
+                                            <Pencil className="btn-symbol" aria-hidden="true" />
                                         </button>
-                                        <button type="button" onClick={() => handleRemoveCommodity(index)} className="text-gray-400 hover:text-red-500">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        <button type="button" onClick={() => handleRemoveCommodity(index)} className="table-action table-action--danger" title="Remove commodity">
+                                            <Trash2 className="btn-symbol" aria-hidden="true" />
                                         </button>
                                     </div>
                                 </div>
@@ -735,112 +738,112 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                              <div>
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Type</label>
-                                <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm">
+                                <label className="form-label">Type</label>
+                                <select name="type" value={currentCommodity.type} onChange={handleCommodityChange} className={commonInputClasses}>
                                     <option value="">Select Type</option>
                                     {referenceCommodityTypes.map(type => ( <option key={type} value={type}>{type}</option> ))}
                                 </select>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular</label>
-                                <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className="mt-1 block w-full pl-2 pr-8 py-1.5 text-base bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded-md text-sm disabled:bg-gray-200 dark:disabled:bg-gray-600">
+                                <label className="form-label">Particular</label>
+                                <select name="particular" value={currentCommodity.particular} onChange={handleCommodityChange} disabled={!currentCommodity.type} className={commonInputClasses}>
                                     <option value="">Select Particular</option>
                                     {currentCommodity.type && commodityCategories[currentCommodity.type] && commodityCategories[currentCommodity.type].map(item => ( <option key={item} value={item}>{item}</option> ))}
                                 </select>
                             </div>
                              <div className="flex items-end gap-2">
                                 <div className="flex-1">
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Area (Hectares)'}</label>
-                                    <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                    <label className="form-label">{currentCommodity.type === 'Livestock' ? 'Number of Heads' : 'Area (Hectares)'}</label>
+                                    <input type="number" name="value" value={currentCommodity.value} onChange={handleCommodityChange} min="0" step="any" className={commonInputClasses} />
                                 </div>
                                 {currentCommodity.type !== 'Livestock' && (
                                     <div className="flex-1">
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Avg Yield</label>
-                                        <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" />
+                                        <label className="form-label">Avg Yield</label>
+                                        <input type="number" name="yield" value={currentCommodity.yield} onChange={handleCommodityChange} min="0" step="any" className={commonInputClasses} />
                                     </div>
                                 )}
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mt-3 border-t border-gray-100 dark:border-gray-700 pt-3">
                             <div>
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Marketing %</label>
-                                <input type="number" name="marketingPercentage" value={currentCommodity.marketingPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                                <label className="form-label">Marketing %</label>
+                                <input type="number" name="marketingPercentage" value={currentCommodity.marketingPercentage} onChange={handleCommodityChange} min="0" max="100" className={commonInputClasses} placeholder="0-100" />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Food Security %</label>
-                                <input type="number" name="foodSecurityPercentage" value={currentCommodity.foodSecurityPercentage} onChange={handleCommodityChange} min="0" max="100" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0-100" />
+                                <label className="form-label">Food Security %</label>
+                                <input type="number" name="foodSecurityPercentage" value={currentCommodity.foodSecurityPercentage} onChange={handleCommodityChange} min="0" max="100" className={commonInputClasses} placeholder="0-100" />
                             </div>
                             <div>
                                 {Number(currentCommodity.marketingPercentage) > 0 && (
                                     <div className="animate-fadeIn">
-                                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Average Income (PHP)</label>
-                                        <input type="number" name="averageIncome" value={currentCommodity.averageIncome} onChange={handleCommodityChange} min="0" className="mt-1 block w-full px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm" placeholder="0.00" />
+                                        <label className="form-label">Average Income (PHP)</label>
+                                        <input type="number" name="averageIncome" value={currentCommodity.averageIncome} onChange={handleCommodityChange} min="0" className={commonInputClasses} placeholder="0.00" />
                                     </div>
                                 )}
                             </div>
                             <div className="flex justify-end items-end h-full">
                                 {editingCommodityIndex !== null ? (
                                     <div className="flex gap-1 w-full">
-                                        <button type="button" onClick={handleAddCommodity} className="h-9 px-3 flex-grow inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update</button>
-                                        <button type="button" onClick={handleCancelCommodityEdit} className="h-9 px-3 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                        <button type="button" onClick={handleAddCommodity} className="btn btn-primary flex-grow"><Check className="btn-symbol" aria-hidden="true" />Update</button>
+                                        <button type="button" onClick={handleCancelCommodityEdit} className="btn btn-secondary"><X className="btn-symbol" aria-hidden="true" />Cancel</button>
                                     </div>
                                 ) : (
-                                    <button type="button" onClick={handleAddCommodity} className="h-9 w-9 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900">+</button>
+                                    <button type="button" onClick={handleAddCommodity} className="btn btn-primary btn-icon" title="Add commodity"><Plus className="btn-symbol" aria-hidden="true" /></button>
                                 )}
                             </div>
                         </div>
                         <div className="mt-2">
-                            <label className="flex items-center gap-2 text-sm font-medium">
-                                <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <label className="form-check">
+                                <input type="checkbox" name="isScad" checked={currentCommodity.isScad} onChange={handleCommodityChange} />
                                 <span>SCAD commodity</span>
                             </label>
                         </div>
                     </fieldset>
                     
 
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-gray-700 dark:text-gray-300">Membership Information</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <fieldset className="form-section">
+                        <legend>Membership Information</legend>
+                        <div className="form-grid">
                             <div>
-                                <label htmlFor="totalMembers" className="block text-sm font-medium">Total Members</label>
+                                <label htmlFor="totalMembers" className="form-label">Total Members</label>
                                 <input type="number" name="totalMembers" id="totalMembers" value={editedIpo.totalMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="totalIpMembers" className="block text-sm font-medium">Total IP Members</label>
+                                <label htmlFor="totalIpMembers" className="form-label">Total IP Members</label>
                                 <input type="number" name="totalIpMembers" id="totalIpMembers" value={editedIpo.totalIpMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="total4PsMembers" className="block text-sm font-medium">Total 4Ps Beneficiaries</label>
+                                <label htmlFor="total4PsMembers" className="form-label">Total 4Ps Beneficiaries</label>
                                 <input type="number" name="total4PsMembers" id="total4PsMembers" value={editedIpo.total4PsMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="totalMaleMembers" className="block text-sm font-medium">Male Members</label>
+                                <label htmlFor="totalMaleMembers" className="form-label">Male Members</label>
                                 <input type="number" name="totalMaleMembers" id="totalMaleMembers" value={editedIpo.totalMaleMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="totalFemaleMembers" className="block text-sm font-medium">Female Members</label>
+                                <label htmlFor="totalFemaleMembers" className="form-label">Female Members</label>
                                 <input type="number" name="totalFemaleMembers" id="totalFemaleMembers" value={editedIpo.totalFemaleMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium">&nbsp;</label>
-                                <span className="text-sm text-gray-500">Total: {(editedIpo.totalMaleMembers || 0) + (editedIpo.totalFemaleMembers || 0)}</span>
+                                <label className="form-label">&nbsp;</label>
+                                <span className="detail-value">Total: {(editedIpo.totalMaleMembers || 0) + (editedIpo.totalFemaleMembers || 0)}</span>
                             </div>
                             <div>
-                                <label htmlFor="totalYouthMembers" className="block text-sm font-medium">Youth Members</label>
+                                <label htmlFor="totalYouthMembers" className="form-label">Youth Members</label>
                                 <input type="number" name="totalYouthMembers" id="totalYouthMembers" value={editedIpo.totalYouthMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                             <div>
-                                <label htmlFor="totalSeniorMembers" className="block text-sm font-medium">Senior Citizen Members</label>
+                                <label htmlFor="totalSeniorMembers" className="form-label">Senior Citizen Members</label>
                                 <input type="number" name="totalSeniorMembers" id="totalSeniorMembers" value={editedIpo.totalSeniorMembers} onChange={handleInputChange} className={commonInputClasses} />
                             </div>
                         </div>
                     </fieldset>
 
-                    <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <button type="button" onClick={handleCancelEdit} className="inline-flex justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <div className="form-footer">
+                        <button type="button" onClick={handleCancelEdit} className="btn btn-secondary">
                             Cancel
                         </button>
-                        <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
+                        <button type="submit" className="btn btn-primary">
                             Save Changes
                         </button>
                     </div>
@@ -851,42 +854,42 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
     // ... (rest of view mode)
     return (
-        <div className="space-y-8">
-            <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                    <h1 className="break-words text-2xl font-bold text-gray-800 dark:text-white sm:text-3xl">{ipo.name}</h1>
-                    <p className="text-md break-words text-gray-500 dark:text-gray-400">{ipo.location}</p>
+        <div className="detail-page">
+            <header className="detail-header">
+                <div className="detail-heading">
+                    <h1 className="detail-title">{ipo.name}</h1>
+                    <p className="detail-meta">{ipo.location}</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="detail-actions">
                      {canEdit && (
                          <button
                             onClick={() => setIsEditing(true)}
-                            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm"
+                            className="btn btn-primary"
                         >
-                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                             <Edit3 className="btn-symbol" aria-hidden="true" />
                             Edit IPO
                         </button>
                      )}
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                        className="btn btn-secondary"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        <ArrowLeft className="btn-symbol" aria-hidden="true" />
                         Back to {previousPageName}
                     </button>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="detail-grid">
                 {/* Left Column */}
-                <div className="lg:col-span-2 space-y-8">
+                <div className="detail-main">
 
                     {/* NEW: Overview Card (formerly Commodities + Stats) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Overview</h3>
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">Overview</h3>
                         
                         {/* New Stats Grid */}
-                         <div className="grid grid-cols-1 gap-3 mb-6 rounded-lg bg-gray-50 p-3 dark:bg-gray-700/30 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+                         <div className="detail-metric-grid">
                             <OverviewMetric label="Total Investment" value={formatCompactCurrency(overviewStats.totalInvestment)} fullValue={formatCurrency(overviewStats.totalInvestment)} />
                             <OverviewMetric label="Total Allocation" value={formatCompactCurrency(overviewStats.totalAllocation)} fullValue={formatCurrency(overviewStats.totalAllocation)} />
                             <OverviewMetric label="Total Area (Agri)" value={`${formatCompactNumber(overviewStats.totalArea)} ha`} fullValue={`${overviewStats.totalArea.toLocaleString()} ha`} />
@@ -896,14 +899,14 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         </div>
 
                         <div className="mb-4">
-                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Level of Development</h4>
+                            <h4 className="detail-section-title">Level of Development</h4>
                             {lodAssessments.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                     {lodAssessments.map(assessment => {
                                         const isCurrentYear = assessment.year === new Date().getFullYear();
                                         const level = assessment.manual_level || assessment.computed_level || 'N/A';
                                         return (
-                                            <div key={assessment.id} className={`flex flex-col items-center px-3 py-1 rounded-md border ${isCurrentYear ? 'bg-emerald-100 border-emerald-300 dark:bg-emerald-900/40 dark:border-emerald-700 shadow-sm' : 'bg-gray-50 border-gray-200 dark:bg-gray-700/50 dark:border-gray-600'}`}>
+                                            <div key={assessment.id} className={`detail-metric text-center ${isCurrentYear ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/40' : ''}`}>
                                                 <span className={`text-xs font-medium ${isCurrentYear ? 'text-emerald-800 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>{assessment.year}</span>
                                                 <span className={`font-bold ${isCurrentYear ? 'text-emerald-700 dark:text-emerald-400 text-lg' : 'text-gray-700 dark:text-gray-300'}`}>Level {level}</span>
                                             </div>
@@ -911,19 +914,19 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                     })}
                                 </div>
                             ) : (
-                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">No assessments available.</p>
+                                <p className="detail-empty">No assessments available.</p>
                             )}
                         </div>
                          <div>
-                            <h4 className="font-semibold text-md mb-2 text-gray-700 dark:text-gray-200">Commodities</h4>
+                            <h4 className="detail-section-title">Commodities</h4>
                             {ipo.commodities && ipo.commodities.length > 0 ? (
-                                <ul className="space-y-2 text-sm">
+                                <ul className="detail-list">
                                     {ipo.commodities.map((c, i) => (
-                                        <li key={i} className="flex flex-col gap-2 rounded bg-gray-50 p-2 dark:bg-gray-700/50 sm:flex-row sm:items-start sm:justify-between">
+                                        <li key={i} className="detail-list-item flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div className="flex min-w-0 flex-col">
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <span className="break-words">{c.particular} <span className="text-xs text-gray-400">({c.type})</span></span>
-                                                    {c.isScad && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300">SCAD</span>}
+                                                    {c.isScad && <span className="status-badge status-badge--cyan status-badge--compact">SCAD</span>}
                                                 </div>
                                                 <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 pl-1 text-xs text-gray-500 dark:text-gray-400">
                                                     {(c.marketingPercentage || 0) > 0 && <span>Mktg: {c.marketingPercentage}%</span>}
@@ -938,14 +941,14 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                         </li>
                                     ))}
                                 </ul>
-                            ) : <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities listed.</p>}
+                            ) : <p className="detail-empty">No commodities listed.</p>}
                         </div>
                     </div>
 
                     {/* Subprojects Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <div className="detail-card">
                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Subprojects</h3>
+                            <h3 className="detail-card-title mb-0">Subprojects</h3>
                             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                                 <select 
                                     value={spYearFilter} 
@@ -971,18 +974,18 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
                         {spPagination.paginatedData.length > 0 ? (
                             <>
-                                <ul className="space-y-4">
+                                <ul className="detail-list">
                                     {spPagination.paginatedData.map(p => (
-                                        <li key={p.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                        <li key={p.id} className="detail-list-item">
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                                 <div className="min-w-0">
                                                     <button 
                                                         onClick={() => onSelectSubproject(p)}
-                                                        className="break-words text-left font-bold text-gray-800 hover:text-emerald-600 focus:outline-none focus:underline dark:text-gray-100 dark:hover:text-emerald-400"
+                                                        className="detail-list-title text-left focus:outline-none focus:underline"
                                                     >
                                                         {p.name}
                                                     </button>
-                                                    <p className="break-words text-sm text-gray-500 dark:text-gray-400">{p.location}</p>
+                                                    <p className="detail-list-copy">{p.location}</p>
                                                 </div>
                                                 <span className={`${getStatusBadge(p.status)} self-start flex-shrink-0`}>{p.status}</span>
                                             </div>
@@ -1003,14 +1006,14 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 />
                             </>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No subprojects match the current filters.</p>
+                            <p className="detail-empty">No subprojects match the current filters.</p>
                         )}
                     </div>
 
                     {/* Trainings Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <div className="detail-card">
                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Trainings</h3>
+                            <h3 className="detail-card-title mb-0">Trainings</h3>
                              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                                 <select 
                                     value={trYearFilter} 
@@ -1036,25 +1039,25 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
                         {trPagination.paginatedData.length > 0 ? (
                             <>
-                                <ul className="space-y-4">
+                                <ul className="detail-list">
                                     {trPagination.paginatedData.map(t => (
-                                        <li key={t.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                        <li key={t.id} className="detail-list-item">
                                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                                 <div className="min-w-0">
                                                     <button 
                                                         onClick={() => onSelectActivity(t)}
-                                                        className="break-words text-left font-bold text-gray-800 hover:text-emerald-600 focus:outline-none focus:underline dark:text-gray-100 dark:hover:text-emerald-400"
+                                                        className="detail-list-title text-left focus:outline-none focus:underline"
                                                     >
                                                         {t.name}
                                                     </button>
-                                                    <p className="break-words text-sm text-gray-500 dark:text-gray-400">{t.component}</p>
+                                                    <p className="detail-list-copy">{t.component}</p>
                                                 </div>
                                                 <div className="flex flex-shrink-0 flex-col items-start gap-1 sm:items-end">
                                                     <span className={getTrainingStatusBadge(t.status)}>{t.status}</span>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(t.date)}</p>
                                                 </div>
                                             </div>
-                                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-2">{t.description}</p>
+                                            <p className="detail-list-copy mt-2 line-clamp-2">{t.description}</p>
                                         </li>
                                     ))}
                                 </ul>
@@ -1068,21 +1071,21 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 />
                             </>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No trainings match the current filters.</p>
+                            <p className="detail-empty">No trainings match the current filters.</p>
                         )}
                     </div>
                     
                     {/* Market Linkages Card (New) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Market Linkages</h3>
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">Market Linkages</h3>
                         {mlPagination.paginatedData.length > 0 ? (
                             <>
                                 <div className="grid grid-cols-1 gap-4">
                                     {mlPagination.paginatedData.map((item, idx) => (
-                                        <div key={idx} className="p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-800 hover:shadow-md transition-shadow">
+                                        <div key={idx} className="detail-list-item">
                                             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                                <h4 className="break-words font-bold text-teal-800 dark:text-teal-200">{item.partner.companyName}</h4>
-                                                <span className={`self-start text-[10px] px-2 py-0.5 rounded font-bold uppercase sm:flex-shrink-0 ${item.link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                                <h4 className="detail-list-title">{item.partner.companyName}</h4>
+                                                <span className={`status-badge status-badge--compact self-start sm:flex-shrink-0 ${item.link.negotiationStatus === 'Contract Signed' ? 'status-badge--completed' : 'status-badge--pending'}`}>
                                                     {item.link.negotiationStatus}
                                                 </span>
                                             </div>
@@ -1104,15 +1107,13 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 />
                             </>
                         ) : (
-                            <div className="text-center py-6 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-dashed border-gray-200 dark:border-gray-600">
-                                <p className="text-sm text-gray-500 italic">No marketing linkages established yet.</p>
-                            </div>
+                            <p className="detail-empty">No marketing linkages established yet.</p>
                         )}
                     </div>
 
                     {/* History Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">History</h3>
                         {histPagination.paginatedData.length > 0 ? (
                             <>
                                 <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
@@ -1142,17 +1143,17 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                 />
                             </>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No historical data available for this IPO.</p>
+                            <p className="detail-empty">No historical data available for this IPO.</p>
                         )}
                     </div>
                 </div>
 
                 {/* Right Column */}
-                <div className="space-y-8">
+                <div className="detail-aside">
                     {/* Profile Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">IPO Profile</h3>
-                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-6">
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">IPO Profile</h3>
+                        <dl className="detail-dl">
                             <DetailItem label="Indigenous Cultural Community" value={ipo.indigenousCulturalCommunity} />
                             <DetailItem label="Ancestral Domain No." value={ipo.ancestralDomainNo} />
                             <DetailItem label="Registering Body" value={ipo.registeringBody} half />
@@ -1161,19 +1162,19 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                             <DetailItem label="Contact Number" value={ipo.contactNumber} half />
                             <DetailItem label="Flags" value={
                                 <div className="flex flex-wrap gap-2 mt-1">
-                                    {ipo.isWomenLed && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300 border border-pink-200 dark:border-pink-800">Women-Led</span>}
-                                    {ipo.isWithinGida && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300 border border-purple-200 dark:border-purple-800">Within GIDA</span>}
-                                    {ipo.isWithinElcac && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300 border border-orange-200 dark:border-orange-800">Within ELCAC</span>}
-                                    {ipo.isWithScad && <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">With SCAD</span>}
+                                    {ipo.isWomenLed && <span className="status-badge status-badge--pink">Women-Led</span>}
+                                    {ipo.isWithinGida && <span className="status-badge status-badge--purple">Within GIDA</span>}
+                                    {ipo.isWithinElcac && <span className="status-badge status-badge--orange">Within ELCAC</span>}
+                                    {ipo.isWithScad && <span className="status-badge status-badge--cyan">With SCAD</span>}
                                 </div>
                             } />
                         </dl>
                     </div>
 
                     {/* Membership Information Card */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">Membership Information</h3>
-                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4 text-sm">
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">Membership Information</h3>
+                        <dl className="detail-dl">
                             <MembershipRow label="Total Members" value={ipo.totalMembers} />
                             <MembershipRow label="IP Members" value={ipo.totalIpMembers} />
                             <MembershipRow label="Male Members" value={ipo.totalMaleMembers} />

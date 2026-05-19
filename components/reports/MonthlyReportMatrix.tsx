@@ -1,8 +1,9 @@
 
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
-import { formatCurrency, XLSX } from './ReportUtils';
+import { XLSX } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 
 interface MonthlyReportMatrixProps {
@@ -35,8 +36,9 @@ const MONTHS = [
     { value: 9, label: 'October' }, { value: 10, label: 'November' }, { value: 11, label: 'December' }
 ];
 
-const dataCellClass = "p-2 border border-gray-300 dark:border-gray-600 text-right whitespace-nowrap text-xs";
-const textCellClass = "p-2 border border-gray-300 dark:border-gray-600 text-left text-xs";
+const dataCellClass = "monthly-matrix__cell monthly-matrix__cell--number";
+const textCellClass = "monthly-matrix__cell monthly-matrix__cell--text";
+const headerCellClass = "monthly-matrix__head-cell";
 
 const formatCurrencyWhole = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
@@ -542,98 +544,104 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
     const renderPhysRow = (item: any, idx: string, level: number) => {
         const indent = level === 0 ? '' : level === 1 ? 'pl-6' : 'pl-10';
         return (
-            <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+            <tr key={idx} className="monthly-matrix__row">
                 <td className={`${textCellClass} ${indent} font-medium`}>{item.indicator}</td>
                 <td className={`${dataCellClass} text-center`}></td>
                 <td className={`${dataCellClass} text-center`}>{item.unit}</td>
                 
                 {/* Monthly */}
-                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.targetMonth}</td>
-                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.actualMonth}</td>
-                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10 ${item.varianceMonth > 0 ? 'text-red-500' : 'text-green-500'}`}>{item.varianceMonth}</td>
-                <td className={`${dataCellClass} text-center bg-blue-50 dark:bg-blue-900/10`}>{item.percentageMonth.toFixed(0)}%</td>
+                <td className={`${dataCellClass} monthly-matrix__cell--monthly text-center`}>{item.targetMonth}</td>
+                <td className={`${dataCellClass} monthly-matrix__cell--monthly text-center`}>{item.actualMonth}</td>
+                <td className={`${dataCellClass} monthly-matrix__cell--monthly text-center ${item.varianceMonth > 0 ? 'monthly-matrix__cell--negative' : 'monthly-matrix__cell--positive'}`}>{item.varianceMonth}</td>
+                <td className={`${dataCellClass} monthly-matrix__cell--monthly text-center`}>{item.percentageMonth.toFixed(0)}%</td>
 
                 {/* Cumulative */}
                 <td className={`${dataCellClass} text-center`}>{item.targetCum}</td>
                 <td className={`${dataCellClass} text-center`}>{item.actualCum}</td>
-                <td className={`${dataCellClass} text-center ${item.varianceCum > 0 ? 'text-red-500' : 'text-green-500'}`}>{item.varianceCum}</td>
+                <td className={`${dataCellClass} text-center ${item.varianceCum > 0 ? 'monthly-matrix__cell--negative' : 'monthly-matrix__cell--positive'}`}>{item.varianceCum}</td>
                 <td className={`${dataCellClass} text-center`}>{item.percentageCum.toFixed(0)}%</td>
             </tr>
         );
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-8">
-            <div className="flex flex-wrap justify-between items-center mb-6 print-hidden">
-                <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+        <div className="report-card monthly-matrix-card space-y-8">
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">
                     Monthly Report
-                    {selectedYear === 'All' && <span className="text-xs font-normal text-red-500 bg-red-100 px-2 py-0.5 rounded ml-2">Select a Year</span>}
+                    {selectedYear === 'All' && <span className="monthly-matrix__year-warning">Select a Year</span>}
                 </h3>
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Month:</label>
+                <div className="report-card__actions monthly-matrix-toolbar">
+                    <div className="monthly-matrix-month-control">
+                        <label className="monthly-matrix-month-control__label">Month:</label>
                         <select 
                             value={selectedMonth} 
                             onChange={(e) => setSelectedMonth(Number(e.target.value))} 
-                            className="p-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm bg-white dark:bg-gray-700 dark:text-white"
+                            className="form-control form-control--compact"
                         >
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </select>
                     </div>
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md text-sm">Print</button>
-                    <button onClick={handleDownload} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm">Download</button>
+                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print</span>
+                    </button>
+                    <button onClick={handleDownload} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download</span>
+                    </button>
                 </div>
             </div>
 
             {/* Table 1: Physical */}
             <div>
-                <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-400 mb-2 border-b border-emerald-200 dark:border-emerald-800 pb-2">
+                <h4 className="monthly-matrix__section-title monthly-matrix__section-title--physical">
                     Table 1: Physical Accomplishment (CY {selectedYear})
                 </h4>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border-collapse">
-                        <thead className="bg-emerald-100 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-100 text-xs font-bold uppercase">
+                <div className="report-table-scroll monthly-matrix-scroll">
+                    <table className="monthly-matrix-table min-w-full border-collapse">
+                        <thead className="sticky top-0 z-10">
                             <tr>
-                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-left w-1/4">Component / Indicator</th>
-                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Cost</th>
-                                <th rowSpan={2} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Unit</th>
-                                <th colSpan={4} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-100 dark:bg-blue-900/40">For the Month</th>
-                                <th colSpan={4} className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Cumulative (Year-to-Date)</th>
+                                <th rowSpan={2} className={`${headerCellClass} text-left w-1/4`}>Component / Indicator</th>
+                                <th rowSpan={2} className={`${headerCellClass} text-center`}>Cost</th>
+                                <th rowSpan={2} className={`${headerCellClass} text-center`}>Unit</th>
+                                <th colSpan={4} className={`${headerCellClass} monthly-matrix__head-cell--month text-center`}>For the Month</th>
+                                <th colSpan={4} className={`${headerCellClass} monthly-matrix__head-cell--cumulative text-center`}>Cumulative (Year-to-Date)</th>
                             </tr>
                             <tr>
                                 {/* For the Month */}
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Target</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Actual</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">Var</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center bg-blue-50 dark:bg-blue-900/20">%</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--month text-center`}>Target</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--month text-center`}>Actual</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--month text-center`}>Var</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--month text-center`}>%</th>
                                 {/* Cumulative */}
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Target</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Actual</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">Var</th>
-                                <th className="p-2 border border-emerald-200 dark:border-emerald-700 text-center">%</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--cumulative text-center`}>Target</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--cumulative text-center`}>Actual</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--cumulative text-center`}>Var</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--cumulative text-center`}>%</th>
                             </tr>
                         </thead>
-                        <tbody className="text-sm">
+                        <tbody>
                             {Object.entries(physicalData).map(([key, val]: [string, any]) => {
                                  const isExpanded = expandedRows.has(key);
                                  return (
                                     <React.Fragment key={key}>
-                                         <tr onClick={() => toggleRow(key)} className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer font-bold">
-                                             <td className="p-2 border border-gray-300 dark:border-gray-600 flex items-center gap-2">
-                                                <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span>
+                                         <tr onClick={() => toggleRow(key)} className="monthly-matrix__row monthly-matrix__row--summary cursor-pointer">
+                                             <td className={`${textCellClass} monthly-matrix__summary-label`}>
+                                                <span className="report-table__toggle">{isExpanded ? '-' : '+'}</span>
                                                 {key}
                                              </td>
-                                             <td className="p-2 border border-gray-300 dark:border-gray-600 text-right">{formatCurrencyWhole(val.cost)}</td>
-                                             <td colSpan={9} className="border border-gray-300 dark:border-gray-600"></td>
+                                             <td className={dataCellClass}>{formatCurrencyWhole(val.cost)}</td>
+                                             <td colSpan={9} className="monthly-matrix__cell monthly-matrix__cell--blank"></td>
                                          </tr>
                                          {isExpanded && Array.isArray(val) && val.map((item, idx) => renderPhysRow(item, `${key}-${idx}`, 1))}
                                          {isExpanded && val.isNested && Object.entries(val.packages).map(([pkg, pkgItems]: [string, any]) => (
                                              <React.Fragment key={`${key}-${pkg}`}>
                                                  {pkgItems.length > 0 && (
                                                      <>
-                                                        <tr className="bg-gray-50 dark:bg-gray-800 font-semibold">
-                                                            <td className="p-2 pl-6 border border-gray-300 dark:border-gray-600">{pkg}</td>
-                                                            <td colSpan={10} className="border border-gray-300 dark:border-gray-600"></td>
+                                                        <tr className="monthly-matrix__row monthly-matrix__row--package">
+                                                            <td className={`${textCellClass} pl-6`}>{pkg}</td>
+                                                            <td colSpan={10} className="monthly-matrix__cell monthly-matrix__cell--blank"></td>
                                                         </tr>
                                                         {pkgItems.map((item: any, idx: number) => renderPhysRow(item, `${key}-${pkg}-${idx}`, 2))}
                                                      </>
@@ -651,27 +659,27 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
             {/* Table 2: Financial */}
             <div>
-                <h4 className="text-lg font-bold text-blue-800 dark:text-blue-400 mb-2 border-b border-blue-200 dark:border-blue-800 pb-2">
+                <h4 className="monthly-matrix__section-title monthly-matrix__section-title--financial">
                     Table 2: Financial Accomplishment (Absolute Value)
                 </h4>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full border-collapse">
-                        <thead className="bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100 text-xs font-bold uppercase">
+                <div className="report-table-scroll monthly-matrix-scroll monthly-matrix-scroll--compact">
+                    <table className="monthly-matrix-table min-w-full border-collapse">
+                        <thead className="sticky top-0 z-10">
                             <tr>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-left">Fund Source</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Allocation</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Obligation</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Disbursement</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-center">Obligation Rate</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-center">Disbursement Rate</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Unutilized</th>
-                                <th className="p-2 border border-blue-200 dark:border-blue-700 text-right">Unpaid</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-left`}>Fund Source</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-right`}>Allocation</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-right`}>Obligation</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-right`}>Disbursement</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-center`}>Obligation Rate</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-center`}>Disbursement Rate</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-right`}>Unutilized</th>
+                                <th className={`${headerCellClass} monthly-matrix__head-cell--financial text-right`}>Unpaid</th>
                             </tr>
                         </thead>
-                        <tbody className="text-sm">
+                        <tbody>
                             {financialHistoryData.map((row) => (
-                                <tr key={row.key} className="hover:bg-blue-50 dark:hover:bg-blue-900/10">
-                                    <td className="p-2 border border-gray-300 dark:border-gray-600 font-bold">{row.label}</td>
+                                <tr key={row.key} className="monthly-matrix__row">
+                                    <td className={`${textCellClass} font-bold`}>{row.label}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(row.alloc)}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(row.obli)}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(row.disb)}</td>
@@ -682,8 +690,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                                 </tr>
                             ))}
                             {financialHistoryData.length > 0 && (
-                                <tr className="bg-blue-100 dark:bg-blue-900/30 font-bold border-t-2 border-blue-300">
-                                    <td className="p-2 border border-gray-300 dark:border-gray-600">Grand Total</td>
+                                <tr className="monthly-matrix__row monthly-matrix__row--total">
+                                    <td className={textCellClass}>Grand Total</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.alloc)}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.obli)}</td>
                                     <td className={dataCellClass}>{formatCurrencyWhole(financialGrandTotal.disb)}</td>
@@ -698,14 +706,14 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                                 </tr>
                             )}
                             {financialHistoryData.length === 0 && (
-                                <tr><td colSpan={8} className="p-4 text-center text-gray-500 italic">No financial data available.</td></tr>
+                                <tr><td colSpan={8} className="monthly-matrix__cell monthly-matrix__empty">No financial data available.</td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
             
-             <div className="mt-4 text-xs text-gray-500 italic">
+             <div className="monthly-matrix__note">
                 * Physical Actuals are based on items completed on or before the selected month of the selected year. <br/>
                 * Financial Actuals (Obligation/Disbursement) are sums of transactions recorded on or before the selected month for the specific Fund Year rows.
             </div>

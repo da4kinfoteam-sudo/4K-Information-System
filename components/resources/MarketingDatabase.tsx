@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { MarketingPartner, philippineRegions, CommodityNeed, referenceCommodityTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePagination, useSelection, useUserAccess } from '../mainfunctions/TableHooks';
@@ -324,13 +324,12 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
     };
 
     const getWorkflowStatusBadge = (status?: string) => {
-        const baseClasses = "px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider inline-block";
-        let classes = `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600`;
+        let classes = 'status-badge status-badge--compact status-badge--neutral';
         switch (status) {
-            case 'APPROVED': classes = `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800`; break;
-            case 'PENDING': classes = `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800`; break;
-            case 'REJECTED': classes = `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800`; break;
-            case 'DRAFT': classes = `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800`; break;
+            case 'APPROVED': classes = 'status-badge status-badge--compact status-badge--approved'; break;
+            case 'PENDING': classes = 'status-badge status-badge--compact status-badge--pending'; break;
+            case 'REJECTED': classes = 'status-badge status-badge--compact status-badge--rejected'; break;
+            case 'DRAFT': classes = 'status-badge status-badge--compact status-badge--draft'; break;
         }
         return <span className={classes}>{status || 'DRAFT'}</span>;
     };
@@ -487,34 +486,36 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 </div>
             )}
 
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Marketing Database</h2>
-                <div className="flex items-center gap-2">
+            <div className="data-list-header">
+                <h2 className="data-list-title">Marketing Database</h2>
+                <div className="data-list-actions">
                     {isAdmin && (
-                        <button onClick={() => setView('add')} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm">
-                            + Add Market Partner
+                        <button onClick={() => setView('add')} className="btn btn-primary btn-responsive" title="Add Market Partner">
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add Market Partner</span>
                         </button>
                     )}
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-                    <div className="flex flex-wrap gap-4 items-center flex-1 w-full">
+            <div className="data-table-card">
+                <div className="data-table-toolbar">
+                <div className="data-toolbar-row">
+                    <div className="data-toolbar-group">
                         <div className="flex-1 min-w-[200px]">
                             <input 
                                 type="text" 
                                 placeholder="Search by company, owner, or commodity..." 
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className={commonInputClasses}
+                                className={`data-table-search ${commonInputClasses} mt-0`}
                             />
                         </div>
                         <div className="w-full md:w-64">
                             <select 
                                 value={regionFilter} 
                                 onChange={(e) => setRegionFilter(e.target.value)} 
-                                className={commonInputClasses}
+                                className={`data-table-select ${commonInputClasses} mt-0`}
                             >
                                 <option value="All">All Regions</option>
                                 {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -522,24 +523,26 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="data-toolbar-group data-toolbar-group--actions">
                         {isSelectionMode && selectedIds.length > 0 && (
-                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
                         {isAdmin && (
                             <>
-                                <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md shadow-sm font-bold hover:bg-gray-300">
-                                    Template
+                                <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
+                                    <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
+                                    <span className="btn-text">Template</span>
                                 </button>
-                                <label className={`px-4 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 transition-all shadow-sm ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                    {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                                <label className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload XLSX'}>
+                                    <Upload className="btn-symbol" aria-hidden="true" />
+                                    <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
                                     <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                                 </label>
                                 <button 
                                     onClick={toggleSelectionMode} 
-                                    className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                                    className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
                                     title="Toggle Multi-Delete Mode"
                                 >
                                     <TrashIcon />
@@ -548,10 +551,11 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                         )}
                     </div>
                 </div>
+                </div>
 
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
+                <div className="data-table-scroll">
+                    <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead>
                             <tr>
                                 {isSelectionMode && <th className="px-6 py-3 text-left w-10"><input type="checkbox" onChange={(e) => handleSelectAll(e, paginatedData)} checked={paginatedData.length > 0 && paginatedData.every(p => selectedIds.includes(p.id))} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></th>}
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
@@ -567,8 +571,8 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <tr key={partner.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.includes(partner.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
                                     {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></td>}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-medium">{partner.region || 'N/A'}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="text-emerald-600 hover:text-emerald-700 hover:underline dark:text-emerald-400">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`px-2 py-0.5 rounded-full font-bold ${partner.buyerType === 'Government' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{partner.buyerType || 'Private'}</span></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold"><button onClick={() => onSelectPartner(partner)} className="table-link">{partner.companyName}</button><div className="text-[10px] text-gray-400 font-normal mt-0.5">{partner.uid}</div></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-xs"><span className={`status-badge ${partner.buyerType === 'Government' ? 'status-badge--info' : 'status-badge--neutral'}`}>{partner.buyerType || 'Private'}</span></td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-wrap gap-1">
                                             {partner.commodityNeeds?.slice(0, 3).map((c, i) => (
@@ -586,14 +590,14 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                                 <div className="flex gap-1 mt-1">
                                                     <button 
                                                         onClick={(e) => handleApprove(partner.id, e)} 
-                                                        className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                        className="action-mini action-mini--approve"
                                                         title="Approve"
                                                     >
                                                         <Check className="h-3 w-3" />
                                                     </button>
                                                     <button 
                                                         onClick={(e) => handleReject(partner.id, e)} 
-                                                        className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                        className="action-mini action-mini--reject"
                                                         title="Reject"
                                                     >
                                                         <X className="h-3 w-3" />
@@ -609,7 +613,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 </div>
                 
                 {totalPages > 1 && (
-                    <div className="py-4 flex items-center justify-between border-t border-gray-100 dark:border-gray-700 mt-4">
+                    <div className="data-table-pagination py-4 flex items-center justify-between">
                         <p className="text-sm text-gray-500 dark:text-gray-400">Page {currentPage} of {totalPages}</p>
                         <div className="flex gap-2">
                             <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage === 1} className="px-3 py-1 border rounded disabled:opacity-50">Prev</button>

@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState, useRef } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
 
@@ -43,7 +44,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
     };
 
     const indentClasses: { [key: number]: string } = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14' };
-    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
+    const dataCellClass = "beds-report__cell";
 
     const isYearSelected = selectedYear !== 'All';
     const targetYear = parseInt(selectedYear);
@@ -872,7 +873,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
     );
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="report-card beds-report-card">
             {/* Print Styles Injection */}
             {printTarget && (
                 <style>{`
@@ -906,28 +907,34 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 `}</style>
             )}
 
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Execution Documents (BEDS)</h3>
-                <div className="flex gap-2">
-                    <button onClick={handleDownloadBEDSXlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:brightness-95 transition-all">Download XLSX</button>
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">Budget Execution Documents (BEDS)</h3>
+                <div className="report-card__actions">
+                    <button onClick={handleDownloadBEDSXlsx} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download XLSX</span>
+                    </button>
                 </div>
             </div>
             
-            <div id="beds-report" className="space-y-8">
+            <div id="beds-report" className="beds-report-stack">
                 {!isYearSelected && (
-                    <div className="p-4 text-center text-red-500 bg-red-50 dark:bg-red-900/20 mb-2">
+                    <div className="beds-report-alert">
                         Please select a specific Year to view BED 2 and BED 3 data properly.
                     </div>
                 )}
                 
                 {/* BED 1 Section */}
-                <div id="bed1-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
-                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 1: Financial Plan (Obligation)</h4>
-                        <button onClick={() => handlePrintSpecificTable('bed1-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
+                <div id="bed1-table-container" className="beds-report-section">
+                    <div className="beds-report-section__header">
+                        <h4 className="beds-report-section__title">BED 1: Financial Plan (Obligation)</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed1-table-container')} className="btn btn-secondary btn-responsive">
+                            <Printer className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Print Table</span>
+                        </button>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                    <div className="report-table-scroll beds-report-scroll">
+                        <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
                                     <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>
@@ -964,13 +971,16 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 </div>
 
                 {/* BED 2 Section */}
-                <div id="bed2-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
-                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 2: Physical Plan</h4>
-                        <button onClick={() => handlePrintSpecificTable('bed2-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
+                <div id="bed2-table-container" className="beds-report-section">
+                    <div className="beds-report-section__header">
+                        <h4 className="beds-report-section__title">BED 2: Physical Plan</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed2-table-container')} className="btn btn-secondary btn-responsive">
+                            <Printer className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Print Table</span>
+                        </button>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                    <div className="report-table-scroll beds-report-scroll">
+                        <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
                                     <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>
@@ -1014,13 +1024,16 @@ const BEDSReport: React.FC<BEDSReportProps> = ({ data, uacsCodes, selectedYear, 
                 </div>
 
                 {/* BED 3 Section */}
-                <div id="bed3-table-container" className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
-                    <div className="p-4 bg-teal-50 dark:bg-teal-900/30 border-b border-gray-200 dark:border-gray-600 flex justify-between items-center">
-                        <h4 className="font-bold text-lg text-teal-800 dark:text-teal-100">BED 3: Monthly Disbursement Program</h4>
-                        <button onClick={() => handlePrintSpecificTable('bed3-table-container')} className="px-3 py-1 bg-teal-600 text-white text-xs rounded hover:bg-teal-700">Print Table</button>
+                <div id="bed3-table-container" className="beds-report-section">
+                    <div className="beds-report-section__header">
+                        <h4 className="beds-report-section__title">BED 3: Monthly Disbursement Program</h4>
+                        <button onClick={() => handlePrintSpecificTable('bed3-table-container')} className="btn btn-secondary btn-responsive">
+                            <Printer className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Print Table</span>
+                        </button>
                     </div>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
+                    <div className="report-table-scroll beds-report-scroll">
+                        <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
                                     <th rowSpan={2} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-teal-200 dark:bg-teal-900 z-20 text-left text-teal-900 dark:text-white">Program/Activity/Project</th>

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { format, parse } from "date-fns";
-import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { MonthPicker } from "@/components/ui/monthpicker";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/popover";
 
 interface MonthYearPickerProps {
-  value?: string; // YYYY-MM-DD
+  value?: string;
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
@@ -50,7 +50,6 @@ export function MonthYearPicker({
   }, [value]);
 
   const handleSelect = (newDate: Date) => {
-    // Set day to 1st of the month
     const normalizedDate = new Date(newDate.getFullYear(), newDate.getMonth(), 1);
     setDate(normalizedDate);
     onChange(format(normalizedDate, "yyyy-MM-dd"));
@@ -61,10 +60,10 @@ export function MonthYearPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant={"outline"}
+          variant="outline"
           className={cn(
-            "w-full justify-between text-left font-normal hover:bg-transparent hover:text-inherit px-2",
-            !date && "text-muted-foreground",
+            "month-year-picker-trigger",
+            !date && "month-year-picker-trigger--placeholder",
             className
           )}
           disabled={disabled}
@@ -75,10 +74,10 @@ export function MonthYearPicker({
               {date ? format(date, "MMM yyyy") : <span>{placeholder}</span>}
             </span>
           </div>
-          {!disabled && <span className="opacity-40 text-[8px] ml-1 shrink-0">▼</span>}
+          {!disabled && <ChevronDown className="month-year-picker-trigger__chevron" aria-hidden="true" />}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-xl rounded-lg" align="start">
+      <PopoverContent className="month-year-picker-popover" align="start">
         <MonthPicker
           selectedMonth={date}
           onMonthSelect={handleSelect}

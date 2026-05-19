@@ -11,26 +11,62 @@ interface StatCardProps {
     toggleIcon?: React.ReactNode;
 }
 
+const formatCompactNumber = (value: number): string => {
+    const tiers = [
+        { limit: 1_000_000_000, suffix: 'B' },
+        { limit: 1_000_000, suffix: 'M' },
+    ];
+    const tier = tiers.find(({ limit }) => Math.abs(value) >= limit);
+
+    if (!tier) return String(value);
+
+    const scaled = value / tier.limit;
+    const decimals = Math.abs(scaled) >= 10 ? 1 : 2;
+    return `${scaled.toFixed(decimals).replace(/\.?0+$/, '')}${tier.suffix}`;
+};
+
+const compactStatValue = (rawValue: string): string => {
+    const normalized = rawValue.trim();
+    const numberMatch = normalized.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+
+    if (!numberMatch) return rawValue;
+
+    const numericValue = Number(numberMatch[0]);
+
+    if (!Number.isFinite(numericValue) || Math.abs(numericValue) < 1_000_000) {
+        return rawValue;
+    }
+
+    const originalNumberIndex = normalized.search(/-?\d/);
+    const prefix = originalNumberIndex > 0 ? normalized.slice(0, originalNumberIndex) : '';
+
+    return `${prefix}${formatCompactNumber(numericValue)}`;
+};
+
 const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, onClick, onToggle, toggleIcon }) => {
+    const displayValue = compactStatValue(value);
+
     return (
-        <div 
+        <div
             onClick={onClick}
-            className={`bg-white dark:bg-gray-800 p-4 lg:p-5 rounded-xl shadow-lg flex items-center space-x-4 hover:shadow-xl hover:scale-105 transform transition-all duration-300 ease-in-out min-w-0 relative group ${onClick ? 'cursor-pointer ring-2 ring-transparent hover:ring-accent/20' : ''}`}
+            className={`stat-card ${onClick ? 'stat-card--clickable' : ''}`}
         >
-            <div className={`p-3 lg:p-4 rounded-full bg-gray-100 dark:bg-gray-700 flex-shrink-0 ${color}`}>
-                {icon}
+            <div className="stat-card__top">
+                <div className={`stat-card__icon ${color}`}>
+                    {icon}
+                </div>
+                <div className="stat-card__body">
+                    <p className="stat-card__title" title={title}>{title}</p>
+                </div>
             </div>
-            <div className="min-w-0 flex-1">
-                <p className="text-gray-500 dark:text-gray-400 font-medium text-xs lg:text-sm truncate" title={title}>{title}</p>
-                <p className="text-xl lg:text-2xl font-bold text-gray-800 dark:text-white truncate" title={value}>{value}</p>
-            </div>
+            <p className="stat-card__value" title={value}>{displayValue}</p>
             {onToggle && (
                 <button 
                     onClick={(e) => {
                         e.stopPropagation();
                         onToggle(e);
                     }}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                    className="stat-card__toggle"
                     title="Switch View"
                 >
                     {toggleIcon || (

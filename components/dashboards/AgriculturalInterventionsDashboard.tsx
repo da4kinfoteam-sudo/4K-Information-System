@@ -39,7 +39,7 @@ const normalizeQuantity = (qty: number, unit: string): { qty: number, unit: stri
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 
         xmlns="http://www.w3.org/2000/svg" 
-        className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${expanded ? 'transform rotate-90' : ''}`} 
+        className={`agri-intervention-table__chevron ${expanded ? 'is-expanded' : ''}`} 
         fill="none" 
         viewBox="0 0 24 24" 
         stroke="currentColor"
@@ -215,56 +215,56 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
     };
 
     return (
-        <div className="space-y-6 animate-fadeIn">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-                <div className="flex flex-wrap items-center justify-between mb-2 gap-4">
-                    <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        <span className="w-2 h-6 bg-emerald-500 rounded-full"></span>
+        <div className="agri-dashboard dashboard-view animate-fadeIn">
+            <section className="dashboard-section" aria-labelledby="agri-interventions-title">
+            <div className="report-card agri-intervention-card">
+                <div className="agri-intervention-card__header">
+                    <h3 id="agri-interventions-title" className="report-card__title agri-intervention-card__title">
                         Intervention Breakdown by Item Type
                     </h3>
                     <button 
                         onClick={handleDownloadExcel}
-                        className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 flex items-center gap-2 shadow-sm"
+                        className="btn btn-primary btn-responsive"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Download Excel
+                        <span>Download Excel</span>
                     </button>
                 </div>
 
                 {/* Search Bar */}
-                <div className="mb-6 relative max-w-md">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <div className="agri-intervention-card__toolbar">
+                    <div className="data-table-search-wrap agri-intervention-card__search">
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
                         </svg>
+                        <input
+                            type="text"
+                            placeholder="Search intervention (e.g. fertilizer)..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="data-table-search"
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Search intervention (e.g. fertilizer)..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-colors"
-                    />
                 </div>
                 
                 {/* Scrollable Container with Fixed Height */}
-                <div className="overflow-hidden border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm">
-                    <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-                        <table className="min-w-full text-sm text-left relative">
-                            <thead className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-200 uppercase font-medium sticky top-0 z-10 shadow-sm">
+                <div className="data-table-scroll agri-intervention-table-wrap custom-scrollbar">
+                    <div className="agri-intervention-table-viewport custom-scrollbar">
+                        <table className="data-table agri-intervention-table">
+                            <thead>
                                 <tr>
-                                    <th className="px-4 py-4 w-1/4">Item Type / Particulars</th>
-                                    <th className="px-4 py-4 text-right">Target Qty</th>
-                                    <th className="px-4 py-4 text-right">Total Allocation</th>
-                                    <th className="px-4 py-4 text-right">Actual Delivered</th>
-                                    <th className="px-4 py-4 text-right">Total Obligated</th>
-                                    <th className="px-4 py-4 text-right">Total Disbursed</th>
-                                    <th className="px-4 py-4 text-right">Delivery Rate</th>
+                                    <th>Item Type / Particulars</th>
+                                    <th className="data-table__numeric">Target Qty</th>
+                                    <th className="data-table__numeric">Total Allocation</th>
+                                    <th className="data-table__numeric">Actual Delivered</th>
+                                    <th className="data-table__numeric">Total Obligated</th>
+                                    <th className="data-table__numeric">Total Disbursed</th>
+                                    <th className="data-table__numeric">Delivery Rate</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                            <tbody>
                                 {Object.keys(filteredData).sort().map(type => {
                                     const isExpanded = expandedTypes.has(type) || searchTerm.trim() !== '';
                                     const totals = typeTotals[type] || { target: 0, actual: 0, allocation: 0, obligated: 0, disbursed: 0 };
@@ -273,39 +273,39 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
                                     return (
                                         <React.Fragment key={type}>
                                             <tr 
-                                                className="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group"
+                                                className="agri-intervention-table__group-row"
                                                 onClick={() => toggleExpand(type)}
                                             >
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center gap-3 font-semibold text-gray-800 dark:text-gray-100">
+                                                <td>
+                                                    <div className="agri-intervention-table__group-label">
                                                         <ChevronIcon expanded={isExpanded} />
                                                         {type}
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                <td className="data-table__numeric agri-intervention-table__metric">
                                                     {totals.target.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                <td className="data-table__numeric agri-intervention-table__metric">
                                                     ₱{totals.allocation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-medium text-gray-800 dark:text-gray-100">
+                                                <td className="data-table__numeric agri-intervention-table__metric agri-intervention-table__metric--strong">
                                                     {totals.actual.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                <td className="data-table__numeric agri-intervention-table__metric">
                                                     ₱{totals.obligated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-4 text-right font-medium text-gray-600 dark:text-gray-300">
+                                                <td className="data-table__numeric agri-intervention-table__metric">
                                                     ₱{totals.disbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-4">
-                                                    <div className="flex items-center justify-end gap-3">
-                                                        <div className="w-full max-w-[100px] bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                                                <td>
+                                                    <div className="agri-delivery-rate">
+                                                        <div className="agri-delivery-rate__track">
                                                             <div 
-                                                                className={`h-2 rounded-full transition-all duration-500 ${rate >= 100 ? 'bg-emerald-500' : 'bg-teal-500'}`} 
+                                                                className={`agri-delivery-rate__bar ${rate >= 100 ? 'agri-delivery-rate__bar--complete' : ''}`} 
                                                                 style={{ width: `${Math.min(rate, 100)}%` }}
                                                             ></div>
                                                         </div>
-                                                        <span className={`text-xs font-bold w-10 text-right ${rate >= 100 ? 'text-emerald-600 dark:text-emerald-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                                                        <span className={`agri-delivery-rate__value ${rate >= 100 ? 'is-complete' : ''}`}>
                                                             {rate.toFixed(0)}%
                                                         </span>
                                                     </div>
@@ -319,34 +319,30 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
                                                 const unitStr = formatUnitString(stats.units);
                                                 
                                                 return (
-                                                    <tr key={`${type}-${name}`} className="border-b border-gray-100 dark:border-gray-800 hover:bg-emerald-50 dark:hover:bg-gray-700/30 transition-colors bg-white dark:bg-gray-900">
-                                                        <td className="px-4 py-3 pl-14 text-gray-700 dark:text-gray-300">
-                                                            <span className="w-2 h-2 inline-block rounded-full bg-emerald-200 dark:bg-emerald-800 mr-2"></span>
+                                                    <tr key={`${type}-${name}`} className="agri-intervention-table__item-row">
+                                                        <td>
+                                                            <span className="agri-intervention-table__dot"></span>
                                                             {name}
                                                         </td>
-                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-sm">
-                                                            <span className="font-semibold text-gray-700 dark:text-gray-300">{stats.target.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
-                                                            <span className="text-xs ml-1 opacity-70">{unitStr}</span>
+                                                        <td className="data-table__numeric agri-intervention-table__metric">
+                                                            <span>{stats.target.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+                                                            <small>{unitStr}</small>
                                                         </td>
-                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-sm">
+                                                        <td className="data-table__numeric agri-intervention-table__metric">
                                                             ₱{stats.allocation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </td>
-                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-sm">
-                                                            <span className="font-semibold text-gray-900 dark:text-gray-100">{stats.actual.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
-                                                            <span className="text-xs ml-1 opacity-70">{unitStr}</span>
+                                                        <td className="data-table__numeric agri-intervention-table__metric agri-intervention-table__metric--strong">
+                                                            <span>{stats.actual.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+                                                            <small>{unitStr}</small>
                                                         </td>
-                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-sm">
+                                                        <td className="data-table__numeric agri-intervention-table__metric">
                                                             ₱{stats.obligated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </td>
-                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 text-sm">
+                                                        <td className="data-table__numeric agri-intervention-table__metric">
                                                             ₱{stats.disbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
-                                                                itemRate >= 100 
-                                                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
-                                                            }`}>
+                                                        <td className="data-table__numeric">
+                                                            <span className={`agri-rate-pill ${itemRate >= 100 ? 'agri-rate-pill--complete' : ''}`}>
                                                                 {itemRate.toFixed(1)}%
                                                             </span>
                                                         </td>
@@ -358,39 +354,42 @@ const AgriculturalInterventionsDashboard: React.FC<Props> = ({ subprojects }) =>
                                 })}
                                 {Object.keys(filteredData).length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="px-4 py-12 text-center text-gray-500 dark:text-gray-400 italic">
-                                            {searchTerm ? `No results found for "${searchTerm}"` : 'No intervention data found in records.'}
+                                        <td colSpan={7}>
+                                            <div className="dashboard-empty dashboard-empty--center">
+                                                {searchTerm ? `No results found for "${searchTerm}"` : 'No intervention data found in records.'}
+                                            </div>
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
                             {/* Grand Total Row */}
                             {Object.keys(filteredData).length > 0 && (
-                                <tfoot className="bg-gray-100 dark:bg-gray-700 font-bold text-gray-800 dark:text-white sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+                                <tfoot className="agri-intervention-table__footer">
                                     <tr>
-                                        <td className="px-4 py-4 uppercase tracking-wider">Grand Total</td>
-                                        <td className="px-4 py-4 text-right text-gray-400 italic font-normal text-xs">N/A</td>
-                                        <td className="px-4 py-4 text-right">
+                                        <td>Grand Total</td>
+                                        <td className="data-table__numeric agri-intervention-table__na">N/A</td>
+                                        <td className="data-table__numeric">
                                             ₱{grandTotals.allocation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
-                                        <td className="px-4 py-4 text-right text-gray-400 italic font-normal text-xs">N/A</td>
-                                        <td className="px-4 py-4 text-right">
+                                        <td className="data-table__numeric agri-intervention-table__na">N/A</td>
+                                        <td className="data-table__numeric">
                                             ₱{grandTotals.obligated.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
-                                        <td className="px-4 py-4 text-right">
+                                        <td className="data-table__numeric">
                                             ₱{grandTotals.disbursed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </td>
-                                        <td className="px-4 py-4 text-right text-gray-400 italic font-normal text-xs">N/A</td>
+                                        <td className="data-table__numeric agri-intervention-table__na">N/A</td>
                                     </tr>
                                 </tfoot>
                             )}
                         </table>
                     </div>
                 </div>
-                <div className="mt-2 text-right text-xs text-gray-400 dark:text-gray-500 italic">
+                <div className="dashboard-section__note">
                     * Items normalized by name. Grams are auto-converted to Kilograms (1000g = 1kg).
                 </div>
             </div>
+            </section>
         </div>
     );
 };

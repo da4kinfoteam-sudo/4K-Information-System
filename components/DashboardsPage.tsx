@@ -11,6 +11,7 @@ import SCADDashboard from './dashboards/SCADDashboard';
 import AgriculturalInterventionsDashboard from './dashboards/AgriculturalInterventionsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 
 export interface DashboardsPageProps {
     subprojects: Subproject[];
@@ -40,6 +41,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     // Enforce User OU restriction on mount/change
     useEffect(() => {
@@ -141,11 +143,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             <button
                 type="button"
                 onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200 whitespace-nowrap
-                    ${isActive
-                        ? 'border-accent text-accent dark:text-green-400 dark:border-green-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
+                className={`data-tab ${isActive ? 'is-active' : ''}`}
             >
                 {label}
             </button>
@@ -153,18 +151,37 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     };
 
     return (
-        <div className="relative">
-            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Strategic Dashboard</h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                     <div className="flex items-center gap-2">
-                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
+        <div className="data-list-page dashboards-page">
+            <div className="data-list-header">
+                <h2 className="data-list-title">Strategic Dashboard</h2>
+                <div className="page-filter-toggle">
+                    <span className="page-filter-summary">
+                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear].join(' / ')}
+                    </span>
+                    <button
+                        type="button"
+                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
+                        onClick={() => setFiltersOpen(prev => !prev)}
+                        aria-expanded={filtersOpen}
+                        aria-controls="dashboard-filter-panel"
+                    >
+                        <SlidersHorizontal aria-hidden="true" />
+                        <span>Filters</span>
+                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
+                    </button>
+                </div>
+            </div>
+
+            <div id="dashboard-filter-panel" className={`report-filter-panel dashboard-filter-panel page-filter-panel ${filtersOpen ? 'is-open' : ''}`} hidden={!filtersOpen}>
+                <div className="report-filter-grid">
+                     <div className="report-filter">
+                        <label htmlFor="ou-filter" className="form-label">OU</label>
                         <select 
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
                             disabled={isLockedToOwnOu}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="form-control"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (
@@ -172,13 +189,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                    <div className="report-filter">
+                        <label htmlFor="tier-filter" className="form-label">Tier</label>
                         <select 
                             id="tier-filter"
                             value={selectedTier}
                             onChange={(e) => setSelectedTier(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Tiers</option>
                             {tiers.map(tier => (
@@ -186,13 +203,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                    <div className="report-filter">
+                        <label htmlFor="fund-type-filter" className="form-label">Fund Type</label>
                         <select 
                             id="fund-type-filter"
                             value={selectedFundType}
                             onChange={(e) => setSelectedFundType(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Fund Types</option>
                             {fundTypes.map(ft => (
@@ -200,13 +217,13 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                    <div className="report-filter">
+                        <label htmlFor="year-filter" className="form-label">Year</label>
                         <select 
                             id="year-filter"
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Years</option>
                             {availableYears.map(year => (
@@ -218,23 +235,21 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             </div>
 
             {/* Tabs Section */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md mb-6">
-                <div className="border-b border-gray-200 dark:border-gray-700">
-                    <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
-                        <TabButton tabName="Physical" label="Physical" />
-                        <TabButton tabName="Financial" label="Financial" />
-                        <TabButton tabName="SCAD" label="SCAD" />
-                        <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
-                        <TabButton tabName="GAD" label="GAD" />
-                        <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
-                        <TabButton tabName="Nutrition" label="Nutrition" />
-                        <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
-                    </nav>
-                </div>
+            <div className="report-tabs-card dashboard-tabs-card">
+                <nav className="data-tabs" aria-label="Dashboard tabs">
+                    <TabButton tabName="Physical" label="Physical" />
+                    <TabButton tabName="Financial" label="Financial" />
+                    <TabButton tabName="SCAD" label="SCAD" />
+                    <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
+                    <TabButton tabName="GAD" label="GAD" />
+                    <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
+                    <TabButton tabName="Nutrition" label="Nutrition" />
+                    <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
+                </nav>
             </div>
 
             {/* Tab Content */}
-            <div className="mt-4">
+            <div className="dashboard-tab-content">
                 {activeTab === 'Physical' && (
                     <PhysicalDashboard 
                         data={filteredData} 
@@ -265,28 +280,28 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             </div>
             
             {modalData && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setModalData(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">{modalData.title}</h3>
-                            <button onClick={() => setModalData(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                <div className="dashboard-modal-backdrop" onClick={() => setModalData(null)}>
+                    <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <h3>{modalData.title}</h3>
+                            <button type="button" onClick={() => setModalData(null)} className="dashboard-modal__close" aria-label="Close modal">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                             </button>
                         </div>
-                        <div className="p-4 overflow-y-auto custom-scrollbar">
+                        <div className="dashboard-modal__body custom-scrollbar">
                             {modalData.items.length > 0 ? (
-                                <ul className="space-y-3">
+                                <ul className="dashboard-modal__stack">
                                     {modalData.items.map((item, index) => (
-                                        <li key={index} className="border-b border-gray-100 dark:border-gray-700 last:border-0 pb-2 last:pb-0">
-                                            <p className="font-semibold text-sm text-gray-800 dark:text-gray-200">{item.name}</p>
-                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400">{item.details}</p>}
+                                        <li key={index} className="dashboard-modal__event">
+                                            <p className="dashboard-modal__metric-value">{item.name}</p>
+                                            {item.details && <p className="dashboard-modal__metric-subtext">{item.details}</p>}
                                         </li>
                                     ))}
                                 </ul>
                             ) : (
-                                <p className="text-sm text-gray-500 text-center">No items found.</p>
+                                <p className="dashboard-empty text-center">No items found.</p>
                             )}
                         </div>
                     </div>

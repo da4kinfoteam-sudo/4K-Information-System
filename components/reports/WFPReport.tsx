@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { getObjectTypeByCode, XLSX } from './ReportUtils';
 
@@ -39,7 +40,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
     };
 
     const indentClasses: { [key: number]: string } = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14' };
-    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
+    const dataCellClass = "report-table__cell";
 
     const wfpData = useMemo(() => {
         const getQuarter = (dateStr?: string): number => {
@@ -463,7 +464,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         const totalQuarterlyFinancial = totals.q1Financial + totals.q2Financial + totals.q3Financial + totals.q4Financial;
 
         return (
-            <tr className="font-bold bg-gray-200 dark:bg-gray-700">
+            <tr className="report-table__row report-table__row--total">
                 <td className={`${dataCellClass}`}>{label}</td>
                 <td className={`${dataCellClass} text-center`}>{formatNumber(totals.totalPhysicalTarget)}</td>
                 <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(totals.mooeCost)}</td>
@@ -480,11 +481,11 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
     const renderSummaryRow = (items: any[], label: string, rowKey: string, isExpanded: boolean, indentLevel = 0) => {
         if (items.length === 0) {
             return (
-                <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
+                <tr className="report-table__row report-table__row--summary">
                      <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={14} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
+                    <td colSpan={14} className={`${dataCellClass} text-center italic`}>No activities for this component.</td>
                 </tr>
             )
         }
@@ -513,7 +514,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         const totalQuarterlyFinancial = totals.q1Financial + totals.q2Financial + totals.q3Financial + totals.q4Financial;
         
         return (
-             <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer">
+             <tr onClick={() => toggleRow(rowKey)} className="report-table__row report-table__row--summary cursor-pointer">
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
@@ -533,7 +534,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         const totalQuarterlyPhysical = item.q1Physical + item.q2Physical + item.q3Physical + item.q4Physical;
         const totalQuarterlyFinancial = item.q1Financial + item.q2Financial + item.q3Financial + item.q4Financial;
         return (
-            <tr key={key}>
+            <tr key={key} className="report-table__row">
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]}`}>{item.indicator}</td>
                 <td className={`${dataCellClass} text-center`}>{formatNumber(item.totalPhysicalTarget)}</td>
                 <td className={`${dataCellClass} text-right`}>{formatCurrencyWhole(item.mooeCost)}</td>
@@ -555,7 +556,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
     });
 
     return (
-        <div id="wfp-container-for-print" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div id="wfp-container-for-print" className="report-card">
             <style>
                 {`
                     @media print {
@@ -656,37 +657,43 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 `}
             </style>
             <div className="print-logo-space hidden"></div>
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Work and Financial Plan (WFP)</h3>
-                <div className="flex items-center gap-4">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md text-sm hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadXLSX} className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700">Download XLSX</button>
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">Work and Financial Plan (WFP)</h3>
+                <div className="report-card__actions">
+                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
+                    <button onClick={handleDownloadXLSX} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download XLSX</span>
+                    </button>
                 </div>
             </div>
-            <div id="wfp-report" className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
-                    <thead className="bg-gray-200 dark:bg-gray-700">
+            <div id="wfp-report" className="report-table-scroll">
+                <table className="report-table min-w-full border-collapse text-xs">
+                    <thead>
                         <tr>
-                            <th rowSpan={2} className="p-1 border border-gray-300 dark:border-gray-600 align-bottom">Program/Activity/Project</th>
-                            <th colSpan={4} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total Target</th>
-                            <th colSpan={5} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Quarterly Physical Target</th>
-                            <th colSpan={5} className="p-1 border border-gray-300 dark:border-gray-600 text-center">Quarterly Financial Target (PHP)</th>
+                            <th rowSpan={2} className="report-table__head-cell align-bottom">Program/Activity/Project</th>
+                            <th colSpan={4} className="report-table__head-cell text-center">Total Target</th>
+                            <th colSpan={5} className="report-table__head-cell text-center">Quarterly Physical Target</th>
+                            <th colSpan={5} className="report-table__head-cell text-center">Quarterly Financial Target (PHP)</th>
                         </tr>
                         <tr>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Physical</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">MOOE (PHP)</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">CO (PHP)</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total (PHP)</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q1</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q2</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q3</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Q4</th>
-                            <th className="p-1 border border-gray-300 dark:border-gray-600 text-center">Total</th>
+                            <th className="report-table__head-cell text-center">Physical</th>
+                            <th className="report-table__head-cell text-center">MOOE (PHP)</th>
+                            <th className="report-table__head-cell text-center">CO (PHP)</th>
+                            <th className="report-table__head-cell text-center">Total (PHP)</th>
+                            <th className="report-table__head-cell text-center">Q1</th>
+                            <th className="report-table__head-cell text-center">Q2</th>
+                            <th className="report-table__head-cell text-center">Q3</th>
+                            <th className="report-table__head-cell text-center">Q4</th>
+                            <th className="report-table__head-cell text-center">Total</th>
+                            <th className="report-table__head-cell text-center">Q1</th>
+                            <th className="report-table__head-cell text-center">Q2</th>
+                            <th className="report-table__head-cell text-center">Q3</th>
+                            <th className="report-table__head-cell text-center">Q4</th>
+                            <th className="report-table__head-cell text-center">Total</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Info, Plus, RefreshCw, Upload } from 'lucide-react';
 import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference } from '../constants';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
@@ -406,7 +406,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         const directionIcon = isSorted ? (sortConfig?.direction === 'ascending' ? '▲' : '▼') : '↕';
         return (
             <th 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group select-none"
+                className="cursor-pointer group select-none"
                 onClick={() => requestSort(sortKey)}
                 title={tooltip}
             >
@@ -1773,10 +1773,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
         reader.readAsArrayBuffer(file);
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+    const commonInputClasses = "form-control mt-1";
 
     return (
-        <div className="space-y-6">
+        <div className="data-list-page">
             {/* Multi Delete Modal */}
             {isMultiDeleteModalOpen && canEdit && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
@@ -1795,13 +1795,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             )}
 
             {/* Header with Title */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">System References</h2>
+            <div className="data-list-header">
+                <h2 className="data-list-title">System References</h2>
             </div>
 
             {/* Tab Groups */}
-            <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-                <nav className="-mb-px flex space-x-8">
+            <div className="data-tabs">
+                <nav className="contents">
                     {['DCF Reference', 'Commodity References', 'Intervention References', 'Policy References'].map((group) => (
                         <button
                             key={group}
@@ -1814,11 +1814,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 else if (group === 'Policy References') setActiveTab('GIDA');
                                 setSearchTerm('');
                             }}
-                            className={`whitespace-nowrap py-2 px-6 rounded-md font-medium text-sm transition-colors ${
-                                activeGroup === group
-                                    ? 'bg-emerald-600 text-white shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800'
-                            }`}
+                            className={`data-tab ${activeGroup === group ? 'is-active' : ''}`}
                         >
                             {group}
                         </button>
@@ -1827,73 +1823,81 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             </div>
 
             {/* Sub-Tabs */}
-            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                <nav className="-mb-px flex space-x-6">
+            <div className="data-tabs reference-tabs-secondary">
+                <nav className="contents">
                     {activeGroup === 'DCF Reference' && (
                         <>
-                            <button onClick={() => { setActiveTab('UACS'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'UACS' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>UACS Codes</button>
-                            <button onClick={() => { setActiveTab('Items'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Items' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Subproject Items</button>
+                            <button onClick={() => { setActiveTab('UACS'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'UACS' ? 'is-active' : ''}`}>UACS Codes</button>
+                            <button onClick={() => { setActiveTab('Items'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Items' ? 'is-active' : ''}`}>Subproject Items</button>
                         </>
                     )}
                     {activeGroup === 'Commodity References' && (
                         <>
-                            <button onClick={() => { setActiveTab('Crop Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Crop Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Crop</button>
-                            <button onClick={() => { setActiveTab('Livestock Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Livestock Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Livestock</button>
+                            <button onClick={() => { setActiveTab('Crop Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Crop Reference' ? 'is-active' : ''}`}>Crop</button>
+                            <button onClick={() => { setActiveTab('Livestock Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Livestock Reference' ? 'is-active' : ''}`}>Livestock</button>
                         </>
                     )}
                     {activeGroup === 'Intervention References' && (
                         <>
-                            <button onClick={() => { setActiveTab('Agricultural Input Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Agricultural Input Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Agricultural Input Reference</button>
-                            <button onClick={() => { setActiveTab('Equipment Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Equipment Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Equipment Reference</button>
-                            <button onClick={() => { setActiveTab('Infrastructure Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Infrastructure Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Infrastructure Reference</button>
-                            <button onClick={() => { setActiveTab('Training Reference'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'Training Reference' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>Training Reference</button>
+                            <button onClick={() => { setActiveTab('Agricultural Input Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Agricultural Input Reference' ? 'is-active' : ''}`}>Agricultural Input Reference</button>
+                            <button onClick={() => { setActiveTab('Equipment Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Equipment Reference' ? 'is-active' : ''}`}>Equipment Reference</button>
+                            <button onClick={() => { setActiveTab('Infrastructure Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Infrastructure Reference' ? 'is-active' : ''}`}>Infrastructure Reference</button>
+                            <button onClick={() => { setActiveTab('Training Reference'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'Training Reference' ? 'is-active' : ''}`}>Training Reference</button>
                         </>
                     )}
                     {activeGroup === 'Policy References' && (
                         <>
-                            <button onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'GIDA' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>GIDA Areas</button>
-                            <button onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }} className={`py-2 px-1 border-b-2 font-medium text-xs ${activeTab === 'ELCAC' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-gray-400'}`}>ELCAC Areas</button>
+                            <button onClick={() => { setActiveTab('GIDA'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'GIDA' ? 'is-active' : ''}`}>GIDA Areas</button>
+                            <button onClick={() => { setActiveTab('ELCAC'); setSearchTerm(''); }} className={`data-tab ${activeTab === 'ELCAC' ? 'is-active' : ''}`}>ELCAC Areas</button>
                         </>
                     )}
                 </nav>
             </div>
 
-            {/* Search and Bulk Actions Row */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="w-full md:w-1/3">
+            <div className="data-table-card">
+                {/* Search and Bulk Actions Row */}
+                <div className="data-table-toolbar">
+                    <div className="data-toolbar-row">
+                <div className="data-toolbar-group">
                     <input 
                         type="text" 
                         placeholder="Search..." 
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="data-table-search w-full md:w-80 px-4"
                     />
                 </div>
                 
                 {canEdit && (
-                    <div className="flex flex-wrap gap-2 items-center">
+                    <div className="data-toolbar-group data-toolbar-group--actions">
                         {isSelectionMode && selectedIds.length > 0 && (
-                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700">
+                            <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
                         <button 
                             onClick={handleOpenAdd}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium transition-colors"
+                            className="btn btn-primary btn-responsive"
+                            title={`Add New ${activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}`}
                         >
-                            + Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}</span>
                         </button>
                         <button 
                             onClick={handleDownloadTemplate}
-                            className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-md shadow-sm text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600"
+                            className="btn btn-secondary btn-responsive"
+                            title="Download Template"
                         >
-                            Download Template
+                            <Download className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Download Template</span>
                         </button>
                         <label 
                             htmlFor="ref-upload" 
-                            className={`inline-flex items-center justify-center px-4 py-2 bg-emerald-600 text-white rounded-md shadow-sm text-sm font-medium hover:bg-emerald-700 ${isUploading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}
+                            title={isUploading ? 'Uploading...' : 'Upload XLSX'}
                         >
-                            {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                            <Upload className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
                         </label>
                         <input 
                             id="ref-upload" 
@@ -1907,38 +1911,40 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             <button 
                                 onClick={handleRetroactiveGidaUpdate}
                                 disabled={isUploading}
-                                className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className="btn btn-primary btn-responsive"
                                 title="Check all IPOs and update GIDA status"
                             >
-                                Retroactive Update
+                                <RefreshCw className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Retroactive Update</span>
                             </button>
                         )}
                         {activeTab === 'ELCAC' && (
                             <button 
                                 onClick={handleRetroactiveElcacUpdate}
                                 disabled={isUploading}
-                                className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md shadow-sm text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                className="btn btn-primary btn-responsive"
                                 title="Check all IPOs and update ELCAC status"
                             >
-                                Retroactive Update
+                                <RefreshCw className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Retroactive Update</span>
                             </button>
                         )}
                         <button
                             onClick={handleToggleSelectionMode}
-                            className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode ? 'bg-gray-200 dark:bg-gray-600 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`}
+                            className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
                             title="Toggle Multi-Delete Mode"
                         >
                             <TrashIcon />
                         </button>
                     </div>
                 )}
-            </div>
+                    </div>
+                </div>
 
             {/* Table Area */}
-            <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-700">
+                <div className="data-table-scroll">
+                    <table className="data-table">
+                        <thead>
                             <tr>
                                 {activeTab === 'UACS' ? (
                                     <>
@@ -1954,42 +1960,42 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </>
                                 ) : activeTab === 'Crop Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={CROP_TOOLTIPS.name} />
                                         <SortableHeader label="Banner" sortKey="banner_program" tooltip={CROP_TOOLTIPS.banner_program} />
                                         <SortableHeader label="Group" sortKey="commodity_group" tooltip={CROP_TOOLTIPS.commodity_group} />
                                     </>
                                 ) : activeTab === 'Livestock Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={LIVESTOCK_TOOLTIPS.name} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={LIVESTOCK_TOOLTIPS.category} />
                                         <SortableHeader label="Breed Type" sortKey="breed_type" tooltip={LIVESTOCK_TOOLTIPS.breed_type} />
                                     </>
                                 ) : activeTab === 'Equipment Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={EQUIPMENT_TOOLTIPS.name} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={EQUIPMENT_TOOLTIPS.category} />
                                         <SortableHeader label="Equipment Type" sortKey="equipment_type" tooltip={EQUIPMENT_TOOLTIPS.equipment_type} />
                                     </>
                                 ) : activeTab === 'Agricultural Input Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={INPUT_TOOLTIPS.name} />
                                         <SortableHeader label="Type" sortKey="input_type" tooltip={INPUT_TOOLTIPS.input_type} />
                                         <SortableHeader label="Sub-Type" sortKey="sub_type" tooltip={INPUT_TOOLTIPS.sub_type} />
                                     </>
                                 ) : activeTab === 'Infrastructure Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Name" sortKey="name" tooltip={INFRASTRUCTURE_TOOLTIPS.name} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={INFRASTRUCTURE_TOOLTIPS.category} />
                                         <SortableHeader label="Structure Type" sortKey="structure_type" tooltip={INFRASTRUCTURE_TOOLTIPS.structure_type} />
                                     </>
                                 ) : activeTab === 'Training Reference' ? (
                                     <>
-                                        <th className="px-6 py-3 w-10"></th>
+                                        <th className="w-10"></th>
                                         <SortableHeader label="Title" sortKey="title" tooltip={TRAINING_TOOLTIPS.title} />
                                         <SortableHeader label="Category" sortKey="category" tooltip={TRAINING_TOOLTIPS.category} />
                                     </>
@@ -2002,7 +2008,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </>
                                 )}
                                 {canEdit && (
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    <th className="text-right">
                                         {isSelectionMode ? (
                                             <div className="flex items-center justify-end gap-2">
                                                 <span className="text-xs">Select All</span>
@@ -2020,11 +2026,11 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        <tbody>
                             {paginatedData.length > 0 ? (
                                 paginatedData.map((item: any) => (
                                     <React.Fragment key={item.id}>
-                                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                         <tr>
                                             {activeTab === 'UACS' ? (
                                                 <>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.objectType}</td>
@@ -2042,7 +2048,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); setExpandedRowId(expandedRowId === item.id ? null : item.id); }}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2056,7 +2062,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
                                                             onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2070,7 +2076,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
                                                             onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2084,7 +2090,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
                                                             onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2098,7 +2104,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
                                                             onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2112,7 +2118,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <button 
                                                             onClick={() => setExpandedRowId(expandedRowId === item.id ? null : item.id)}
-                                                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-full transition-colors"
+                                                             className="table-toggle"
                                                         >
                                                             {expandedRowId === item.id ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                                                         </button>
@@ -2140,8 +2146,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                         />
                                                     ) : (
                                                         <>
-                                                            <button onClick={() => handleOpenEdit(item)} className="text-emerald-600 hover:text-emerald-900 mr-3">Edit</button>
-                                                            <button onClick={() => setDeleteItem(item)} className="text-red-600 hover:text-red-900">Delete</button>
+                                                            <div className="flex justify-end gap-2">
+                                                                <button onClick={() => handleOpenEdit(item)} className="table-action table-action--primary">Edit</button>
+                                                                <button onClick={() => setDeleteItem(item)} className="table-action table-action--danger">Delete</button>
+                                                            </div>
                                                         </>
                                                     )}
                                                 </td>
@@ -2385,13 +2393,13 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                 </div>
 
                 {/* Pagination Controls */}
-                <div className="px-6 py-4 bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <div className="data-table-pagination flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-gray-700 dark:text-gray-300">Show</span>
                         <select 
                             value={itemsPerPage} 
                             onChange={(e) => setItemsPerPage(Number(e.target.value))} 
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                            className="data-table-select py-1 pl-2 pr-8"
                         >
                             {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                         </select>
@@ -2405,7 +2413,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} 
                                 disabled={currentPage === 1} 
-                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                className="px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Previous
                             </button>
@@ -2413,7 +2421,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             <button 
                                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} 
                                 disabled={currentPage === totalPages} 
-                                className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                className="px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Next
                             </button>

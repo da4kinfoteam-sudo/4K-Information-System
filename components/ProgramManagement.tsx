@@ -42,27 +42,20 @@ const ProgramManagement: React.FC<ProgramManagementProps> = ({
     const TabButton = ({ name, label }: { name: ActiveTab; label: string }) => {
         const isActive = activeTab === name;
         return (
-            <button
-                onClick={() => setActiveTab(name)}
-                className={`${
-                    isActive 
-                        ? 'border-emerald-600 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-400' 
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-800'
-                } whitespace-nowrap py-3 px-6 border-b-2 font-medium text-sm transition-colors duration-200 rounded-t-md`}
-            >
+            <button onClick={() => setActiveTab(name)} className={`data-tab ${isActive ? 'is-active' : ''}`}>
                 {label}
             </button>
         );
     };
 
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Program Management</h2>
+        <div className="data-list-page">
+            <div className="data-list-header">
+                <h2 className="data-list-title">Program Management</h2>
             </div>
 
-            <div className="border-b border-gray-200 dark:border-gray-700 mb-6">
-                <nav className="-mb-px flex space-x-2" aria-label="Tabs">
+            <div className="data-tabs">
+                <nav className="flex gap-1" aria-label="Tabs">
                     <TabButton name="Office" label="Office Requirements" />
                     <TabButton name="Staffing" label="Staffing Requirements" />
                     <TabButton name="Other" label="Other Expenses" />

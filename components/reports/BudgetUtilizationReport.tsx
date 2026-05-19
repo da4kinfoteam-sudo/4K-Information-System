@@ -1,5 +1,6 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { getObjectTypeByCode, XLSX } from './ReportUtils';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
@@ -84,7 +85,7 @@ const getMonthIndex = (dateString: string) => {
 };
 
 const MetricsColumns: React.FC<{ metrics: any, allotmentTotal: number, obligationTotal?: number, showPercent?: boolean, isUnpaid?: boolean }> = ({ metrics, allotmentTotal, obligationTotal, showPercent = true, isUnpaid = false }) => {
-    const cellClass = "p-1 border border-gray-300 dark:border-gray-600 text-right whitespace-nowrap";
+    const cellClass = "bur-report__cell text-right whitespace-nowrap";
     return (
         <>
             <td className={cellClass}>{formatCurrencyWhole(metrics.mooe)}</td>
@@ -93,13 +94,13 @@ const MetricsColumns: React.FC<{ metrics: any, allotmentTotal: number, obligatio
             {showPercent && !isUnpaid && (
                 <>
                     {obligationTotal !== undefined && (
-                        <td className={`${cellClass} text-blue-600 dark:text-blue-400`}>{formatPercent(metrics.total, obligationTotal)}</td>
+                        <td className={`${cellClass} bur-report__cell--percent-obligation`}>{formatPercent(metrics.total, obligationTotal)}</td>
                     )}
-                    <td className={`${cellClass} text-green-600 dark:text-green-400`}>{formatPercent(metrics.total, allotmentTotal)}</td>
+                    <td className={`${cellClass} bur-report__cell--percent-allotment`}>{formatPercent(metrics.total, allotmentTotal)}</td>
                 </>
             )}
             {showPercent && isUnpaid && (
-                <td className={`${cellClass} text-red-600 dark:text-red-400`}>{formatPercent(metrics.total, obligationTotal || 0)}</td>
+                <td className={`${cellClass} bur-report__cell--percent-unpaid`}>{formatPercent(metrics.total, obligationTotal || 0)}</td>
             )}
         </>
     );
@@ -136,23 +137,23 @@ const ActivityRow: React.FC<{
     unpaidObligation.total = grandTotal.obligation.total - grandTotal.disbursement.total;
 
     return (
-        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>{activity.name}</td>
+        <tr className="bur-report__row">
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 z-10 bur-report__sticky`}>{activity.name}</td>
             
             {/* Allotment */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}>{formatCurrencyWhole(activity.allotment.mooe)}</td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}>{formatCurrencyWhole(activity.allotment.co)}</td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-100 dark:bg-gray-700`}>{formatCurrencyWhole(activity.allotment.total)}</td>
+            <td className={`${dataCellClass} bur-report__cell--total font-bold text-right whitespace-nowrap`}>{formatCurrencyWhole(activity.allotment.total)}</td>
             
             {/* Adjustment (Placeholder) */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-100 dark:bg-gray-700`}></td>
+            <td className={`${dataCellClass} bur-report__cell--total font-bold text-right whitespace-nowrap`}></td>
 
             {/* Adjusted Allotment (Placeholder) */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-100 dark:bg-gray-700`}></td>
+            <td className={`${dataCellClass} bur-report__cell--total font-bold text-right whitespace-nowrap`}></td>
 
             {/* Months and Quarters */}
             {QUARTERS.map((q, qIdx) => (
@@ -161,16 +162,16 @@ const ActivityRow: React.FC<{
                         <MonthColumns key={mIdx} monthData={activity.months[mIdx]} allotmentTotal={activity.allotment.total} />
                     ))}
                     {/* Quarter Total */}
-                    <td className="border-l-4 border-gray-400 dark:border-gray-500 p-0"></td>
+                    <td className="bur-report__separator bur-report__separator--quarter"></td>
                     <MonthColumns monthData={quarters[qIdx]} allotmentTotal={activity.allotment.total} />
-                    <td className="border-r-4 border-gray-400 dark:border-gray-500 p-0"></td>
+                    <td className="bur-report__separator bur-report__separator--quarter"></td>
                 </React.Fragment>
             ))}
 
             {/* Grand Total */}
-            <td className="border-l-4 border-gray-800 dark:border-gray-200 p-0"></td>
+            <td className="bur-report__separator bur-report__separator--grand"></td>
             <MonthColumns monthData={grandTotal} allotmentTotal={activity.allotment.total} />
-            <td className="border-r-4 border-gray-800 dark:border-gray-200 p-0"></td>
+            <td className="bur-report__separator bur-report__separator--grand"></td>
 
             {/* Unpaid Obligation */}
             <MetricsColumns metrics={unpaidObligation} allotmentTotal={activity.allotment.total} obligationTotal={grandTotal.obligation.total} isUnpaid={true} />
@@ -191,11 +192,11 @@ const SummaryRow: React.FC<{
     
     if (!items || items.length === 0) {
         return (
-             <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
-                <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
+             <tr className="bur-report__row bur-report__row--summary">
+                <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 z-10 bur-report__sticky`}>
                      <span className="inline-block w-5 text-center"></span> {label}
                 </td>
-                <td colSpan={166} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this item.</td>
+                <td colSpan={166} className={`${dataCellClass} text-center italic`}>No activities for this item.</td>
             </tr>
         );
     }
@@ -218,25 +219,25 @@ const SummaryRow: React.FC<{
     unpaidObligation.total = grandTotal.obligation.total - grandTotal.disbursement.total;
 
     return (
-        <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
-            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
-                <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
+        <tr onClick={() => toggleRow(rowKey)} className="bur-report__row bur-report__row--summary cursor-pointer">
+            <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 z-10 bur-report__sticky`}>
+                <span className="report-table__toggle">{isExpanded ? '−' : '+'}</span> {label}
             </td>
             
             {/* Allotment */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}>{formatCurrencyWhole(summary.allotment.mooe)}</td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}>{formatCurrencyWhole(summary.allotment.co)}</td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-200 dark:bg-gray-600`}>{formatCurrencyWhole(summary.allotment.total)}</td>
+            <td className={`${dataCellClass} bur-report__cell--summary-total font-bold text-right whitespace-nowrap`}>{formatCurrencyWhole(summary.allotment.total)}</td>
             
             {/* Adjustment (Placeholder) */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-200 dark:bg-gray-600`}></td>
+            <td className={`${dataCellClass} bur-report__cell--summary-total font-bold text-right whitespace-nowrap`}></td>
 
             {/* Adjusted Allotment (Placeholder) */}
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
             <td className={`${dataCellClass} text-right whitespace-nowrap`}></td>
-            <td className={`${dataCellClass} font-bold text-right whitespace-nowrap bg-gray-200 dark:bg-gray-600`}></td>
+            <td className={`${dataCellClass} bur-report__cell--summary-total font-bold text-right whitespace-nowrap`}></td>
 
             {/* Months and Quarters */}
             {QUARTERS.map((q, qIdx) => (
@@ -245,16 +246,16 @@ const SummaryRow: React.FC<{
                         <MonthColumns key={mIdx} monthData={summary.months[mIdx]} allotmentTotal={summary.allotment.total} />
                     ))}
                     {/* Quarter Total */}
-                    <td className="border-l-4 border-gray-400 dark:border-gray-500 p-0"></td>
+                    <td className="bur-report__separator bur-report__separator--quarter"></td>
                     <MonthColumns monthData={quarters[qIdx]} allotmentTotal={summary.allotment.total} />
-                    <td className="border-r-4 border-gray-400 dark:border-gray-500 p-0"></td>
+                    <td className="bur-report__separator bur-report__separator--quarter"></td>
                 </React.Fragment>
             ))}
 
             {/* Grand Total */}
-            <td className="border-l-4 border-gray-800 dark:border-gray-200 p-0"></td>
+            <td className="bur-report__separator bur-report__separator--grand"></td>
             <MonthColumns monthData={grandTotal} allotmentTotal={summary.allotment.total} />
-            <td className="border-r-4 border-gray-800 dark:border-gray-200 p-0"></td>
+            <td className="bur-report__separator bur-report__separator--grand"></td>
 
             {/* Unpaid Obligation */}
             <MetricsColumns metrics={unpaidObligation} allotmentTotal={summary.allotment.total} obligationTotal={grandTotal.obligation.total} isUnpaid={true} />
@@ -391,9 +392,8 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
     };
 
     const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
-    const borderClass = "border border-gray-300 dark:border-gray-600";
-    const headerCellClass = `p-1 ${borderClass} text-center align-middle font-bold`;
-    const dataCellClass = `p-1 ${borderClass}`;
+    const headerCellClass = "bur-report__head-cell text-center align-middle font-bold";
+    const dataCellClass = "bur-report__cell";
 
     const renderMetricsHeaders = (title: string, showPercent: boolean = true, isUnpaid: boolean = false) => (
         <>
@@ -420,7 +420,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
     );
 
     return (
-        <div id="bur-container" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div id="bur-container" className="report-card bur-report-card">
             <style>{`
                 @media print {
                     @page { size: landscape; }
@@ -440,18 +440,24 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                     }
                 }
             `}</style>
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Utilization Report</h3>
-                <div className="flex gap-2">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">Budget Utilization Report</h3>
+                <div className="report-card__actions">
+                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
+                    <button onClick={handleDownloadXlsx} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download XLSX</span>
+                    </button>
                 </div>
             </div>
-            <div id="bur-table" className="overflow-x-auto overflow-y-auto max-h-[75vh] relative custom-scrollbar">
-                <table className="min-w-full border-collapse text-[10px] text-gray-900 dark:text-gray-200">
-                    <thead className="sticky top-0 z-20 shadow-sm bg-gray-200 dark:bg-gray-800">
+            <div id="bur-table" className="report-table-scroll bur-report-scroll">
+                <table className="bur-report-table min-w-full border-collapse text-[10px]">
+                    <thead className="sticky top-0 z-20">
                         <tr>
-                            <th rowSpan={3} className={`${headerCellClass} min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-800 z-30 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>Program/Activity/Project</th>
+                            <th rowSpan={3} className={`${headerCellClass} min-w-[250px] sticky left-0 z-30 bur-report__sticky`}>Program/Activity/Project</th>
                             
                             <th colSpan={3} className={headerCellClass}>Allotment</th>
                             <th colSpan={3} className={headerCellClass}>Adjustment (+/-)</th>
@@ -462,17 +468,17 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                                     {q.months.map(mIdx => (
                                         <th key={mIdx} colSpan={9} className={headerCellClass}>{SHORT_MONTHS[mIdx]}</th>
                                     ))}
-                                    <th className="border-l-4 border-gray-400 dark:border-gray-500 p-0"></th>
-                                    <th colSpan={9} className={`${headerCellClass} bg-blue-100 dark:bg-blue-900/30`}>{q.name} Total</th>
-                                    <th className="border-r-4 border-gray-400 dark:border-gray-500 p-0"></th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
+                                    <th colSpan={9} className={`${headerCellClass} bur-report__head-cell--quarter`}>{q.name} Total</th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
                                 </React.Fragment>
                             ))}
                             
-                            <th className="border-l-4 border-gray-800 dark:border-gray-200 p-0"></th>
-                            <th colSpan={9} className={`${headerCellClass} bg-green-100 dark:bg-green-900/30`}>Grand Total</th>
-                            <th className="border-r-4 border-gray-800 dark:border-gray-200 p-0"></th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
+                            <th colSpan={9} className={`${headerCellClass} bur-report__head-cell--grand`}>Grand Total</th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
 
-                            <th colSpan={4} className={`${headerCellClass} bg-red-100 dark:bg-red-900/30`}>Unpaid Obligation</th>
+                            <th colSpan={4} className={`${headerCellClass} bur-report__head-cell--unpaid`}>Unpaid Obligation</th>
                         </tr>
                         <tr>
                             <th rowSpan={2} className={headerCellClass}>MOOE</th>
@@ -492,15 +498,15 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                                     {q.months.map(mIdx => (
                                         <React.Fragment key={mIdx}>{renderMonthHeaders('')}</React.Fragment>
                                     ))}
-                                    <th className="border-l-4 border-gray-400 dark:border-gray-500 p-0"></th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
                                     {renderMonthHeaders('')}
-                                    <th className="border-r-4 border-gray-400 dark:border-gray-500 p-0"></th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
                                 </React.Fragment>
                             ))}
 
-                            <th className="border-l-4 border-gray-800 dark:border-gray-200 p-0"></th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
                             {renderMonthHeaders('')}
-                            <th className="border-r-4 border-gray-800 dark:border-gray-200 p-0"></th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
 
                             {renderMetricsHeaders('Unpaid Obligation', true, true)}
                         </tr>
@@ -513,17 +519,17 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                                             {renderMetricsHeaders('Disbursement')}
                                         </React.Fragment>
                                     ))}
-                                    <th className="border-l-4 border-gray-400 dark:border-gray-500 p-0"></th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
                                     {renderMetricsHeaders('Obligation')}
                                     {renderMetricsHeaders('Disbursement')}
-                                    <th className="border-r-4 border-gray-400 dark:border-gray-500 p-0"></th>
+                                    <th className="bur-report__separator bur-report__separator--quarter"></th>
                                 </React.Fragment>
                             ))}
 
-                            <th className="border-l-4 border-gray-800 dark:border-gray-200 p-0"></th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
                             {renderMetricsHeaders('Obligation')}
                             {renderMetricsHeaders('Disbursement')}
-                            <th className="border-r-4 border-gray-800 dark:border-gray-200 p-0"></th>
+                            <th className="bur-report__separator bur-report__separator--grand"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -608,7 +614,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                             isExpanded={false} 
                             indentLevel={0} 
                             toggleRow={() => {}} 
-                            dataCellClass={`${dataCellClass} bg-gray-200 dark:bg-gray-700`} 
+                            dataCellClass={`${dataCellClass} bur-report__cell--footer`} 
                             indentClasses={indentClasses} 
                         />
                     </tfoot>

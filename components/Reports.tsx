@@ -10,6 +10,7 @@ import BAR1Report from './reports/BAR1Report';
 import BudgetUtilizationReport from './reports/BudgetUtilizationReport';
 import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import { useAuth } from '../contexts/AuthContext';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 
 interface ReportsProps {
     ipos: IPO[];
@@ -36,6 +37,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     useEffect(() => {
         if (isLockedToOwnOu && currentUser) {
@@ -144,17 +146,23 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         };
     }, [selectedOu, selectedTier, subprojects, ipos, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses]);
 
+    const reportTabs: { tabName: ReportTab; label: string }[] = [
+        { tabName: 'WFP', label: 'WFP' },
+        { tabName: 'BP Forms', label: 'BP Forms' },
+        { tabName: 'BEDS', label: 'BEDS' },
+        { tabName: 'PICS', label: 'PICS' },
+        { tabName: 'BAR1', label: 'BAR1' },
+        { tabName: 'Budget Utilization Report', label: 'Budget Utilization' },
+        { tabName: 'Monthly Matrix', label: 'Monthly Matrix' },
+    ];
+
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
         return (
             <button
                 type="button"
                 onClick={() => setActiveTab(tabName)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors duration-200
-                    ${isActive
-                        ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
+                className={`data-tab ${isActive ? 'is-active' : ''}`}
             >
                 {label}
             </button>
@@ -184,18 +192,37 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-wrap justify-between items-center gap-4 print-hidden">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Reports</h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                     <div className="flex items-center gap-2">
-                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
+        <div className="data-list-page reports-page">
+            <div className="data-list-header print-hidden">
+                <h2 className="data-list-title">Reports</h2>
+                <div className="page-filter-toggle">
+                    <span className="page-filter-summary">
+                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear].join(' / ')}
+                    </span>
+                    <button
+                        type="button"
+                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
+                        onClick={() => setFiltersOpen(prev => !prev)}
+                        aria-expanded={filtersOpen}
+                        aria-controls="reports-filter-panel"
+                    >
+                        <SlidersHorizontal aria-hidden="true" />
+                        <span>Filters</span>
+                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
+                    </button>
+                </div>
+            </div>
+
+            <div id="reports-filter-panel" className={`report-filter-panel page-filter-panel print-hidden ${filtersOpen ? 'is-open' : ''}`} hidden={!filtersOpen}>
+                <div className="report-filter-grid">
+                    <div className="report-filter">
+                        <label htmlFor="ou-filter" className="form-label">OU</label>
                         <select 
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
                             disabled={isLockedToOwnOu}
-                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
+                            className="form-control"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (
@@ -203,13 +230,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                    <div className="report-filter">
+                        <label htmlFor="tier-filter" className="form-label">Tier</label>
                         <select 
                             id="tier-filter"
                             value={selectedTier}
                             onChange={(e) => setSelectedTier(e.target.value)}
-                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Tiers</option>
                             {tiers.map(tier => (
@@ -217,13 +244,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                    <div className="report-filter">
+                        <label htmlFor="fund-type-filter" className="form-label">Fund Type</label>
                         <select 
                             id="fund-type-filter"
                             value={selectedFundType}
                             onChange={(e) => setSelectedFundType(e.target.value)}
-                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Fund Types</option>
                             {fundTypes.map(ft => (
@@ -231,13 +258,13 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                    <div className="report-filter">
+                        <label htmlFor="year-filter" className="form-label">Year</label>
                         <select 
                             id="year-filter"
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(e.target.value)}
-                            className="bg-white dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
+                            className="form-control"
                         >
                             <option value="All">All Years</option>
                             {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}
@@ -246,21 +273,15 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md print-hidden">
-                <div className="border-b border-gray-200 dark:border-gray-700">
-                    <nav className="-mb-px flex space-x-4 px-4 overflow-x-auto" aria-label="Tabs">
-                        <TabButton tabName="WFP" label="WFP" />
-                        <TabButton tabName="BP Forms" label="BP Forms" />
-                        <TabButton tabName="BEDS" label="BEDS" />
-                        <TabButton tabName="PICS" label="PICS" />
-                        <TabButton tabName="BAR1" label="BAR1" />
-                        <TabButton tabName="Budget Utilization Report" label="Budget Utilization Report" />
-                        <TabButton tabName="Monthly Matrix" label="Monthly Matrix" />
-                    </nav>
-                </div>
+            <div className="report-tabs-card print-hidden">
+                <nav className="data-tabs" aria-label="Report tabs">
+                    {reportTabs.map(tab => (
+                        <TabButton key={tab.tabName} tabName={tab.tabName} label={tab.label} />
+                    ))}
+                </nav>
             </div>
 
-            <div className="mt-4">
+            <div className="report-output">
                 {renderTabContent()}
             </div>
         </div>

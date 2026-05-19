@@ -1,5 +1,6 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { XLSX } from './ReportUtils';
@@ -180,9 +181,9 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
     const sortedRegions = Object.keys(groupedData).sort();
     const grandTotalSummary = calculateSummary(picsData);
 
-    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
-    const headerCellClass = "p-1 border border-gray-300 dark:border-gray-600 font-bold bg-gray-200 dark:bg-gray-700 text-center align-middle";
-    const groupRowClass = "font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer";
+    const dataCellClass = "pics-report__cell";
+    const headerCellClass = "pics-report__head-cell text-center align-middle";
+    const groupRowClass = "pics-report__row pics-report__row--summary cursor-pointer";
 
     const handleDownloadPicsXlsx = () => {
         const aoa: (string | number | null)[][] = [
@@ -231,14 +232,19 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
     };
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">PICS Report</h3>
-                <button onClick={handleDownloadPicsXlsx} className="px-4 py-2 bg-accent text-white rounded-md font-semibold hover:brightness-95">Download XLSX</button>
+        <div className="report-card pics-report-card">
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">PICS Report</h3>
+                <div className="report-card__actions">
+                    <button onClick={handleDownloadPicsXlsx} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download XLSX</span>
+                    </button>
+                </div>
             </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                    <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-gray-700">
+            <div className="report-table-scroll pics-report-scroll">
+                <table className="pics-report-table min-w-full border-collapse text-xs whitespace-nowrap">
+                    <thead className="sticky top-0 z-10">
                         <tr>
                             <th rowSpan={2} className={`${headerCellClass} text-left`}>Location / Performance Indicator</th>
                             <th rowSpan={2} className={headerCellClass}>Unit of Measure</th>
@@ -340,7 +346,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
                                                     <td className={`${dataCellClass} text-center`}>{provinceSummary.tier2TotalParticipants}</td>
                                                 </tr>
                                                 {isProvinceExpanded && provinceItems.map((item, idx) => (
-                                                    <tr key={`${provinceKey}-${idx}`} className="hover:bg-white dark:hover:bg-gray-700/30">
+                                                    <tr key={`${provinceKey}-${idx}`} className="pics-report__row">
                                                         <td className={`${dataCellClass} text-left pl-10`}>{item.indicator}</td>
                                                         <td className={`${dataCellClass} text-center`}>number</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.totalTarget}</td>
@@ -371,7 +377,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
                         })}
                     </tbody>
                     <tfoot>
-                        <tr className="font-bold bg-gray-200 dark:bg-gray-700">
+                        <tr className="pics-report__row pics-report__row--total">
                             <td className={`${dataCellClass} text-right`}>GRAND TOTAL</td>
                             <td className={`${dataCellClass} text-center`}>-</td>
                             <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalTarget}</td>

@@ -9,7 +9,7 @@ import { useSelection, useUserAccess, usePagination } from '../mainfunctions/Tab
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState'; // Import for persistent state
-import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronDown } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, ChevronDown, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 
 const FilterIcon = () => (
     <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -146,7 +146,7 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all";
+const commonInputClasses = "form-control";
 
 export const parseOtherExpenseRow = (row: any, commonData: any): OtherProgramExpense => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -229,11 +229,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [formData, setFormData] = useState<OtherProgramExpense>(initialFormState);
 
     const getInputClasses = (fieldName: string) => {
-        const baseClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all";
+        const baseClasses = "form-control";
         if (validationErrors.includes(fieldName)) {
-            return `${baseClasses} border-red-500 ring-2 ring-red-200 dark:ring-red-900/30`;
+            return `${baseClasses} form-control--invalid`;
         }
-        return `${baseClasses} border-gray-300 dark:border-gray-600`;
+        return baseClasses;
     };
 
     const availableUacsCodes = useMemo(() => {
@@ -744,33 +744,33 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     if (view === 'form') {
         return (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100 dark:border-gray-700">
-                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">
+            <div className="form-card animate-fadeIn">
+                <div className="detail-header">
+                    <h3 className="detail-title">
                         {editingItem ? 'Edit Other Expense' : 'Add New Other Expense'}
                     </h3>
-                    <button onClick={() => { setView('list'); setEditingItem(null); setValidationErrors([]); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+                    <button onClick={() => { setView('list'); setEditingItem(null); setValidationErrors([]); }} className="btn btn-secondary">Cancel</button>
                 </div>
-                <form onSubmit={handleFormSubmit} className="space-y-8">
+                <form onSubmit={handleFormSubmit} className="detail-stack">
                     {/* Section 1: Basic Information */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-medium text-emerald-700 dark:text-emerald-400">Basic Information</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <fieldset className="form-fieldset">
+                        <legend className="form-legend">Basic Information</legend>
+                        <div className="form-grid">
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Operating Unit <span className="text-red-500">*</span></label>
+                                <label className="form-label">Operating Unit <span className="text-red-500">*</span></label>
                                 <select 
                                     name="operatingUnit" 
                                     value={formData.operatingUnit} 
                                     onChange={handleInputChange} 
                                     disabled={!canViewAll && !!currentUser} 
-                                    className={`${getInputClasses('operatingUnit')} disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                                    className={`${getInputClasses('operatingUnit')} `}
                                 >
                                     <option value="">Select OU</option>
                                     {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status <span className="text-red-500">*</span></label>
+                                <label className="form-label">Status <span className="text-red-500">*</span></label>
                                 <select name="status" value={formData.status} onChange={handleInputChange} className={commonInputClasses}>
                                     <option value="Proposed">Proposed</option>
                                     <option value="Ongoing">Ongoing</option>
@@ -779,49 +779,49 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Particular <span className="text-red-500">*</span></label>
+                                <label className="form-label">Particular <span className="text-red-500">*</span></label>
                                 <input type="text" name="particulars" value={formData.particulars} onChange={handleInputChange} placeholder="Enter particulars" className={getInputClasses('particulars')} />
                             </div>
                         </div>
                     </fieldset>
 
                     {/* Section 2: Funding */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-medium text-emerald-700 dark:text-emerald-400">Funding</legend>
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <fieldset className="form-fieldset">
+                        <legend className="form-legend">Funding</legend>
+                        <div className="detail-stack">
+                            <div className="form-grid">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Year <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Fund Year <span className="text-red-500">*</span></label>
                                     <input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Type <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Fund Type <span className="text-red-500">*</span></label>
                                     <select name="fundType" value={formData.fundType} onChange={handleInputChange} className={commonInputClasses}>
                                         {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tier <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Tier <span className="text-red-500">*</span></label>
                                     <select name="tier" value={formData.tier} onChange={handleInputChange} className={commonInputClasses}>
                                         {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex flex-col justify-center space-y-2 mt-4">
-                                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                <div className="form-check-group">
+                                    <label className="form-check">
+                                        <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} />
                                         <span>Realignment</span>
                                     </label>
-                                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                    <label className="form-check">
+                                        <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} />
                                         <span>Savings</span>
                                     </label>
                                 </div>
                             </div>
 
                             {/* UACS Row */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                            <div className="program-form-grid program-form-grid--four items-end">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Object Type <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Object Type <span className="text-red-500">*</span></label>
                                     <select 
                                         value={selectedObjectType} 
                                         onChange={e => { setSelectedObjectType(e.target.value as ObjectType); setSelectedParticular(''); setFormData(prev => ({...prev, uacsCode: ''})); }} 
@@ -831,7 +831,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Particular <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Particular <span className="text-red-500">*</span></label>
                                     <select 
                                         value={selectedParticular} 
                                         onChange={e => { 
@@ -853,7 +853,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                     </select>
                                 </div>
                                 <div className="relative">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">UACS Code <span className="text-red-500">*</span></label>
+                                    <label className="form-label">UACS Code <span className="text-red-500">*</span></label>
                                     <div className="relative">
                                         <input 
                                             type="text" 
@@ -864,7 +864,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                             className={`${getInputClasses('uacsCode')} pr-10`} 
                                         />
                                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                                            <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <svg className="form-control-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                             </svg>
                                         </div>
@@ -876,19 +876,19 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                     </datalist>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                                    <label className="form-label">Description</label>
                                     <input 
                                         type="text" 
                                         value={selectedUacsDesc} 
                                         readOnly 
-                                        className={`${commonInputClasses} bg-gray-50 dark:bg-gray-800/50 cursor-not-allowed font-normal`} 
+                                        className={`${commonInputClasses} form-control--readonly`} 
                                     />
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="form-grid">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Obligation Date <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Obligation Date <span className="text-red-500">*</span></label>
                                     <MonthYearPicker 
                                         value={formData.obligationDate} 
                                         onChange={(val) => {
@@ -897,27 +897,27 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                                 setValidationErrors(prev => prev.filter(f => f !== 'obligationDate'));
                                             }
                                         }} 
-                                        className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-red-500' : ''}
+                                        className={validationErrors.includes('obligationDate') ? 'form-control--invalid' : ''}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target Allocation Amount <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Target Allocation Amount <span className="text-red-500">*</span></label>
                                     <input type="number" name="amount" value={formData.amount} onChange={handleInputChange} placeholder="0.00" className={getInputClasses('amount')} />
                                 </div>
                             </div>
 
-                            <div className="mt-8">
-                                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4 uppercase tracking-wider">Monthly Disbursement Schedule <span className="text-red-500">*</span></h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                            <div className="detail-subsection">
+                                <h4 className="detail-section-title detail-section-title--ruled">Monthly Disbursement Schedule <span className="text-red-500">*</span></h4>
+                                <div className="program-month-grid">
                                     {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => (
-                                        <div key={month}>
-                                            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{month}</label>
+                                        <div key={month} className="program-month-cell">
+                                            <label className="program-month-cell__label">{month}</label>
                                             <input 
                                                 type="number" 
                                                 name={`disbursement${month}`} 
                                                 value={formData[`disbursement${month}` as keyof OtherProgramExpense] || 0} 
                                                 onChange={handleInputChange} 
-                                                className={getInputClasses(`disbursement${month}`)} 
+                                                className={`${getInputClasses(`disbursement${month}`)} form-control--compact`} 
                                             />
                                         </div>
                                     ))}
@@ -926,8 +926,8 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         </div>
                     </fieldset>
 
-                    <div className="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-700">
-                        <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors font-medium shadow-sm">
+                    <div className="detail-edit-footer">
+                        <button type="submit" className="btn btn-primary">
                             Save
                         </button>
                     </div>
@@ -938,12 +938,13 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
 
     // List View
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="data-table-card">
             {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Deletion</h3><p className="my-4">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete</button></div></div></div>)}
             {isMultiDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold">Confirm Bulk Deletion</h3><p className="my-4">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete All</button></div></div></div>)}
 
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="data-table-toolbar">
+            <div className="data-toolbar-row">
+                <div className="data-toolbar-group">
                     <div className="relative flex-1 md:flex-none">
                         <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-gray-400" />
@@ -953,7 +954,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                             placeholder="Search Other Expenses..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all"
+                            className="data-table-search block w-full md:w-72 pl-10 pr-3"
                         />
                         {searchTerm && (
                             <button 
@@ -965,11 +966,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                         )}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="data-toolbar-group data-toolbar-group--actions">
                     {isSelectionMode && selectedIds.length > 0 && (
                         <button 
                             onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                            className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
                         >
                             {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                         </button>
@@ -977,29 +978,38 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     {canEdit && (
                         <button 
                             onClick={() => { setEditingItem(null); setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
+                            className="btn btn-primary btn-responsive"
+                            title="Add New"
                         >
-                            + Add New
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add New</span>
                         </button>
                     )}
-                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
+                    <button onClick={handleDownloadReport} className="btn btn-primary btn-responsive" title="Download Report">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download Report</span>
+                    </button>
                     {canEdit && (
                         <>
-                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                            <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
+                                <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Template</span>
+                            </button>
+                            <label className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload XLSX'}>
+                                <Upload className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
                             <button 
                                 onClick={() => handleToggleMode('clone')} 
-                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
                                 title="Toggle Clone Mode"
                             >
                                 <DuplicateIcon />
                             </button>
                             <button 
                                 onClick={() => handleToggleMode('delete')} 
-                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'delete' ? 'is-active-danger' : ''}`} 
                                 title="Toggle Multi-Delete Mode"
                             >
                                 <TrashIcon />
@@ -1008,10 +1018,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                     )}
                 </div>
             </div>
+            </div>
 
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+            <div className="data-table-scroll">
+                <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead>
                         <tr>
                             <OtherExpenseColumnHeader label="UID" columnKey="uid" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['uid'] || []} onFilterChange={(v) => handleColumnFilterChange('uid', v)} uniqueValues={uniqueValues['uid']} />
                             <OtherExpenseColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['operatingUnit'] || []} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues['operatingUnit']} />
@@ -1032,11 +1043,11 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-500 dark:text-gray-400">{item.uid}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{item.operatingUnit}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                        item.status === 'Completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' :
-                                        item.status === 'Ongoing' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
-                                        item.status === 'Cancelled' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
-                                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                    <span className={`status-badge ${
+                                        item.status === 'Completed' ? 'status-badge--completed' :
+                                        item.status === 'Ongoing' ? 'status-badge--ongoing' :
+                                        item.status === 'Cancelled' ? 'status-badge--cancelled' :
+                                        'status-badge--proposed'
                                     }`}>
                                         {item.status}
                                     </span>
@@ -1056,14 +1067,14 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                             <div className="flex gap-1 mt-1">
                                                 <button 
                                                     onClick={(e) => handleApprove(item.id, e)} 
-                                                    className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                    className="action-mini action-mini--approve"
                                                     title="Approve"
                                                 >
                                                     <Check className="h-3 w-3" />
                                                 </button>
                                                 <button 
                                                     onClick={(e) => handleReject(item.id, e)} 
-                                                    className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                    className="action-mini action-mini--reject"
                                                     title="Reject"
                                                 >
                                                     <X className="h-3 w-3" />
@@ -1084,16 +1095,16 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                                         <div className="flex justify-end gap-3">
                                             {canEdit ? (
                                                 <>
-                                                    <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-2 py-1 rounded hover:bg-emerald-50 transition-colors">Details</button>
+                                                    <button onClick={() => onSelect(item)} className="table-action table-action--primary">Details</button>
                                                     <button 
                                                         onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
-                                                        className="text-red-600 hover:text-red-900 border border-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                                                        className="table-action table-action--danger"
                                                     >
                                                         Delete
                                                     </button>
                                                 </>
                                             ) : (
-                                                <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-4 py-1 rounded hover:bg-emerald-50 transition-colors">View Details</button>
+                                                <button onClick={() => onSelect(item)} className="table-action table-action--primary">View Details</button>
                                             )}
                                         </div>
                                     )}
@@ -1104,7 +1115,7 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
                 </table>
             </div>
             
-            <div className="py-4 flex items-center justify-between">
+            <div className="data-table-pagination py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
                 <div className="flex items-center gap-4 text-sm"><span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span><div className="flex items-center gap-2"><button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button><span className="px-2 font-medium">{currentPage} / {totalPages}</span><button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button></div></div>
             </div>

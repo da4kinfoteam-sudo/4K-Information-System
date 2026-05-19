@@ -1103,7 +1103,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // --- Render ---
 
     return (
-        <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg min-h-screen">
+        <div className="data-list-page">
              {/* Load Data Modal */}
             {isYearModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fadeIn">
@@ -1181,10 +1181,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 </div>
             )}
 
-            <div className="flex justify-between items-center mb-6">
+            <div className="data-list-header">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Financial Accomplishment Collection Form</h2>
-                    <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex gap-2">
+                    <h2 className="data-list-title">Financial Accomplishment Collection Form</h2>
+                    <div className="detail-meta flex gap-2">
                         <span className="font-medium text-emerald-600 dark:text-emerald-400">Year: {selectedYear || 'None'}</span>
                         <span>|</span>
                         <span>OU: {selectedOu}</span>
@@ -1194,7 +1194,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         <span>Fund: {selectedFundType}</span>
                     </div>
                 </div>
-                <button onClick={() => setIsYearModalOpen(true)} className="text-sm text-gray-500 hover:text-emerald-600 underline">Change Filter</button>
+                <button onClick={() => setIsYearModalOpen(true)} className="btn btn-secondary">Change Filter</button>
             </div>
 
             {isLoading ? (
@@ -1203,9 +1203,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     <p className="text-gray-500 dark:text-gray-400 font-medium">Loading financial data...</p>
                 </div>
             ) : (
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-emerald-50 dark:bg-emerald-900/20">
+            <div className="data-table-card">
+            <div className="data-table-scroll">
+                <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead>
                         <tr>
                             <th rowSpan={2} className="px-4 py-3 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider w-1/4 align-bottom">Particulars / UACS</th>
                             {/* Target Obligation */}
@@ -1615,6 +1616,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         </tr>
                     </tfoot>
                 </table>
+            </div>
             </div>
             )}
 

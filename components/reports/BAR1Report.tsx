@@ -1,6 +1,7 @@
 
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download, Printer, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
 import { XLSX } from './ReportUtils';
 import { calculateBAR1ReportData } from './BAR1Calculation';
@@ -48,7 +49,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     };
 
     const indentClasses: { [key: number]: string } = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14', 4: 'pl-20' };
-    const dataCellClass = "p-1 border border-gray-300 dark:border-gray-600";
+    const dataCellClass = "bar1-report__cell";
 
     const bar1Data = useMemo(() => {
         return calculateBAR1ReportData(data, selectedYear, selectedOu, { asOfDate: selectedAsOfDate || undefined });
@@ -108,10 +109,10 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
     const renderDataCells = (item: any, isTotal: boolean = false) => {
         const cellClass = `${dataCellClass} text-center ${isTotal ? 'font-bold' : ''}`;
-        const totalClass = `${dataCellClass} text-center font-bold bg-gray-50 dark:bg-gray-700/50`;
-        const calculatedClass = `${dataCellClass} text-center font-bold bg-emerald-50 dark:bg-emerald-900/30`;
-        const yearEndClass = `${dataCellClass} text-center font-bold bg-teal-50 dark:bg-teal-900/20`;
-        const percentClass = `${dataCellClass} text-center text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800`;
+        const totalClass = `${dataCellClass} bar1-report__cell--total text-center font-bold`;
+        const calculatedClass = `${dataCellClass} bar1-report__cell--calculated text-center font-bold`;
+        const yearEndClass = `${dataCellClass} bar1-report__cell--year-end text-center font-bold`;
+        const percentClass = `${dataCellClass} bar1-report__cell--percent text-center text-[10px] font-bold`;
 
         const getVals = (source: any) => {
              const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
@@ -171,7 +172,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={totalClass}>{t.q4 || ''}</td>
 
                 <td className={yearEndClass}>{t.yearEndNov || ''}</td>
-                <td className={`${dataCellClass} text-center font-bold bg-teal-100 dark:bg-teal-900/40`}>{t.total || ''}</td>
+                <td className={`${dataCellClass} bar1-report__cell--grand-target text-center font-bold`}>{t.total || ''}</td>
             </>
         );
 
@@ -210,7 +211,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={yearEndClass}>{a.yearEndNov || ''}</td>
                 <td className={percentClass}>{getPct(a.yearEndNov, t.yearEndNov)}</td>
 
-                <td className={`${dataCellClass} text-center font-bold bg-emerald-100 dark:bg-emerald-900/40`}>{a.total || ''}</td>
+                <td className={`${dataCellClass} bar1-report__cell--grand-actual text-center font-bold`}>{a.total || ''}</td>
                 <td className={percentClass}>{getPct(a.total, t.total)}</td>
             </>
         );
@@ -218,7 +219,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return (
             <>
                 {renderTargetSection()}
-                <td className="w-1 bg-gray-400 dark:bg-gray-500"></td> 
+                <td className="bar1-report__separator"></td> 
                 {renderActualSection()}
             </>
         );
@@ -227,8 +228,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const renderTotalsRow = (items: any[], label: string) => {
         const totals = calculateTotals(items);
         return (
-            <tr className="font-bold bg-emerald-50 dark:bg-emerald-900/20 text-xs">
-                <td className={`${dataCellClass} sticky left-0 bg-emerald-50 dark:bg-emerald-900 z-10`}>{label}</td>
+            <tr className="bar1-report__row bar1-report__row--total text-xs">
+                <td className={`${dataCellClass} sticky left-0 z-10`}>{label}</td>
                 {renderDataCells(totals, true)}
             </tr>
         );
@@ -237,11 +238,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const renderSummaryRow = (items: any[], label: string, rowKey: string, isExpanded: boolean, indentLevel = 0, showTotals: boolean = true) => {
         if (items.length === 0) {
             return (
-                <tr className="font-bold bg-gray-100 dark:bg-gray-700/50 text-xs">
-                     <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10`}>
+                <tr className="bar1-report__row bar1-report__row--summary text-xs">
+                     <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 z-10`}>
                         <span className="inline-block w-5"></span> {label}
                     </td>
-                    <td colSpan={53} className={`${dataCellClass} text-center italic text-gray-500 dark:text-gray-400`}>No activities for this component.</td>
+                    <td colSpan={53} className={`${dataCellClass} text-center italic`}>No activities for this component.</td>
                 </tr>
             )
         }
@@ -252,8 +253,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         }
 
         return (
-             <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer text-xs">
-                <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10`}>
+             <tr onClick={() => toggleRow(rowKey)} className="bar1-report__row bar1-report__row--summary cursor-pointer text-xs">
+                <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 z-10`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
                 {showTotals && totals ? renderDataCells(totals, true) : <td colSpan={53} className={dataCellClass}></td>}
@@ -263,8 +264,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
     const renderDataRow = (item: any, key: string, indentLevel = 0) => {
         return (
-            <tr key={key}>
-                <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10`}>{item.indicator}</td>
+            <tr key={key} className="bar1-report__row">
+                <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 z-10`}>{item.indicator}</td>
                 {renderDataCells(item)}
             </tr>
         )
@@ -489,7 +490,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     );
 
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div className="report-card bar1-report-card">
             {popup && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in duration-200">
@@ -502,9 +503,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                                 onClick={() => setPopup(null)}
                                 className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
+                                <X className="h-5 w-5 text-gray-500" />
                             </button>
                         </div>
                         <div className="p-6 max-h-[60vh] overflow-y-auto">
@@ -530,17 +529,17 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     </div>
                 </div>
             )}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 print-hidden">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                    <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Physical Report of Operations (BAR No. 1)</h3>
+            <div className="report-card__header print-hidden">
+                <div className="bar1-report-header-main">
+                    <h3 className="report-card__title">Physical Report of Operations (BAR No. 1)</h3>
                     
-                    <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800 rounded-lg shadow-sm">
-                        <label htmlFor="as-of-date-preset" className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 whitespace-nowrap">As of:</label>
+                    <div className="bar1-as-of-filter">
+                        <label htmlFor="as-of-date-preset" className="bar1-as-of-filter__label">As of:</label>
                         <select
                             id="as-of-date-preset"
                             value={selectedAsOfDate || 'current'}
                             onChange={(e) => setSelectedAsOfDate(e.target.value === 'current' ? '' : e.target.value)}
-                            className="bg-transparent border-none text-xs font-bold text-emerald-900 dark:text-white focus:ring-0 cursor-pointer p-0 pr-6"
+                            className="form-control form-control--compact"
                         >
                             <option value="current" className="text-gray-900 dark:text-white dark:bg-gray-800">Current approved data</option>
                             {sortedDeadlines.map(deadline => (
@@ -553,13 +552,13 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                             type="date"
                             value={selectedAsOfDate}
                             onChange={(e) => setSelectedAsOfDate(e.target.value)}
-                            className="bg-white/70 dark:bg-gray-800/80 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1 text-xs font-bold text-emerald-900 dark:text-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                            className="form-control form-control--compact"
                         />
                         {selectedAsOfDate && (
                             <button
                                 type="button"
                                 onClick={() => setSelectedAsOfDate('')}
-                                className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
+                                className="bar1-as-of-filter__clear"
                             >
                                 Clear
                             </button>
@@ -567,25 +566,23 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                    <button onClick={handleDownloadBar1Xlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 hover:brightness-95 transition-all flex items-center gap-2 shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        Download Excel
+                <div className="report-card__actions">
+                    <button onClick={handleDownloadBar1Xlsx} className="btn btn-primary btn-responsive">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download Excel</span>
                     </button>
                     <button 
                         onClick={() => window.print()}
-                        className="px-4 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-md font-semibold hover:bg-gray-50 dark:hover:bg-gray-600 transition-all flex items-center gap-2 shadow-sm"
+                        className="btn btn-secondary btn-responsive"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                        </svg>
-                        Print
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print</span>
                     </button>
                 </div>
             </div>
-            <div id="bar1-report" className="overflow-x-auto shadow-md rounded-lg">
-                <table className="min-w-full border-collapse text-[10px] text-gray-900 dark:text-gray-200 whitespace-nowrap">
-                    <thead className="bg-gray-200 dark:bg-gray-700 sticky top-0 z-10">
+            <div id="bar1-report" className="report-table-scroll bar1-report-scroll">
+                <table className="bar1-report-table min-w-full border-collapse text-[10px] whitespace-nowrap">
+                    <thead className="sticky top-0 z-10">
                         <tr>
                             <th rowSpan={3} className="p-2 border border-gray-300 dark:border-gray-600 align-bottom min-w-[250px] sticky left-0 bg-gray-200 dark:bg-gray-700 z-20 text-left">Program/Activity/Project</th>
                             <th colSpan={20} className="p-2 border border-gray-300 dark:border-gray-600 text-center font-bold bg-teal-200 dark:bg-teal-900">Physical Targets</th>

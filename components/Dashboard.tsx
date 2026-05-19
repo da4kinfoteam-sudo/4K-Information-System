@@ -214,6 +214,19 @@ const formatDate = (dateString?: string) => {
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 };
 
+const isWithinDeadlineWindow = (dateString?: string) => {
+    if (!dateString) return false;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const deadline = new Date(dateString);
+    deadline.setHours(0, 0, 0, 0);
+
+    const daysUntilDeadline = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return daysUntilDeadline >= 0 && daysUntilDeadline <= 5;
+};
+
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
 }
@@ -492,29 +505,29 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
     return (
-        <div className="space-y-8">
+        <div className="dashboard-page">
             {/* Card Detail Modal */}
             {cardModal && (
                 <div 
-                    className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 animate-fadeIn"
+                    className="dashboard-modal-backdrop animate-fadeIn"
                     onClick={() => setCardModal(null)}
                 >
                     <div 
-                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 relative"
+                        className="dashboard-modal"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">{cardModal.title}</h3>
-                            <button onClick={() => setCardModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
+                        <div className="dashboard-modal__header">
+                            <h3>{cardModal.title}</h3>
+                            <button onClick={() => setCardModal(null)} className="dashboard-modal__close">&times;</button>
                         </div>
-                        <div className="space-y-4">
+                        <div className="dashboard-modal__stack">
                             {cardModal.metrics.map((metric, idx) => (
-                                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                                <div key={idx} className="dashboard-modal__metric">
                                     <div>
-                                        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{metric.label}</p>
-                                        {metric.subtext && <p className="text-xs text-gray-400">{metric.subtext}</p>}
+                                        <p className="dashboard-modal__metric-label">{metric.label}</p>
+                                        {metric.subtext && <p className="dashboard-modal__metric-subtext">{metric.subtext}</p>}
                                     </div>
-                                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                                    <p className="dashboard-modal__metric-value">
                                         {metric.isCurrency && typeof metric.value === 'number' ? formatCurrency(metric.value) : metric.value}
                                     </p>
                                 </div>
@@ -527,26 +540,26 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* Day Detail Modal (List of Events) */}
             {dayModalData && (
                 <div 
-                    className="fixed inset-0 bg-black bg-opacity-60 z-40 flex items-center justify-center p-4"
+                    className="dashboard-modal-backdrop dashboard-modal-backdrop--lower"
                     onClick={() => setDayModalData(null)}
                 >
                     <div 
-                        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto p-6 relative"
+                        className="dashboard-modal"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">
-                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">
+                        <div className="dashboard-modal__header">
+                            <h3>
                                 {dayModalData.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                             </h3>
-                            <button onClick={() => setDayModalData(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
+                            <button onClick={() => setDayModalData(null)} className="dashboard-modal__close">&times;</button>
                         </div>
                         
-                        <div className="space-y-3">
+                        <div className="dashboard-modal__stack">
                             {dayModalData.items.map((event, index) => (
                                 <div 
                                     key={`${event.id}-${index}`} 
                                     onClick={() => handleCalendarEventClick(event)}
-                                    className={`p-3 rounded-lg border-l-4 ${event.borderColor} bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${event.originalData ? 'cursor-pointer' : ''}`}
+                                    className={`dashboard-modal__event ${event.originalData ? 'dashboard-modal__event--clickable' : ''}`}
                                 >
                                     <p className="font-semibold text-gray-800 dark:text-gray-200 text-sm">{event.title}</p>
                                     <div className="flex items-center gap-2 mt-1">
@@ -569,17 +582,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             )}
 
-            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">4K Information System Overview</h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                     <div className="flex items-center gap-2">
-                        <label htmlFor="ou-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">OU:</label>
+            <div className="dashboard-header">
+                <div>
+                    <h2>4K Information System Overview</h2>
+                </div>
+                <div className="dashboard-filter-bar">
+                     <div className="dashboard-filter">
+                        <label htmlFor="ou-filter">OU</label>
                         <select 
                             id="ou-filter"
                             value={selectedOu}
                             onChange={(e) => setSelectedOu(e.target.value)}
                             disabled={isLockedToOwnOu}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm disabled:opacity-70 disabled:cursor-not-allowed"
                         >
                             <option value="All">All OUs</option>
                             {operatingUnits.map(ou => (
@@ -587,13 +601,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="tier-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Tier:</label>
+                    <div className="dashboard-filter">
+                        <label htmlFor="tier-filter">Tier</label>
                         <select 
                             id="tier-filter"
                             value={selectedTier}
                             onChange={(e) => setSelectedTier(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Tiers</option>
                             {tiers.map(tier => (
@@ -601,13 +614,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="fund-type-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Fund Type:</label>
+                    <div className="dashboard-filter">
+                        <label htmlFor="fund-type-filter">Fund Type</label>
                         <select 
                             id="fund-type-filter"
                             value={selectedFundType}
                             onChange={(e) => setSelectedFundType(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Fund Types</option>
                             {fundTypes.map(f => (
@@ -615,13 +627,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <label htmlFor="year-filter" className="text-sm font-medium text-gray-600 dark:text-gray-300">Year:</label>
+                    <div className="dashboard-filter">
+                        <label htmlFor="year-filter">Year</label>
                         <select 
                             id="year-filter"
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(e.target.value)}
-                            className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-2 pl-3 pr-10 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm"
                         >
                             <option value="All">All Years</option>
                             {availableYears.map(year => (
@@ -632,7 +643,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+            <div className="dashboard-metric-grid">
                 <StatCard 
                     title={`Total Budget (${totalBudgetView})`} 
                     value={formatCurrency(totalBudgetView === 'Obligated' ? dashboardStats.financials.total.obli : dashboardStats.financials.total.disb)} 
@@ -665,30 +676,39 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* System Schedule Summary Card */}
-            <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <h3 className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">System Schedule</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="dashboard-panel">
+                <div className="dashboard-panel__header">
                     <div>
-                        <h4 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase mb-2 tracking-wider">Upcoming Deadlines</h4>
+                        <h3 className="dashboard-panel__title">System Schedule</h3>
+                    </div>
+                </div>
+                <div className="dashboard-schedule-grid">
+                    <div>
+                        <h4 className="dashboard-list__heading">Upcoming Deadlines</h4>
                         {systemSettings.deadlines.length > 0 ? (
-                            <ul className="space-y-2">
+                            <ul className="dashboard-list">
                                 {systemSettings.deadlines
                                     .filter(d => new Date(d.date) >= new Date(new Date().setHours(0,0,0,0)))
                                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
                                     .slice(0, 5)
                                     .map(d => (
-                                        <li key={d.id} className="flex justify-between border-l-4 border-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded-r text-sm">
-                                            <span className="font-medium text-gray-800 dark:text-gray-200">{d.name}</span>
-                                            <span className="text-red-600 dark:text-red-400 font-bold">{formatDate(d.date)}</span>
+                                        <li
+                                            key={d.id}
+                                            className={`dashboard-list__item ${isWithinDeadlineWindow(d.date) ? 'dashboard-list__item--urgent' : ''}`}
+                                        >
+                                            <div className="dashboard-list__row">
+                                                <span className="dashboard-list__name">{d.name}</span>
+                                                <span className="dashboard-list__date">{formatDate(d.date)}</span>
+                                            </div>
                                         </li>
                                     ))}
                             </ul>
-                        ) : <p className="text-sm text-gray-500 italic">No upcoming deadlines.</p>}
+                        ) : <p className="dashboard-empty">No upcoming deadlines.</p>}
                     </div>
                     <div>
-                        <h4 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase mb-2 tracking-wider">NPMO Schedules</h4>
+                        <h4 className="dashboard-list__heading">NPMO Schedules</h4>
                         {activities.filter(a => a.operatingUnit === 'NPMO').length > 0 ? (
-                            <ul className="space-y-2">
+                            <ul className="dashboard-list">
                                 {activities
                                     .filter(a => a.operatingUnit === 'NPMO' && new Date(a.date) >= new Date(new Date().setHours(0,0,0,0)))
                                     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -698,15 +718,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => onSelectActivity(s)}
-                                                className="w-full text-left border-l-4 border-gray-500 bg-gray-100 dark:bg-gray-700/30 p-2 rounded-r text-sm hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors"
+                                                className="dashboard-list__button"
                                                 aria-label={`View details for ${s.name}`}
                                             >
-                                                <div className="flex justify-between gap-3">
-                                                    <span className="font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
-                                                    <span className="text-gray-600 dark:text-gray-300 text-xs whitespace-nowrap">{formatDate(s.date)}</span>
+                                                <div className="dashboard-list__row">
+                                                    <span className="dashboard-list__name">{s.name}</span>
+                                                    <span className="dashboard-list__date">{formatDate(s.date)}</span>
                                                 </div>
                                                 {s.description && (
-                                                    <p className="mt-1 text-xs italic text-gray-600 dark:text-gray-300 line-clamp-2">
+                                                    <p className="dashboard-list__description line-clamp-2">
                                                         {s.description}
                                                     </p>
                                                 )}
@@ -714,36 +734,40 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         </li>
                                     ))}
                             </ul>
-                        ) : <p className="text-sm text-gray-500 italic">No active NPMO schedules.</p>}
+                        ) : <p className="dashboard-empty">No active NPMO schedules.</p>}
                     </div>
                 </div>
             </div>
 
-            <div className="mt-10 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
-                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Map</h3>
-                    <div className="flex items-center gap-x-4 gap-y-2 text-sm">
-                        <span className="font-medium text-gray-600 dark:text-gray-300">Show:</span>
-                        <label className="flex items-center gap-2">
-                            <input type="checkbox" name="ipos" checked={mapFilters.ipos} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500" />
-                            <span className="text-red-600 dark:text-red-400 font-semibold">IPOs</span>
+            <div className="dashboard-panel">
+                <div className="dashboard-panel__header">
+                    <div>
+                        <h3 className="dashboard-panel__title">4K Map</h3>
+                    </div>
+                    <div className="dashboard-map-controls">
+                        <span className="dashboard-map-controls__label">Show:</span>
+                        <label className="dashboard-check dashboard-check--red">
+                            <input type="checkbox" name="ipos" checked={mapFilters.ipos} onChange={handleMapFilterChange} />
+                            <span>IPOs</span>
                         </label>
-                         <label className="flex items-center gap-2">
-                            <input type="checkbox" name="subprojects" checked={mapFilters.subprojects} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                            <span className="text-blue-600 dark:text-blue-400 font-semibold">Subprojects</span>
+                         <label className="dashboard-check dashboard-check--blue">
+                            <input type="checkbox" name="subprojects" checked={mapFilters.subprojects} onChange={handleMapFilterChange} />
+                            <span>Subprojects</span>
                         </label>
-                         <label className="flex items-center gap-2">
-                            <input type="checkbox" name="trainings" checked={mapFilters.trainings} onChange={handleMapFilterChange} className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                            <span className="text-green-600 dark:text-green-400 font-semibold">Trainings</span>
+                         <label className="dashboard-check dashboard-check--green">
+                            <input type="checkbox" name="trainings" checked={mapFilters.trainings} onChange={handleMapFilterChange} />
+                            <span>Trainings</span>
                         </label>
                     </div>
                 </div>
                 <MapDisplay ipos={filteredIposForMap} subprojects={filteredSubprojectsForMap} trainings={filteredTrainingsForMap} />
             </div>
 
-            <div className="mt-10">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Calendar</h3>
+            <div className="dashboard-panel">
+                <div className="dashboard-panel__header">
+                    <div>
+                        <h3 className="dashboard-panel__title">4K Calendar</h3>
+                    </div>
                 </div>
                 <Calendar 
                     activities={filteredData.activities}
@@ -754,43 +778,45 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Activities List Section (with Cards) */}
-            <div className="mt-10">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-2xl font-semibold text-gray-800 dark:text-white">4K Activities</h3>
-                    <div className="flex space-x-2">
+            <div className="dashboard-panel">
+                <div className="dashboard-panel__header">
+                    <div>
+                        <h3 className="dashboard-panel__title">4K Activities</h3>
+                    </div>
+                    <div className="dashboard-segmented">
                         <button 
                             onClick={() => setActivitiesFilter('All')} 
-                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'All' ? 'bg-gray-200 dark:bg-gray-600 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                            className={activitiesFilter === 'All' ? 'is-active' : ''}
                         >
                             All
                         </button>
                         <button 
                             onClick={() => setActivitiesFilter('Subprojects')} 
-                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'Subprojects' ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                            className={activitiesFilter === 'Subprojects' ? 'is-active' : ''}
                         >
                             Subprojects
                         </button>
                         <button 
                             onClick={() => setActivitiesFilter('Trainings')} 
-                            className={`px-3 py-1 text-sm rounded-md ${activitiesFilter === 'Trainings' ? 'bg-green-100 text-green-700 font-semibold' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                            className={activitiesFilter === 'Trainings' ? 'is-active' : ''}
                         >
                             Trainings
                         </button>
                     </div>
                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 <div className="dashboard-activity-grid">
                     {paginatedActivitiesList.map(activity => (
                         <div 
                             key={`${activity.activityType}-${activity.id}`} 
-                            className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transform transition-all duration-300 ease-in-out cursor-pointer"
+                            className="dashboard-activity-card"
                             onClick={() => activity.activityType === 'Subproject' ? onSelectSubproject(activity as Subproject) : onSelectActivity(activity as Activity)}
                         >
-                            <div className="flex justify-between items-start">
-                                <span className={`text-xs font-bold uppercase ${activity.activityType === 'Subproject' ? 'text-blue-500' : 'text-green-500'}`}>{activity.activityType}</span>
-                                <span className="text-xs text-gray-400">{formatDate(activity.activityDate)}</span>
+                            <div className="dashboard-activity-card__meta">
+                                <span className="dashboard-activity-card__type">{activity.activityType}</span>
+                                <span className="dashboard-activity-card__date">{formatDate(activity.activityDate)}</span>
                             </div>
-                            <h4 className="text-lg font-bold mt-2 text-gray-800 dark:text-white">{activity.name}</h4>
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                            <h4>{activity.name}</h4>
+                            <p className="line-clamp-2">
                                 {activity.activityType === 'Subproject' ? activity.location : activity.description}
                             </p>
                         </div>
@@ -799,21 +825,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                  
                  {/* Pagination Controls */}
                  {totalActivityPages > 1 && (
-                     <div className="flex justify-center items-center mt-6 gap-4">
+                     <div className="dashboard-pagination">
                          <button 
                             onClick={() => setActivitiesPage(p => Math.max(1, p - 1))}
                             disabled={activitiesPage === 1}
-                            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                          >
                              Previous
                          </button>
-                         <span className="text-sm text-gray-600 dark:text-gray-400">
+                         <span>
                              Page {activitiesPage} of {totalActivityPages}
                          </span>
                          <button 
                             onClick={() => setActivitiesPage(p => Math.min(totalActivityPages, p + 1))}
                             disabled={activitiesPage === totalActivityPages}
-                            className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                          >
                              Next
                          </button>

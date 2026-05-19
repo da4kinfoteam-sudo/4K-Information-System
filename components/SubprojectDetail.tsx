@@ -10,7 +10,7 @@ import { MonthYearPicker } from './ui/MonthYearPicker';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
-import { Info } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Edit3, Info, Pencil, Plus, Trash2, X } from 'lucide-react';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -57,20 +57,19 @@ const formatCurrency = (amount: number) => {
 }
 
 const getStatusBadge = (status: Subproject['status']) => {
-    const baseClasses = "px-3 py-1 text-sm font-semibold rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Completed': return 'status-badge status-badge--completed';
+        case 'Ongoing': return 'status-badge status-badge--ongoing';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Cancelled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
-    <div>
-        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-        <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{value || 'N/A'}</dd>
+    <div className="detail-item">
+        <dt className="detail-label">{label}</dt>
+        <dd className="detail-value font-semibold">{value || 'N/A'}</dd>
     </div>
 );
 
@@ -750,33 +749,33 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
-    const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
+    const commonInputClasses = "form-control";
 
     if (editMode !== 'none') {
         return (
-            <div className="space-y-6 animate-fadeIn">
-                <div className="flex justify-between items-center mb-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">
+            <div className="form-page animate-fadeIn">
+                <div className="detail-header">
+                    <h1 className="detail-title">
                         {editMode === 'budget' ? 'Editing Budget: ' : editMode === 'accomplishment' ? 'Editing Accomplishment: ' : editMode === 'commodity' ? 'Editing Commodities: ' : 'Editing Details: '}{subproject.name}
                     </h1>
-                    <button onClick={() => setEditMode('none')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel Editing</button>
+                    <button onClick={() => setEditMode('none')} className="btn btn-secondary"><X className="btn-symbol" aria-hidden="true" />Cancel Editing</button>
                 </div>
                 
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg mb-8">
+                <div className="form-card">
                     <form onSubmit={handleSubmit}>
                         <div className="min-h-[400px]">
                             {/* DETAILS EDIT MODE */}
                             {editMode === 'details' && (
                                 <div className="space-y-6">
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Project Details</legend>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <fieldset className="form-section">
+                                        <legend>Project Details</legend>
+                                        <div className="form-grid">
                                             <div>
-                                                <label className="block text-sm font-medium">Subproject Name <span className="text-red-500">*</span></label>
+                                                <label className="form-label">Subproject Name <span className="text-red-500">*</span></label>
                                                 <input type="text" name="name" value={editedSubproject.name} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('name') ? 'border-red-500 ring-1 ring-red-500' : ''}`} />
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">Operating Unit</label>
+                                                <label className="form-label">Operating Unit</label>
                                                 <select 
                                                     name="operatingUnit" 
                                                     value={editedSubproject.operatingUnit || ''} 
@@ -790,14 +789,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">IPO <span className="text-red-500">*</span></label>
+                                                <label className="form-label">IPO <span className="text-red-500">*</span></label>
                                                 <select name="indigenousPeopleOrganization" value={editedSubproject.indigenousPeopleOrganization} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('indigenousPeopleOrganization') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                                     <option value="">Select IPO</option>
                                                     {ipos.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">Status <span className="text-red-500">*</span></label>
+                                                <label className="form-label">Status <span className="text-red-500">*</span></label>
                                                 <select name="status" value={editedSubproject.status} onChange={handleInputChange} className={`${commonInputClasses} ${missingFields.includes('status') ? 'border-red-500 ring-1 ring-red-500' : ''}`}>
                                                     <option value="Proposed">Proposed</option>
                                                     <option value="Ongoing">Ongoing</option>
@@ -806,18 +805,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </select>
                                             </div>
                                             <div>
-                                                 <label className="block text-sm font-medium">Package</label>
+                                                 <label className="form-label">Package</label>
                                                  <select name="packageType" value={editedSubproject.packageType} onChange={handleInputChange} className={commonInputClasses}>
                                                     {Array.from({ length: 7 }, (_, i) => `Package ${i + 1}`).map(p => <option key={p} value={p}>{p}</option>)}
                                                  </select>
                                             </div>
                                         </div>
                                     </fieldset>
-                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Location & Timeline</legend>
+                                     <fieldset className="form-section">
+                                        <legend>Location & Timeline</legend>
                                         <div className="space-y-4">
                                             <div>
-                                                <label className="block text-sm font-medium">Location</label>
+                                                <label className="form-label">Location</label>
                                                 <input 
                                                     type="text" 
                                                     value={editedSubproject.location} 
@@ -827,7 +826,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="block text-sm font-medium">Estimated Completion</label>
+                                                    <label className="form-label">Estimated Completion</label>
                                                     <MonthYearPicker
                                                         value={editedSubproject.estimatedCompletionDate}
                                                         onChange={(val) => {
@@ -847,31 +846,31 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                         </div>
                                     </fieldset>
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding</legend>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <fieldset className="form-section">
+                                        <legend>Funding</legend>
+                                        <div className="form-grid">
                                             <div>
-                                                <label className="block text-sm font-medium">Year</label>
+                                                <label className="form-label">Year</label>
                                                 <select name="fundingYear" value={editedSubproject.fundingYear} onChange={handleInputChange} className={commonInputClasses}>
                                                     {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">Type</label>
+                                                <label className="form-label">Type</label>
                                                 <select name="fundType" value={editedSubproject.fundType} onChange={handleInputChange} className={commonInputClasses}>
                                                     {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium">Tier</label>
+                                                <label className="form-label">Tier</label>
                                                 <select name="tier" value={editedSubproject.tier} onChange={handleInputChange} className={commonInputClasses}>
                                                     {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                                                 </select>
                                             </div>
                                         </div>
                                     </fieldset>
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Remarks</legend>
+                                    <fieldset className="form-section">
+                                        <legend>Remarks</legend>
                                         <div>
                                             <textarea name="remarks" id="remarks" value={editedSubproject.remarks} onChange={handleInputChange} rows={4} className={commonInputClasses} />
                                         </div>
@@ -882,55 +881,53 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             {/* COMMODITY EDIT MODE */}
                             {editMode === 'commodity' && (
                                 <div className="space-y-6">
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Subproject Commodities</legend>
-                                        <div className="space-y-4 mb-6">
+                                    <fieldset className="form-section">
+                                        <legend>Subproject Commodities</legend>
+                                        <div className="commodity-edit-list">
                                             {editedSubproject.subprojectCommodities && editedSubproject.subprojectCommodities.length > 0 ? (
                                                 editedSubproject.subprojectCommodities.map((c, index) => (
-                                                    <div key={index} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm transition-all hover:shadow-md">
-                                                        <div className="flex-grow">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <span className="font-bold text-gray-900 dark:text-white text-base">{c.name}</span>
-                                                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full text-[10px] font-bold uppercase tracking-wider">{c.typeName}</span>
+                                                    <div key={index} className="commodity-edit-card">
+                                                        <div className="commodity-edit-card__summary">
+                                                            <div className="commodity-edit-card__header">
+                                                                <span className="commodity-edit-card__title">{c.name}</span>
+                                                                <span className="status-badge status-badge--completed status-badge--compact">{c.typeName}</span>
                                                             </div>
-                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                                            <div className="commodity-edit-metrics">
                                                                 <div>
-                                                                    <span className="text-gray-500 dark:text-gray-400 block mb-0.5 uppercase tracking-tighter font-semibold">{c.typeName === 'Livestock' ? 'Number of Heads' : 'Total Area'}</span>
-                                                                    <span className="font-medium text-gray-900 dark:text-white">{c.area} {c.typeName === 'Livestock' ? 'Heads' : 'Hectares'}</span>
+                                                                    <span className="commodity-edit-label">{c.typeName === 'Livestock' ? 'Number of Heads' : 'Total Area'}</span>
+                                                                    <span className="commodity-edit-value">{c.area} {c.typeName === 'Livestock' ? 'Heads' : 'Hectares'}</span>
                                                                 </div>
                                                                 {c.typeName === 'Crop' && (
                                                                     <div>
-                                                                        <span className="text-gray-500 dark:text-gray-400 block mb-0.5 uppercase tracking-tighter font-semibold">Estimated Yield</span>
-                                                                        <span className="font-medium text-gray-900 dark:text-white">{c.averageYield?.toLocaleString()} Kilograms</span>
+                                                                        <span className="commodity-edit-label">Estimated Yield</span>
+                                                                        <span className="commodity-edit-value">{c.averageYield?.toLocaleString()} Kilograms</span>
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <div className="flex items-center gap-3 ml-4">
-                                                            <button type="button" onClick={() => handleEditCommodity(index)} className="p-2 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                        <div className="commodity-edit-card__actions">
+                                                            <button type="button" onClick={() => handleEditCommodity(index)} className="table-action table-action--primary" title="Edit commodity">
+                                                                <Pencil className="btn-symbol" aria-hidden="true" />
                                                             </button>
-                                                            <button type="button" onClick={() => handleRemoveCommodity(index)} className="p-2 text-gray-400 hover:text-red-600 transition-colors bg-white dark:bg-gray-800 rounded-full shadow-sm border border-gray-200 dark:border-gray-600">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                            <button type="button" onClick={() => handleRemoveCommodity(index)} className="table-action table-action--danger" title="Remove commodity">
+                                                                <Trash2 className="btn-symbol" aria-hidden="true" />
                                                             </button>
                                                         </div>
                                                     </div>
                                                 ))
                                             ) : (
-                                                <div className="text-center py-8 bg-gray-50 dark:bg-gray-700/30 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
-                                                    <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities added yet. Use the form below to add one.</p>
-                                                </div>
+                                                <p className="detail-empty">No commodities added yet. Use the form below to add one.</p>
                                             )}
                                         </div>
 
-                                        <div className="bg-gray-50 dark:bg-gray-700/30 p-6 rounded-xl border border-gray-200 dark:border-gray-700 mt-6">
-                                            <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider flex items-center gap-2">
-                                                <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                                        <div className="commodity-edit-form">
+                                            <h4 className="commodity-edit-form__title">
+                                                <span className="commodity-edit-form__marker"></span>
                                                 Add New Commodity
                                             </h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="form-grid">
                                                 <div>
-                                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Commodity Type</label>
+                                                    <label className="form-label">Commodity Type</label>
                                                     <select 
                                                         name="typeName" 
                                                         value={currentCommodity.typeName} 
@@ -943,7 +940,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Commodity Name</label>
+                                                    <label className="form-label">Commodity Name</label>
                                                     <select 
                                                         name="name" 
                                                         value={currentCommodity.name} 
@@ -957,7 +954,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     </select>
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                                                    <label className="form-label">
                                                         {currentCommodity.typeName === 'Livestock' ? 'Number of Heads' : 'Total Area (Hectares)'}
                                                     </label>
                                                     <input 
@@ -972,8 +969,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
 
                                             {currentCommodity.name && (
-                                                <div className="mt-6 p-4 bg-white dark:bg-gray-800 rounded-lg border border-emerald-100 dark:border-emerald-900/50 shadow-sm animate-fadeIn">
-                                                    <h5 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-3 flex items-center gap-2">
+                                                <div className="commodity-reference animate-fadeIn">
+                                                    <h5 className="commodity-reference__title">
                                                         <Info className="h-3 w-3" />
                                                         Reference Information
                                                     </h5>
@@ -982,32 +979,32 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             const ref = refCommodities.find(c => c.name === currentCommodity.name);
                                                             if (!ref) return null;
                                                             return (
-                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                                <div className="commodity-reference__grid">
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Banner Program</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.banner_program}</span>
+                                                                        <span className="commodity-edit-label">Banner Program</span>
+                                                                        <span className="commodity-edit-value">{ref.banner_program}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Commodity Group</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.commodity_group}</span>
+                                                                        <span className="commodity-edit-label">Commodity Group</span>
+                                                                        <span className="commodity-edit-value">{ref.commodity_group}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Elevation Range</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.min_elevation_masl} - {ref.max_elevation_masl} MASL</span>
+                                                                        <span className="commodity-edit-label">Elevation Range</span>
+                                                                        <span className="commodity-edit-value">{ref.min_elevation_masl} - {ref.max_elevation_masl} MASL</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Target Yield</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.target_yield_ha?.toLocaleString()} Kilograms/Hectares</span>
+                                                                        <span className="commodity-edit-label">Target Yield</span>
+                                                                        <span className="commodity-edit-value">{ref.target_yield_ha?.toLocaleString()} Kilograms/Hectares</span>
                                                                     </div>
-                                                                    <div className="md:col-span-4 pt-2 border-t border-gray-100 dark:border-gray-700 mt-2">
-                                                                        <div className="flex flex-wrap gap-4">
-                                                                            <div className="flex items-center gap-1">
-                                                                                <span className="text-gray-500">Recommended Soil:</span>
-                                                                                <span className="font-medium">{ref.recommended_soil}</span>
+                                                                    <div className="commodity-reference__full">
+                                                                        <div className="commodity-reference__inline">
+                                                                            <div>
+                                                                                <span className="commodity-edit-label">Recommended Soil</span>
+                                                                                <span className="commodity-edit-value">{ref.recommended_soil}</span>
                                                                             </div>
-                                                                            <div className="flex items-center gap-1">
-                                                                                <span className="text-gray-500">Climate Type:</span>
-                                                                                <span className="font-medium">{ref.climate_type_suitability}</span>
+                                                                            <div>
+                                                                                <span className="commodity-edit-label">Climate Type</span>
+                                                                                <span className="commodity-edit-value">{ref.climate_type_suitability}</span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
@@ -1019,22 +1016,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                             const ref = refLivestock.find(c => c.name === currentCommodity.name);
                                                             if (!ref) return null;
                                                             return (
-                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-xs">
+                                                                <div className="commodity-reference__grid">
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Category</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.category}</span>
+                                                                        <span className="commodity-edit-label">Category</span>
+                                                                        <span className="commodity-edit-value">{ref.category}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Housing Type</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.housing_type}</span>
+                                                                        <span className="commodity-edit-label">Housing Type</span>
+                                                                        <span className="commodity-edit-value">{ref.housing_type}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Feed Type</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.feed_type}</span>
+                                                                        <span className="commodity-edit-label">Feed Type</span>
+                                                                        <span className="commodity-edit-value">{ref.feed_type}</span>
                                                                     </div>
                                                                     <div>
-                                                                        <span className="text-gray-500 block mb-1">Water Requirement</span>
-                                                                        <span className="font-semibold text-gray-900 dark:text-white">{ref.water_requirement_liters_day} Liters/Day</span>
+                                                                        <span className="commodity-edit-label">Water Requirement</span>
+                                                                        <span className="commodity-edit-value">{ref.water_requirement_liters_day} Liters/Day</span>
                                                                     </div>
                                                                 </div>
                                                             );
@@ -1043,30 +1040,30 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </div>
                                             )}
 
-                                            <div className="mt-6 flex flex-col md:flex-row gap-6 items-end">
+                                            <div className="commodity-edit-footer">
                                                 {currentCommodity.typeName === 'Crop' && (
-                                                    <div className="w-full md:w-1/3">
-                                                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Auto-Computed Yield (Kilograms)</label>
+                                                    <div className="commodity-edit-yield">
+                                                        <label className="form-label">Auto-Computed Yield (Kilograms)</label>
                                                         <div className="relative">
                                                             <input 
                                                                 type="number" 
                                                                 name="averageYield" 
                                                                 value={currentCommodity.averageYield} 
                                                                 readOnly
-                                                                className={commonInputClasses + " bg-gray-100 dark:bg-gray-800 font-bold text-emerald-600 dark:text-emerald-400"} 
+                                                                className={`${commonInputClasses} commodity-edit-yield__input`} 
                                                             />
                                                             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                                                <span className="text-gray-400 text-xs">KG</span>
+                                                                <span className="commodity-edit-yield__unit">KG</span>
                                                             </div>
                                                         </div>
-                                                        <p className="text-[10px] text-gray-400 mt-1 italic">Calculated based on area and reference target yield.</p>
+                                                        <p className="commodity-edit-note">Calculated based on area and reference target yield.</p>
                                                     </div>
                                                 )}
-                                                <div className="flex-grow flex justify-end w-full">
+                                                <div className="commodity-edit-footer__actions">
                                                     <button 
                                                         type="button" 
                                                         onClick={handleAddCommodity} 
-                                                        className="px-8 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-500/20 flex items-center gap-2"
+                                                        className="btn btn-primary"
                                                     >
                                                         Add to List
                                                     </button>
@@ -1080,42 +1077,42 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             {/* BUDGET EDIT MODE */}
                             {editMode === 'budget' && (
                                 <div className="space-y-6">
-                                     <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Items</legend>
-                                        <div className="space-y-2 mb-4">
+                                     <fieldset className="form-section">
+                                        <legend>Budget Items</legend>
+                                        <div className="budget-item-list">
                                             {detailItems.map((d, index) => (
-                                                <div key={index} className={`flex items-center justify-between p-2 rounded-md text-sm ${editingDetailIndex === index ? 'bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                                                    <div>
-                                                        <span className="font-semibold">{d.particulars}</span>
-                                                        <div className="text-xs text-gray-500">
+                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''}`}>
+                                                    <div className="budget-item-card__summary">
+                                                        <span className="budget-item-card__title">{d.particulars}</span>
+                                                        <div className="budget-item-card__meta">
                                                             <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
                                                             <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
                                                             <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-4">
-                                                        <span className="font-bold">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
-                                                        <div className="flex items-center gap-2">
-                                                            <button type="button" onClick={() => handleEditParticular(index)} className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                                    <div className="budget-item-card__actions">
+                                                        <span className="budget-item-card__total">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
+                                                        <div className="budget-item-card__buttons">
+                                                            <button type="button" onClick={() => handleEditParticular(index)} className="table-action table-action--primary" title="Edit item">
+                                                                <Pencil className="btn-symbol" aria-hidden="true" />
                                                             </button>
-                                                            <button type="button" onClick={() => handleRemoveDetail(index)} className="text-red-500 hover:text-red-700">&times;</button>
+                                                            <button type="button" onClick={() => handleRemoveDetail(index)} className="table-action table-action--danger" title="Remove item"><Trash2 className="btn-symbol" aria-hidden="true" /></button>
                                                         </div>
                                                     </div>
                                                 </div>
                                             ))}
-                                            <div className="text-right font-bold pt-2">Total: {formatCurrency(totalBudget)}</div>
+                                            <div className="budget-item-list__total">Total: {formatCurrency(totalBudget)}</div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end border-t pt-4 mt-4 border-gray-200 dark:border-gray-700">
-                                            <div className="lg:col-span-2"><label className="block text-xs font-medium">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                            <div className="lg:col-span-2"><label className="block text-xs font-medium">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={commonInputClasses + " py-1.5"}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                                        <div className="budget-item-form-grid">
+                                            <div className="budget-item-form-grid__wide"><label className="form-label">Item Type</label><select name="type" value={currentDetail.type} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="">Select Type</option>{Object.keys(particularTypes).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                            <div className="budget-item-form-grid__wide"><label className="form-label">Particulars</label><select name="particulars" value={currentDetail.particulars} onChange={handleDetailChange} disabled={!currentDetail.type} className={`${commonInputClasses} form-control--compact`}><option value="">Select Item</option>{currentDetail.type && particularTypes[currentDetail.type]?.map(i => <option key={i} value={i}>{i}</option>)}</select></div>
                                             
-                                            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                                                <div><label className="block text-xs font-medium">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                                <div><label className="block text-xs font-medium">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType] || {}).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                                            <div className="budget-item-form-grid__full budget-item-form-grid budget-item-form-grid--nested">
+                                                <div><label className="form-label">Object Type</label><select name="objectType" value={currentDetail.objectType} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                                <div><label className="form-label">Expense Particular</label><select name="expenseParticular" value={currentDetail.expenseParticular} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="">Select Particular</option>{Object.keys(uacsCodes[currentDetail.objectType] || {}).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                                 <div>
-                                                    <label className="block text-xs font-medium">UACS Code</label>
+                                                    <label className="form-label">UACS Code</label>
                                                     <input 
                                                         type="text"
                                                         name="uacsCode" 
@@ -1123,7 +1120,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                         onChange={handleDetailChange} 
                                                         list="uacs-codes-list"
                                                         placeholder="Search UACS..."
-                                                        className={commonInputClasses + " py-1.5"}
+                                                        className={`${commonInputClasses} form-control--compact`}
                                                     />
                                                     <datalist id="uacs-codes-list">
                                                         {availableUacsCodes.map((item) => (
@@ -1139,7 +1136,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
 
                                             <div>
-                                                <label className="block text-xs font-medium">Delivery Month</label>
+                                                <label className="form-label">Delivery Month</label>
                                                 <MonthYearPicker
                                                     value={currentDetail.deliveryDate}
                                                     onChange={(val) => {
@@ -1156,7 +1153,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             </div>
                                             
                                             <div>
-                                                <label className="block text-xs font-medium">Obligation Month</label>
+                                                <label className="form-label">Obligation Month</label>
                                                 <MonthYearPicker
                                                     value={currentDetail.obligationMonth}
                                                     onChange={(val) => setCurrentDetail(prev => ({ ...prev, obligationMonth: val }))}
@@ -1166,7 +1163,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs font-medium">Disbursement Month</label>
+                                                <label className="form-label">Disbursement Month</label>
                                                 <MonthYearPicker
                                                     value={currentDetail.disbursementMonth}
                                                     onChange={(val) => setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }))}
@@ -1176,19 +1173,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 />
                                             </div>
 
-                                            <div><label className="block text-xs font-medium">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                            <div><label className="block text-xs font-medium">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"} /></div>
-                                            <div><label className="block text-xs font-medium">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={commonInputClasses + " py-1.5"}><option value="pcs">pcs</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="cans">cans</option><option value="grams">grams</option><option value="lots">lots</option></select></div>
+                                            <div><label className="form-label">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
+                                            <div><label className="form-label">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
+                                            <div><label className="form-label">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option>pcs</option><option>kgs</option><option>unit</option><option>lot</option><option>heads</option></select></div>
                                             
                                             {editingDetailIndex !== null ? (
-                                                <div className="flex gap-1 h-9 items-end">
-                                                    <button type="button" onClick={handleAddDetail} className="h-full px-4 inline-flex items-center justify-center rounded-md bg-blue-600 text-white hover:bg-blue-700 text-xs font-medium">Update Item</button>
-                                                    <button type="button" onClick={handleCancelDetailEdit} className="h-full px-4 inline-flex items-center justify-center rounded-md bg-gray-200 text-gray-700 hover:bg-gray-300 text-xs font-medium">Cancel</button>
+                                                <div className="budget-item-form-grid__actions">
+                                                    <button type="button" onClick={handleAddDetail} className="btn btn-primary">Update Item</button>
+                                                    <button type="button" onClick={handleCancelDetailEdit} className="btn btn-secondary">Cancel</button>
                                                 </div>
                                             ) : (
-                                                <div className="flex items-end h-[60px]">
-                                                    <button type="button" onClick={handleAddDetail} className="h-9 px-4 inline-flex items-center justify-center rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-medium transition-colors w-full">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                                <div className="budget-item-form-grid__actions">
+                                                    <button type="button" onClick={handleAddDetail} className="btn btn-primary w-full">
+                                                        <Plus className="btn-symbol" aria-hidden="true" />
                                                         Add Item
                                                     </button>
                                                 </div>
@@ -1201,19 +1198,18 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             {/* ACCOMPLISHMENT EDIT MODE */}
                             {editMode === 'accomplishment' && (
                                 <div className="space-y-6">
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Items Accomplishment</legend>
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
+                                    <fieldset className="form-section">
+                                        <legend>Budget Items Accomplishment</legend>
+                                        <div className="data-table-scroll">
+                                            <table className="data-table">
+                                                <thead>
                                                     <tr>
                                                         <th className="px-3 py-2 text-left font-medium">Completed</th>
                                                         <th className="px-3 py-2 text-left font-medium">Particulars</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Units</th>
                                                         <th className="px-3 py-2 text-left font-medium">Actual Delivery</th>
-                                                        <th className="px-3 py-2 text-left font-medium" colSpan={2}>Obligations (Multiple)</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement Date</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual Disbursement Amount</th>
+                                                        <th className="px-3 py-2 text-left font-medium" colSpan={2}>Obligation</th>
+                                                        <th className="px-3 py-2 text-left font-medium" colSpan={2}>Disbursement</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1324,67 +1320,62 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </fieldset>
 
                                     {/* Section 4: Outcome of Subproject */}
-                                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Outcome of Subproject</legend>
-                                        <div className="overflow-x-auto">
-                                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs">
-                                                    <tr>
-                                                        <th className="px-3 py-2 text-left font-medium">Commodity</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Target</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Actual</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Usage</th>
-                                                        <th className="px-3 py-2 text-left font-medium">Income (PHP)</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                    {editedSubproject.subprojectCommodities?.map((commodity, index) => {
-                                                        const isCrop = commodity.typeName === 'Crop';
-                                                        return (
-                                                            <tr key={index}>
-                                                                <td className="px-3 py-2 text-sm text-gray-800 dark:text-gray-200">{commodity.name} ({commodity.typeName})</td>
-                                                                <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
-                                                                    {commodity.averageYield ? `${commodity.averageYield} (Yield Kg/Ha)` : ''} 
-                                                                    {commodity.typeName === 'Livestock' ? ' (Heads)' : ''}
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'actualYield', parseFloat(e.target.value))} className="w-24 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0" />
-                                                                        <span className="text-xs text-gray-500">{isCrop ? 'Yield Kg/Ha' : 'Heads'}</span>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <div className="flex items-center gap-1">
-                                                                            <input type="number" value={commodity.marketingPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'marketingPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
-                                                                            <span className="text-xs text-gray-500">Marketing</span>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <input type="number" value={commodity.foodSecurityPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'foodSecurityPercentage', parseFloat(e.target.value))} className="w-16 text-xs px-1 py-0.5 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="%" />
-                                                                            <span className="text-xs text-gray-500">Food Security</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-3 py-2">
-                                                                    {(commodity.marketingPercentage || 0) > 0 ? (
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <input type="number" value={commodity.income || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'income', parseFloat(e.target.value))} className="w-28 text-xs px-2 py-1 rounded border dark:bg-gray-600 dark:border-gray-500" placeholder="0.00" />
-                                                                            <span className="text-[10px] text-gray-400 italic">
-                                                                                {isCrop ? 'per harvest season' : 'annual income'}
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-xs text-gray-400">-</span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                    {(!editedSubproject.subprojectCommodities || editedSubproject.subprojectCommodities.length === 0) && (
-                                                        <tr><td colSpan={5} className="px-3 py-2 text-sm text-gray-500 italic text-center">No commodities linked.</td></tr>
-                                                    )}
-                                                </tbody>
-                                            </table>
+                                    <fieldset className="form-fieldset">
+                                        <legend className="form-legend">Outcome of Subproject</legend>
+                                        <div className="outcome-edit-list">
+                                            {editedSubproject.subprojectCommodities?.map((commodity, index) => {
+                                                const isCrop = commodity.typeName === 'Crop';
+                                                return (
+                                                    <div key={index} className="outcome-edit-card">
+                                                        <div className="outcome-edit-card__meta">
+                                                            <span className="outcome-edit-card__label">Commodity</span>
+                                                            <strong>{commodity.name}</strong>
+                                                            <span>{commodity.typeName}</span>
+                                                        </div>
+                                                        <div className="outcome-edit-card__meta">
+                                                            <span className="outcome-edit-card__label">Target</span>
+                                                            <strong>{commodity.averageYield || '-'}</strong>
+                                                            <span>{isCrop ? (commodity.averageYield ? 'Yield Kg/Ha' : '') : 'Heads'}</span>
+                                                        </div>
+                                                        <div className="outcome-edit-card__field">
+                                                            <label className="form-label">Actual</label>
+                                                            <div className="outcome-edit-inline">
+                                                                <input type="number" value={commodity.actualYield || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'actualYield', parseFloat(e.target.value))} className={`${commonInputClasses} form-control--compact`} placeholder="0" />
+                                                                <span>{isCrop ? 'Yield Kg/Ha' : 'Heads'}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="outcome-edit-card__field">
+                                                            <label className="form-label">Usage</label>
+                                                            <div className="outcome-edit-controls">
+                                                                <div className="outcome-edit-inline">
+                                                                    <input type="number" value={commodity.marketingPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'marketingPercentage', parseFloat(e.target.value))} className={`${commonInputClasses} form-control--compact`} placeholder="%" />
+                                                                    <span>Marketing</span>
+                                                                </div>
+                                                                <div className="outcome-edit-inline">
+                                                                    <input type="number" value={commodity.foodSecurityPercentage || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'foodSecurityPercentage', parseFloat(e.target.value))} className={`${commonInputClasses} form-control--compact`} placeholder="%" />
+                                                                    <span>Food Security</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="outcome-edit-card__field">
+                                                            <label className="form-label">Income (PHP)</label>
+                                                            {(commodity.marketingPercentage || 0) > 0 ? (
+                                                                <div className="outcome-edit-controls">
+                                                                    <input type="number" value={commodity.income || ''} onChange={(e) => handleCommodityAccomplishmentChange(index, 'income', parseFloat(e.target.value))} className={`${commonInputClasses} form-control--compact`} placeholder="0.00" />
+                                                                    <span className="outcome-edit-note">
+                                                                        {isCrop ? 'Per Harvest Season' : 'Annual Income'}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="outcome-edit-empty">-</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {(!editedSubproject.subprojectCommodities || editedSubproject.subprojectCommodities.length === 0) && (
+                                                <p className="detail-empty">No commodities linked.</p>
+                                            )}
                                         </div>
                                     </fieldset>
 
@@ -1414,9 +1405,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 </div>
                             )}
                         </div>
-                        <div className="flex justify-end gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <button type="button" onClick={() => setEditMode('none')} className="px-4 py-2 rounded-md text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">Cancel</button>
-                            <button type="submit" className="px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 hover:brightness-95">Save Changes</button>
+                        <div className="detail-edit-footer">
+                            <button type="button" onClick={() => setEditMode('none')} className="btn btn-secondary">Cancel</button>
+                            <button type="submit" className="btn btn-primary">Save Changes</button>
                         </div>
                     </form>
                 </div>
@@ -1425,42 +1416,42 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }
 
     return (
-        <div className="space-y-8">
-             <header className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{subproject.name}</h1>
-                    <p className="text-md text-gray-500 dark:text-gray-400">{subproject.location}</p>
+        <div className="detail-page">
+             <header className="detail-header">
+                <div className="detail-heading">
+                    <h1 className="detail-title">{subproject.name}</h1>
+                    <p className="detail-meta">{subproject.location}</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="detail-actions">
                     {/* Granular Buttons - Prepare for individual role toggles */}
                     {canEditAccomplishment && (
-                        <button onClick={() => setEditMode('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            Edit Accomplishment
+                        <button onClick={() => setEditMode('accomplishment')} className="btn btn-primary btn-responsive" title="Edit Accomplishment">
+                            <CheckCircle2 className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Edit Accomplishment</span>
                         </button>
                     )}
-                    <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        Back to {previousPageName}
+                    <button onClick={onBack} className="btn btn-secondary btn-responsive" title={`Back to ${previousPageName}`}>
+                        <ArrowLeft className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Back to {previousPageName}</span>
                     </button>
                 </div>
             </header>
 
             {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="detail-grid">
                 {/* Left Column */}
-                <div className="lg:col-span-2 space-y-8">
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                <div className="detail-main">
+                     <div className="detail-card">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Project Details</h3>
+                            <h3 className="detail-card-title mb-0">Project Details</h3>
                             {canEditProjectDetails && (
-                                <button onClick={() => setEditMode('details')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                <button onClick={() => setEditMode('details')} className="table-action table-action--primary">
+                                    <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Details
                                 </button>
                             )}
                         </div>
-                         <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+                         <div className="detail-dl">
                             <DetailItem label="Status" value={<span className={getStatusBadge(subproject.status)}>{subproject.status}</span>} />
                             <DetailItem label="UID" value={subproject.uid} />
                             <DetailItem label="Operating Unit" value={subproject.operatingUnit || 'N/A'} />
@@ -1489,27 +1480,27 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                          <div className="mt-6">
                              <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400">Remarks</h4>
-                             <p className="mt-1 text-sm text-gray-800 dark:text-gray-100 italic bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">{subproject.remarks || 'No remarks provided.'}</p>
+                             <p className="detail-note">{subproject.remarks || 'No remarks provided.'}</p>
                          </div>
                      </div>
 
                      {/* New Target Commodities Section */}
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                     <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Target Commodities</h3>
+                            <h3 className="detail-card-title mb-0">Target Commodities</h3>
                             {canEditCommodity && (
-                                <button onClick={() => setEditMode('commodity')} className="text-sm text-teal-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                <button onClick={() => setEditMode('commodity')} className="table-action table-action--primary">
+                                    <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Commodity
                                 </button>
                             )}
                         </div>
                          {subproject.subprojectCommodities && subproject.subprojectCommodities.length > 0 ? (
-                            <ul className="space-y-1">
+                            <ul className="detail-list">
                                 {subproject.subprojectCommodities.map((c, idx) => (
-                                    <li key={idx} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md text-sm">
+                                    <li key={idx} className="detail-list-item flex justify-between items-center">
                                         <div>
-                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{c.name}</span>
+                                            <span className="detail-list-name">{c.name}</span>
                                             <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({c.typeName || 'N/A'})</span>
                                         </div>
                                         <span className="text-gray-500 dark:text-gray-400">
@@ -1519,23 +1510,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 ))}
                             </ul>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No commodities recorded.</p>
+                            <p className="detail-empty">No commodities recorded.</p>
                         )}
                      </div>
 
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                     <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Breakdown</h3>
+                            <h3 className="detail-card-title mb-0">Budget Breakdown</h3>
                             {canEditBudget && (
-                                <button onClick={() => setEditMode('budget')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                <button onClick={() => setEditMode('budget')} className="table-action table-action--primary">
+                                    <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Budget
                                 </button>
                             )}
                         </div>
-                        <div className="overflow-x-auto">
-                           <table className="min-w-full text-sm">
-                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                        <div className="data-table-scroll">
+                           <table className="data-table">
+                                <thead>
                                     <tr>
                                         <th className="px-4 py-2 text-left">Particulars</th>
                                         <th className="px-4 py-2 text-left">Delivery Date</th>
@@ -1563,7 +1554,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <td className="px-4 py-2 text-right">{detail.numberOfUnits.toLocaleString()} {detail.unitOfMeasure}</td>
                                                 <td className="px-4 py-2 text-right font-medium">{formatCurrency(detail.pricePerUnit * detail.numberOfUnits)}</td>
                                                 <td className="px-4 py-2 text-center">
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${completionPct >= 100 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
+                                                    <span className={`status-badge status-badge--compact ${completionPct >= 100 ? 'status-badge--completed' : 'status-badge--neutral'}`}>
                                                         {Math.min(completionPct, 100).toFixed(0)}%
                                                     </span>
                                                 </td>
@@ -1583,12 +1574,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </div>
 
                     {/* NEW: Accomplishment Report Section (Read-Only) */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
+                            <h3 className="detail-card-title mb-0">Accomplishment Report</h3>
                             {canEditAccomplishment && (
-                                <button onClick={() => setEditMode('accomplishment')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <button onClick={() => setEditMode('accomplishment')} className="table-action table-action--primary">
+                                    <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                                     Edit Accomplishment
                                 </button>
                             )}
@@ -1597,9 +1588,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div>
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Item Delivery Status</h4>
                                 {subproject.details.some(d => d.actualDeliveryDate) ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                                    <div className="data-table-scroll">
+                                        <table className="data-table">
+                                            <thead>
                                                 <tr>
                                                     <th className="px-4 py-2 text-left">Item</th>
                                                     <th className="px-4 py-2 text-left">Actual Delivery</th>
@@ -1618,7 +1609,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         </table>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-500 italic">No items delivered yet.</p>
+                                    <p className="detail-empty">No items delivered yet.</p>
                                 )}
                             </div>
 
@@ -1626,9 +1617,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div className="mt-8">
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Financial Performance</h4>
                                 {subproject.details.some(d => d.actualObligationAmount || d.actualDisbursementAmount) ? (
-                                    <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                                        <table className="min-w-full text-sm text-left">
-                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300">
+                                    <div className="data-table-scroll">
+                                        <table className="data-table">
+                                            <thead>
                                                 <tr>
                                                     <th className="px-4 py-2 font-medium">Expense Item</th>
                                                     <th className="px-4 py-2 font-medium text-right">Target Budget</th>
@@ -1649,14 +1640,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         </table>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-500 italic">No financial data recorded yet.</p>
+                                    <p className="detail-empty">No financial data recorded yet.</p>
                                 )}
                             </div>
 
                             {/* Gender and Inclusivity (Read-Only) */}
                             <div>
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Gender and Inclusivity</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                <div className="detail-dl">
                                     <DetailItem label="PWD" value={subproject.actualPWD} />
                                     <DetailItem label="Muslim" value={subproject.actualMuslim} />
                                     <DetailItem label="LGBTQ+" value={subproject.actualLGBTQ} />
@@ -1679,22 +1670,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                              const foodSecVal = c.actualYield ? (c.actualYield * (c.foodSecurityPercentage || 0) / 100) : 0;
 
                                              return (
-                                                 <div key={i} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                                                 <div key={i} className="detail-outcome-card">
                                                      <div className="flex justify-between items-start mb-3">
-                                                         <p className="font-bold text-gray-900 dark:text-white">{c.name}</p>
-                                                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase font-bold">{c.typeName}</span>
+                                                         <p className="detail-outcome-title">{c.name}</p>
+                                                         <span className="detail-outcome-pill">{c.typeName}</span>
                                                      </div>
                                                      
                                                      <div className="space-y-3">
-                                                         <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded-lg shadow-inner">
+                                                         <div className="detail-outcome-row">
                                                              <span className="text-xs text-gray-500 dark:text-gray-400">Total Actual Yield</span>
                                                              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{c.actualYield?.toLocaleString() || 0} <span className="text-[10px] font-normal text-gray-400">{unit}</span></span>
                                                          </div>
 
                                                          <div className="grid grid-cols-1 gap-2">
                                                              {/* Marketing Section */}
-                                                             <div className="p-2 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/20">
-                                                                 <div className="flex justify-between items-center mb-1">
+                                                             <div className="detail-outcome-row detail-outcome-row--marketing detail-outcome-row--stack">
+                                                                 <div className="detail-outcome-row__content mb-1">
                                                                      <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 uppercase">Marketing ({c.marketingPercentage || 0}%)</span>
                                                                      <span className="text-xs font-bold text-blue-900 dark:text-blue-100">{marketingVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {unit}</span>
                                                                  </div>
@@ -1707,8 +1698,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                              </div>
 
                                                              {/* Food Security Section */}
-                                                             <div className="p-2 bg-orange-50 dark:bg-orange-900/10 rounded-lg border border-orange-100 dark:border-orange-900/20">
-                                                                 <div className="flex justify-between items-center">
+                                                             <div className="detail-outcome-row detail-outcome-row--food">
+                                                                 <div className="detail-outcome-row__content">
                                                                      <span className="text-[10px] font-bold text-orange-700 dark:text-orange-300 uppercase">Food Security ({c.foodSecurityPercentage || 0}%)</span>
                                                                      <span className="text-xs font-bold text-orange-900 dark:text-orange-100">{foodSecVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {unit}</span>
                                                                  </div>
@@ -1720,7 +1711,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                          })}
                                      </div>
                                  ) : (
-                                     <p className="text-sm text-gray-500 italic">No outcome data recorded yet.</p>
+                                     <p className="detail-empty">No outcome data recorded yet.</p>
                                  )}
                             </div>
                         </div>
@@ -1728,15 +1719,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
                 </div>
                  {/* Right Column */}
-                <div className="space-y-8">
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-gray-400">
+                <div className="detail-aside">
+                     <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">History</h3>
+                            <h3 className="detail-card-title mb-0">History</h3>
                             {subproject.history && subproject.history.length > 5 && (
                                 <select 
                                     value={historyLimit} 
                                     onChange={(e) => setHistoryLimit(Number(e.target.value))}
-                                    className="text-sm border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+                                    className="form-control"
                                 >
                                     <option value={5}>5</option>
                                     <option value={10}>10</option>
@@ -1759,7 +1750,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 </ul>
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No historical data available.</p>
+                            <p className="detail-empty">No historical data available.</p>
                         )}
                     </div>
                 </div>
@@ -1767,15 +1758,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             {/* Delivery Date Confirmation Modal */}
             {confirmDeliveryDate && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-md w-full">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Confirm Delivery Date</h3>
+                    <div className="dashboard-modal">
+                        <h3 className="detail-card-title">Confirm Delivery Date</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
                             The delivery date you selected is beyond the subproject's estimated completion date. 
                             Do you want to update the subproject's estimated completion date to match this delivery date?
                         </p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={handleCancelDeliveryDate} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button>
-                            <button onClick={handleConfirmDeliveryDate} className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700">Confirm & Update</button>
+                            <button onClick={handleCancelDeliveryDate} className="btn btn-secondary">Cancel</button>
+                            <button onClick={handleConfirmDeliveryDate} className="btn btn-primary">Confirm & Update</button>
                         </div>
                     </div>
                 </div>

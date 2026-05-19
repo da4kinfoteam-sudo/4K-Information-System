@@ -10,7 +10,7 @@ import { useSelection, useUserAccess, usePagination } from '../mainfunctions/Tab
 import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check } from 'lucide-react';
+import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
 
 declare const XLSX: any;
 
@@ -26,15 +26,14 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+const commonInputClasses = "form-control";
 
 const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Filled': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Unfilled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Filled': return 'status-badge status-badge--completed';
+        case 'Proposed': return 'status-badge status-badge--proposed';
+        case 'Unfilled': return 'status-badge status-badge--cancelled';
+        default: return 'status-badge status-badge--neutral';
     }
 }
 
@@ -209,7 +208,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     const getInputClasses = (fieldName: string) => {
         const hasError = validationErrors.includes(fieldName);
-        return `${commonInputClasses} ${hasError ? 'border-red-500 ring-1 ring-red-500' : ''}`;
+        return `${commonInputClasses} ${hasError ? 'form-control--invalid' : ''}`;
     };
 
     // Filters - Persistent
@@ -803,55 +802,55 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
     if (view === 'form') {
         const monthFields = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         return (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-bold text-gray-800 dark:text-white">Add Staffing Requirement</h3>
-                    <button onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+            <div className="form-card animate-fadeIn">
+                <div className="detail-header">
+                    <h3 className="detail-title">Add Staffing Requirement</h3>
+                    <button onClick={() => { setView('list'); }} className="btn btn-secondary">Cancel</button>
                 </div>
-                <form onSubmit={handleFormSubmit} className="space-y-8">
+                <form onSubmit={handleFormSubmit} className="detail-stack">
                     {/* Group 1: Profile */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Position Profile</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
+                    <fieldset className="form-fieldset">
+                        <legend className="form-legend">Position Profile</legend>
+                        <div className="form-grid">
+                            <div><label className="form-label">Position Title <span className="text-red-500">*</span></label><input type="text" name="personnelPosition" value={formData.personnelPosition} onChange={handleInputChange} required className={getInputClasses('personnelPosition')} /></div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Component</label>
+                                <label className="form-label">Component</label>
                                 <select name="component" value={formData.component} onChange={handleInputChange} className={getInputClasses('component')}>
                                     {otherActivityComponents.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hiring Status</label>
-                                <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={`${commonInputClasses} bg-gray-100 dark:bg-gray-600 cursor-not-allowed`} disabled>
+                                <label className="form-label">Hiring Status</label>
+                                <select name="hiringStatus" value={formData.hiringStatus} onChange={handleInputChange} className={`${commonInputClasses} form-control--readonly`} disabled>
                                     <option value="Proposed">Proposed</option>
                                     <option value="Filled">Filled</option>
                                     <option value="Unfilled">Unfilled</option>
                                 </select>
                             </div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
+                            <div><label className="form-label">Employment Status</label><select name="status" value={formData.status} onChange={handleInputChange} className={getInputClasses('status')}><option value="Permanent">Permanent</option><option value="Contractual">Contractual</option><option value="COS">COS</option><option value="Job Order">Job Order</option></select></div>
+                            <div><label className="form-label">Salary Grade</label><input type="number" name="salaryGrade" value={formData.salaryGrade} onChange={handleInputChange} min="1" max="33" className={getInputClasses('salaryGrade')} /></div>
+                            <div><label className="form-label">Personnel Type</label><select name="personnelType" value={formData.personnelType} onChange={handleInputChange} className={getInputClasses('personnelType')}><option value="Technical">Technical</option><option value="Administrative">Administrative</option><option value="Support">Support</option></select></div>
                             <div className="md:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Operating Unit <span className="text-red-500">*</span></label>
-                                <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${getInputClasses('operatingUnit')} disabled:bg-gray-100 disabled:cursor-not-allowed`}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>
+                                <label className="form-label">Operating Unit <span className="text-red-500">*</span></label>
+                                <select name="operatingUnit" value={formData.operatingUnit} onChange={handleInputChange} disabled={!canViewAll && !!currentUser} className={`${getInputClasses('operatingUnit')} `}><option value="">Select OU</option>{operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}</select>
                             </div>
                         </div>
                     </fieldset>
 
                     {/* Group 2: Funding */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Funding Source</legend>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                            <div className="flex flex-col justify-center space-y-2 mt-4 md:mt-0">
-                                <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                    <fieldset className="form-fieldset">
+                        <legend className="form-legend">Funding Source</legend>
+                        <div className="program-form-grid program-form-grid--four">
+                            <div><label className="form-label">Fund Year <span className="text-red-500">*</span></label><input type="number" name="fundYear" value={formData.fundYear} onChange={handleInputChange} className={getInputClasses('fundYear')} /></div>
+                            <div><label className="form-label">Fund Type</label><select name="fundType" value={formData.fundType} onChange={handleInputChange} className={getInputClasses('fundType')}>{fundTypes.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+                            <div><label className="form-label">Tier</label><select name="tier" value={formData.tier} onChange={handleInputChange} className={getInputClasses('tier')}>{tiers.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                            <div className="form-check-group">
+                                <label className="form-check">
+                                    <input type="checkbox" checked={formData.isRealignment || false} onChange={e => setFormData(prev => ({ ...prev, isRealignment: e.target.checked, isSavings: e.target.checked ? false : prev.isSavings }))} />
                                     <span>Realignment</span>
                                 </label>
-                                <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                                    <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                <label className="form-check">
+                                    <input type="checkbox" checked={formData.isSavings || false} onChange={e => setFormData(prev => ({ ...prev, isSavings: e.target.checked, isRealignment: e.target.checked ? false : prev.isRealignment }))} />
                                     <span>Savings</span>
                                 </label>
                             </div>
@@ -859,40 +858,39 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     </fieldset>
 
                     {/* Group 3: Financial Requirements (Multiple Objects) */}
-                    <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md bg-gray-50 dark:bg-gray-700/30">
-                        <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Financial Requirements</legend>
+                    <fieldset className="form-fieldset">
+                        <legend className="form-legend">Financial Requirements</legend>
                         
                         {/* Expense List */}
-                        <div className="space-y-3 mb-6">
+                        <div className="budget-item-list">
                             {expensesList.map((expense, idx) => (
-                                <div key={idx} className="bg-white dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-600 flex justify-between items-start">
-                                    <div>
-                                        <p className="font-semibold text-gray-800 dark:text-white text-sm">{expense.expenseParticular || 'Unspecified Particular'}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
+                                <div key={idx} className="budget-item-card">
+                                    <div className="budget-item-card__summary">
+                                        <p className="budget-item-card__title">{expense.expenseParticular || 'Unspecified Particular'}</p>
+                                        <p className="budget-item-card__meta">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
                                     </div>
-                                    <div className="flex items-center gap-4">
-                                        <p className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(expense.amount)}</p>
-                                        <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="text-red-500 hover:text-red-700">
+                                    <div className="budget-item-card__actions">
+                                        <p className="budget-item-card__total">{formatCurrency(expense.amount)}</p>
+                                        <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="table-action table-action--danger" aria-label="Remove financial item">
                                             <TrashIcon />
                                         </button>
                                     </div>
                                 </div>
                             ))}
-                            {expensesList.length === 0 && <p className="text-sm text-gray-500 italic text-center py-4">No financial items added.</p>}
-                            <div className="flex justify-end pt-2 border-t border-gray-300 dark:border-gray-600">
-                                <span className="font-bold text-gray-700 dark:text-gray-300 mr-2">Total Annual Requirement:</span>
-                                <span className="font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}</span>
+                            {expensesList.length === 0 && <p className="detail-empty detail-empty--compact">No financial items added.</p>}
+                            <div className="budget-item-list__total">
+                                Total Annual Requirement: {formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}
                             </div>
                         </div>
 
                         {/* Add Expense Form Area */}
-                        <div className="bg-white dark:bg-gray-800 p-4 rounded-md border border-emerald-200 dark:border-emerald-800">
-                            <h4 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3 border-b border-gray-100 dark:border-gray-700 pb-2">Add Financial Item</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
+                        <div className="form-fieldset">
+                            <h4 className="detail-section-title detail-section-title--ruled">Add Financial Item</h4>
+                            <div className="program-form-grid program-form-grid--four">
+                                <div><label className="form-label">Object Type</label><select name="objectType" value={currentExpense.objectType} onChange={handleExpenseChange} className={getInputClasses('objectType')}>{objectTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                                <div><label className="form-label">Particular <span className="text-red-500">*</span></label><select value={selectedParticular} onChange={e => { setSelectedParticular(e.target.value); setCurrentExpense(prev => ({...prev, uacsCode: ''})); if (validationErrors.includes('expenseParticular')) setValidationErrors(prev => prev.filter(err => err !== 'expenseParticular')); }} className={getInputClasses('expenseParticular')}><option value="">Select</option>{uacsCodes[currentExpense.objectType] && Object.keys(uacsCodes[currentExpense.objectType]).map(p => <option key={p} value={p}>{p}</option>)}</select></div>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">UACS Code <span className="text-red-500">*</span></label>
+                                    <label className="form-label">UACS Code <span className="text-red-500">*</span></label>
                                     <input 
                                         list="uacs-codes-list"
                                         name="uacsCode" 
@@ -942,19 +940,19 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                     </datalist>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Description</label>
+                                    <label className="form-label">Description</label>
                                     <input 
                                         type="text" 
                                         value={selectedUacsDesc} 
                                         readOnly 
-                                        className="mt-1 block w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none sm:text-sm cursor-not-allowed" 
+                                        className={`${commonInputClasses} form-control--readonly`} 
                                     />
                                 </div>
                             </div>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <div className="form-grid">
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Obligation Date <span className="text-red-500">*</span></label>
+                                    <label className="form-label">Obligation Date <span className="text-red-500">*</span></label>
                                     <MonthYearPicker 
                                         value={currentExpense.obligationDate} 
                                         onChange={(val) => {
@@ -963,37 +961,37 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                                 setValidationErrors(prev => prev.filter(err => err !== 'obligationDate'));
                                             }
                                         }}
-                                        className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-1 ring-red-500' : ''}
+                                        className={validationErrors.includes('obligationDate') ? 'form-control--invalid' : ''}
                                     />
                                 </div>
-                                <div><label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
+                                <div><label className="form-label">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
                             </div>
                             
                             <div className="mb-3">
-                                <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="text-xs text-emerald-600 hover:underline flex items-center gap-1">
+                                <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="btn btn-secondary btn-sm">
                                     {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule
                                 </button>
                                 {isExpenseScheduleOpen && (
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-2 p-2 bg-gray-50 dark:bg-gray-900/50 rounded border border-gray-200 dark:border-gray-700">
+                                    <div className="program-month-grid">
                                         {monthFields.map(month => (
-                                            <div key={`exp-${month}`}>
-                                                <label className="block text-[10px] font-medium text-gray-500 uppercase">{month}</label>
+                                            <div key={`exp-${month}`} className="program-month-cell">
+                                                <label className="program-month-cell__label">{month}</label>
                                                 <input type="number" name={`disbursement${month}`} 
                                                 // @ts-ignore
-                                                value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="w-full px-1 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600" />
+                                                value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="form-control form-control--compact" />
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
 
-                            <button type="button" onClick={handleAddExpense} className="w-full py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition-colors">Add Item to List</button>
+                            <button type="button" onClick={handleAddExpense} className="btn btn-primary">Add Item to List</button>
                         </div>
                     </fieldset>
                     
-                    <div className="flex justify-end gap-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                        <button type="button" onClick={() => { setView('list'); }} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-md text-sm hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
-                        <button type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition-colors">Save</button>
+                    <div className="detail-edit-footer">
+                        <button type="button" onClick={() => { setView('list'); }} className="btn btn-secondary">Cancel</button>
+                        <button type="submit" className="btn btn-primary">Save</button>
                     </div>
                 </form>
             </div>
@@ -1002,12 +1000,13 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     // List View
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md animate-fadeIn">
+        <div className="data-table-card animate-fadeIn">
             {isDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Are you sure?</p><div className="flex justify-end gap-4"><button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete</button></div></div></div>)}
             {isMultiDeleteModalOpen && (<div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"><div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl"><h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Bulk Deletion</h3><p className="my-4 text-gray-600 dark:text-gray-300">Delete {selectedIds.length} items?</p><div className="flex justify-end gap-4"><button onClick={() => setIsMultiDeleteModalOpen(false)} className="px-4 py-2 rounded-md text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Cancel</button><button onClick={handleMultiDelete} className="px-4 py-2 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Delete All</button></div></div></div>)}
 
-            <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-                <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="data-table-toolbar">
+            <div className="data-toolbar-row">
+                <div className="data-toolbar-group">
                     <div className="relative flex-1 md:flex-none">
                         <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-gray-400" />
@@ -1017,7 +1016,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                             placeholder="Search Staffing Requirements..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md leading-5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm transition-all"
+                            className="data-table-search block w-full md:w-72 pl-10 pr-3"
                         />
                         {searchTerm && (
                             <button 
@@ -1029,11 +1028,11 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                         )}
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="data-toolbar-group data-toolbar-group--actions">
                     {isSelectionMode && selectedIds.length > 0 && (
                         <button 
                             onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
-                            className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white ${selectionIntent === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
+                            className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
                         >
                             {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
                         </button>
@@ -1041,29 +1040,38 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     {canEdit && (
                         <button 
                             onClick={() => { setView('form'); }} 
-                            className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700"
+                            className="btn btn-primary btn-responsive"
+                            title="Add New"
                         >
-                            + Add New
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add New</span>
                         </button>
                     )}
-                    <button onClick={handleDownloadReport} className="inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700">Download Report</button>
+                    <button onClick={handleDownloadReport} className="btn btn-primary btn-responsive" title="Download Report">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download Report</span>
+                    </button>
                     {canEdit && (
                         <>
-                            <button onClick={handleDownloadTemplate} className="inline-flex items-center justify-center py-2 px-4 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">Template</button>
-                            <label className={`inline-flex items-center justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-emerald-600 hover:bg-emerald-700 ${isUploading ? 'bg-gray-400 cursor-not-allowed' : 'cursor-pointer'}`}>
-                                {isUploading ? 'Uploading...' : 'Upload XLSX'}
+                            <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
+                                <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Template</span>
+                            </button>
+                            <label className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`} title={isUploading ? 'Uploading...' : 'Upload XLSX'}>
+                                <Upload className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
                                 <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                             </label>
                             <button 
                                 onClick={() => handleToggleMode('clone')} 
-                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'clone' ? 'bg-cyan-100 dark:bg-cyan-900 text-cyan-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
                                 title="Toggle Clone Mode"
                             >
                                 <DuplicateIcon />
                             </button>
                             <button 
                                 onClick={() => handleToggleMode('delete')} 
-                                className={`inline-flex items-center justify-center p-2 border border-gray-300 dark:border-gray-600 shadow-sm rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 ${isSelectionMode && selectionIntent === 'delete' ? 'bg-red-100 dark:bg-red-900 text-red-600' : 'bg-white dark:bg-gray-700 text-gray-500'}`} 
+                                className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'delete' ? 'is-active-danger' : ''}`} 
                                 title="Toggle Multi-Delete Mode"
                             >
                                 <TrashIcon />
@@ -1072,10 +1080,11 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     )}
                 </div>
             </div>
+            </div>
 
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+            <div className="data-table-scroll">
+                <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead>
                         <tr>
                             <StaffingRequirementColumnHeader 
                                 label="UID" 
@@ -1187,14 +1196,14 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                             <div className="flex gap-1 mt-1">
                                                 <button 
                                                     onClick={(e) => handleApprove(item.id, e)} 
-                                                    className="p-1 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 transition-colors"
+                                                    className="action-mini action-mini--approve"
                                                     title="Approve"
                                                 >
                                                     <Check className="h-3 w-3" />
                                                 </button>
                                                 <button 
                                                     onClick={(e) => handleReject(item.id, e)} 
-                                                    className="p-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                                                    className="action-mini action-mini--reject"
                                                     title="Reject"
                                                 >
                                                     <X className="h-3 w-3" />
@@ -1215,16 +1224,16 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                                             <div className="flex justify-end gap-3">
                                                 {canEdit ? (
                                                     <>
-                                                        <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-2 py-1 rounded hover:bg-emerald-50 transition-colors">Details</button>
+                                                        <button onClick={() => onSelect(item)} className="table-action table-action--primary">Details</button>
                                                         <button 
                                                             onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
-                                                            className="text-red-600 hover:text-red-900 border border-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                                                            className="table-action table-action--danger"
                                                         >
                                                             Delete
                                                         </button>
                                                     </>
                                                 ) : (
-                                                    <button onClick={() => onSelect(item)} className="text-emerald-600 hover:text-emerald-900 border border-emerald-600 px-4 py-1 rounded hover:bg-emerald-50 transition-colors">View Details</button>
+                                                    <button onClick={() => onSelect(item)} className="table-action table-action--primary">View Details</button>
                                                 )}
                                             </div>
                                         )}
@@ -1235,7 +1244,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 </table>
             </div>
             
-            <div className="py-4 flex items-center justify-between">
+            <div className="data-table-pagination py-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm"><span className="text-gray-700 dark:text-gray-300">Show</span><select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-accent focus:border-accent sm:text-sm">{[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}</select><span className="text-gray-700 dark:text-gray-300">entries</span></div>
                 <div className="flex items-center gap-4 text-sm"><span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredItems.length)} to {Math.min(currentPage * itemsPerPage, filteredItems.length)} of {filteredItems.length} entries</span><div className="flex items-center gap-2"><button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button><span className="px-2 font-medium">{currentPage} / {totalPages}</span><button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button></div></div>
             </div>

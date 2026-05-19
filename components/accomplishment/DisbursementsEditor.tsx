@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { DisbursementRecord } from '../../constants';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { Plus, Trash2 } from 'lucide-react';
@@ -11,35 +11,34 @@ interface DisbursementsEditorProps {
 }
 
 export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbursements = [], onChange, defaultYear, readOnly = false }) => {
+    const getTotal = (items: DisbursementRecord[]) => items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
     const handleAdd = () => {
-        const newDb: DisbursementRecord = {
-            id: Date.now() + Math.floor(Math.random() * 1000), // temp id
-            date: '',
-            amount: 0,
-            remarks: ''
-        };
-        const updated = [...disbursements, newDb];
-        onChange(updated, updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+        const updated = [
+            ...disbursements,
+            { id: Date.now() + Math.floor(Math.random() * 1000), date: '', amount: 0, remarks: '' },
+        ];
+        onChange(updated, getTotal(updated));
     };
 
     const handleUpdate = (id: number, field: keyof DisbursementRecord, value: any) => {
         const updated = disbursements.map(db => db.id === id ? { ...db, [field]: value } : db);
-        onChange(updated, updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+        onChange(updated, getTotal(updated));
     };
 
     const handleDelete = (id: number) => {
         const updated = disbursements.filter(db => db.id !== id);
-        onChange(updated, updated.reduce((sum, item) => sum + (Number(item.amount) || 0), 0));
+        onChange(updated, getTotal(updated));
     };
 
-    const totalAmount = disbursements.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const totalAmount = getTotal(disbursements);
 
     return (
-        <div className="flex flex-col gap-2 relative min-w-[200px]">
+        <div className="budget-record-editor budget-record-editor--disbursement">
             {disbursements.map((db, idx) => (
-                <div key={db.id || idx} className="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-800/50 rounded border dark:border-gray-700/50">
-                    <div className="flex gap-2 items-center">
-                        <div className="flex-1 min-w-[100px]">
+                <div key={db.id || idx} className="budget-record-row">
+                    <div className="budget-record-row__fields">
+                        <div className="budget-record-row__month">
                             <MonthYearPicker
                                 value={db.date}
                                 onChange={(val) => handleUpdate(db.id, 'date', val)}
@@ -49,18 +48,18 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
                                 disabled={readOnly}
                             />
                         </div>
-                        <div className="flex-1 flex items-center gap-1 min-w-[90px]">
+                        <div className="budget-record-row__amount">
                             <input
                                 type="number"
-                                value={db.amount === 0 && !db.date ? '' : db.amount} /* Avoid showing 0 initially */
+                                value={db.amount === 0 && !db.date ? '' : db.amount}
                                 onChange={(e) => handleUpdate(db.id, 'amount', parseFloat(e.target.value))}
-                                className="h-8 text-xs px-2 rounded border dark:border-gray-600 w-full bg-white dark:bg-gray-700 dark:text-gray-200"
+                                className="form-control form-control--compact"
                                 placeholder="0.00"
                                 disabled={readOnly}
                             />
                         </div>
                         {!readOnly && (
-                            <button type="button" title="Remove Row" onClick={() => handleDelete(db.id)} className="text-red-500 hover:text-red-700 p-1 shrink-0">
+                            <button type="button" title="Remove Row" onClick={() => handleDelete(db.id)} className="budget-record-row__remove">
                                 <Trash2 size={14} />
                             </button>
                         )}
@@ -68,12 +67,12 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
                 </div>
             ))}
             {!readOnly && (
-                <button type="button" onClick={handleAdd} className="flex items-center justify-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium py-1.5 border border-dashed border-blue-300 dark:border-blue-700/50 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                <button type="button" onClick={handleAdd} className="budget-record-add">
                     <Plus size={14} /> Add Disbursement
                 </button>
             )}
             {disbursements.length > 0 && (
-                <div className="text-xs font-semibold text-right text-blue-800 dark:text-blue-400 mt-1 pb-1">
+                <div className="budget-record-total">
                     Total: ₱{new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalAmount)}
                 </div>
             )}

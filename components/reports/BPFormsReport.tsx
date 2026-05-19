@@ -1,5 +1,6 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
 
@@ -37,7 +38,7 @@ const ActivityRow: React.FC<{
     return (
         <tr 
             onClick={() => hasParticulars && toggleRow && rowKey && toggleRow(rowKey)} 
-            className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${hasParticulars ? 'cursor-pointer font-semibold bg-gray-50/50 dark:bg-gray-800/50' : ''}`}
+            className={`bp-report__row ${hasParticulars ? 'cursor-pointer bp-report__row--interactive' : ''}`}
         >
             <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-inherit z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                 {hasParticulars && toggleRow && <span className="inline-block w-5 text-center text-gray-500">{isExpanded ? '−' : '+'}</span>}
@@ -72,7 +73,7 @@ const ParticularRow: React.FC<{
     indentClasses: string[];
 }> = ({ particular, mooeCodes, coCodes, indentLevel, dataCellClass, indentClasses }) => {
     return (
-        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 text-[11px] italic text-gray-600 dark:text-gray-400">
+        <tr className="bp-report__row bp-report__row--particular text-[11px] italic">
             <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-white dark:bg-gray-800 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                 <span className="inline-block w-5"></span> {particular.name}
             </td>
@@ -119,7 +120,7 @@ const SummaryRow: React.FC<{
 
     if (!items || items.length === 0) {
         return (
-             <tr className="font-bold bg-gray-100 dark:bg-gray-700/50">
+             <tr className="bp-report__row bp-report__row--summary">
                 <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                      <span className="inline-block w-5 text-center"></span> {label}
                 </td>
@@ -140,7 +141,7 @@ const SummaryRow: React.FC<{
     const numberCellClass = `${dataCellClass} text-right whitespace-nowrap`;
 
     return (
-        <tr onClick={() => toggleRow(rowKey)} className="font-bold bg-gray-100 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+        <tr onClick={() => toggleRow(rowKey)} className="bp-report__row bp-report__row--summary cursor-pointer">
             <td className={`${dataCellClass} text-left ${indentClasses[indentLevel]} sticky left-0 bg-gray-100 dark:bg-gray-700 z-10 border-r-2 border-r-gray-300 dark:border-r-gray-600`}>
                 <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
             </td>
@@ -729,12 +730,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
     const coSpan = coCodes.length;
 
     const indentClasses = ['pl-2', 'pl-6', 'pl-10', 'pl-14'];
-    const borderClass = "border border-gray-300 dark:border-gray-600";
-    const headerCellClass = `p-1 ${borderClass} text-center align-middle`;
-    const dataCellClass = `p-1 ${borderClass}`;
+    const headerCellClass = "bp-report__head-cell text-center align-middle";
+    const dataCellClass = "bp-report__cell";
 
     return (
-        <div id="bp-forms-container" className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+        <div id="bp-forms-container" className="report-card bp-report-card">
             <style>{`
                 @media print {
                     @page { size: landscape; }
@@ -755,32 +755,38 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     }
                 }
             `}</style>
-            <div className="flex justify-between items-center mb-4 print-hidden">
-                <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Budget Proposal (BP) Forms</h3>
-                <div className="flex gap-2">
-                    <button onClick={handlePrint} className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold hover:bg-gray-600">Print Report</button>
-                    <button onClick={handleDownloadBpFormsXlsx} className="px-4 py-2 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700">Download XLSX</button>
+            <div className="report-card__header print-hidden">
+                <h3 className="report-card__title">Budget Proposal (BP) Forms</h3>
+                <div className="report-card__actions">
+                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
+                    <button onClick={handleDownloadBpFormsXlsx} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
+                        <Download className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Download XLSX</span>
+                    </button>
                 </div>
             </div>
-            <div id="bp-forms-table" className="overflow-x-auto overflow-y-auto max-h-[75vh] relative custom-scrollbar">
-                <table className="min-w-full border-collapse text-xs text-gray-900 dark:text-gray-200">
-                    <thead className="sticky top-0 z-20 shadow-sm">
-                        <tr className="bg-gray-200 dark:bg-gray-800">
+            <div id="bp-forms-table" className="report-table-scroll relative">
+                <table className="bp-report-table min-w-full border-collapse text-xs">
+                    <thead className="sticky top-0 z-20">
+                        <tr>
                             {/* PAP Column: Frozen */}
-                            <th rowSpan={4} className={`${headerCellClass} min-w-[300px] sticky left-0 bg-gray-200 dark:bg-gray-800 z-30 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>Program/Activity/Project</th>
+                            <th rowSpan={4} className={`${headerCellClass} min-w-[300px] sticky left-0 z-30`}>Program/Activity/Project</th>
                             
                             {/* MOOE Group */}
-                            {mooeCodes.length > 0 && <th colSpan={mooeCodes.length} className={`${headerCellClass}`}>MOOE</th>}
-                            <th rowSpan={4} className={`${headerCellClass} bg-blue-100 dark:bg-blue-900/40 font-bold min-w-[100px]`}>Total MOOE</th>
+                            {mooeCodes.length > 0 && <th colSpan={mooeCodes.length} className={`${headerCellClass} bp-report__group--mooe`}>MOOE</th>}
+                            <th rowSpan={4} className={`${headerCellClass} bp-report__group--mooe font-bold min-w-[100px]`}>Total MOOE</th>
                             
                             {/* CO Group */}
-                            {coCodes.length > 0 && <th colSpan={coCodes.length} className={`${headerCellClass}`}>CO</th>}
-                            <th rowSpan={4} className={`${headerCellClass} bg-orange-100 dark:bg-orange-900/40 font-bold min-w-[100px]`}>Total CO</th>
+                            {coCodes.length > 0 && <th colSpan={coCodes.length} className={`${headerCellClass} bp-report__group--co`}>CO</th>}
+                            <th rowSpan={4} className={`${headerCellClass} bp-report__group--co font-bold min-w-[100px]`}>Total CO</th>
                             
                             {/* Grand Total */}
-                            <th rowSpan={4} className={`${headerCellClass} bg-green-100 dark:bg-green-900/40 min-w-[100px]`}>Grand Total</th>
+                            <th rowSpan={4} className={`${headerCellClass} bp-report__group--grand min-w-[100px]`}>Grand Total</th>
                         </tr>
-                        <tr className="bg-gray-100 dark:bg-gray-700/80">
+                        <tr>
                             {/* MOOE Particulars (Dynamic grouping) */}
                             {mooeCodes.map((code, idx) => {
                                 // Find particular for this code
@@ -862,7 +868,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                 return <th key={`p-co-${code}`} colSpan={span} className={`${headerCellClass}`}>{partName}</th>;
                             })}
                         </tr>
-                        <tr className="bg-gray-100 dark:bg-gray-700/60">
+                        <tr>
                             {/* MOOE Descriptions */}
                             {mooeCodes.map(code => {
                                 let partName = "Other Expenses";
@@ -894,7 +900,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                                 );
                             })}
                         </tr>
-                        <tr className="bg-gray-100 dark:bg-gray-700/50">
+                        <tr>
                             {/* MOOE Codes */}
                             {mooeCodes.map(code => <th key={code} className={`${headerCellClass} font-mono whitespace-nowrap`}>{code}</th>)}
                             {/* CO Codes */}
@@ -976,8 +982,8 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                         })}
                     </tbody>
                     <tfoot>
-                        <tr className="font-bold bg-gray-200 dark:bg-gray-700">
-                            <td className={`${dataCellClass} text-left sticky left-0 bg-gray-200 dark:bg-gray-700 z-10 border-r-2 border-r-gray-400 dark:border-r-gray-500`}>GRAND TOTAL</td>
+                        <tr className="bp-report__row bp-report__row--total">
+                            <td className={`${dataCellClass} text-left sticky left-0 z-10`}>GRAND TOTAL</td>
                             
                             {/* MOOE Totals */}
                             {mooeCodes.map((code: string) => (

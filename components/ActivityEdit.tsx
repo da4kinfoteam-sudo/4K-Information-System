@@ -27,7 +27,7 @@ const MONTH_NAMES = [
     "July", "August", "September", "October", "November", "December"
 ];
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm disabled:bg-gray-100 disabled:dark:bg-gray-800 disabled:cursor-not-allowed disabled:text-gray-500";
+const commonInputClasses = "form-control";
 
 const defaultFormData: Activity = {
     id: 0,
@@ -685,15 +685,17 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     );
 
     return (
-        <div className="space-y-6 animate-fadeIn pb-20">
-             <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-white">
+        <div className="form-page animate-fadeIn pb-20">
+             <div className="detail-header">
+                <div className="detail-heading">
+                <h1 className="detail-title">
                     {mode === 'create' ? 'Create New Activity' : `Edit ${mode === 'expenses' ? 'Expenses' : mode === 'accomplishment' ? 'Accomplishment' : 'Details'}: ${formData.name}`}
                 </h1>
-                <button onClick={onBack} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded text-sm font-medium hover:bg-gray-300 dark:hover:bg-gray-600 whitespace-nowrap">Back to List</button>
+                </div>
+                <button onClick={onBack} className="btn btn-secondary">Back to List</button>
             </div>
 
-            <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-xl shadow-lg">
+            <form onSubmit={handleSubmit} className="form-card">
                 
                 {/* Mode: Create - Tabs */}
                 {mode === 'create' && (
@@ -984,38 +986,38 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {/* ACCOMPLISHMENT MODE */}
                 {mode === 'accomplishment' && (
                      <div className="space-y-6">
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Actual Conduct</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Actual Conduct</legend>
+                            <div className="form-grid">
                                 <div>
-                                    <label className="block text-sm font-medium">Actual Start Date</label>
+                                    <label className="form-label">Actual Start Date</label>
                                     <input type="date" name="actualDate" value={formData.actualDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                                 </div>
                                 {conductType === 'Multi-day' && (
                                     <div>
-                                        <label className="block text-sm font-medium">Actual End Date</label>
+                                        <label className="form-label">Actual End Date</label>
                                         <input type="date" name="actualEndDate" value={formData.actualEndDate || ''} onChange={handleInputChange} className={commonInputClasses} />
                                     </div>
                                 )}
-                                <div><label className="block text-sm font-medium">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} /></div>
-                                <div><label className="block text-sm font-medium">Actual Female</label><input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale} onChange={handleNumericChange} className={commonInputClasses} /></div>
+                                <div><label className="form-label">Actual Male</label><input type="number" name="actualParticipantsMale" value={formData.actualParticipantsMale} onChange={handleNumericChange} className={commonInputClasses} /></div>
+                                <div><label className="form-label">Actual Female</label><input type="number" name="actualParticipantsFemale" value={formData.actualParticipantsFemale} onChange={handleNumericChange} className={commonInputClasses} /></div>
                             </div>
                         </fieldset>
-                        
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Budget Utilization</legend>
+                         
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Budget Utilization</legend>
                             {formData.expenses.map((exp) => (
-                                <div key={exp.id} className="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0">
-                                    <p className="font-semibold text-sm mb-2">
+                                <div key={exp.id} className="budget-utilization-item">
+                                    <p className="budget-utilization-title">
                                         {exp.expenseParticular} ({exp.uacsCode})
                                         {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
-                                            <span className="block text-xs text-gray-500 font-normal">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
+                                            <span className="detail-list-copy block">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
                                         )}
                                     </p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="budget-utilization-grid">
                                         {/* Actual Obligation Group */}
-                                        <div className="space-y-2 p-3 bg-blue-50 dark:bg-blue-900/10 rounded border border-blue-100 dark:border-blue-800">
-                                            <p className="text-xs font-bold text-blue-700 uppercase">Obligations</p>
+                                        <div className="budget-editor-panel budget-editor-panel--obligation">
+                                            <p className="budget-editor-panel__title">Obligations</p>
                                             <ObligationsEditor
                                                 obligations={exp.obligations || []}
                                                 onChange={(newObs, total) => {
@@ -1027,8 +1029,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         </div>
 
                                         {/* Actual Disbursement Group */}
-                                        <div className="space-y-2 p-3 bg-green-50 dark:bg-green-900/10 rounded border border-green-100 dark:border-green-800">
-                                            <p className="text-xs font-bold text-green-700 uppercase">Disbursement</p>
+                                        <div className="budget-editor-panel budget-editor-panel--disbursement">
+                                            <p className="budget-editor-panel__title">Disbursement</p>
                                             <DisbursementsEditor
                                                 disbursements={exp.disbursements || []}
                                                 onChange={(newDisb, total) => {
@@ -1044,25 +1046,25 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                         </fieldset>
 
                         {/* Gender and Inclusivity Section */}
-                        <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md">
-                            <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Gender and Inclusivity</legend>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">PWD</label><input type="number" name="actualPWD" value={formData.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Muslim</label><input type="number" name="actualMuslim" value={formData.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">LGBTQ+</label><input type="number" name="actualLGBTQ" value={formData.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Solo Parents</label><input type="number" name="actualSoloParent" value={formData.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Senior</label><input type="number" name="actualSenior" value={formData.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
-                                <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Youth</label><input type="number" name="actualYouth" value={formData.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                        <fieldset className="form-fieldset">
+                            <legend className="form-legend">Gender and Inclusivity</legend>
+                            <div className="form-grid form-grid--compact">
+                                <div><label className="form-label">PWD</label><input type="number" name="actualPWD" value={formData.actualPWD || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="form-label">Muslim</label><input type="number" name="actualMuslim" value={formData.actualMuslim || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="form-label">LGBTQ+</label><input type="number" name="actualLGBTQ" value={formData.actualLGBTQ || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="form-label">Solo Parents</label><input type="number" name="actualSoloParent" value={formData.actualSoloParent || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="form-label">Senior</label><input type="number" name="actualSenior" value={formData.actualSenior || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
+                                <div><label className="form-label">Youth</label><input type="number" name="actualYouth" value={formData.actualYouth || ''} onChange={handleNumericChange} className={commonInputClasses} placeholder="0" /></div>
                             </div>
                         </fieldset>
                      </div>
                 )}
 
-                <div className="flex justify-end gap-3 pt-6 border-t mt-6">
-                    <button type="button" onClick={onBack} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white rounded-md font-bold hover:bg-gray-300 dark:hover:bg-gray-600 shadow-sm">
+                <div className="form-footer">
+                    <button type="button" onClick={onBack} className="btn btn-secondary">
                         Cancel
                     </button>
-                    <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 shadow-md">
+                    <button type="submit" className="btn btn-primary">
                         {mode === 'create' ? 'Create Activity' : 'Save Changes'}
                     </button>
                 </div>

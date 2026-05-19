@@ -44,8 +44,12 @@ import {
     RefInput, RefInfrastructure, RefTrainingReference
 } from './constants';
 import {
-    sampleReferenceUacsList, sampleReferenceParticularList
+    sampleActivities, sampleMarketingPartners, sampleOfficeRequirements, sampleOtherProgramExpenses, sampleReferenceUacsList,
+    sampleReferenceParticularList, sampleStaffingRequirements, sampleSubprojects, sampleRefCommodities,
+    sampleRefLivestock, sampleRefEquipment, sampleRefInputs, sampleRefInfrastructure, sampleRefTrainings,
+    sampleGidaAreas, sampleElcacAreas
 } from './samples';
+import { sampleIPOs } from './sampleIPOs';
 
 // Helper to format page names for "Back to..." buttons
 const getPageName = (path: string) => {
@@ -108,15 +112,15 @@ const AppContent: React.FC = () => {
     // --- DATA STATE MANAGEMENT ---
     
     // Subprojects, IPOs, Activities use the sync hook
-    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', []);
-    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', []);
-    const [activities, setActivities] = useSupabaseTable<Activity>('activities', []);
-    const [marketingPartners, setMarketingPartners] = useSupabaseTable<MarketingPartner>('marketing_partners', []);
+    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects);
+    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', sampleIPOs);
+    const [activities, setActivities] = useSupabaseTable<Activity>('activities', sampleActivities);
+    const [marketingPartners, setMarketingPartners] = useSupabaseTable<MarketingPartner>('marketing_partners', sampleMarketingPartners);
     
     // Program Management States - Now using useSupabaseTable for real-time support
-    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', []);
-    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', []);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', []);
+    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements);
+    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements);
+    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses);
 
     // Financial Records - Now using useSupabaseTable for real-time support
     const [allFinancialObligations, setAllFinancialObligations] = useSupabaseTable<any>('financial_obligations', []);
@@ -246,11 +250,11 @@ const AppContent: React.FC = () => {
 
             // Fetch GIDA Areas
             const ga = await fetchAll('gida_areas', 'id', true);
-            setGidaAreas(ga as GidaArea[]);
+            if (ga.length > 0) setGidaAreas(ga as GidaArea[]);
 
             // Fetch ELCAC Areas
             const ea = await fetchAll('elcac_areas', 'id', true);
-            setElcacAreas(ea as ElcacArea[]);
+            if (ea.length > 0) setElcacAreas(ea as ElcacArea[]);
         };
         fetchAllData();
     }, [isAuthReady]);
@@ -277,15 +281,15 @@ const AppContent: React.FC = () => {
     // Reference States
     const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
     const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
-    const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', []);
-    const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', []);
-    const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', []);
-    const [refInputs, setRefInputs] = useSupabaseTable<RefInput>('ref_inputs', []);
-    const [refInfrastructure, setRefInfrastructure] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', []);
-    const [refTrainings, setRefTrainings] = useSupabaseTable<RefTrainingReference>('ref_trainings', []);
+    const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', sampleRefCommodities);
+    const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', sampleRefLivestock);
+    const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', sampleRefEquipment);
+    const [refInputs, setRefInputs] = useSupabaseTable<RefInput>('ref_inputs', sampleRefInputs);
+    const [refInfrastructure, setRefInfrastructure] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', sampleRefInfrastructure);
+    const [refTrainings, setRefTrainings] = useSupabaseTable<RefTrainingReference>('ref_trainings', sampleRefTrainings);
     const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
-    const [gidaAreas, setGidaAreas] = useState<GidaArea[]>([]);
-    const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>([]);
+    const [gidaAreas, setGidaAreas] = useState<GidaArea[]>(sampleGidaAreas);
+    const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>(sampleElcacAreas);
 
     // Construct systemSettings object for child components that expect it
     const systemSettings = useMemo(() => ({
@@ -1008,7 +1012,7 @@ const AppContent: React.FC = () => {
     };
 
     return (
-        <div className={`flex h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-200 ${isDarkMode ? 'dark' : ''}`}>
+        <div className={`app-shell ${isDarkMode ? 'dark' : ''}`}>
             <Sidebar 
                 isOpen={isSidebarOpen} 
                 toggleSidebar={toggleSidebar}
@@ -1016,14 +1020,14 @@ const AppContent: React.FC = () => {
                 currentPage={currentPage} 
                 setCurrentPage={navigateTo} 
             />
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="app-workspace">
                 <Header 
                     toggleSidebar={toggleSidebar} 
                     toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
                     setCurrentPage={navigateTo}
                 />
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-900 p-4 md:p-6">
+                <main className="app-main">
                     {renderPage()}
                 </main>
                 <AIChatbot 

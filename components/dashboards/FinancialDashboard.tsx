@@ -82,7 +82,7 @@ const SimplePieChart: React.FC<{ data: { label: string; value: number; color: st
     const total = data.reduce((acc, cur) => acc + cur.value, 0);
     let cumulativePercent = 0;
 
-    if (total === 0) return <div className="text-gray-400 text-sm italic h-full flex items-center justify-center">No data available</div>;
+    if (total === 0) return <div className="dashboard-empty dashboard-empty--center">No data available</div>;
 
     const getCoordinatesForPercent = (percent: number) => {
         const x = Math.cos(2 * Math.PI * percent);
@@ -115,22 +115,22 @@ const SimplePieChart: React.FC<{ data: { label: string; value: number; color: st
     });
 
     return (
-        <div className="flex flex-col items-center w-full">
-            <div className="relative" style={{ width: size, height: size }}>
-                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
+        <div className="financial-pie">
+            <div className="financial-pie__chart" style={{ width: size, height: size }}>
+                <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="financial-pie__svg">
                     {slices.map((slice, i) => (
                         <path key={i} d={slice.path} fill={slice.color} stroke="white" strokeWidth="2" />
                     ))}
                 </svg>
             </div>
-            <div className="mt-6 w-full space-y-2">
+            <div className="financial-pie__legend">
                 {slices.map((slice, i) => (
-                    <div key={i} className="flex justify-between items-center text-xs">
-                        <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: slice.color }}></span>
-                            <span className="text-gray-600 dark:text-gray-300 font-medium truncate max-w-[120px]" title={slice.label}>{slice.label}</span>
+                    <div key={i} className="financial-pie__legend-row">
+                        <div className="financial-pie__legend-label">
+                            <span className="financial-pie__swatch" style={{ backgroundColor: slice.color }}></span>
+                            <span title={slice.label}>{slice.label}</span>
                         </div>
-                        <span className="font-bold text-gray-800 dark:text-gray-200">{(slice.percent * 100).toFixed(1)}%</span>
+                        <span className="financial-pie__percent">{(slice.percent * 100).toFixed(1)}%</span>
                     </div>
                 ))}
             </div>
@@ -390,37 +390,37 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         const disbPercent = target > 0 ? (disbursement / target) * 100 : 0;
 
         return (
-            <div className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow border-l-4 border-green-500 dark:border-green-600 hover:shadow-lg transition-shadow">
-                <h5 className="font-bold text-gray-700 dark:text-gray-200 mb-4 text-lg border-b border-gray-100 dark:border-gray-700 pb-2">{title}</h5>
+            <div className="financial-component-card">
+                <h5>{title}</h5>
                 
-                <div className="space-y-4">
-                    <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-gray-500 dark:text-gray-400 font-medium">Target Allocation</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(target)}</span>
+                <div className="financial-progress-list">
+                    <div className="financial-progress">
+                        <div className="financial-progress__row">
+                            <span>Target Allocation</span>
+                            <strong>{formatCurrencyWhole(target)}</strong>
                         </div>
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                            <div className="bg-green-300 h-full rounded-full" style={{ width: '100%' }}></div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-gray-500 dark:text-gray-400 font-medium">Actual Obligation ({obliPercent.toFixed(1)}%)</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(obligation)}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                            <div className="bg-green-50 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(obliPercent, 100)}%` }}></div>
+                        <div className="financial-progress__track">
+                            <div className="financial-progress__bar financial-progress__bar--target" style={{ width: '100%' }}></div>
                         </div>
                     </div>
 
-                    <div>
-                        <div className="flex justify-between text-xs mb-1">
-                            <span className="text-gray-500 dark:text-gray-400 font-medium">Actual Disbursement ({disbPercent.toFixed(1)}%)</span>
-                            <span className="font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(disbursement)}</span>
+                    <div className="financial-progress">
+                        <div className="financial-progress__row">
+                            <span>Actual Obligation ({obliPercent.toFixed(1)}%)</span>
+                            <strong>{formatCurrencyWhole(obligation)}</strong>
                         </div>
-                        <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                            <div className="bg-green-700 h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(disbPercent, 100)}%` }}></div>
+                        <div className="financial-progress__track">
+                            <div className="financial-progress__bar financial-progress__bar--obligation" style={{ width: `${Math.min(obliPercent, 100)}%` }}></div>
+                        </div>
+                    </div>
+
+                    <div className="financial-progress">
+                        <div className="financial-progress__row">
+                            <span>Actual Disbursement ({disbPercent.toFixed(1)}%)</span>
+                            <strong>{formatCurrencyWhole(disbursement)}</strong>
+                        </div>
+                        <div className="financial-progress__track">
+                            <div className="financial-progress__bar financial-progress__bar--disbursement" style={{ width: `${Math.min(disbPercent, 100)}%` }}></div>
                         </div>
                     </div>
                 </div>
@@ -461,7 +461,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         }, [provinceData]);
 
         const renderDataColumns = (alloc: number, obli: number, disb: number, isExpanded: boolean) => {
-            if (isExpanded) return <div className="col-span-3 text-right italic text-gray-400 text-[10px] py-1">Showing sub-items...</div>;
+            if (isExpanded) return <div className="financial-hierarchy__subitems-note">Showing sub-items...</div>;
 
             const allocWidth = (alloc / maxVal) * 100;
             const obliWidth = (obli / maxVal) * 100;
@@ -469,22 +469,22 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
 
             return (
                 <>
-                    <div className="text-right">
-                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(alloc)}</div>
-                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
-                            <div className="h-full bg-green-400" style={{ width: `${allocWidth}%` }}></div>
+                    <div className="financial-hierarchy__value">
+                        <div>{formatCurrencyWhole(alloc)}</div>
+                        <div className="financial-hierarchy__track">
+                            <span className="financial-hierarchy__bar financial-hierarchy__bar--allocation" style={{ width: `${allocWidth}%` }}></span>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(obli)}</div>
-                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
-                            <div className="h-full bg-teal-500" style={{ width: `${obliWidth}%` }}></div>
+                    <div className="financial-hierarchy__value">
+                        <div>{formatCurrencyWhole(obli)}</div>
+                        <div className="financial-hierarchy__track">
+                            <span className="financial-hierarchy__bar financial-hierarchy__bar--obligation" style={{ width: `${obliWidth}%` }}></span>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <div className="text-xs font-bold text-gray-800 dark:text-gray-100">{formatCurrencyWhole(disb)}</div>
-                        <div className="h-1 bg-gray-100 dark:bg-gray-800 rounded-full mt-1 overflow-hidden">
-                            <div className="h-full bg-emerald-700" style={{ width: `${disbWidth}%` }}></div>
+                    <div className="financial-hierarchy__value">
+                        <div>{formatCurrencyWhole(disb)}</div>
+                        <div className="financial-hierarchy__track">
+                            <span className="financial-hierarchy__bar financial-hierarchy__bar--disbursement" style={{ width: `${disbWidth}%` }}></span>
                         </div>
                     </div>
                 </>
@@ -492,16 +492,16 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         };
 
         return (
-            <div className="w-full overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+            <div className="financial-hierarchy">
                 {/* Table Header */}
-                <div className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 bg-gray-100 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                <div className="financial-hierarchy__row financial-hierarchy__row--header">
                     <div>Location Hierarchy</div>
                     <div className="text-right">Allocation</div>
                     <div className="text-right">Obligation</div>
                     <div className="text-right">Disbursement</div>
                 </div>
 
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                <div className="financial-hierarchy__body">
                     {Object.entries(provinceData)
                         .sort(([nameA, a], [nameB, b]) => {
                             if (nameA === 'Unspecified') return 1;
@@ -511,56 +511,56 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                         .map(([province, pData]: [string, any]) => {
                             const isExpanded = expandedProvinces.has(province);
                             return (
-                                <div key={province} className="flex flex-col">
+                                <div key={province} className="financial-hierarchy__group">
                                     {/* Province Row */}
                                     <div 
-                                        className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-2.5 items-center hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer group"
+                                        className="financial-hierarchy__row financial-hierarchy__row--province"
                                         onClick={() => toggleProvince(province)}
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-5 h-5 flex items-center justify-center rounded bg-gray-100 dark:bg-gray-700 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors text-xs font-bold">
-                                                {isExpanded ? '−' : '+'}
+                                        <div className="financial-hierarchy__label">
+                                            <div className="financial-hierarchy__toggle">
+                                                {isExpanded ? '-' : '+'}
                                             </div>
-                                            <span className="font-bold text-gray-800 dark:text-gray-100 text-sm">{province}</span>
+                                            <span>{province}</span>
                                         </div>
                                         {renderDataColumns(pData.alloc, pData.obli, pData.disb, isExpanded)}
                                     </div>
 
                                     {/* Ancestral Domains Hierarchy */}
                                     {isExpanded && (
-                                        <div className="bg-gray-50/30 dark:bg-gray-800/10 divide-y divide-gray-50 dark:divide-gray-800/50">
+                                        <div className="financial-hierarchy__children">
                                             {Object.entries(pData.ancestralDomains)
                                                 .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
                                                 .map(([ad, adData]: [string, any]) => {
                                                     const adKey = `${province}-${ad}`;
                                                     const isADExpanded = expandedADs.has(adKey);
                                                     return (
-                                                        <div key={ad} className="flex flex-col">
+                                                        <div key={ad} className="financial-hierarchy__group">
                                                             {/* AD Row */}
                                                             <div 
-                                                                className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-2 items-center hover:bg-gray-100/50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer group pl-12"
+                                                                className="financial-hierarchy__row financial-hierarchy__row--ad"
                                                                 onClick={() => toggleAD(adKey)}
                                                             >
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-4 h-4 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-600 text-gray-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors text-[10px] font-bold">
-                                                                        {isADExpanded ? '−' : '+'}
+                                                                <div className="financial-hierarchy__label">
+                                                                    <div className="financial-hierarchy__toggle financial-hierarchy__toggle--small">
+                                                                        {isADExpanded ? '-' : '+'}
                                                                     </div>
-                                                                    <span className="font-semibold text-gray-700 dark:text-gray-300 text-xs">{ad}</span>
+                                                                    <span>{ad}</span>
                                                                 </div>
                                                                 {renderDataColumns(adData.alloc, adData.obli, adData.disb, isADExpanded)}
                                                             </div>
 
                                                             {/* IPOs Hierarchy */}
                                                             {isADExpanded && (
-                                                                <div className="bg-white dark:bg-gray-900/50 divide-y divide-gray-50 dark:divide-gray-800/30">
+                                                                <div className="financial-hierarchy__children financial-hierarchy__children--ipo">
                                                                     {Object.entries(adData.ipos)
                                                                         .sort(([, a]: [any, any], [, b]: [any, any]) => b.alloc - a.alloc)
                                                                         .map(([ipo, ipoData]: [string, any]) => (
                                                                             <div 
                                                                                 key={ipo}
-                                                                                className="grid grid-cols-[1.5fr,1fr,1fr,1fr] gap-4 px-4 py-1.5 items-center pl-20"
+                                                                                className="financial-hierarchy__row financial-hierarchy__row--ipo"
                                                                             >
-                                                                                <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium italic">
+                                                                                <div className="financial-hierarchy__ipo-name">
                                                                                     {ipo}
                                                                                 </div>
                                                                                 {renderDataColumns(ipoData.alloc, ipoData.obli, ipoData.disb, false)}
@@ -606,8 +606,8 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         const getY = (val: number) => height - padding - (val / maxVal) * chartHeight;
 
         return (
-            <div className="w-full h-full overflow-hidden">
-                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full font-sans text-xs" preserveAspectRatio="xMidYMid meet">
+            <div className="financial-monthly-chart">
+                <svg viewBox={`0 0 ${width} ${height}`} className="financial-monthly-chart__svg" preserveAspectRatio="xMidYMid meet">
                     {/* Grid Lines */}
                     {[0, 0.25, 0.5, 0.75, 1].map((t: number) => {
                         const y = height - padding - (t * chartHeight);
@@ -649,10 +649,10 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                         );
                     })}
                 </svg>
-                <div className="flex justify-center gap-6 mt-2 text-[11px] text-gray-600 dark:text-gray-400">
-                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-300 rounded-sm"></span> Target</div>
-                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-500 rounded-sm"></span> Obligation</div>
-                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 bg-green-700 rounded-sm"></span> Disbursement</div>
+                <div className="dashboard-chart-legend">
+                    <div className="dashboard-chart-legend__item"><span className="dashboard-chart-swatch bg-green-300"></span> Target</div>
+                    <div className="dashboard-chart-legend__item"><span className="dashboard-chart-swatch bg-green-500"></span> Obligation</div>
+                    <div className="dashboard-chart-legend__item"><span className="dashboard-chart-swatch bg-green-700"></span> Disbursement</div>
                 </div>
             </div>
         );
@@ -670,99 +670,102 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
         const grandTotal = Object.values(columnTotals).reduce((a, b) => a + b, 0);
 
         return (
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md overflow-x-auto">
-                <h4 className="font-bold text-lg text-gray-800 dark:text-white mb-4 border-l-4 border-green-500 pl-3">{title}</h4>
-                <table className="min-w-full text-xs text-left text-gray-600 dark:text-gray-300">
-                    <thead className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold uppercase">
+            <div className="report-card financial-matrix-card">
+                <h4 className="report-card__title financial-matrix-card__title">{title}</h4>
+                <div className="data-table-scroll">
+                <table className="data-table financial-matrix-table">
+                    <thead>
                         <tr>
-                            <th className="px-4 py-3">Operating Unit</th>
-                            {headers.map(h => <th key={h} className="px-4 py-3 text-right">{h}</th>)}
-                            <th className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600">Grand Total</th>
+                            <th>Operating Unit</th>
+                            {headers.map(h => <th key={h} className="text-right">{h}</th>)}
+                            <th className="text-right">Grand Total</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody>
                         {operatingUnits.map(ou => {
                             const rowTotal = headers.reduce((sum, h) => sum + (matrixData[ou]?.[h]?.[metricKey] || 0), 0);
                             return (
-                                <tr key={ou} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                    <td className="px-4 py-2 font-medium">{ou}</td>
+                                <tr key={ou}>
+                                    <td className="font-medium">{ou}</td>
                                     {headers.map(h => (
-                                        <td key={h} className="px-4 py-2 text-right">
+                                        <td key={h} className="text-right">
                                             {formatCurrencyWhole(matrixData[ou]?.[h]?.[metricKey] || 0)}
                                         </td>
                                     ))}
-                                    <td className="px-4 py-2 text-right font-bold bg-gray-50 dark:bg-gray-800/50">{formatCurrencyWhole(rowTotal)}</td>
+                                    <td className="text-right font-bold">{formatCurrencyWhole(rowTotal)}</td>
                                 </tr>
                             );
                         })}
                     </tbody>
-                    <tfoot className="bg-gray-100 dark:bg-gray-700 font-bold text-gray-800 dark:text-white">
+                    <tfoot>
                         <tr>
-                            <td className="px-4 py-3">TOTAL</td>
+                            <td>TOTAL</td>
                             {headers.map(h => (
-                                <td key={h} className="px-4 py-3 text-right">{formatCurrencyWhole(columnTotals[h])}</td>
+                                <td key={h} className="text-right">{formatCurrencyWhole(columnTotals[h])}</td>
                             ))}
-                            <td className="px-4 py-3 text-right bg-gray-200 dark:bg-gray-600 text-blue-700 dark:text-blue-300">{formatCurrencyWhole(grandTotal)}</td>
+                            <td className="text-right">{formatCurrencyWhole(grandTotal)}</td>
                         </tr>
                     </tfoot>
                 </table>
+                </div>
             </div>
         );
     };
 
     return (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="financial-dashboard dashboard-view animate-fadeIn">
             {/* Action Bar */}
-            <div className="flex flex-col gap-6 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm print-hidden">
-                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Financial Performance</h1>
+            <div className="report-card financial-action-card print-hidden">
+                <div className="report-card__header">
+                    <h1 className="report-card__title financial-action-card__title">Financial Performance</h1>
                     <button 
+                        type="button"
                         onClick={handleExportPPTX}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-all shadow-md hover:shadow-lg w-full md:w-auto justify-center"
+                        className="btn btn-primary btn-responsive"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                         </svg>
-                        Download Report
+                        <span className="btn-text">Download Report</span>
                     </button>
                 </div>
             </div>
 
-            <section aria-labelledby="budget-utilization">
-                <h3 id="budget-utilization" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Utilization</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-gradient-to-br from-green-400 to-green-600 text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                            <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Budget Allocation</h4>
+            <section className="dashboard-section" aria-labelledby="budget-utilization">
+                <h3 id="budget-utilization" className="dashboard-section__title">Budget Utilization</h3>
+                <div className="financial-summary-grid">
+                    <div className="financial-summary-card financial-summary-card--allocation">
+                        <div className="financial-summary-card__header">
+                            <div className="financial-summary-card__icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                            <h4>Budget Allocation</h4>
                         </div>
-                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalAllocation)}>{formatCurrencyWhole(totalAllocation)}</p>
-                        <p className="text-xs mt-2 opacity-80">Total Target</p>
+                        <p className="financial-summary-card__value" title={formatCurrencyWhole(totalAllocation)}>{formatCurrencyWhole(totalAllocation)}</p>
+                        <p className="financial-summary-card__meta">Total Target</p>
                     </div>
 
-                    <div className="bg-gradient-to-br from-teal-500 to-teal-700 text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
-                            <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Total Obligation</h4>
+                    <div className="financial-summary-card financial-summary-card--obligation">
+                        <div className="financial-summary-card__header">
+                            <div className="financial-summary-card__icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+                            <h4>Total Obligation</h4>
                         </div>
-                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalObligation)}>{formatCurrencyWhole(totalObligation)}</p>
-                        <div className="flex justify-between items-center mt-2">
-                            <p className="text-xs opacity-80">Actual Obligated</p>
-                            <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded text-white">
+                        <p className="financial-summary-card__value" title={formatCurrencyWhole(totalObligation)}>{formatCurrencyWhole(totalObligation)}</p>
+                        <div className="financial-summary-card__footer">
+                            <p>Actual Obligated</p>
+                            <span>
                                 {totalAllocation > 0 ? Math.round((totalObligation / totalAllocation) * 100) : 0}% Utilized
                             </span>
                         </div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="p-2 bg-white/20 rounded-full"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
-                            <h4 className="text-sm font-medium uppercase tracking-wider opacity-90">Total Disbursement</h4>
+                    <div className="financial-summary-card financial-summary-card--disbursement">
+                        <div className="financial-summary-card__header">
+                            <div className="financial-summary-card__icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg></div>
+                            <h4>Total Disbursement</h4>
                         </div>
-                        <p className="text-xl sm:text-2xl lg:text-3xl font-bold truncate" title={formatCurrencyWhole(totalDisbursement)}>{formatCurrencyWhole(totalDisbursement)}</p>
-                        <div className="flex justify-between items-center mt-2">
-                            <p className="text-xs opacity-80">Actual Disbursed</p>
-                            <span className="text-xs font-bold bg-white/20 px-2 py-0.5 rounded text-white">
+                        <p className="financial-summary-card__value" title={formatCurrencyWhole(totalDisbursement)}>{formatCurrencyWhole(totalDisbursement)}</p>
+                        <div className="financial-summary-card__footer">
+                            <p>Actual Disbursed</p>
+                            <span>
                                 {totalObligation > 0 ? Math.round((totalDisbursement / totalObligation) * 100) : 0}% of Obli.
                             </span>
                         </div>
@@ -770,27 +773,27 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                 </div>
             </section>
 
-            <section aria-labelledby="component-distribution">
-                <h3 id="component-distribution" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Distribution by Component</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
-                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Allocation (Target)</h4>
+            <section className="dashboard-section" aria-labelledby="component-distribution">
+                <h3 id="component-distribution" className="dashboard-section__title">Budget Distribution by Component</h3>
+                <div className="dashboard-card-grid dashboard-card-grid--three">
+                    <div className="dashboard-chart-card financial-pie-card">
+                        <h4 className="dashboard-chart-title">Allocation (Target)</h4>
                         <SimplePieChart data={getPieData('target')} />
                     </div>
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
-                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Actual Obligation</h4>
+                    <div className="dashboard-chart-card financial-pie-card">
+                        <h4 className="dashboard-chart-title">Actual Obligation</h4>
                         <SimplePieChart data={getPieData('obligation')} />
                     </div>
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col items-center">
-                        <h4 className="font-bold text-gray-700 dark:text-gray-200 mb-6 text-center">Actual Disbursement</h4>
+                    <div className="dashboard-chart-card financial-pie-card">
+                        <h4 className="dashboard-chart-title">Actual Disbursement</h4>
                         <SimplePieChart data={getPieData('disbursement')} />
                     </div>
                 </div>
             </section>
 
-            <section aria-labelledby="budget-breakdown">
-                <h3 id="budget-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Budget Performance by Component</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <section className="dashboard-section" aria-labelledby="budget-breakdown">
+                <h3 id="budget-breakdown" className="dashboard-section__title">Budget Performance by Component</h3>
+                <div className="financial-component-grid">
                     {Object.entries(components).map(([key, value]) => (
                         <ComponentComparisonCard 
                             key={key} 
@@ -803,25 +806,25 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                 </div>
             </section>
 
-            <section aria-labelledby="province-breakdown">
-                <h3 id="province-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Allocation per Province, Ancestral Domains, IPOs</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 italic">Hierarchical breakdown of financial performance. Expand provinces and ancestral domains to see detailed allocations, obligations, and disbursements.</p>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md max-h-[600px] overflow-y-auto custom-scrollbar">
+            <section className="dashboard-section" aria-labelledby="province-breakdown">
+                <h3 id="province-breakdown" className="dashboard-section__title">Allocation per Province, Ancestral Domains, IPOs</h3>
+                <p className="dashboard-section__note">Hierarchical breakdown of financial performance. Expand provinces and ancestral domains to see detailed allocations, obligations, and disbursements.</p>
+                <div className="dashboard-chart-card financial-hierarchy-card custom-scrollbar">
                     <HierarchicalProvinceChart />
                 </div>
             </section>
 
-            <section aria-labelledby="monthly-breakdown">
-                <h3 id="monthly-breakdown" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Monthly Financial Performance</h3>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md h-96">
+            <section className="dashboard-section" aria-labelledby="monthly-breakdown">
+                <h3 id="monthly-breakdown" className="dashboard-section__title">Monthly Financial Performance</h3>
+                <div className="dashboard-chart-card financial-monthly-card">
                     <MonthlyChart />
                 </div>
             </section>
 
             {canViewMatrix && (
-                <section aria-labelledby="financial-matrices">
-                    <h3 id="financial-matrices" className="text-xl font-bold text-gray-800 dark:text-white mb-4">Detailed Financial Matrix by Operating Unit</h3>
-                    <div className="space-y-8">
+                <section className="dashboard-section" aria-labelledby="financial-matrices">
+                    <h3 id="financial-matrices" className="dashboard-section__title">Detailed Financial Matrix by Operating Unit</h3>
+                    <div className="financial-matrix-stack">
                         <MatrixTable title="Total Allocation (Target)" metricKey="alloc" />
                         <MatrixTable title="Actual Obligation" metricKey="obli" />
                         <MatrixTable title="Actual Disbursement" metricKey="disb" />

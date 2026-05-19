@@ -1,6 +1,6 @@
 
-// Author: 4K 
 import React, { useMemo } from 'react';
+import { ArrowLeft, CheckCircle2, Edit3 } from 'lucide-react';
 import { Activity, IPO } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
@@ -38,20 +38,19 @@ const formatCurrency = (amount: number) => {
 }
 
 const getStatusBadge = (status: Activity['status']) => {
-    const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full";
     switch (status) {
-        case 'Completed': return `${baseClasses} bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200`;
-        case 'Ongoing': return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-        case 'Proposed': return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-        case 'Cancelled': return `${baseClasses} bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200`;
-        default: return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
+        case 'Completed': return 'status-badge status-badge--compact status-badge--completed';
+        case 'Ongoing': return 'status-badge status-badge--compact status-badge--ongoing';
+        case 'Proposed': return 'status-badge status-badge--compact status-badge--proposed';
+        case 'Cancelled': return 'status-badge status-badge--compact status-badge--cancelled';
+        default: return 'status-badge status-badge--compact status-badge--neutral';
     }
 }
 
 const DetailItem: React.FC<{ label: string; value?: string | number | React.ReactNode }> = ({ label, value }) => (
-    <div>
-        <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-        <dd className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{value || 'N/A'}</dd>
+    <div className="detail-item">
+        <dt className="detail-label">{label}</dt>
+        <dd className="detail-value font-semibold">{value || 'N/A'}</dd>
     </div>
 );
 
@@ -89,47 +88,47 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     }, [activity.expenses]);
 
     return (
-        <div className="space-y-8 animate-fadeIn">
+        <div className="detail-page animate-fadeIn">
             {/* Header */}
-            <header className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">{activity.name}</h1>
-                    <p className="text-md text-gray-500 dark:text-gray-400">
+            <header className="detail-header">
+                <div className="detail-heading">
+                    <h1 className="detail-title">{activity.name}</h1>
+                    <p className="detail-meta">
                         {activity.location} | {formatDate(activity.date)}
                         {activity.endDate && activity.endDate !== activity.date ? ` - ${formatDate(activity.endDate)}` : ''}
                     </p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="detail-actions">
                     {(canEditAccomplishment || isAdmin) && (
-                        <button onClick={() => onEdit('accomplishment')} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            Edit Accomplishment
+                        <button onClick={() => onEdit('accomplishment')} className="btn btn-primary btn-responsive" title="Edit Accomplishment">
+                            <CheckCircle2 className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Edit Accomplishment</span>
                         </button>
                     )}
-                    <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                        Back to {previousPageName}
+                    <button onClick={onBack} className="btn btn-secondary btn-responsive" title={`Back to ${previousPageName}`}>
+                        <ArrowLeft className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Back to {previousPageName}</span>
                     </button>
                 </div>
             </header>
 
             {/* Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="detail-grid">
                 {/* Left Column: Info & Expenses */}
-                <div className="lg:col-span-2 space-y-8">
+                <div className="detail-main">
                     
                     {/* Activity Details Section */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="detail-card">
                         <div className="flex justify-between items-start mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Activity Details</h3>
+                            <h3 className="detail-card-title mb-0">Activity Details</h3>
                             {(canEditDetails || isAdmin) && (
-                                <button onClick={() => onEdit('details')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                <button onClick={() => onEdit('details')} className="table-action table-action--primary">
+                                    <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Details
                                 </button>
                             )}
                         </div>
-                        <dl className="grid grid-cols-2 gap-x-4 gap-y-4">
+                        <dl className="detail-dl">
                             <DetailItem label="Status" value={<span className={getStatusBadge(activity.status)}>{activity.status}</span>} />
                             <DetailItem label="Operating Unit" value={activity.operatingUnit} />
                             <DetailItem label="UID" value={activity.uid} />
@@ -144,32 +143,32 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             <DetailItem label="Funding Year" value={activity.fundingYear} />
                             <DetailItem label="Tier" value={activity.tier} />
                             {activity.type === 'Training' && <DetailItem label="Facilitator" value={activity.facilitator} />}
-                            <div className="col-span-2">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Description</dt>
-                                <dd className="mt-1 text-sm text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">{activity.description || 'No description provided.'}</dd>
+                            <div className="detail-item detail-item--wide">
+                                <dt className="detail-label">Description</dt>
+                                <dd className="detail-note">{activity.description || 'No description provided.'}</dd>
                             </div>
                             
                             {/* Target Participants integrated here */}
-                            <div className="col-span-2 mt-4 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
-                                <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">Target Participants</h4>
-                                <div className="grid grid-cols-3 gap-2 text-sm text-gray-700 dark:text-gray-200">
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-gray-500">Male</span>
-                                        <span className="font-semibold">{activity.participantsMale}</span>
+                            <div className="detail-item detail-item--wide">
+                                <h4 className="detail-section-title">Target Participants</h4>
+                                <div className="detail-metric-grid mb-0">
+                                    <div className="detail-metric detail-metric--inline">
+                                        <span className="detail-metric-label">Male</span>
+                                        <span className="detail-metric-value">{activity.participantsMale}</span>
                                     </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-gray-500">Female</span>
-                                        <span className="font-semibold">{activity.participantsFemale}</span>
+                                    <div className="detail-metric detail-metric--inline">
+                                        <span className="detail-metric-label">Female</span>
+                                        <span className="detail-metric-value">{activity.participantsFemale}</span>
                                     </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-xs text-gray-500">Total</span>
-                                        <span className="font-semibold">{activity.participantsMale + activity.participantsFemale}</span>
+                                    <div className="detail-metric detail-metric--inline">
+                                        <span className="detail-metric-label">Total</span>
+                                        <span className="detail-metric-value">{activity.participantsMale + activity.participantsFemale}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="col-span-2 mt-2">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Participating IPOs</dt>
+                            <div className="detail-item detail-item--wide">
+                                <dt className="detail-label mb-2">Participating IPOs</dt>
                                 {activity.participatingIpos.length > 0 ? (
                                     <ul className="flex flex-wrap gap-2">
                                         {activity.participatingIpos.map((ipoName, idx) => {
@@ -179,10 +178,10 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                     <button 
                                                         onClick={() => ipo && onSelectIpo(ipo)}
                                                         disabled={!ipo}
-                                                        className={`flex items-center gap-2 text-sm px-3 py-1 rounded-full transition-colors ${ipo ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 cursor-pointer' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 cursor-default'}`}
+                                                        className={`detail-pill-button ${ipo ? 'detail-pill-button--active' : 'detail-pill-button--disabled'}`}
                                                         title={ipo ? 'View IPO Profile' : 'IPO details not found'}
                                                     >
-                                                        <span className="w-2 h-2 rounded-full bg-current"></span>
+                                                        <span className="detail-pill-button__dot"></span>
                                                         <span>{ipoName}</span>
                                                     </button>
                                                 </li>
@@ -190,58 +189,58 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                         })}
                                     </ul>
                                 ) : (
-                                    <p className="text-sm text-gray-500 italic">No participating IPOs selected.</p>
+                                    <p className="detail-empty">No participating IPOs selected.</p>
                                 )}
                             </div>
                         </dl>
                     </div>
 
                     {/* Expenses Section */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Expenses & Budget</h3>
+                            <h3 className="detail-card-title mb-0">Expenses & Budget</h3>
                             {(canEditExpenses || isAdmin) && (
-                                <button onClick={() => onEdit('expenses')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
+                                <button onClick={() => onEdit('expenses')} className="table-action table-action--primary">
+                                    <Edit3 className="btn-symbol" aria-hidden="true" />
                                     Edit Expenses
                                 </button>
                             )}
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full text-sm">
-                                <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                        <div className="data-table-scroll">
+                            <table className="data-table">
+                                <thead>
                                     <tr>
-                                        <th className="px-4 py-2 text-left">Particulars</th>
-                                        <th className="px-4 py-2 text-left">UACS Code</th>
-                                        <th className="px-4 py-2 text-left">Obligation</th>
-                                        <th className="px-4 py-2 text-left">Disbursement</th>
-                                        <th className="px-4 py-2 text-right">Amount</th>
+                                        <th>Particulars</th>
+                                        <th>UACS Code</th>
+                                        <th>Obligation</th>
+                                        <th>Disbursement</th>
+                                        <th className="text-right">Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {activity.expenses.length > 0 ? (
                                         activity.expenses.map(exp => (
-                                            <tr key={exp.id} className="border-b border-gray-200 dark:border-gray-700">
-                                                <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
-                                                <td className="px-4 py-2">
+                                            <tr key={exp.id}>
+                                                <td className="font-medium">{exp.expenseParticular}</td>
+                                                <td>
                                                     {exp.uacsCode}
                                                     {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
-                                                        <span className="block text-xs text-gray-500">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
+                                                        <span className="detail-list-copy block">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-2">{formatMonthYear(exp.obligationMonth)}</td>
-                                                <td className="px-4 py-2">{formatMonthYear(exp.disbursementMonth)}</td>
-                                                <td className="px-4 py-2 text-right font-medium">{formatCurrency(exp.amount)}</td>
+                                                <td>{formatMonthYear(exp.obligationMonth)}</td>
+                                                <td>{formatMonthYear(exp.disbursementMonth)}</td>
+                                                <td className="text-right font-medium">{formatCurrency(exp.amount)}</td>
                                             </tr>
                                         ))
                                     ) : (
-                                        <tr><td colSpan={5} className="px-4 py-4 text-center text-gray-500 italic">No expenses recorded.</td></tr>
+                                        <tr><td colSpan={5} className="text-center italic">No expenses recorded.</td></tr>
                                     )}
                                 </tbody>
-                                <tfoot className="font-bold bg-gray-50 dark:bg-gray-700/50">
+                                <tfoot>
                                     <tr>
-                                        <td colSpan={4} className="px-4 py-2 text-right">Total Budget</td>
-                                        <td className="px-4 py-2 text-right">{formatCurrency(totalBudget)}</td>
+                                        <td colSpan={4} className="text-right font-bold">Total Budget</td>
+                                        <td className="text-right font-bold">{formatCurrency(totalBudget)}</td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -249,12 +248,12 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                     </div>
 
                     {/* NEW: Accomplishment Report Section */}
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+                    <div className="detail-card">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-semibold text-gray-800 dark:text-white">Accomplishment Report</h3>
+                            <h3 className="detail-card-title mb-0">Accomplishment Report</h3>
                             {(canEditAccomplishment || isAdmin) && (
-                                <button onClick={() => onEdit('accomplishment')} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                <button onClick={() => onEdit('accomplishment')} className="table-action table-action--primary">
+                                    <CheckCircle2 className="btn-symbol" aria-hidden="true" />
                                     Edit Accomplishment
                                 </button>
                             )}
@@ -262,19 +261,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                         <div className="space-y-6">
                             
                             {/* Summary Cards */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
-                                    <span className="text-sm text-emerald-800 dark:text-emerald-300 font-medium">Actual Date Conducted</span>
-                                    <div className="text-lg font-bold text-emerald-900 dark:text-emerald-100 mt-1">
+                            <div className="detail-metric-grid">
+                                <div className="detail-metric">
+                                    <span className="detail-metric-label">Actual Date Conducted</span>
+                                    <div className="detail-metric-value">
                                         {formatDate(activity.actualDate)}
                                         {activity.actualEndDate && activity.actualEndDate !== activity.actualDate ? ` - ${formatDate(activity.actualEndDate)}` : ''}
                                     </div>
                                 </div>
-                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800">
-                                    <span className="text-sm text-blue-800 dark:text-blue-300 font-medium">Actual Participants</span>
-                                    <div className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                                <div className="detail-metric">
+                                    <span className="detail-metric-label">Actual Participants</span>
+                                    <div className="detail-metric-value">
                                         {(activity.actualParticipantsMale || 0) + (activity.actualParticipantsFemale || 0)} 
-                                        <span className="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
+                                        <span className="detail-metric-label ml-2">
                                             (M: {activity.actualParticipantsMale || 0}, F: {activity.actualParticipantsFemale || 0})
                                         </span>
                                     </div>
@@ -283,29 +282,29 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
 
                             {/* Financial Accomplishment Table */}
                             <div>
-                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Financial Performance (Actual)</h4>
+                                <h4 className="detail-section-title">Financial Performance (Actual)</h4>
                                 {activity.expenses.length > 0 ? (
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead className="bg-gray-50 dark:bg-gray-700/50 text-xs uppercase">
+                                    <div className="data-table-scroll">
+                                        <table className="data-table">
+                                            <thead>
                                                 <tr>
-                                                    <th className="px-4 py-2 text-left">Item</th>
-                                                    <th className="px-4 py-2 text-left">Actual Obligation Date</th>
-                                                    <th className="px-4 py-2 text-left">Actual Disbursement Date</th>
-                                                    <th className="px-4 py-2 text-right">Actual Obligated Amount</th>
-                                                    <th className="px-4 py-2 text-right">Actual Disbursed Amount</th>
+                                                    <th>Item</th>
+                                                    <th>Actual Obligation Date</th>
+                                                    <th>Actual Disbursement Date</th>
+                                                    <th className="text-right">Actual Obligated Amount</th>
+                                                    <th className="text-right">Actual Disbursed Amount</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {activity.expenses.map(exp => (
-                                                    <tr key={exp.id} className="border-b border-gray-100 dark:border-gray-700">
-                                                        <td className="px-4 py-2 font-medium">{exp.expenseParticular}</td>
-                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatMonthYear(exp.actualObligationDate)}</td>
-                                                        <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{formatMonthYear(exp.actualDisbursementDate)}</td>
-                                                        <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                    <tr key={exp.id}>
+                                                        <td className="font-medium">{exp.expenseParticular}</td>
+                                                        <td>{formatMonthYear(exp.actualObligationDate)}</td>
+                                                        <td>{formatMonthYear(exp.actualDisbursementDate)}</td>
+                                                        <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
                                                             {exp.actualObligationAmount !== undefined && exp.actualObligationAmount !== null ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>
-                                                        <td className="px-4 py-2 text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                        <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
                                                             {exp.actualDisbursementAmount !== undefined && exp.actualDisbursementAmount !== null ? formatCurrency(exp.actualDisbursementAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
                                                         </td>
                                                     </tr>
@@ -314,14 +313,14 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                         </table>
                                     </div>
                                 ) : (
-                                    <p className="text-sm text-gray-500 italic">No expense items to report on.</p>
+                                    <p className="detail-empty">No expense items to report on.</p>
                                 )}
                             </div>
 
                             {/* Gender and Inclusivity (Read-Only) */}
                             <div>
-                                <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Gender and Inclusivity</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                                <h4 className="detail-section-title">Gender and Inclusivity</h4>
+                                <div className="detail-dl">
                                     <DetailItem label="PWD" value={activity.actualPWD} />
                                     <DetailItem label="Muslim" value={activity.actualMuslim} />
                                     <DetailItem label="LGBTQ+" value={activity.actualLGBTQ} />
@@ -335,9 +334,9 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                 </div>
 
                 {/* Right Column: History */}
-                <div className="space-y-8">
-                    <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-t-4 border-gray-400">
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 dark:text-white">History</h3>
+                <div className="detail-aside">
+                    <div className="detail-card">
+                        <h3 className="detail-card-title">History</h3>
                         {activity.history && activity.history.length > 0 ? (
                             <div className="relative border-l-2 border-gray-200 dark:border-gray-700 ml-2 py-2">
                                 <ul className="space-y-8">
@@ -345,14 +344,14 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                         <li key={index} className="ml-8 relative">
                                             <span className="absolute flex items-center justify-center w-4 h-4 bg-emerald-500 rounded-full -left-[35px] ring-4 ring-white dark:ring-gray-800"></span>
                                             <time className="mb-1 text-sm font-normal leading-none text-gray-400 dark:text-gray-500">{formatDate(entry.date)}</time>
-                                            <p className="font-semibold text-gray-900 dark:text-white">{entry.event}</p>
+                                            <p className="detail-list-name">{entry.event}</p>
                                             <p className="text-sm font-normal text-gray-500 dark:text-gray-400">by {entry.user}</p>
                                         </li>
                                     ))}
                                 </ul>
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-500 dark:text-gray-400 italic">No historical data available.</p>
+                            <p className="detail-empty">No historical data available.</p>
                         )}
                     </div>
                 </div>

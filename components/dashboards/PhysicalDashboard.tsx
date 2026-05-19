@@ -30,14 +30,14 @@ const formatDate = (dateString?: string) => {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
-const PhysicalStatCard: React.FC<{ label: string; value: string | number; gradient: string; onClick?: () => void; }> = ({ label, value, gradient, onClick }) => (
+const PhysicalStatCard: React.FC<{ label: string; value: string | number; variant: string; onClick?: () => void; }> = ({ label, value, variant, onClick }) => (
     <div 
-        className={`bg-gradient-to-br ${gradient} text-white p-6 rounded-lg shadow-lg transform transition hover:scale-105 cursor-pointer`}
+        className={`physical-stat-card physical-stat-card--${variant} ${onClick ? 'physical-stat-card--clickable' : ''}`}
         onClick={onClick}
     >
-        <div className="flex flex-col items-center justify-center h-full text-center">
-            <p className="text-4xl font-bold drop-shadow-md">{value.toLocaleString()}</p>
-            <p className="text-sm font-medium uppercase tracking-wider opacity-90 mt-2">{label}</p>
+        <div className="physical-stat-card__content">
+            <p className="physical-stat-card__value">{value.toLocaleString()}</p>
+            <p className="physical-stat-card__label">{label}</p>
         </div>
     </div>
 );
@@ -596,38 +596,38 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
 
     return (
-        <div className="space-y-8 p-1">
-             <section aria-labelledby="overall-performance">
-                <h3 id="overall-performance" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Overall Performance</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                    <PhysicalStatCard label="Total IPOs" value={performanceStats.strEngagedIpos} gradient="from-teal-500 to-teal-700" onClick={handleShowTotalEngagedIpos} />
-                    <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.strIposTrained} gradient="from-green-500 to-green-700" onClick={handleShowIposTrained} />
-                    <PhysicalStatCard label="Total IPOs w/ Subprojects" value={performanceStats.strIposWithSubprojects} gradient="from-emerald-500 to-emerald-700" onClick={handleShowIposWithSubprojects} />
-                    <PhysicalStatCard label="Total Subprojects Completed" value={performanceStats.strSubprojects} gradient="from-cyan-600 to-cyan-800" onClick={handleShowCompletedSubprojects} />
-                    <PhysicalStatCard label="Total Trainings" value={performanceStats.strTrainings} gradient="from-blue-500 to-blue-700" onClick={handleShowCompletedTrainings} />
-                    <PhysicalStatCard label="ADs Assisted" value={performanceStats.strAds} gradient="from-lime-500 to-lime-700" onClick={handleShowAdsAssisted} />
+        <div className="physical-dashboard dashboard-view">
+             <section className="dashboard-section" aria-labelledby="overall-performance">
+                <h3 id="overall-performance" className="dashboard-section__title">Overall Performance</h3>
+                <div className="physical-stat-grid">
+                    <PhysicalStatCard label="Total IPOs" value={performanceStats.strEngagedIpos} variant="teal" onClick={handleShowTotalEngagedIpos} />
+                    <PhysicalStatCard label="Total IPOs Trained" value={performanceStats.strIposTrained} variant="green" onClick={handleShowIposTrained} />
+                    <PhysicalStatCard label="Total IPOs w/ Subprojects" value={performanceStats.strIposWithSubprojects} variant="emerald" onClick={handleShowIposWithSubprojects} />
+                    <PhysicalStatCard label="Total Subprojects Completed" value={performanceStats.strSubprojects} variant="blue-green" onClick={handleShowCompletedSubprojects} />
+                    <PhysicalStatCard label="Total Trainings" value={performanceStats.strTrainings} variant="blue" onClick={handleShowCompletedTrainings} />
+                    <PhysicalStatCard label="ADs Assisted" value={performanceStats.strAds} variant="lime" onClick={handleShowAdsAssisted} />
                 </div>
             </section>
 
-            <section aria-labelledby="quarterly-progress">
-                <h3 id="quarterly-progress" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Quarterly Progress</h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <section className="dashboard-section" aria-labelledby="quarterly-progress">
+                <h3 id="quarterly-progress" className="dashboard-section__title">Quarterly Progress</h3>
+                <div className="dashboard-card-grid dashboard-card-grid--two">
                     <QuarterlyBarChart title="Quarterly Targets" data={quarterlyTargets} />
                     <QuarterlyBarChart title="Quarterly Accomplishments" data={quarterlyAccomplishments} />
                 </div>
             </section>
 
-             <section aria-labelledby="ipo-engagement-breakdown">
-                <h3 id="ipo-engagement-breakdown" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">IPO Engagement Breakdown</h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+             <section className="dashboard-section" aria-labelledby="ipo-engagement-breakdown">
+                <h3 id="ipo-engagement-breakdown" className="dashboard-section__title">IPO Engagement Breakdown</h3>
+                <div className="dashboard-card-grid dashboard-card-grid--two">
                      <IpoEngagementChart data={{
                          'Total IPOs': performanceStats.totalEngagedIpos.size,
                          'IPOs Trained': performanceStats.totalIposTrained.size,
                          'IPOs w/ Subprojects': performanceStats.totalIposWithSubprojects.size,
                          'ADs Assisted': performanceStats.totalAdsAssisted.size
                      }} />
-                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex items-center justify-center">
-                        <p className="text-gray-500 dark:text-gray-400">
+                     <div className="dashboard-note-card">
+                        <p>
                             Total IPOs refers to IPOs with linked, completed trainings or subprojects. <br/>
                             Training count considers only trainings with actual conducted dates. <br/>
                             Subproject count considers only subprojects with 'Completed' status.
@@ -636,16 +636,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                 </div>
             </section>
 
-            <section aria-labelledby="provincial-breakdown">
-                <h3 id="provincial-breakdown" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Provincial Comparison</h3>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+            <section className="dashboard-section" aria-labelledby="provincial-breakdown">
+                <h3 id="provincial-breakdown" className="dashboard-section__title">Provincial Comparison</h3>
+                <div className="dashboard-chart-card dashboard-chart-card--wide">
                     <ProvincialComparisonChart data={provincialComparisonData} />
                 </div>
             </section>
 
-             <section aria-labelledby="ou-rankings">
-                 <h3 id="ou-rankings" className="text-2xl font-semibold text-gray-800 dark:text-white mb-4">Operating Unit Rankings (Accomplishment)</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <section className="dashboard-section" aria-labelledby="ou-rankings">
+                 <h3 id="ou-rankings" className="dashboard-section__title">Operating Unit Rankings (Accomplishment)</h3>
+                 <div className="dashboard-card-grid dashboard-card-grid--three">
                     <RankingList 
                         title="By IPOs Assisted" 
                         items={rankingData.byIpos.map(i => ({ name: i.name, count: i.iposCount }))}
@@ -669,24 +669,25 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
 
             {/* Custom Tabbed Modal for Physical Dashboard Cards */}
             {localModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setLocalModal(null)}>
-                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <div className="dashboard-modal-backdrop" onClick={() => setLocalModal(null)}>
+                    <div className="dashboard-modal dashboard-modal--wide" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
                             <div>
-                                <h3 className="text-xl font-bold text-gray-800 dark:text-white">{localModal.title}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">Year: {selectedYear}</p>
+                                <h3>{localModal.title}</h3>
+                                <p className="dashboard-modal__metric-subtext">Year: {selectedYear}</p>
                             </div>
-                            <div className="flex items-center gap-4">
+                            <div className="dashboard-modal__actions">
                                 <button 
+                                    type="button"
                                     onClick={handleDownloadExcel}
-                                    className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors"
+                                    className="btn btn-primary btn-responsive"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="btn-symbol" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                     </svg>
-                                    Excel
+                                    <span className="btn-text">Excel</span>
                                 </button>
-                                <button onClick={() => setLocalModal(null)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                                <button type="button" onClick={() => setLocalModal(null)} className="dashboard-modal__close" aria-label="Close modal">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                     </svg>
@@ -694,25 +695,27 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                             </div>
                         </div>
 
-                        <div className="flex border-b border-gray-200 dark:border-gray-700">
+                        <div className="data-tabs dashboard-modal-tabs">
                             <button
+                                type="button"
                                 onClick={() => setModalTab('targets')}
-                                className={`flex-1 py-3 text-sm font-semibold transition-colors ${modalTab === 'targets' ? 'text-accent border-b-2 border-accent' : 'text-gray-500 hover:text-gray-700'}`}
+                                className={`data-tab ${modalTab === 'targets' ? 'is-active' : ''}`}
                             >
                                 Targets ({localModal.targets.length})
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setModalTab('accomplishments')}
-                                className={`flex-1 py-3 text-sm font-semibold transition-colors ${modalTab === 'accomplishments' ? 'text-accent border-b-2 border-accent' : 'text-gray-500 hover:text-gray-700'}`}
+                                className={`data-tab ${modalTab === 'accomplishments' ? 'is-active' : ''}`}
                             >
                                 Accomplishments ({localModal.accomplishments.length})
                             </button>
                         </div>
 
-                        <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                        <div className="dashboard-modal__body custom-scrollbar">
                             {modalTab === 'targets' ? (
                                 localModal.targets.length > 0 ? (
-                                    <div className="space-y-6">
+                                    <div className="dashboard-modal__stack">
                                         {Object.entries(
                                             localModal.targets.reduce((acc, item) => {
                                                 const ou = item.operatingUnit || 'Unknown OU';
@@ -721,20 +724,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                                                 return acc;
                                             }, {} as Record<string, (ModalItem & { operatingUnit?: string })[]>)
                                         ).sort(([ouA], [ouB]) => ouA.localeCompare(ouB)).map(([ou, items]) => (
-                                            <div key={ou} className="space-y-2">
-                                                <div className="flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-700">
-                                                    <span className="text-xs font-bold uppercase tracking-wider text-accent dark:text-green-400">{ou}</span>
-                                                    <div className="flex-grow h-px bg-gray-100 dark:bg-gray-700"></div>
+                                            <div key={ou} className="dashboard-modal-group">
+                                                <div className="dashboard-modal-group__heading">
+                                                    <span>{ou}</span>
+                                                    <div></div>
                                                 </div>
-                                                <ul className="space-y-3">
+                                                <ul className="dashboard-modal__stack">
                                                     {(items as (ModalItem & { operatingUnit?: string })[]).map((item, index) => (
                                                         <li 
                                                             key={index} 
-                                                            className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                            className="dashboard-modal__event dashboard-modal__event--clickable"
                                                             onClick={() => handleItemClick(item)}
                                                         >
-                                                            <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
-                                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                                            <p className="dashboard-modal__metric-value">{item.name}</p>
+                                                            {item.details && <p className="dashboard-modal__metric-subtext">{item.details}</p>}
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -742,13 +745,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                    <div className="dashboard-modal__empty">
                                         <p>No targets found for this year.</p>
                                     </div>
                                 )
                             ) : (
                                 localModal.accomplishments.length > 0 ? (
-                                    <div className="space-y-6">
+                                    <div className="dashboard-modal__stack">
                                         {Object.entries(
                                             localModal.accomplishments.reduce((acc, item) => {
                                                 const ou = item.operatingUnit || 'Unknown OU';
@@ -757,20 +760,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                                                 return acc;
                                             }, {} as Record<string, (ModalItem & { operatingUnit?: string })[]>)
                                         ).sort(([ouA], [ouB]) => ouA.localeCompare(ouB)).map(([ou, items]) => (
-                                            <div key={ou} className="space-y-2">
-                                                <div className="flex items-center gap-2 py-1 border-b border-gray-100 dark:border-gray-700">
-                                                    <span className="text-xs font-bold uppercase tracking-wider text-accent dark:text-green-400">{ou}</span>
-                                                    <div className="flex-grow h-px bg-gray-100 dark:bg-gray-700"></div>
+                                            <div key={ou} className="dashboard-modal-group">
+                                                <div className="dashboard-modal-group__heading">
+                                                    <span>{ou}</span>
+                                                    <div></div>
                                                 </div>
-                                                <ul className="space-y-3">
+                                                <ul className="dashboard-modal__stack">
                                                     {(items as (ModalItem & { operatingUnit?: string })[]).map((item, index) => (
                                                         <li 
                                                             key={index} 
-                                                            className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer transition-colors border border-transparent hover:border-accent/30"
+                                                            className="dashboard-modal__event dashboard-modal__event--clickable"
                                                             onClick={() => handleItemClick(item)}
                                                         >
-                                                            <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
-                                                            {item.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.details}</p>}
+                                                            <p className="dashboard-modal__metric-value">{item.name}</p>
+                                                            {item.details && <p className="dashboard-modal__metric-subtext">{item.details}</p>}
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -778,13 +781,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({ data, setModalDat
                                         ))}
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                    <div className="dashboard-modal__empty">
                                         <p>No accomplishments found for this year.</p>
                                     </div>
                                 )
                             )}
                         </div>
-                        <div className="p-4 bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-400 italic">
+                        <div className="dashboard-modal__footer-note">
                             Tip: Click on an item to view its profile.
                         </div>
                     </div>

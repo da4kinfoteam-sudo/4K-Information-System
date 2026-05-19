@@ -68,7 +68,7 @@ function MonthPicker({
     ...props
 }: React.HTMLAttributes<HTMLDivElement> & MonthCalProps) {
     return (
-        <div className={cn("min-w-[200px] w-[280px] p-3 bg-white dark:bg-gray-900 rounded-lg", className)} {...props}>
+        <div className={cn("month-picker", className)} {...props}>
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0">
                 <div className="space-y-4 w-full">
                     <MonthCal
@@ -103,7 +103,7 @@ function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, m
     return (
         <>
             <div className="flex justify-center pt-1 relative items-center">
-                <div className="text-sm font-medium">{callbacks?.yearLabel ? callbacks?.yearLabel(menuYear) : menuYear}</div>
+                <div className="month-picker__year">{callbacks?.yearLabel ? callbacks?.yearLabel(menuYear) : menuYear}</div>
                 <div className="space-x-1 flex items-center">
                     <button
                         onClick={() => {
@@ -112,7 +112,7 @@ function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, m
                         }}
                         className={cn(
                             buttonVariants({ variant: variant?.chevrons ?? "outline" }), 
-                            "inline-flex items-center justify-center h-7 w-7 p-0 absolute left-1 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                            "month-picker__nav month-picker__nav--prev"
                         )}
                     >
                         <ChevronLeft className="opacity-50 h-4 w-4" />
@@ -124,7 +124,7 @@ function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, m
                         }}
                         className={cn(
                             buttonVariants({ variant: variant?.chevrons ?? "outline" }), 
-                            "inline-flex items-center justify-center h-7 w-7 p-0 absolute right-1 hover:border-emerald-500 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                            "month-picker__nav month-picker__nav--next"
                         )}
                     >
                         <ChevronRight className="opacity-50 h-4 w-4" />
@@ -155,10 +155,10 @@ function MonthCal({ selectedMonth, onMonthSelect, callbacks, variant, minDate, m
                                                 }
                                                 className={cn(
                                                     buttonVariants({ variant: month == m.number && menuYear == year ? "default" : "ghost" }),
-                                                    "h-full w-full p-0 font-normal aria-selected:opacity-100 transition-colors",
+                                                    "month-picker__month",
                                                     month == m.number && menuYear == year 
-                                                        ? "bg-emerald-600 text-white hover:bg-emerald-700" 
-                                                        : "hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400"
+                                                        ? "month-picker__month--selected" 
+                                                        : "month-picker__month--idle"
                                                 )}
                                             >
                                                 {callbacks?.monthLabel ? callbacks.monthLabel(m) : m.name}

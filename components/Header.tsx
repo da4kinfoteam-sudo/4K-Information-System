@@ -1,5 +1,4 @@
-
-// Author: 4K 
+// Author: 4K
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { SettingsIcon } from '../constants';
@@ -53,35 +52,32 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
             try {
                 // Heartbeat check: Efficiently check connection without heavy data transfer
                 const fetchPromise = supabase.from('users').select('id', { head: true, count: 'exact' }).limit(1);
-                const timeoutPromise = new Promise<{ error: any }>((_, reject) => 
+                const timeoutPromise = new Promise<{ error: any }>((_, reject) =>
                     setTimeout(() => reject(new Error("Network Threshold Exceeded")), 15000)
                 );
 
                 const { error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
-                
+
                 if (!error) {
                     setDbStatus('connected');
-                    failureCountRef.current = 0; // Success: reset counter
+                    failureCountRef.current = 0;
                 } else {
                     throw error;
                 }
             } catch (err: any) {
                 failureCountRef.current += 1;
                 console.warn(`Connection heartbeat failed (${failureCountRef.current}/3):`, err.message || err);
-                
-                // Only mark as offline after 3 consecutive failures
+
                 if (failureCountRef.current >= 3) {
                     setDbStatus('offline');
                 } else if (!isRetry) {
-                    // Immediate back-to-back retry if it's the first or second failure
                     setTimeout(() => checkDb(true), 2500);
                 }
             }
         };
-        
+
         checkDb();
-        
-        // Poll connection status every 30 seconds for better session awareness
+
         const intervalId = setInterval(() => checkDb(false), 30000);
         return () => clearInterval(intervalId);
     }, []);
@@ -92,6 +88,14 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
         month: 'long',
         day: 'numeric'
     });
+
+    const dbStatusClass = dbStatus === 'connected'
+        ? 'app-topbar__status--connected'
+        : dbStatus === 'offline'
+            ? 'app-topbar__status--offline'
+            : 'app-topbar__status--loading';
+
+    const dbStatusLabel = dbStatus === 'connected' ? 'System Online' : dbStatus === 'offline' ? 'Offline Mode' : 'Connecting...';
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -107,110 +111,108 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
     }, []);
 
     return (
-        <header className="flex-shrink-0 bg-white dark:bg-gray-800 shadow-md z-20">
-            <div className="flex items-center justify-between p-4">
-                <div className="flex items-center">
-                    {/* Menu Button - Visible ONLY on mobile, hidden on desktop (md:hidden) since sidebar notch exists */}
-                    <button 
-                        onClick={toggleSidebar} 
-                        className="text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white focus:outline-none mr-4 md:hidden"
-                        aria-label="Toggle sidebar"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                    </button>
-                    
-                    {/* System Date */}
-                    <span className="text-sm font-medium text-gray-900 dark:text-white hidden sm:inline-block">
-                        {formattedDate}
-                    </span>
+        <header className="app-topbar">
+            <div className="app-topbar__left">
+                <button
+                    onClick={toggleSidebar}
+                    className="app-icon-button"
+                    aria-label="Toggle sidebar"
+                    title="Toggle sidebar"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+
+                <div className="app-topbar__search" aria-label="Search placeholder">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" />
+                    </svg>
+                    <input type="search" placeholder="Search or type command..." aria-label="Search" />
+                    <kbd>Ctrl K</kbd>
                 </div>
-                
-                {/* Spacer to push content to the right */}
-                <div className="flex-1"></div>
 
-                <div className="flex items-center space-x-4">
-                    {/* Database Status Indicator */}
-                    <div className={`hidden md:flex items-center px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                        dbStatus === 'connected' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' :
-                        dbStatus === 'offline' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' :
-                        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-                    }`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data / Offline'}>
-                        <span className={`w-2 h-2 rounded-full mr-2 ${
-                            dbStatus === 'connected' ? 'bg-green-500' :
-                            dbStatus === 'offline' ? 'bg-red-500' :
-                            'bg-gray-500 animate-pulse'
-                        }`}></span>
-                        {dbStatus === 'connected' ? 'System Online' : dbStatus === 'offline' ? 'Offline Mode' : 'Connecting...'}
-                    </div>
+                <span className="app-topbar__date">
+                    {formattedDate}
+                </span>
+            </div>
 
-                    {currentUser && (
-                        <div className="relative" ref={menuRef}>
-                             <div 
-                                className="flex items-center gap-3 cursor-pointer"
-                                onClick={() => setIsMenuOpen(!isMenuOpen)}
+            <div className="app-topbar__actions">
+                <div className={`hidden md:flex app-topbar__status ${dbStatusClass}`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data / Offline'}>
+                    <span className="app-topbar__status-dot"></span>
+                    {dbStatusLabel}
+                </div>
+
+                <button
+                    onClick={toggleDarkMode}
+                    className="app-icon-button"
+                    aria-label={isDarkMode ? 'Set light mode' : 'Set dark mode'}
+                    title={isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
+                >
+                    {isDarkMode ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+                </button>
+
+                {currentUser && (
+                    <div className="app-topbar__user" ref={menuRef}>
+                        <div
+                            className="app-topbar__user-trigger"
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        >
+                            <div className="app-topbar__user-text hidden sm:block">
+                                <p>Hello, {currentUser.fullName}</p>
+                                <span>{currentUser.role} | {currentUser.operatingUnit}</span>
+                            </div>
+                            <button
+                                className="app-topbar__avatar"
+                                aria-label="Open user menu"
                             >
-                                <div className="text-right hidden sm:block">
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">Hello, {currentUser.fullName}</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role} | {currentUser.operatingUnit}</p>
+                                <UserCircleIcon className="h-8 w-8" />
+                            </button>
+                        </div>
+
+                        {isMenuOpen && (
+                            <div className="app-topbar__menu animate-fadeIn">
+                                <div className="sm:hidden app-topbar__menu-info">
+                                    <p>{currentUser.fullName}</p>
+                                    <span>{currentUser.role}</span>
                                 </div>
-                                <button 
-                                    className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white focus:outline-none"
+
+                                <div className="xl:hidden app-topbar__menu-status flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${
+                                        dbStatus === 'connected' ? 'bg-green-500' :
+                                        dbStatus === 'offline' ? 'bg-red-500' :
+                                        'bg-gray-500'
+                                    }`}></span>
+                                    <span>{dbStatus === 'connected' ? 'Online' : 'Offline'}</span>
+                                </div>
+
+                                <button
+                                    onClick={() => { setCurrentPage('/settings'); setIsMenuOpen(false); }}
+                                    className="app-topbar__menu-item"
                                 >
-                                    <UserCircleIcon className="h-9 w-9" />
+                                    <SettingsIcon className="h-4 w-4" />
+                                    User Settings
+                                </button>
+                                <button
+                                    onClick={toggleDarkMode}
+                                    className="app-topbar__menu-item"
+                                >
+                                    {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
+                                    {isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
+                                </button>
+                                <button
+                                    onClick={() => { logout(); setIsMenuOpen(false); }}
+                                    className="app-topbar__menu-item app-topbar__menu-item--danger"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                    </svg>
+                                    Logout
                                 </button>
                             </div>
-
-                            {isMenuOpen && (
-                                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 ring-1 ring-black ring-opacity-5 focus:outline-none animate-fadeIn">
-                                    {/* Mobile only user info in dropdown */}
-                                    <div className="sm:hidden px-4 py-2 border-b border-gray-100 dark:border-gray-700 mb-1">
-                                        <p className="text-sm font-medium text-gray-900 dark:text-white">{currentUser.fullName}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">{currentUser.role}</p>
-                                    </div>
-                                    
-                                    {/* Mobile DB Status */}
-                                    <div className="md:hidden px-4 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center">
-                                        <span className={`w-2 h-2 rounded-full mr-2 ${
-                                            dbStatus === 'connected' ? 'bg-green-500' :
-                                            dbStatus === 'offline' ? 'bg-red-500' :
-                                            'bg-gray-500'
-                                        }`}></span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {dbStatus === 'connected' ? 'Online' : 'Offline'}
-                                        </span>
-                                    </div>
-
-                                    <button
-                                        onClick={() => { setCurrentPage('/settings'); setIsMenuOpen(false); }}
-                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                    >
-                                        <SettingsIcon className="h-4 w-4 mr-2" />
-                                        User Settings
-                                    </button>
-                                    <button
-                                        onClick={toggleDarkMode}
-                                        className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                    >
-                                        {isDarkMode ? <SunIcon className="h-4 w-4 mr-2" /> : <MoonIcon className="h-4 w-4 mr-2" />}
-                                        {isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
-                                    </button>
-                                    <div className="border-t border-gray-100 dark:border-gray-700 my-1"></div>
-                                    <button
-                                        onClick={() => { logout(); setIsMenuOpen(false); }}
-                                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                        </svg>
-                                        Logout
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
             </div>
         </header>
     );

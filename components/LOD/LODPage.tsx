@@ -1,5 +1,6 @@
 // Author: 4K
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Download, Upload } from 'lucide-react';
 import { IPO, LodAssessment, philippineRegions, ouToRegionMap, filterYears } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -199,28 +200,26 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
     };
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Level of Development</h2>
+        <div className="data-list-page">
+            <div className="data-list-header">
+                <h2 className="data-list-title">Level of Development</h2>
                 {currentUser?.role === 'Administrator' && (
-                    <div className="flex gap-2">
+                    <div className="data-list-actions">
                         <button 
                             onClick={handleExport}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center gap-2 shadow-sm"
+                            className="btn btn-secondary btn-responsive"
+                            title="Download Template"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download Template
+                            <Download className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Download Template</span>
                         </button>
                         <button 
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 text-sm font-medium flex items-center gap-2 shadow-sm"
+                            className="btn btn-primary btn-responsive"
+                            title="Import Assessments"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                            </svg>
-                            Import Assessments
+                            <Upload className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Import Assessments</span>
                         </button>
                         <input 
                             type="file" 
@@ -233,49 +232,55 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
                 )}
             </div>
 
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
-                <div className="flex flex-wrap gap-4 mb-6">
+            <div className="data-table-card">
+                <div className="data-table-toolbar">
+                    <div className="data-toolbar-row">
+                    <div className="data-toolbar-group">
                     <input 
                         type="text" 
                         placeholder="Search IPO..." 
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white w-full md:w-64"
+                        className="data-table-search data-table-search--list px-4"
                     />
+                    <div className="data-toolbar-group data-toolbar-filter">
                     <select
                         value={filterRegion}
                         onChange={(e) => setFilterRegion(e.target.value)}
-                        className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md dark:bg-gray-700 dark:text-white"
+                        className="data-table-select data-table-select--compact px-4"
                     >
                         <option value="">All Regions</option>
                         {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
+                    </div>
+                    </div>
+                    </div>
                 </div>
 
                 {loading ? (
                     <div className="text-center py-12 text-gray-500">Loading assessments...</div>
                 ) : (
                     <>
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50 dark:bg-gray-700">
+                        <div className="data-table-scroll">
+                            <table className="data-table">
+                                <thead>
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">IPO Name</th>
-                                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Region</th>
+                                        <th>IPO Name</th>
+                                        <th>Region</th>
                                         {years.map(year => (
-                                            <th key={year} className="px-6 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th key={year} className="text-center">
                                                 {year}
                                             </th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                <tbody>
                                     {paginatedData.map(ipo => (
-                                        <tr key={ipo.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                        <tr key={ipo.id}>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <button 
                                                     onClick={() => onSelectIpo(ipo)}
-                                                    className="text-emerald-600 dark:text-emerald-400 font-medium hover:underline text-left"
+                                                    className="table-link font-medium"
                                                 >
                                                     {ipo.name}
                                                 </button>
@@ -307,10 +312,10 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
                         </div>
 
                         {/* Pagination */}
-                        <div className="py-4 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 mt-4">
+                        <div className="data-table-pagination flex items-center justify-between">
                             <div className="flex items-center gap-2 text-sm">
                                 <span className="text-gray-700 dark:text-gray-300">Show</span>
-                                <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
+                                <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="data-table-select py-1 pl-2 pr-8">
                                     {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                                 </select>
                                 <span className="text-gray-700 dark:text-gray-300">entries</span>
@@ -318,9 +323,9 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
                              <div className="flex items-center gap-4 text-sm">
                                 <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredIPOs.length)} to {Math.min(currentPage * itemsPerPage, filteredIPOs.length)} of {filteredIPOs.length} entries</span>
                                 <div className="flex items-center gap-2">
-                                    <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+                                    <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
                                     <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                                    <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+                                    <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
                                 </div>
                             </div>
                         </div>
