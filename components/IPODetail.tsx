@@ -722,15 +722,15 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                             <span className="font-semibold break-words">{commodity.particular}</span>
                                             <span className="text-gray-500 dark:text-gray-400"> ({commodity.type}) - </span>
                                             <span>
-                                                {formatFullNumber(commodity.value)} {commodity.type === 'Livestock' ? 'heads' : 'ha'}
-                                                {commodity.yield ? ` | Yield: ${commodity.yield}` : ''}
+                                                {formatFullNumber(commodity.value)} {commodity.type === 'Livestock' ? 'heads' : 'hectares'}
+                                                {commodity.yield ? ` | Yield: ${formatFullNumber(commodity.yield)} kg/ha` : ''}
                                             </span>
                                             {commodity.isScad && <span className="status-badge status-badge--cyan status-badge--compact">SCAD</span>}
                                         </div>
                                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500 mt-1 pl-1">
-                                            {(commodity.marketingPercentage || 0) > 0 && <span>Mktg: {commodity.marketingPercentage}%</span>}
-                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span>FS: {commodity.foodSecurityPercentage}%</span>}
-                                            {(commodity.averageIncome || 0) > 0 && <span title={formatCurrency(commodity.averageIncome || 0)}>Inc: {formatCompactCurrency(commodity.averageIncome || 0)}</span>}
+                                            {(commodity.marketingPercentage || 0) > 0 && <span>Marketing: {formatFullNumber(commodity.marketingPercentage)}%</span>}
+                                            {(commodity.foodSecurityPercentage || 0) > 0 && <span>Food Security: {formatFullNumber(commodity.foodSecurityPercentage)}%</span>}
+                                            {(commodity.averageIncome || 0) > 0 && <span title={formatCurrency(commodity.averageIncome || 0)}>Income: {formatCurrency(commodity.averageIncome || 0)}</span>}
                                         </div>
                                     </div>
                                     <div className="flex flex-shrink-0 items-center gap-2 self-end sm:self-center">
@@ -923,8 +923,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                 className={`detail-metric detail-metric--button transition-colors hover:border-emerald-300 hover:bg-emerald-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 ${isCurrentYear ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/40' : ''}`}
                                                 title={`Open ${assessment.year} LOD assessment`}
                                             >
-                                                <span className="detail-metric-label">{assessment.year}</span>
-                                                <span className="detail-metric-value">Level {level}</span>
+                                                <span className="flex items-center justify-between gap-3">
+                                                    <span className="detail-metric-label">{assessment.year}</span>
+                                                    <span className="detail-metric-value mt-0 text-right">Level {level}</span>
+                                                </span>
                                             </button>
                                         );
                                     })}
@@ -945,14 +947,14 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                     {c.isScad && <span className="status-badge status-badge--cyan status-badge--compact">SCAD</span>}
                                                 </div>
                                                 <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 pl-1 text-xs text-gray-500 dark:text-gray-400">
-                                                    {(c.marketingPercentage || 0) > 0 && <span>Mktg: {c.marketingPercentage}%</span>}
-                                                    {(c.foodSecurityPercentage || 0) > 0 && <span>FS: {c.foodSecurityPercentage}%</span>}
-                                                    {(c.averageIncome || 0) > 0 && <span title={formatCurrency(c.averageIncome || 0)}>Inc: {formatCompactCurrency(c.averageIncome || 0)}</span>}
+                                                    {(c.marketingPercentage || 0) > 0 && <span>Marketing: {formatFullNumber(c.marketingPercentage)}%</span>}
+                                                    {(c.foodSecurityPercentage || 0) > 0 && <span>Food Security: {formatFullNumber(c.foodSecurityPercentage)}%</span>}
+                                                    {(c.averageIncome || 0) > 0 && <span title={formatCurrency(c.averageIncome || 0)}>Income: {formatCurrency(c.averageIncome || 0)}</span>}
                                                 </div>
                                             </div>
-                                            <span className="font-medium sm:text-right" title={`${formatFullNumber(c.value)} ${c.type === 'Livestock' ? 'heads' : 'ha'}${c.yield ? ` | Y: ${c.yield}` : ''}`}>
-                                                {formatCompactNumber(c.value)} {c.type === 'Livestock' ? 'heads' : 'ha'}
-                                                {c.yield ? ` | Y: ${c.yield}` : ''}
+                                            <span className="font-medium sm:text-right" title={`${formatFullNumber(c.value)} ${c.type === 'Livestock' ? 'heads' : 'hectares'}${c.yield ? ` | Yield: ${formatFullNumber(c.yield)} kg/ha` : ''}`}>
+                                                {formatFullNumber(c.value)} {c.type === 'Livestock' ? 'heads' : 'hectares'}
+                                                {c.yield ? ` | Yield: ${formatFullNumber(c.yield)} kg/ha` : ''}
                                             </span>
                                         </li>
                                     ))}

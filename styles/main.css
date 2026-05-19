@@ -3339,6 +3339,10 @@
   width: 100%;
 }
 
+.detail-metric--button .detail-metric-value {
+  margin-top: 0;
+}
+
 .detail-metric--inline {
   align-items: center;
   display: flex;
