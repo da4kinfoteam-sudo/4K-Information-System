@@ -2,7 +2,8 @@
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo } from 'react';
 import { ArrowLeft, Check, Edit3, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { IPO, Subproject, Training, Commodity, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
+import { IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, LodAssessment } from '../constants';
+import { getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess, usePagination } from './mainfunctions/TableHooks';
@@ -118,6 +119,16 @@ const MembershipRow: React.FC<{ label: string; value?: number | string | null }>
 };
 
 const registeringBodyOptions = ['SEC', 'DOLE', 'CDA'];
+const MARKET_VOLUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const getCommodityNeedAnnualVolume = (need: CommodityNeed) => {
+    return MARKET_VOLUME_MONTHS.reduce((sum, month) => sum + toSafeNumber((need as any)[`volume${month}`]), 0);
+};
+
+const getMatchedBuyerCommodityNeeds = (partner: MarketingPartner, ipo: IPO) => {
+    const ipoCommodityNames = new Set((ipo.commodities || []).map(commodity => commodity.particular.toLowerCase()));
+    return (partner.commodityNeeds || []).filter(need => ipoCommodityNames.has(need.name.toLowerCase()));
+};
 
 // Helper for Region Normalization
 const normalizeRegionName = (inputRegion: string) => {
@@ -279,16 +290,10 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
 
     // --- Market Linkages Logic ---
     const ipoLinkages = useMemo(() => {
-        const links: { partner: MarketingPartner; link: MarketLinkage }[] = [];
-        marketingPartners.forEach(partner => {
-            partner.marketingLinkages?.forEach(link => {
-                if (link.ipoName === ipo.name) {
-                    links.push({ partner, link });
-                }
-            });
-        });
-        return links.sort((a, b) => new Date(b.link.agreementDate || '').getTime() - new Date(a.link.agreementDate || '').getTime());
+        return getIpoMarketSalesRows(marketingPartners, ipo.name);
     }, [marketingPartners, ipo.name]);
+
+    const ipoMarketSalesSummary = useMemo(() => summarizeIpoMarketSales(ipoLinkages), [ipoLinkages]);
 
     const mlPagination = usePagination(ipoLinkages);
     // Set default items per page to 5 for Linkages
@@ -892,6 +897,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                          <div className="detail-metric-grid">
                             <OverviewMetric label="Total Investment" value={formatCompactCurrency(overviewStats.totalInvestment)} fullValue={formatCurrency(overviewStats.totalInvestment)} />
                             <OverviewMetric label="Total Allocation" value={formatCompactCurrency(overviewStats.totalAllocation)} fullValue={formatCurrency(overviewStats.totalAllocation)} />
+                            <OverviewMetric label="Linked Markets" value={formatCompactNumber(ipoMarketSalesSummary.linkedMarketCount)} fullValue={ipoMarketSalesSummary.linkedMarketCount.toLocaleString()} />
+                            <OverviewMetric label="Total Sales from Market Linkage" value={formatCompactCurrency(ipoMarketSalesSummary.totalSales)} fullValue={formatCurrency(ipoMarketSalesSummary.totalSales)} />
                             <OverviewMetric label="Total Area (Agri)" value={`${formatCompactNumber(overviewStats.totalArea)} ha`} fullValue={`${overviewStats.totalArea.toLocaleString()} ha`} />
                             <OverviewMetric label="Avg. Annual Income" value={overviewStats.totalIncome > 0 ? formatCompactCurrency(overviewStats.totalIncome) : 'No Income'} fullValue={overviewStats.totalIncome > 0 ? formatCurrency(overviewStats.totalIncome) : 'No Income'} />
                             <OverviewMetric label="Subprojects (Completed)" value={formatCompactNumber(overviewStats.completedSPCount)} fullValue={overviewStats.completedSPCount.toLocaleString()} />
@@ -1078,10 +1085,28 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                     {/* Market Linkages Card (New) */}
                     <div className="detail-card">
                         <h3 className="detail-card-title">Market Linkages</h3>
+                        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <OverviewMetric
+                                label="Linked Markets"
+                                value={formatFullNumber(ipoMarketSalesSummary.linkedMarketCount)}
+                            />
+                            <OverviewMetric
+                                label="Total Kg Sold"
+                                value={formatCompactNumber(ipoMarketSalesSummary.totalKg)}
+                                fullValue={`${formatFullNumber(ipoMarketSalesSummary.totalKg)} kg`}
+                            />
+                            <OverviewMetric
+                                label="Total Sales from Market Linkage"
+                                value={formatCompactCurrency(ipoMarketSalesSummary.totalSales)}
+                                fullValue={formatCurrency(ipoMarketSalesSummary.totalSales)}
+                            />
+                        </div>
                         {mlPagination.paginatedData.length > 0 ? (
                             <>
                                 <div className="grid grid-cols-1 gap-4">
-                                    {mlPagination.paginatedData.map((item, idx) => (
+                                    {mlPagination.paginatedData.map((item, idx) => {
+                                        const matchedBuyerNeeds = getMatchedBuyerCommodityNeeds(item.partner, ipo);
+                                        return (
                                         <div key={idx} className="detail-list-item">
                                             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                                 <h4 className="detail-list-title">{item.partner.companyName}</h4>
@@ -1090,12 +1115,37 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                                                 </span>
                                             </div>
                                             <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
-                                                <p><span className="font-semibold">Agreement:</span> {item.link.agreedQuantityValue} Kg ({item.link.agreedQuantityTimeframe}) @ ₱{item.link.agreedPricePerKg}/Kg</p>
+                                                <p><span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantityKg)} Kg ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerKg)}/Kg</p>
+                                                <p><span className="font-semibold">Sales Value:</span> {formatCurrency(item.salesValue)}</p>
                                                 <p><span className="font-semibold">Type:</span> {item.link.agreementType}</p>
                                                 <p><span className="font-semibold">Date:</span> {item.link.agreementDate ? new Date(item.link.agreementDate).toLocaleDateString() : 'N/A'}</p>
                                             </div>
+                                            <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+                                                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Commodity Bought by Buyer</p>
+                                                {matchedBuyerNeeds.length > 0 ? (
+                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                        {matchedBuyerNeeds.map(need => {
+                                                            const annualVolume = getCommodityNeedAnnualVolume(need);
+                                                            return (
+                                                                <div key={need.id} className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs dark:border-teal-800 dark:bg-teal-900/20">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                        <span className="font-bold text-teal-700 dark:text-teal-300">{need.name}</span>
+                                                                        <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-300">{need.type}</span>
+                                                                    </div>
+                                                                    <p className="mt-1 text-gray-600 dark:text-gray-300"><span className="font-semibold">Source:</span> {need.sourceProvince || 'Any Province'}, {need.sourceRegion || 'Any Region'}</p>
+                                                                    <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Annual Need:</span> {formatFullNumber(annualVolume)} Kg/Yr</p>
+                                                                    <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Quality:</span> {need.qualityStandard || 'Not specified'}</p>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs italic text-gray-400">No matching commodity requirement is listed for this IPO.</p>
+                                                )}
+                                            </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 <PaginationControls 
                                     currentPage={mlPagination.currentPage}

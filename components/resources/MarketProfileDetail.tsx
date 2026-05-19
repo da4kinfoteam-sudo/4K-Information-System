@@ -1,8 +1,9 @@
 
 // Author: 4K 
 import React, { useMemo } from 'react';
-import { MarketingPartner, IPO, CommodityNeed, MarketLinkage } from '../../constants';
+import { MarketingPartner, IPO } from '../../constants';
 import { useUserAccess } from '../mainfunctions/TableHooks';
+import { calculateMarketLinkageSales, summarizeMarketPartnerSales } from '../../lib/marketSalesAggregation';
 
 interface MarketProfileDetailProps {
     partner: MarketingPartner;
@@ -34,8 +35,14 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
         });
     }, [partner.commodityNeeds, partner.region, ipos]);
 
+    const marketSalesSummary = useMemo(() => summarizeMarketPartnerSales(partner), [partner]);
+
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    };
+
+    const formatNumber = (amount: number) => {
+        return new Intl.NumberFormat('en-US').format(amount);
     };
 
     const DetailBlock = ({ label, value }: { label: string, value: any }) => (
@@ -147,9 +154,25 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                         </div>
 
                         <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
+                                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Linked IPOs</p>
+                                    <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatNumber(marketSalesSummary.linkedIpoCount)}</p>
+                                </div>
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
+                                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Total Kg Sold</p>
+                                    <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatNumber(marketSalesSummary.totalKg)} Kg</p>
+                                </div>
+                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
+                                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Total Sales from Market Linkage</p>
+                                    <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatCurrency(marketSalesSummary.totalSales)}</p>
+                                </div>
+                            </div>
                             {(partner.marketingLinkages || []).length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {partner.marketingLinkages?.map((link, idx) => (
+                                    {partner.marketingLinkages?.map((link, idx) => {
+                                        const linkSales = calculateMarketLinkageSales(link);
+                                        return (
                                         <div key={idx} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3">
                                             <div className="flex justify-between items-start">
                                                 <h4 className="font-bold text-emerald-600 dark:text-emerald-400">{link.ipoName}</h4>
@@ -158,8 +181,9 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                                 </span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 text-xs">
-                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreedQuantityValue} Kg ({link.agreedQuantityTimeframe})</p></div>
-                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">₱{link.agreedPricePerKg}/Kg</p></div>
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatNumber(linkSales.quantityKg)} Kg ({link.agreedQuantityTimeframe})</p></div>
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.pricePerKg)}/Kg</p></div>
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Sales Value</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.salesValue)}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreement Type</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementType}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Effective Date</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementDate ? new Date(link.agreementDate).toLocaleDateString() : 'N/A'}</p></div>
                                             </div>
@@ -170,7 +194,8 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                                 </div>
                                             )}
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <div className="text-center py-10 bg-gray-50 dark:bg-gray-700/20 rounded-xl border-2 border-dashed dark:border-gray-700">

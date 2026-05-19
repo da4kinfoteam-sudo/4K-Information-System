@@ -8,6 +8,7 @@ import { usePagination, useSelection, useUserAccess } from '../mainfunctions/Tab
 import LocationPicker, { parseLocation } from '../LocationPicker';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { supabase } from '../../supabaseClient';
+import { summarizeMarketPartnerSales } from '../../lib/marketSalesAggregation';
 
 declare const XLSX: any;
 
@@ -338,6 +339,10 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         return ['Super Admin', 'Administrator', 'Focal - User', 'Management'].includes(role || '');
     };
 
+    const formatCurrency = (amount: number) => {
+        return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
+    };
+
     const handleApprove = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this partner?')) return;
@@ -563,11 +568,14 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Commodity Needs</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Owner / Contact</th>
+                                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Sales from Market Linkage</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                            {paginatedData.map((partner) => (
+                            {paginatedData.map((partner) => {
+                                const salesSummary = summarizeMarketPartnerSales(partner);
+                                return (
                                 <tr key={partner.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${selectedIds.includes(partner.id) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}`}>
                                     {isSelectionMode && <td className="px-6 py-4"><input type="checkbox" checked={selectedIds.includes(partner.id)} onChange={() => handleSelectRow(partner.id)} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" /></td>}
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 font-medium">{partner.region || 'N/A'}</td>
@@ -583,6 +591,10 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"><div className="font-bold text-gray-700 dark:text-gray-300">{partner.ownerName}</div><div>{partner.contactNumber}</div></td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                                        <div>{formatCurrency(salesSummary.totalSales)}</div>
+                                        <div className="text-[10px] font-normal text-gray-400">{salesSummary.linkageCount} linkage{salesSummary.linkageCount === 1 ? '' : 's'}</div>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex flex-col gap-1 items-start">
                                             {getWorkflowStatusBadge(partner.workflow_status)}
@@ -607,7 +619,8 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
