@@ -1389,6 +1389,57 @@
   background: var(--app-surface-muted);
 }
 
+.detailed-accomplishment-table {
+  border-collapse: collapse;
+  min-width: 4425px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.detailed-accomplishment-table th,
+.detailed-accomplishment-table td {
+  border: 1px solid var(--app-border);
+  font-size: 0.72rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  padding: 0.45rem 0.5rem;
+  vertical-align: middle;
+  white-space: normal;
+  word-break: normal;
+}
+
+.detailed-accomplishment-table th {
+  background: #f8fafc;
+  color: #111827;
+  font-weight: 800;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.detailed-accomplishment-table td {
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+}
+
+.detailed-accomplishment-table tbody tr:hover td {
+  background: var(--brand-green-50);
+}
+
+.detailed-accomplishment-table__group {
+  color: #ffffff !important;
+  font-size: 0.9rem !important;
+  letter-spacing: 0 !important;
+  padding: 0.35rem 0.5rem !important;
+}
+
+.detailed-accomplishment-table__group--performance {
+  background: #1f5b13 !important;
+}
+
+.detailed-accomplishment-table__group--beneficiary {
+  background: #1f5a89 !important;
+}
+
 .report-table__head-cell,
 .report-table__cell {
   border: 1px solid var(--app-border);

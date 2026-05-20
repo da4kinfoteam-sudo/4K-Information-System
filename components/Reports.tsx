@@ -9,6 +9,7 @@ import PICSReport from './reports/PICSReport';
 import BAR1Report from './reports/BAR1Report';
 import BudgetUtilizationReport from './reports/BudgetUtilizationReport';
 import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
+import DetailedAccomplishmentDataReport from './reports/DetailedAccomplishmentDataReport';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 
@@ -24,7 +25,7 @@ interface ReportsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
 }
 
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix';
+type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data';
 
 const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, deadlines, uacsCodes }) => {
     const { currentUser, getVisibilityScope } = useAuth();
@@ -154,6 +155,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         { tabName: 'BAR1', label: 'BAR1' },
         { tabName: 'Budget Utilization Report', label: 'Budget Utilization' },
         { tabName: 'Monthly Matrix', label: 'Monthly Matrix' },
+        { tabName: 'Detailed Accomplishment Data', label: 'Detailed Accomplishment Data' },
     ];
 
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
@@ -186,6 +188,8 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             case 'Monthly Matrix':
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
                 return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
+            case 'Detailed Accomplishment Data':
+                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
             default:
                 return null;
         }
