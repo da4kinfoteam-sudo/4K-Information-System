@@ -9,6 +9,7 @@ export type FinancialAuditIssueType =
     | 'Target obligation outside selected year'
     | 'Target disbursement outside selected year'
     | 'Target obligation due mismatch'
+    | 'Target disbursement schedule mismatch'
     | 'Target disbursement due mismatch'
     | 'Missing due actual obligation'
     | 'Missing due actual disbursement'
@@ -188,6 +189,7 @@ const getTargetSchedule = (item: FinancialLineItem, selectedYear: string, asOfMo
         targetObligationDate,
         targetDisbursementDate,
         hasMonthlyDisbursementSchedule,
+        monthlyDisbursementTotal,
         targetObligationDue,
         targetDisbursementDue,
     };
@@ -364,6 +366,18 @@ export const buildFinancialAudit = (
                 targetAllocation,
                 ['BEDS 3'],
                 'Review the target disbursement date or change the report year filter.',
+                metrics
+            );
+        }
+
+        if (schedule.hasMonthlyDisbursementSchedule && Math.abs(schedule.monthlyDisbursementTotal - targetAllocation) > EPSILON) {
+            addIssue(
+                item,
+                'Target disbursement schedule mismatch',
+                'High',
+                Math.abs(targetAllocation - schedule.monthlyDisbursementTotal),
+                ['BEDS 3'],
+                'Review monthly target disbursement schedule because its total should match the target allocation.',
                 metrics
             );
         }

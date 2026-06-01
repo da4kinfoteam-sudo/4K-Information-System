@@ -398,18 +398,18 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         return {
             financials: aggregateHomepageFinancials({
-                subprojects,
-                activities,
-                officeReqs,
-                staffingReqs,
-                otherProgramExpenses,
+                subprojects: filteredData.subprojects,
+                activities: filteredData.activities,
+                officeReqs: filteredData.officeReqs,
+                staffingReqs: filteredData.staffingReqs,
+                otherProgramExpenses: filteredData.otherProgramExpenses,
             }, aggregationFilters),
             physical: aggregateHomepagePhysicalStats({
-                subprojects,
+                subprojects: filteredData.subprojects,
                 ipos,
-                activities,
-                officeReqs,
-                staffingReqs,
+                activities: filteredData.activities,
+                officeReqs: filteredData.officeReqs,
+                staffingReqs: filteredData.staffingReqs,
             }, aggregationFilters),
         };
     }, [
@@ -417,12 +417,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         selectedOu,
         selectedTier,
         selectedFundType,
-        subprojects,
+        filteredData,
         ipos,
-        activities,
-        officeReqs,
-        staffingReqs,
-        otherProgramExpenses,
     ]);
 
     // ... (allActivities, displayedActivities, pagination logic) ...
@@ -494,9 +490,34 @@ const Dashboard: React.FC<DashboardProps> = ({
         </svg>
     );
 
-    const showTotalBudget = () => { setCardModal({ title: `Total Budget Performance (${totalBudgetView})`, metrics: [ { label: "Total Actual Disbursed", value: dashboardStats.financials.total.disb, isCurrency: true }, { label: "Total Actual Obligated", value: dashboardStats.financials.total.obli, isCurrency: true }, { label: "Total Allocation", value: dashboardStats.financials.total.alloc, isCurrency: true }, { label: "Disbursement Rate", value: dashboardStats.financials.total.obli > 0 ? `${Math.round((dashboardStats.financials.total.disb / dashboardStats.financials.total.obli) * 100)}%` : "0%", subtext: "vs Obligation" } ] }); };
-    const showSpBudget = () => { setCardModal({ title: `Subprojects Budget Performance (${spBudgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.subprojects.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.subprojects.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.subprojects.alloc, isCurrency: true } ] }); };
-    const showTrBudget = () => { setCardModal({ title: `Trainings Budget Performance (${trBudgetView})`, metrics: [ { label: "Actual Disbursed", value: dashboardStats.financials.trainings.disb, isCurrency: true }, { label: "Actual Obligated", value: dashboardStats.financials.trainings.obli, isCurrency: true }, { label: "Allocation", value: dashboardStats.financials.trainings.alloc, isCurrency: true } ] }); };
+    const formatRate = (value: number, total: number) => {
+        if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return '0%';
+        return `${Math.round((value / total) * 100)}%`;
+    };
+
+    const getBudgetMetrics = (bucket: { disb: number; obli: number; alloc: number }) => [
+        { label: "Actual Disbursed", value: bucket.disb, isCurrency: true },
+        { label: "Actual Obligated", value: bucket.obli, isCurrency: true },
+        { label: "Allocation", value: bucket.alloc, isCurrency: true },
+        { label: "Utilization Rate", value: formatRate(bucket.obli, bucket.alloc), subtext: "Obligation vs Allotment" },
+        { label: "Disbursement Rate", value: formatRate(bucket.disb, bucket.obli), subtext: "Disbursement vs Obligation" },
+    ];
+
+    const showTotalBudget = () => {
+        const metrics = getBudgetMetrics(dashboardStats.financials.total).map(metric =>
+            metric.label === 'Actual Disbursed'
+                ? { ...metric, label: 'Total Actual Disbursed' }
+                : metric.label === 'Actual Obligated'
+                    ? { ...metric, label: 'Total Actual Obligated' }
+                    : metric.label === 'Allocation'
+                        ? { ...metric, label: 'Total Allocation' }
+                        : metric
+        );
+
+        setCardModal({ title: `Total Budget Performance (${totalBudgetView})`, metrics });
+    };
+    const showSpBudget = () => { setCardModal({ title: `Subprojects Budget Performance (${spBudgetView})`, metrics: getBudgetMetrics(dashboardStats.financials.subprojects) }); };
+    const showTrBudget = () => { setCardModal({ title: `Trainings Budget Performance (${trBudgetView})`, metrics: getBudgetMetrics(dashboardStats.financials.trainings) }); };
     const showSpCount = () => { setCardModal({ title: "Subprojects Count", metrics: [ { label: "Completed Subprojects", value: dashboardStats.physical.subprojects.actual }, { label: "Total Target Subprojects", value: dashboardStats.physical.subprojects.target }, { label: "Completion Rate", value: dashboardStats.physical.subprojects.target > 0 ? `${Math.round((dashboardStats.physical.subprojects.actual / dashboardStats.physical.subprojects.target) * 100)}%` : "0%" } ] }); };
     const showTrCount = () => { setCardModal({ title: "Trainings Count", metrics: [ { label: "Completed Trainings", value: dashboardStats.physical.trainings.actual }, { label: "Total Target Trainings", value: dashboardStats.physical.trainings.target }, { label: "Completion Rate", value: dashboardStats.physical.trainings.target > 0 ? `${Math.round((dashboardStats.physical.trainings.actual / dashboardStats.physical.trainings.target) * 100)}%` : "0%" } ] }); };
     const showIposAssisted = () => { setCardModal({ title: "IPOs Assisted (Subprojects + Trainings)", metrics: [ { label: "IPOs with Completed SPs/Trainings", value: dashboardStats.physical.iposAssisted.actual }, { label: "Total Target IPOs", value: dashboardStats.physical.iposAssisted.target, subtext: "Linked to any SP/Training" } ] }); };

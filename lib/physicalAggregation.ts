@@ -76,7 +76,7 @@ const isActualRecord = (record: ScopedRecord, actualDate: string | undefined, fi
     if (!matchesBaseFilters(record, filters)) return false;
     if (record.status === 'Cancelled') return false;
     if (filters.year === 'All') return true;
-    return getDateYear(actualDate) === filters.year;
+    return matchesSelectedYear(getRecordYear(record), filters.year) && getDateYear(actualDate) === filters.year;
 };
 
 const hasCompletedSubproject = (subproject: Subproject) => subproject.status === 'Completed' && !!subproject.actualCompletionDate;

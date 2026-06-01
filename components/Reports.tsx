@@ -209,7 +209,20 @@ const Reports: React.FC<ReportsProps> = ({
             case 'BP Forms':
                 return <BPFormsReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BEDS':
-                return <BEDSReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedFundType={selectedFundType} selectedTier={selectedTier} />;
+                return (
+                    <BEDSReport
+                        data={filteredData}
+                        selectedYear={selectedYear}
+                        selectedOu={selectedOu}
+                        selectedFundType={selectedFundType}
+                        selectedTier={selectedTier}
+                        onSelectSubproject={onSelectSubproject}
+                        onSelectActivity={onSelectActivity}
+                        onSelectOfficeReq={onSelectOfficeReq}
+                        onSelectStaffingReq={onSelectStaffingReq}
+                        onSelectOtherExpense={onSelectOtherExpense}
+                    />
+                );
             case 'PICS':
                 return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'BAR1':

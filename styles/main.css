@@ -1917,13 +1917,28 @@
 }
 
 .beds-report-alert {
+  align-items: center;
   background: rgba(217, 45, 32, 0.1);
   border: 1px solid rgba(217, 45, 32, 0.24);
   border-radius: var(--app-radius-md);
   color: #b42318;
+  display: flex;
+  gap: 0.65rem;
   font-weight: 700;
+  justify-content: center;
   padding: 1rem;
   text-align: center;
+}
+
+.beds-report-alert svg {
+  flex: 0 0 auto;
+  height: 1rem;
+  width: 1rem;
+}
+
+.beds-report-item-link {
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .dark .beds-report-alert {

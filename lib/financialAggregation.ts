@@ -421,7 +421,7 @@ export const collectFinancialLineItems = (
         const expenses = compact(item.expenses);
         if (expenses.length > 0) {
             expenses.forEach(expense => {
-                addLineItem(items, item, expense, filters, {
+                addLineItem(items, item, { ...expense, disbursementDate: (expense as FinancialLine).disbursementDate || item.disbursementDate }, filters, {
                     sourceType: 'programManagement',
                     component: 'Program Management',
                     packageType: 'Staff Requirements',
@@ -513,77 +513,17 @@ export const aggregateHomepageFinancials = (
     const otherActivitiesBucket: FinancialBucket = { alloc: 0, obli: 0, disb: 0 };
     const programManagementBucket: FinancialBucket = { alloc: 0, obli: 0, disb: 0 };
 
-    (data.subprojects || []).forEach(subproject => {
-        const fallbackYear = getRecordYear(subproject);
-        const details = compact(subproject.details);
+    collectFinancialLineItems(data, filters).forEach(item => {
+        const targetBucket =
+            item.sourceType === 'subproject'
+                ? subprojectsBucket
+                : item.sourceType === 'training'
+                    ? trainingsBucket
+                    : item.sourceType === 'activity'
+                        ? otherActivitiesBucket
+                        : programManagementBucket;
 
-        if (isTargetRecord(subproject, filters) && !subproject.isRealignment && !subproject.isSavings) {
-            subprojectsBucket.alloc += details.reduce((sum, detail) => sum + getFinancialAllocation(detail), 0);
-        }
-
-        if (isActualRecord(subproject, filters)) {
-            subprojectsBucket.obli += details.reduce((sum, detail) => sum + getActualObligationTotal(detail, { year: filters.year, fallbackYear }), 0);
-            subprojectsBucket.disb += details.reduce((sum, detail) => sum + getActualDisbursementTotal(detail, { year: filters.year, fallbackYear }), 0);
-        }
-    });
-
-    (data.activities || []).forEach(activity => {
-        const fallbackYear = getRecordYear(activity);
-        const expenses = compact(activity.expenses);
-        const targetBucket = activity.type === 'Training' ? trainingsBucket : otherActivitiesBucket;
-
-        if (isTargetRecord(activity, filters) && !activity.isRealignment && !activity.isSavings) {
-            targetBucket.alloc += expenses.reduce((sum, expense) => sum + getFinancialAllocation(expense), 0);
-        }
-
-        if (isActualRecord(activity, filters)) {
-            targetBucket.obli += expenses.reduce((sum, expense) => sum + getActualObligationTotal(expense, { year: filters.year, fallbackYear }), 0);
-            targetBucket.disb += expenses.reduce((sum, expense) => sum + getActualDisbursementTotal(expense, { year: filters.year, fallbackYear }), 0);
-        }
-    });
-
-    (data.officeReqs || []).forEach(item => {
-        const fallbackYear = getRecordYear(item);
-        if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
-            programManagementBucket.alloc += getFinancialAllocation(item);
-        }
-        if (isActualRecord(item, filters)) {
-            programManagementBucket.obli += getActualObligationTotal(item, { year: filters.year, fallbackYear });
-            programManagementBucket.disb += getActualDisbursementTotal(item, { year: filters.year, fallbackYear });
-        }
-    });
-
-    (data.staffingReqs || []).forEach(item => {
-        const fallbackYear = getRecordYear(item);
-        const expenses = compact(item.expenses);
-        const hasExpenseRows = expenses.length > 0;
-
-        if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
-            programManagementBucket.alloc += hasExpenseRows
-                ? expenses.reduce((sum, expense) => sum + getFinancialAllocation(expense), 0)
-                : getFinancialAllocation({ annualSalary: item.annualSalary });
-        }
-
-        if (isActualRecord(item, filters)) {
-            programManagementBucket.obli += hasExpenseRows
-                ? expenses.reduce((sum, expense) => sum + getActualObligationTotal(expense, { year: filters.year, fallbackYear }), 0)
-                : getActualObligationTotal(item, { year: filters.year, fallbackYear });
-
-            programManagementBucket.disb += hasExpenseRows
-                ? expenses.reduce((sum, expense) => sum + getActualDisbursementTotal(expense, { year: filters.year, fallbackYear }), 0)
-                : getActualDisbursementTotal(item, { year: filters.year, fallbackYear });
-        }
-    });
-
-    (data.otherProgramExpenses || []).forEach(item => {
-        const fallbackYear = getRecordYear(item);
-        if (isTargetRecord(item, filters) && !item.isRealignment && !item.isSavings) {
-            programManagementBucket.alloc += getFinancialAllocation(item);
-        }
-        if (isActualRecord(item, filters)) {
-            programManagementBucket.obli += getActualObligationTotal(item, { year: filters.year, fallbackYear });
-            programManagementBucket.disb += getActualDisbursementTotal(item, { year: filters.year, fallbackYear });
-        }
+        addBucket(targetBucket, item);
     });
 
     const totalBucket: FinancialBucket = { alloc: 0, obli: 0, disb: 0 };
