@@ -550,7 +550,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, obligations, ...rest } = item;
+            const { id, uid, created_at, updated_at, obligations, physical_accomplishment_submitted_at, ...rest } = item;
             const newUid = `OR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
             // Reset actuals
@@ -561,6 +561,7 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
                 actualDisbursementDate: '',
                 actualObligationAmount: 0,
                 actualDisbursementAmount: 0,
+                physical_accomplishment_submitted_at: null,
                 status: 'Proposed'
             };
             const item_workflow_status = workflow_status;

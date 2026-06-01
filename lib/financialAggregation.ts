@@ -8,6 +8,7 @@ export interface FinancialAggregationFilters {
     tier?: string | 'All';
     fundType?: string | 'All';
     includeUnapproved?: boolean;
+    includeTaggedExclusions?: boolean;
 }
 
 export interface FinancialBucket {
@@ -59,9 +60,26 @@ export type FinancialLine = {
     actualDisbursementOct?: number;
     actualDisbursementNov?: number;
     actualDisbursementDec?: number;
+    expenseParticular?: string;
+    particulars?: string;
+    equipment?: string;
+    personnelPosition?: string;
+    disbursementJan?: number;
+    disbursementFeb?: number;
+    disbursementMar?: number;
+    disbursementApr?: number;
+    disbursementMay?: number;
+    disbursementJun?: number;
+    disbursementJul?: number;
+    disbursementAug?: number;
+    disbursementSep?: number;
+    disbursementOct?: number;
+    disbursementNov?: number;
+    disbursementDec?: number;
 };
 
 type ScopedRecord = {
+    id?: string | number;
     workflow_status?: string;
     fundingYear?: number;
     fundYear?: number;
@@ -85,6 +103,7 @@ export type FinancialComponent = typeof FINANCIAL_COMPONENTS[number];
 export type FinancialSourceType = 'subproject' | 'training' | 'activity' | 'programManagement';
 
 export interface FinancialLineItem {
+    recordId?: string | number;
     sourceType: FinancialSourceType;
     component: FinancialComponent;
     packageType?: string;
@@ -93,6 +112,12 @@ export interface FinancialLineItem {
     uacsCode?: string;
     recordYear?: number;
     fundType?: string;
+    tier?: string;
+    status?: string;
+    workflowStatus?: string;
+    isRealignment?: boolean;
+    isSavings?: boolean;
+    excludedTargetAllocation?: number;
     operatingUnit?: string;
     location?: string;
     ipoNames?: string[];
@@ -298,9 +323,13 @@ const addLineItem = (
     }
 ) => {
     const fallbackYear = getRecordYear(record);
-    const includeTarget = isTargetRecord(record, filters) && !record.isRealignment && !record.isSavings;
+    const isTaggedExclusion = !!(record.isRealignment || record.isSavings);
+    const isTarget = isTargetRecord(record, filters);
+    const includeTarget = isTarget && !isTaggedExclusion;
     const includeActual = isActualRecord(record, filters);
-    const alloc = includeTarget ? getFinancialAllocation(line) : 0;
+    const rawTargetAllocation = isTarget ? getFinancialAllocation(line) : 0;
+    const excludedTargetAllocation = isTarget && isTaggedExclusion ? rawTargetAllocation : 0;
+    const alloc = includeTarget ? rawTargetAllocation : 0;
     const obli = includeActual ? getActualObligationTotal(line, { year: filters.year, fallbackYear }) : 0;
     const disb = includeActual ? getActualDisbursementTotal(line, { year: filters.year, fallbackYear }) : 0;
     const targetDate = metadata.targetDate || line.obligationMonth || line.obligationDate;
@@ -308,9 +337,10 @@ const addLineItem = (
     const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: targetDate }) : createMonthlyArray();
     const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: disbursementTargetDate }) : createMonthlyArray();
 
-    if (alloc === 0 && obli === 0 && disb === 0) return;
+    if (alloc === 0 && obli === 0 && disb === 0 && (!filters.includeTaggedExclusions || excludedTargetAllocation === 0)) return;
 
     items.push({
+        recordId: record.id,
         sourceType: metadata.sourceType,
         component: normalizeComponent(metadata.component),
         packageType: metadata.packageType,
@@ -319,6 +349,12 @@ const addLineItem = (
         uacsCode: line.uacsCode,
         recordYear: fallbackYear,
         fundType: record.fundType,
+        tier: record.tier,
+        status: record.status,
+        workflowStatus: record.workflow_status,
+        isRealignment: record.isRealignment,
+        isSavings: record.isSavings,
+        excludedTargetAllocation,
         operatingUnit: metadata.operatingUnit,
         location: metadata.location,
         ipoNames: metadata.ipoNames,
@@ -411,7 +447,7 @@ export const collectFinancialLineItems = (
         addLineItem(items, item, item, filters, {
             sourceType: 'programManagement',
             component: 'Program Management',
-            packageType: 'Office Requirements',
+            packageType: 'Other Expenses',
             activityName: item.particulars,
             operatingUnit: item.operatingUnit,
             targetDate: item.obligationDate,

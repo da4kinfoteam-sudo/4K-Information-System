@@ -9,6 +9,7 @@ import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
+import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
 
 interface OtherExpenseDetailProps {
     item: OtherProgramExpense;
@@ -37,12 +38,23 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
     const [formData, setFormData] = useState<OtherProgramExpense>(item);
     const [isSaving, setIsSaving] = useState(false);
 
+    const getDisplayItem = (source: OtherProgramExpense) => {
+        if (!source.disbursements || source.disbursements.length === 0) return source;
+        const disbursementSummary = summarizeDisbursements(source.disbursements, source.fundYear);
+        return {
+            ...source,
+            ...disbursementSummary.monthlyFields,
+            actualDisbursementAmount: disbursementSummary.total,
+            actualDisbursementDate: disbursementSummary.latestDate || source.actualDisbursementDate,
+        };
+    };
+
     // Initial load and whenever the item ID changes
     useEffect(() => {
         if (!item) return;
         
         // Always reset form data to current item first
-        setFormData(item);
+        setFormData(getDisplayItem(item));
 
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
@@ -78,7 +90,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
         };
 
         fetchObligations();
-    }, [item.id, supabase]);
+    }, [item, supabase]);
 
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     
@@ -133,7 +145,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
             setSelectedParticular(foundParticular);
         } else if (editMode === 'none') {
             // Reset to original state when canceling
-            setFormData(item);
+            setFormData(getDisplayItem(item));
         }
     }, [editMode, item, uacsCodes]);
 
@@ -285,6 +297,32 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                     if (insertError) {
                         console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
                         throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
+                    }
+                }
+
+                const { error: disbursementDeleteError } = await supabase.from('financial_disbursements')
+                    .delete()
+                    .eq('entity_type', entityType)
+                    .eq('parent_id', parentId);
+
+                if (disbursementDeleteError) {
+                    console.error("Error deleting old disbursements:", disbursementDeleteError);
+                }
+
+                const disbursementPayload = createDisbursementsFromMonthlyFields(updatedItem, updatedItem.fundYear, 'Synced from other expense monthly matrix')
+                    .map(disb => ({
+                        entity_type: entityType,
+                        parent_id: parentId,
+                        disbursement_date: disb.date,
+                        amount: Number(disb.amount) || 0,
+                        remarks: disb.remarks || ''
+                    }));
+
+                if (disbursementPayload.length > 0) {
+                    const { error: disbursementInsertError } = await supabase.from('financial_disbursements').insert(disbursementPayload);
+                    if (disbursementInsertError) {
+                        console.error("Critical RLS Error or Insert Error in financial_disbursements:", disbursementInsertError);
+                        throw new Error(`Failed to sync disbursements: ${disbursementInsertError.message}. This might be a database permission (RLS) issue.`);
                     }
                 }
 

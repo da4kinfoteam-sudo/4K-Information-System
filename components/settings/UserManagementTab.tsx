@@ -6,6 +6,9 @@ import { supabase } from '../../supabaseClient';
 import { Shield, Save, X as XIcon, Info, Users, UserCog } from 'lucide-react';
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm";
+const isGuestWriteField = (role: string | undefined, field: 'can_view' | 'can_edit' | 'can_delete') => (
+    role === 'Guest' && (field === 'can_edit' || field === 'can_delete')
+);
 
 const UserManagementTab: React.FC = () => {
     const { usersList, setUsersList } = useAuth();
@@ -68,6 +71,7 @@ const UserManagementTab: React.FC = () => {
     };
 
     const handleTogglePermission = (module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {
+        if (isGuestWriteField(editingUser?.role, field)) return;
         setUserOverrides((prev: any) => {
             const newOverrides = { ...prev };
             if (!newOverrides[module]) {
@@ -103,16 +107,22 @@ const UserManagementTab: React.FC = () => {
     const handleSavePermissions = async () => {
         if (!editingUser || !supabase) return;
         setSaving(true);
+        const sanitizedOverrides = editingUser.role === 'Guest'
+            ? Object.fromEntries(Object.entries(userOverrides).map(([module, override]: [string, any]) => [
+                module,
+                { ...override, can_edit: false, can_delete: false }
+            ]))
+            : userOverrides;
         
         try {
             const { error } = await supabase
                 .from('users')
-                .update({ permissions_override: userOverrides })
+                .update({ permissions_override: sanitizedOverrides })
                 .eq('id', editingUser.id);
 
             if (error) throw error;
             
-            setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, permissions_override: userOverrides } : u));
+            setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, permissions_override: sanitizedOverrides } : u));
             setIsPermissionModalOpen(false);
             alert("User permissions successfully updated.");
         } catch (e: any) {
@@ -355,14 +365,18 @@ const UserManagementTab: React.FC = () => {
                                         {appModules.map(module => {
                                             const roleDefault = roleDefaults.find(r => r.module === module) || { can_view: false, can_edit: false, can_delete: false };
                                             const hasOverride = userOverrides[module] !== undefined;
-                                            const effectiveConfig = hasOverride ? userOverrides[module] : roleDefault;
+                                            const rawEffectiveConfig = hasOverride ? userOverrides[module] : roleDefault;
+                                            const effectiveConfig = editingUser?.role === 'Guest'
+                                                ? { ...rawEffectiveConfig, can_edit: false, can_delete: false }
+                                                : rawEffectiveConfig;
                                             
                                             const Toggle = ({ field }: { field: 'can_view'|'can_edit'|'can_delete' }) => {
                                                 const val = effectiveConfig[field];
                                                 const accentColor = field === 'can_view' ? 'bg-emerald-600' : field === 'can_edit' ? 'bg-amber-500' : 'bg-red-500';
+                                                const isLocked = isGuestWriteField(editingUser?.role, field);
                                                 
                                                 return (
-                                                    <label className="flex flex-col items-center gap-1 cursor-pointer group">
+                                                    <label className={`flex flex-col items-center gap-1 group ${isLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                                                         <div className={`w-10 h-5 rounded-full relative transition-all ${val ? accentColor : 'bg-gray-200 dark:bg-gray-700'}`}>
                                                             <span className={`absolute top-0.5 left-0.5 bg-white w-4 h-4 rounded-full transition-transform ${val ? 'translate-x-5' : 'translate-x-0'} shadow-sm`}></span>
                                                         </div>
@@ -370,7 +384,8 @@ const UserManagementTab: React.FC = () => {
                                                             type="checkbox" 
                                                             className="hidden"
                                                             checked={val}
-                                                            onChange={() => handleTogglePermission(module, field)}
+                                                            onChange={() => !isLocked && handleTogglePermission(module, field)}
+                                                            disabled={isLocked}
                                                         />
                                                     </label>
                                                 );

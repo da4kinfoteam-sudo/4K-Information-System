@@ -67,6 +67,7 @@ export interface BaseEntity {
     workflow_status?: WorkflowStatus;
     created_at?: string;
     updated_at?: string;
+    physical_accomplishment_submitted_at?: string | null;
     deleted_at?: string; // For soft deletes
 }
 

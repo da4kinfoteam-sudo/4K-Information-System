@@ -4,7 +4,7 @@ import { Download, Upload } from 'lucide-react';
 import { IPO, LodAssessment, philippineRegions, ouToRegionMap, filterYears } from '../../constants';
 import { supabase } from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
-import { usePagination, useUserAccess } from '../mainfunctions/TableHooks';
+import { usePagination } from '../mainfunctions/TableHooks';
 import { useLogAction } from '../../hooks/useLogAction';
 
 interface LODPageProps {
@@ -15,8 +15,7 @@ interface LODPageProps {
 const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
-    const { canEdit } = useUserAccess('Level of Development');
-    const isAdmin = canEdit;
+    const isLodAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const [assessments, setAssessments] = useState<LodAssessment[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -85,6 +84,7 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
     };
 
     const handleExport = () => {
+        if (!isLodAdmin) return;
         const XLSX = (window as any).XLSX;
         if (!XLSX) {
             alert('Excel library not loaded. Please refresh the page.');
@@ -120,6 +120,10 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!isLodAdmin) {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
         const file = e.target.files?.[0];
         if (!file || !supabase) return;
 
@@ -203,7 +207,7 @@ const LODPage: React.FC<LODPageProps> = ({ ipos, onSelectIpo }) => {
         <div className="data-list-page">
             <div className="data-list-header">
                 <h2 className="data-list-title">Level of Development</h2>
-                {currentUser?.role === 'Administrator' && (
+                {isLodAdmin && (
                     <div className="data-list-actions">
                         <button 
                             onClick={handleExport}

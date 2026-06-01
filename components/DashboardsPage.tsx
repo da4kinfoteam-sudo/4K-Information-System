@@ -9,6 +9,7 @@ import NutritionDashboard from './dashboards/NutritionDashboard';
 import FarmProductivityDashboard from './dashboards/FarmProductivityDashboard';
 import SCADDashboard from './dashboards/SCADDashboard';
 import AgriculturalInterventionsDashboard from './dashboards/AgriculturalInterventionsDashboard';
+import CommodityDashboard from './dashboards/CommodityDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
@@ -28,7 +29,7 @@ export interface DashboardsPageProps {
     navigateTo?: (page: string) => void;
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
+type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'Commodities' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser, getVisibilityScope } = useAuth();
@@ -241,6 +242,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                     <TabButton tabName="Financial" label="Financial" />
                     <TabButton tabName="SCAD" label="SCAD" />
                     <TabButton tabName="Agricultural Interventions" label="Agricultural Interventions" />
+                    <TabButton tabName="Commodities" label="Commodities" />
                     <TabButton tabName="GAD" label="GAD" />
                     <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
                     <TabButton tabName="Nutrition" label="Nutrition" />
@@ -273,6 +275,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 )}
                 {activeTab === 'SCAD' && <SCADDashboard ipos={filteredData.ipos} />}
                 {activeTab === 'Agricultural Interventions' && <AgriculturalInterventionsDashboard subprojects={filteredData.subprojects} />}
+                {activeTab === 'Commodities' && <CommodityDashboard subprojects={filteredData.subprojects} onSelectSubproject={props.onSelectSubproject} />}
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}

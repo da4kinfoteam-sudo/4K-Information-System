@@ -145,7 +145,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
             'Indigenous Peoples Organization': 'IPO Management',
             'Marketing Database': 'Marketing Database',
             'Level of Development': 'Level of Development',
-            'Community Mapping': 'Community Mapping',
+            'Commodity Mapping': 'Commodity Mapping',
             'References': 'References'
         };
 

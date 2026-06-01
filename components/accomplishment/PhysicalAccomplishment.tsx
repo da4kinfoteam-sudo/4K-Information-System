@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
+import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 
 interface Props {
     subprojects: Subproject[];
@@ -304,6 +305,27 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         }
     };
 
+    const findOriginalItem = (uniqueId: string, nodes: PhysicalItem[] = originalItems): PhysicalItem | undefined => {
+        for (const node of nodes) {
+            if (node.uniqueId === uniqueId) return node;
+            if (node.children) {
+                const child = findOriginalItem(uniqueId, node.children);
+                if (child) return child;
+            }
+        }
+        return undefined;
+    };
+
+    const hasSubprojectDetailActualChange = (before: Subproject['details'], after: Subproject['details']) => {
+        if (before.length !== after.length) return true;
+        return after.some(detail => {
+            const original = before.find(item => item.id === detail.id);
+            if (!original) return true;
+            return valuesDiffer(original.actualDeliveryDate, detail.actualDeliveryDate)
+                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits);
+        });
+    };
+
     // Update Local State
     const updateLocalItem = (uniqueId: string, updates: Partial<PhysicalItem>) => {
         setItems(prev => {
@@ -372,6 +394,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         }
                         return d;
                     });
+                    const originalItem = findOriginalItem(item.uniqueId);
+                    const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                        hasPhysicalAccomplishment: !!item.actualDateStart,
+                        hasChanged: valuesDiffer(originalItem?.actualDateStart, item.actualDateStart) || hasSubprojectDetailActualChange(sp.details, updatedDetails),
+                        previousSubmittedAt: sp.physical_accomplishment_submitted_at,
+                        submittedAt
+                    });
 
                     if (supabase) {
                         await supabase.from('subprojects').update({
@@ -379,12 +408,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             estimatedCompletionDate: item.targetDateStart || null,
                             status: newStatus,
                             details: updatedDetails,
+                            physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
                             updated_at: submittedAt
                         }).eq('id', sp.id);
                     }
 
                     // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails, updated_at: submittedAt } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
 
                 } else {
                     // Save Individual Child Row
@@ -405,11 +435,17 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         }
                         return d;
                     });
+                    const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                        hasPhysicalAccomplishment: !!sp.actualCompletionDate,
+                        hasChanged: hasSubprojectDetailActualChange(sp.details, updatedDetails),
+                        previousSubmittedAt: sp.physical_accomplishment_submitted_at,
+                        submittedAt
+                    });
 
                     if (supabase) {
-                        await supabase.from('subprojects').update({ details: updatedDetails, updated_at: submittedAt }).eq('id', sp.id);
+                        await supabase.from('subprojects').update({ details: updatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt }).eq('id', sp.id);
                     }
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails, updated_at: submittedAt } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, details: updatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
                 }
 
             } else if (item.sourceType === 'Activity') {
@@ -417,6 +453,14 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 if (!act) throw new Error("Activity not found");
 
                 const newStatus: Activity['status'] = item.actualDateStart ? 'Completed' : 'Ongoing';
+                const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                    hasPhysicalAccomplishment: !!item.actualDateStart,
+                    hasChanged: valuesDiffer(act.actualDate, item.actualDateStart)
+                        || valuesDiffer(act.actualParticipantsMale, item.actualMale)
+                        || valuesDiffer(act.actualParticipantsFemale, item.actualFemale),
+                    previousSubmittedAt: act.physical_accomplishment_submitted_at,
+                    submittedAt
+                });
                 const payload = {
                     actualDate: item.actualDateStart,
                     actualParticipantsMale: item.actualMale,
@@ -426,6 +470,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     participantsMale: item.targetMale,
                     participantsFemale: item.targetFemale,
                     status: newStatus,
+                    physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
                     updated_at: submittedAt
                 };
 
@@ -435,10 +480,18 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 setActivities(prev => prev.map(a => a.id === act.id ? { ...a, ...payload } : a));
 
             } else if (item.sourceType === 'Staffing') {
+                 const existing = staffingReqs.find(s => s.id === item.sourceId);
+                 const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                    hasPhysicalAccomplishment: !!item.actualDateStart,
+                    hasChanged: valuesDiffer(existing?.actualObligationDate, item.actualDateStart),
+                    previousSubmittedAt: existing?.physical_accomplishment_submitted_at,
+                    submittedAt
+                 });
                  // Update Date Hired and Target Date
                  const payload = { 
                      actualObligationDate: item.actualDateStart,
                      obligationDate: item.targetDateStart,
+                     physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
                      updated_at: submittedAt
                   };
                  if (supabase) {
@@ -447,11 +500,19 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                  setStaffingReqs(prev => prev.map(s => s.id === item.sourceId ? { ...s, ...payload } : s));
 
             } else if (item.sourceType === 'Office') {
+                const existing = officeReqs.find(o => o.id === item.sourceId);
+                const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                    hasPhysicalAccomplishment: !!item.actualDateStart,
+                    hasChanged: valuesDiffer(existing?.actualObligationDate, item.actualDateStart),
+                    previousSubmittedAt: existing?.physical_accomplishment_submitted_at,
+                    submittedAt
+                });
                 // Update Actual Date and Target Date
                 const payload = { 
                     actualObligationDate: item.actualDateStart,
                     obligationDate: item.targetDateStart,
                     numberOfUnits: item.targetQty,
+                    physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
                     updated_at: submittedAt
                 }; 
                 if (supabase) {

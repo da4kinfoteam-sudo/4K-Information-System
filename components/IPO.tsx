@@ -1,7 +1,7 @@
 
 // Author: 4K 
 import React, { useState, FormEvent, useEffect, useMemo } from 'react';
-import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
+import { Check, ChevronDown, Download, FileSpreadsheet, Plus, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { IPO, Subproject, Activity, philippineRegions, Commodity, referenceCommodityTypes, LodAssessment, GidaArea, ElcacArea, normalizeRegionName } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { supabase } from '../supabaseClient';
@@ -118,6 +118,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
         withSubprojects: false,
         withTrainings: false
     });
+    const [areFlagFiltersOpen, setAreFlagFiltersOpen] = useState(false);
 
     type SortKeys = keyof IPO | 'totalInvested';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'registrationDate', direction: 'descending' });
@@ -738,6 +739,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
 
     // Filter activities for display
     const linkedTrainings = useMemo(() => (activities || []).filter(a => a.type === 'Training'), [activities]);
+    const activeFlagFilterCount = Object.values(flagFilter).filter(Boolean).length;
 
     const getWorkflowStatusBadge = (status?: string) => {
         let classes = 'status-badge status-badge--compact status-badge--neutral';
@@ -827,7 +829,7 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                                 className={`data-table-search data-table-search--list ${commonInputClasses} mt-0`}
                             />
                             <div className="data-toolbar-group data-toolbar-filter">
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Region:</label>
+                                <label className="data-toolbar-label">Region:</label>
                                 <select value={regionFilter} onChange={(e) => setRegionFilter(e.target.value)} className={`data-table-select data-table-select--compact ${commonInputClasses} mt-0`}>
                                     <option value="All">All Regions</option>
                                     {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -869,8 +871,22 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                             )}
                         </div>
                     </div>
+
+                    <button
+                        type="button"
+                        className={`filter-checkbar-toggle ${areFlagFiltersOpen ? 'is-open' : ''}`}
+                        onClick={() => setAreFlagFiltersOpen(prev => !prev)}
+                        aria-expanded={areFlagFiltersOpen}
+                    >
+                        <span>
+                            <SlidersHorizontal className="filter-checkbar-toggle__icon" aria-hidden="true" />
+                            Filters
+                            {activeFlagFilterCount > 0 && <span className="filter-checkbar-toggle__count">{activeFlagFilterCount}</span>}
+                        </span>
+                        <ChevronDown className="filter-checkbar-toggle__chevron" aria-hidden="true" />
+                    </button>
                      
-                    <div className="filter-checkbar">
+                    <div className={`filter-checkbar ${areFlagFiltersOpen ? 'is-open' : ''}`}>
                         <label className="filter-check">
                             <input type="checkbox" name="womenLed" checked={flagFilter.womenLed} onChange={handleFlagFilterChange} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                             <span className="text-gray-700 dark:text-gray-300">Women-Led</span>
@@ -1056,20 +1072,21 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
                     </table>
                 </div>
                  {/* Pagination */}
-                 <div className="data-table-pagination py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Show</span>
+                 <div className="data-table-pagination">
+                    <div className="data-table-pagination__page-size">
+                        <span>Rows</span>
                         <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 pl-2 pr-8 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm">
                             {[10, 20, 50, 100].map(size => ( <option key={size} value={size}>{size}</option> ))}
                         </select>
-                        <span className="text-gray-700 dark:text-gray-300">entries</span>
+                        <span className="data-table-pagination__entries-label">per page</span>
                     </div>
-                     <div className="flex items-center gap-4 text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)} to {Math.min(currentPage * itemsPerPage, processedIpos.length)} of {processedIpos.length} entries</span>
-                        <div className="flex items-center gap-2">
-                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
-                            <span className="px-2 font-medium">{currentPage} / {totalPages}</span>
-                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-md disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+                     <div className="data-table-pagination__status">
+                        <span className="data-table-pagination__range">Showing {Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)} to {Math.min(currentPage * itemsPerPage, processedIpos.length)} of {processedIpos.length} entries</span>
+                        <span className="data-table-pagination__compact-range">{processedIpos.length === 0 ? '0 records' : `${Math.min((currentPage - 1) * itemsPerPage + 1, processedIpos.length)}-${Math.min(currentPage * itemsPerPage, processedIpos.length)} of ${processedIpos.length}`}</span>
+                        <div className="data-table-pagination__controls">
+                            <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1}>Previous</button>
+                            <span>{currentPage} / {totalPages}</span>
+                            <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages}>Next</button>
                         </div>
                     </div>
                 </div>

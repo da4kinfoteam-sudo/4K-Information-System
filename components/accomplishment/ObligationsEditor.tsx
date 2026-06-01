@@ -1,6 +1,7 @@
 import React from 'react';
 import { ObligationRecord } from '../../constants';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
+import { FormattedAmountInput } from '../ui/FormattedAmountInput';
 import { Plus, Trash2 } from 'lucide-react';
 
 interface ObligationsEditorProps {
@@ -49,13 +50,13 @@ export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligation
                             />
                         </div>
                         <div className="budget-record-row__amount">
-                            <input
-                                type="number"
-                                value={ob.amount === 0 && !ob.date ? '' : ob.amount}
-                                onChange={(e) => handleUpdate(ob.id, 'amount', parseFloat(e.target.value))}
+                            <FormattedAmountInput
+                                value={Number(ob.amount) || 0}
+                                onValueChange={(value) => handleUpdate(ob.id, 'amount', value)}
                                 className="form-control form-control--compact"
                                 placeholder="0.00"
                                 disabled={readOnly}
+                                emptyWhenZero={!ob.date}
                             />
                         </div>
                         {!readOnly && (

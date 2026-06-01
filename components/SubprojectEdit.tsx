@@ -9,6 +9,7 @@ import { useLogAction } from '../hooks/useLogAction';
 import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
+import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 
 interface SubprojectEditProps {
     subproject?: Subproject;
@@ -29,6 +30,17 @@ const MONTH_NAMES = [
 ];
 
 const commonInputClasses = "form-control";
+
+const budgetItemFieldLabels: Record<string, string> = {
+    type: 'Type',
+    particulars: 'Particulars',
+    uacsCode: 'UACS Code',
+    deliveryDate: 'Delivery Month',
+    obligationMonth: 'Obligation Month',
+    disbursementMonth: 'Disbursement Month',
+    pricePerUnit: 'Price per Unit',
+    numberOfUnits: 'Number of Units'
+};
 
 const defaultFormData: Subproject = {
     id: 0,
@@ -87,7 +99,8 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     });
     const [editingCommodityIndex, setEditingCommodityIndex] = useState<number | null>(null);
     const [missingFields, setMissingFields] = useState<string[]>([]);
-    const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{field: string, dateStr: string} | null>(null);
+    const [confirmBudgetItemDate, setConfirmBudgetItemDate] = useState<{field: 'deliveryDate' | 'obligationMonth', dateStr: string} | null>(null);
+    const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
 
     const validationErrors = useMemo(() => {
         const errors: string[] = [];
@@ -196,12 +209,12 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         const year = formData.fundingYear || new Date().getFullYear();
         const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
         
-        if (field === 'deliveryDate' && formData.estimatedCompletionDate) {
+        if ((field === 'deliveryDate' || field === 'obligationMonth') && formData.estimatedCompletionDate) {
             const estCompDate = new Date(formData.estimatedCompletionDate);
             const selectedDate = new Date(dateStr);
             if (selectedDate.getFullYear() > estCompDate.getFullYear() || 
                 (selectedDate.getFullYear() === estCompDate.getFullYear() && selectedDate.getMonth() > estCompDate.getMonth())) {
-                setConfirmDeliveryDate({ field, dateStr });
+                setConfirmBudgetItemDate({ field, dateStr });
                 return;
             }
         }
@@ -209,16 +222,16 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
         setCurrentDetail(prev => ({ ...prev, [field]: dateStr }));
     }
 
-    const handleConfirmDeliveryDate = (): void => {
-        if (confirmDeliveryDate) {
-            setFormData(prev => ({ ...prev, estimatedCompletionDate: confirmDeliveryDate.dateStr }));
-            setCurrentDetail(prev => ({ ...prev, [confirmDeliveryDate.field]: confirmDeliveryDate.dateStr }));
-            setConfirmDeliveryDate(null);
+    const handleConfirmBudgetItemDate = (): void => {
+        if (confirmBudgetItemDate) {
+            setFormData(prev => ({ ...prev, estimatedCompletionDate: confirmBudgetItemDate.dateStr }));
+            setCurrentDetail(prev => ({ ...prev, [confirmBudgetItemDate.field]: confirmBudgetItemDate.dateStr }));
+            setConfirmBudgetItemDate(null);
         }
     };
 
-    const handleCancelDeliveryDate = (): void => {
-        setConfirmDeliveryDate(null);
+    const handleCancelBudgetItemDate = (): void => {
+        setConfirmBudgetItemDate(null);
     };
 
     const availableUacsCodes = useMemo(() => {
@@ -303,8 +316,11 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
     };
 
     const handleAddDetail = (): void => {
-        if (!currentDetail.particulars || !currentDetail.uacsCode || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.deliveryDate || !currentDetail.obligationMonth || !currentDetail.disbursementMonth) {
-            alert("Please fill in all required detail fields, including delivery date and monthly targets."); return;
+        const requiredDetailFields = ['particulars', 'uacsCode', 'deliveryDate', 'obligationMonth', 'disbursementMonth', 'pricePerUnit', 'numberOfUnits'];
+        const missingDetailFields = requiredDetailFields.filter(field => !currentDetail[field as keyof typeof currentDetail]);
+        if (missingDetailFields.length > 0) {
+            setBudgetItemErrorFields(missingDetailFields);
+            return;
         }
 
         let updatedDetails: SubprojectDetail[] = [];
@@ -485,7 +501,25 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
             if (matched) resolvedIpoId = matched.id;
         }
 
-        const payload: any = { ...formData, ipo_id: resolvedIpoId, updated_at: timestamp };
+        const detailActualsChanged = !!subproject && (formData.details || []).some(detail => {
+            const original = (subproject.details || []).find(item => item.id === detail.id);
+            if (!original) return !!detail.actualDeliveryDate || !!detail.actualNumberOfUnits;
+            return valuesDiffer(original.actualDeliveryDate, detail.actualDeliveryDate)
+                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits);
+        });
+        const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+            hasPhysicalAccomplishment: !!formData.actualCompletionDate,
+            hasChanged: !subproject || valuesDiffer(subproject.actualCompletionDate, formData.actualCompletionDate) || detailActualsChanged,
+            previousSubmittedAt: subproject?.physical_accomplishment_submitted_at,
+            submittedAt: timestamp
+        });
+
+        const payload: any = {
+            ...formData,
+            ipo_id: resolvedIpoId,
+            physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
+            updated_at: timestamp
+        };
         if (!subproject) {
             payload.created_at = timestamp;
             payload.uid = formData.uid || `SP-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
@@ -954,7 +988,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         value={currentDetail.deliveryDate}
                                         onChange={(val) => {
                                             if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
-                                                alert("Delivery date cannot be beyond the estimated completion date.");
+                                                setConfirmBudgetItemDate({ field: 'deliveryDate', dateStr: val });
                                                 return;
                                             }
                                             setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
@@ -971,7 +1005,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                         value={currentDetail.obligationMonth}
                                         onChange={(val) => {
                                             if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
-                                                alert("Obligation month cannot be beyond the estimated completion date.");
+                                                setConfirmBudgetItemDate({ field: 'obligationMonth', dateStr: val });
                                                 return;
                                             }
                                             setCurrentDetail(prev => ({ ...prev, obligationMonth: val }));
@@ -985,13 +1019,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     <label className="block text-xs font-medium">Disbursement Month</label>
                                     <MonthYearPicker
                                         value={currentDetail.disbursementMonth}
-                                        onChange={(val) => {
-                                            if (formData.estimatedCompletionDate && val > formData.estimatedCompletionDate) {
-                                                alert("Disbursement month cannot be beyond the estimated completion date.");
-                                                return;
-                                            }
-                                            setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }));
-                                        }}
+                                        onChange={(val) => setCurrentDetail(prev => ({ ...prev, disbursementMonth: val }))}
                                         placeholder="Select month"
                                         defaultYear={formData.fundingYear}
                                         className="h-9"
@@ -1152,18 +1180,37 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                 </div>
             </form>
 
-            {/* Delivery Date Confirmation Modal */}
-            {confirmDeliveryDate && (
+            {/* Budget Item Date Confirmation Modal */}
+            {confirmBudgetItemDate && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="dashboard-modal">
-                        <h3 className="detail-card-title">Confirm Delivery Date</h3>
+                        <h3 className="detail-card-title">Confirm Budget Item Date</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
-                            The delivery date you selected is beyond the subproject's estimated completion date. 
-                            Do you want to update the subproject's estimated completion date to match this delivery date?
+                            The {budgetItemFieldLabels[confirmBudgetItemDate.field].toLowerCase()} you selected is beyond the subproject's estimated completion date.
+                            Do you want to update the subproject's estimated completion date to match this month?
                         </p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={handleCancelDeliveryDate} className="btn btn-secondary">Cancel</button>
-                            <button onClick={handleConfirmDeliveryDate} className="btn btn-primary">Confirm & Update</button>
+                            <button type="button" onClick={handleCancelBudgetItemDate} className="btn btn-secondary">Cancel</button>
+                            <button type="button" onClick={handleConfirmBudgetItemDate} className="btn btn-primary">Confirm & Update</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {budgetItemErrorFields.length > 0 && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="dashboard-modal">
+                        <h3 className="detail-card-title">Complete Budget Item Fields</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                            Please complete the following required fields before adding or updating this budget item:
+                        </p>
+                        <ul className="list-disc pl-6 text-sm text-gray-700 dark:text-gray-200 mb-6 space-y-1">
+                            {budgetItemErrorFields.map(field => (
+                                <li key={field}>{budgetItemFieldLabels[field] || field}</li>
+                            ))}
+                        </ul>
+                        <div className="flex justify-end">
+                            <button type="button" onClick={() => setBudgetItemErrorFields([])} className="btn btn-primary">OK</button>
                         </div>
                     </div>
                 </div>

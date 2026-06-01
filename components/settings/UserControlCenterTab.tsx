@@ -5,6 +5,9 @@ import { RoleConfig, appModules, UserRole } from '../../constants';
 import { Save, AlertTriangle, Info, Check, X } from 'lucide-react';
 
 const allRoles: UserRole[] = ['Super Admin', 'Administrator', 'Management', 'Focal - User', 'RFO - User', 'User', 'Guest'];
+const isGuestWriteField = (role: string, field: 'can_view' | 'can_edit' | 'can_delete') => (
+    role === 'Guest' && (field === 'can_edit' || field === 'can_delete')
+);
 
 const UserControlCenterTab: React.FC = () => {
     const [configs, setConfigs] = useState<RoleConfig[]>([]);
@@ -45,6 +48,8 @@ const UserControlCenterTab: React.FC = () => {
                         if (existing) {
                             fullSet.push({
                                 ...existing,
+                                can_edit: role === 'Guest' ? false : existing.can_edit,
+                                can_delete: role === 'Guest' ? false : existing.can_delete,
                                 visibility_scope: existing.visibility_scope || (['Super Admin', 'Administrator', 'Management'].includes(role) ? 'All OUs' : 'Own OU')
                             });
                         } else {
@@ -71,6 +76,7 @@ const UserControlCenterTab: React.FC = () => {
     };
 
     const handleToggle = (role: string, module: string, field: 'can_view' | 'can_edit' | 'can_delete') => {
+        if (isGuestWriteField(role, field)) return;
         setSuccess(false);
         setPendingConfigs(prev => prev.map(c => {
             if (c.role === role && c.module === module) {
@@ -152,8 +158,8 @@ const UserControlCenterTab: React.FC = () => {
             role: c.role,
             module: c.module,
             can_view: !!c.can_view,
-            can_edit: !!c.can_edit,
-            can_delete: !!c.can_delete,
+            can_edit: c.role === 'Guest' ? false : !!c.can_edit,
+            can_delete: c.role === 'Guest' ? false : !!c.can_delete,
             visibility_scope: c.visibility_scope || 'Own OU'
         }));
 
@@ -293,48 +299,49 @@ const UserControlCenterTab: React.FC = () => {
                                         if (!config) return <td key={module} className="p-4 border-r dark:border-gray-700 border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"></td>;
                                         
                                         const isSuperAdmin = role === 'Super Admin';
+                                        const displayConfig = role === 'Guest' ? { ...config, can_edit: false, can_delete: false } : config;
                                     return (
                                         <td key={module} className="px-4 py-3 align-top border-r border-gray-100 dark:border-gray-800/50">
                                             <div className="flex flex-col gap-2">
                                                 <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
                                                     <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">VIEW</span>
-                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_view ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_view ? 'translate-x-4' : 'translate-x-0'}`}></span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${displayConfig.can_view ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${displayConfig.can_view ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
                                                         className="hidden"
-                                                        checked={config.can_view}
+                                                        checked={displayConfig.can_view}
                                                         onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_view')}
                                                         disabled={isSuperAdmin}
                                                     />
                                                 </label>
                                                 
-                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${(isSuperAdmin || isGuestWriteField(role, 'can_edit')) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
                                                     <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">EDIT</span>
-                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_edit ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_edit ? 'translate-x-4' : 'translate-x-0'}`}></span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${displayConfig.can_edit ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${displayConfig.can_edit ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
                                                         className="hidden"
-                                                        checked={config.can_edit}
-                                                        onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_edit')}
-                                                        disabled={isSuperAdmin}
+                                                        checked={displayConfig.can_edit}
+                                                        onChange={() => !isSuperAdmin && !isGuestWriteField(role, 'can_edit') && handleToggle(role, module, 'can_edit')}
+                                                        disabled={isSuperAdmin || isGuestWriteField(role, 'can_edit')}
                                                     />
                                                 </label>
 
-                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${isSuperAdmin ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
+                                                <label className={`flex justify-between items-center text-[10px] p-1.5 rounded ${(isSuperAdmin || isGuestWriteField(role, 'can_delete')) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer'}`}>
                                                     <span className="text-gray-600 dark:text-gray-400 font-bold tracking-tight">DELETE</span>
-                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${config.can_delete ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${config.can_delete ? 'translate-x-4' : 'translate-x-0'}`}></span>
+                                                    <div className={`w-8 h-4 rounded-full relative transition-colors ${displayConfig.can_delete ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                                                        <span className={`absolute top-0.5 left-0.5 bg-white w-3 h-3 rounded-full transition-transform ${displayConfig.can_delete ? 'translate-x-4' : 'translate-x-0'}`}></span>
                                                     </div>
                                                     <input 
                                                         type="checkbox" 
                                                         className="hidden"
-                                                        checked={config.can_delete}
-                                                        onChange={() => !isSuperAdmin && handleToggle(role, module, 'can_delete')}
-                                                        disabled={isSuperAdmin}
+                                                        checked={displayConfig.can_delete}
+                                                        onChange={() => !isSuperAdmin && !isGuestWriteField(role, 'can_delete') && handleToggle(role, module, 'can_delete')}
+                                                        disabled={isSuperAdmin || isGuestWriteField(role, 'can_delete')}
                                                     />
                                                 </label>
                                             </div>

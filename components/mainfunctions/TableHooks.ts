@@ -90,7 +90,8 @@ export const useUserAccess = (moduleName: string) => {
     
     // Instead of static role checks, we now check the specific AuthContext
     const canEdit = hasAccess(moduleName, 'edit');
+    const canDelete = hasAccess(moduleName, 'delete');
     const canViewAll = getVisibilityScope(moduleName) === 'All';
     
-    return { canEdit, canViewAll };
+    return { canEdit, canDelete, canViewAll };
 };

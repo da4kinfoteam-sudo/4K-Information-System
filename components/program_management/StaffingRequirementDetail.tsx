@@ -10,6 +10,8 @@ import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
+import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
+import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
@@ -91,17 +93,28 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
 
         // Migrate legacy actual fields into obligations array
-        return expenses.map(exp => ({
-            ...exp,
-            obligations: (exp.obligations && exp.obligations.length > 0) ? exp.obligations : (
-                (exp.actualObligationAmount > 0) ? [{
-                    id: Date.now(),
-                    date: exp.actualObligationDate || '',
-                    amount: exp.actualObligationAmount || 0,
-                    remarks: 'Legacy Record'
-                }] : []
-            )
-        }));
+        return expenses.map(exp => {
+            const disbursementSummary = exp.disbursements && exp.disbursements.length > 0
+                ? summarizeDisbursements(exp.disbursements, item.fundYear)
+                : null;
+
+            return {
+                ...exp,
+                ...(disbursementSummary ? {
+                    ...disbursementSummary.monthlyFields,
+                    actualDisbursementAmount: disbursementSummary.total,
+                    actualDisbursementDate: disbursementSummary.latestDate || exp.actualDisbursementDate,
+                } : {}),
+                obligations: (exp.obligations && exp.obligations.length > 0) ? exp.obligations : (
+                    (exp.actualObligationAmount > 0) ? [{
+                        id: Date.now(),
+                        date: exp.actualObligationDate || '',
+                        amount: exp.actualObligationAmount || 0,
+                        remarks: 'Legacy Record'
+                    }] : []
+                )
+            };
+        });
     }, [item]);
 
     // Expense Management State
@@ -434,6 +447,10 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             });
         }
 
+        const timestamp = new Date().toISOString();
+        const nextActualObligationDate = expensesList.length === 0 ? null : (formData.actualObligationDate || null);
+        const actualDateBasis = getProgramManagementPhysicalDateBasis({ ...formData, actualObligationDate: nextActualObligationDate });
+        const previousActualDateBasis = getProgramManagementPhysicalDateBasis(item);
         const updatedItem: any = {
             ...formData,
             ...aggregatedTotals,
@@ -444,8 +461,14 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             expenses: expensesList,
             actualAmount: 0, // Removed usage as per request, ensuring 0
             actualObligationAmount: expensesList.length === 0 ? null : aggregatedTotals.actualObligationAmount,
-            actualObligationDate: expensesList.length === 0 ? null : (formData.actualObligationDate || null),
-            updated_at: new Date().toISOString()
+            actualObligationDate: nextActualObligationDate,
+            physical_accomplishment_submitted_at: resolvePhysicalAccomplishmentSubmittedAt({
+                hasPhysicalAccomplishment: !!actualDateBasis,
+                hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
+                previousSubmittedAt: item.physical_accomplishment_submitted_at,
+                submittedAt: timestamp
+            }),
+            updated_at: timestamp
         };
 
         if (supabase) {
@@ -493,6 +516,37 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     if (insertError) {
                         console.error("Critical RLS Error or Insert Error in financial_obligations:", insertError);
                         throw new Error(`Failed to sync obligations: ${insertError.message}. This might be a database permission (RLS) issue.`);
+                    }
+                }
+
+                const disbursementSyncPayload: any[] = [];
+                expensesList.forEach(exp => {
+                    createDisbursementsFromMonthlyFields(exp, formData.fundYear, 'Synced from staffing monthly matrix').forEach(disb => {
+                        disbursementSyncPayload.push({
+                            entity_type: entityType,
+                            parent_id: parentId,
+                            item_id: exp.id?.toString() || null,
+                            disbursement_date: disb.date,
+                            amount: Number(disb.amount) || 0,
+                            remarks: disb.remarks || ''
+                        });
+                    });
+                });
+
+                const { error: disbursementDeleteError } = await supabase.from('financial_disbursements')
+                    .delete()
+                    .eq('entity_type', entityType)
+                    .eq('parent_id', parentId);
+
+                if (disbursementDeleteError) {
+                    console.error("Error deleting old disbursements:", disbursementDeleteError);
+                }
+
+                if (disbursementSyncPayload.length > 0) {
+                    const { error: disbursementInsertError } = await supabase.from('financial_disbursements').insert(disbursementSyncPayload);
+                    if (disbursementInsertError) {
+                        console.error("Critical RLS Error or Insert Error in financial_disbursements:", disbursementInsertError);
+                        throw new Error(`Failed to sync disbursements: ${disbursementInsertError.message}. This might be a database permission (RLS) issue.`);
                     }
                 }
 

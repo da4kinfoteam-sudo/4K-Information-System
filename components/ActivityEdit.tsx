@@ -10,6 +10,7 @@ import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
+import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -502,6 +503,7 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
              }
         } else {
             // Edit Mode
+            const submittedAt = new Date().toISOString();
             let updatedStatus = formData.status;
             // Auto-complete logic for Accomplishment Mode if actual date is present
             if (mode === 'accomplishment') {
@@ -510,11 +512,34 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                  }
             }
 
+            const physicalActualFields: (keyof Activity)[] = [
+                'actualDate',
+                'actualEndDate',
+                'actualParticipantsMale',
+                'actualParticipantsFemale',
+                'actualPWD',
+                'actualMuslim',
+                'actualLGBTQ',
+                'actualSoloParent',
+                'actualSenior',
+                'actualYouth'
+            ];
+            const physicalAccomplishmentChanged = mode === 'accomplishment'
+                ? physicalActualFields.some(field => valuesDiffer(initialActivity[field], formData[field]))
+                : valuesDiffer(initialActivity.actualDate, formData.actualDate);
+            const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+                hasPhysicalAccomplishment: !!formData.actualDate,
+                hasChanged: physicalAccomplishmentChanged,
+                previousSubmittedAt: initialActivity.physical_accomplishment_submitted_at,
+                submittedAt
+            });
+
             activitiesToSave = [{
                 ...formData,
                 status: updatedStatus,
-                updated_at: new Date().toISOString(),
-                history: [...(formData.history || []), { date: new Date().toISOString(), event: `Updated (${mode})`, user: currentUser?.fullName || "System" }]
+                physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
+                updated_at: submittedAt,
+                history: [...(formData.history || []), { date: submittedAt, event: `Updated (${mode})`, user: currentUser?.fullName || "System" }]
             }];
         }
 

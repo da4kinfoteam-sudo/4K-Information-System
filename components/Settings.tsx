@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { 
     Deadline, PlanningSchedule, Subproject, Activity, IPO,
@@ -15,6 +15,7 @@ import DCFManagementTab from './settings/DCFManagementTab';
 import LODManagementTab from './settings/LODManagementTab';
 import ArchiveManagementTab from './settings/ArchiveManagementTab';
 import UserControlCenterTab from './settings/UserControlCenterTab';
+import GoogleDriveStorageTab from './settings/GoogleDriveStorageTab';
 
 interface SettingsProps {
     isDarkMode: boolean;
@@ -40,7 +41,7 @@ interface SettingsProps {
     onSelectIpo: (ipo: IPO) => void;
 }
 
-type TabName = 'profile' | 'management' | 'control_center' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
+type TabName = 'profile' | 'management' | 'control_center' | 'drive' | 'system' | 'logs' | 'dcf' | 'lod' | 'archive';
 
 const Settings: React.FC<SettingsProps> = ({ 
     isDarkMode, toggleDarkMode, 
@@ -56,13 +57,21 @@ const Settings: React.FC<SettingsProps> = ({
     onSelectIpo
 }) => {
     const { currentUser, hasAccess } = useAuth();
-    const [activeTab, setActiveTab] = useState<TabName>('profile');
-    
-    if (!currentUser) return null;
+    const [activeTab, setActiveTab] = useState<TabName>(() => (
+        window.location.hash.includes('drive=') ? 'drive' : 'profile'
+    ));
 
     // We keep these legacy admin checks as absolute fallbacks for settings only
     const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
     const isSuperAdmin = currentUser?.role === 'Super Admin';
+
+    useEffect(() => {
+        if (isSuperAdmin && window.location.hash.includes('drive=')) {
+            setActiveTab('drive');
+        }
+    }, [isSuperAdmin]);
+
+    if (!currentUser) return null;
     
     // Use granular rules from user overrides/roles config where applicable
     const canAccessSystem = hasAccess('System Management', 'view') || isAdmin;
@@ -95,6 +104,7 @@ const Settings: React.FC<SettingsProps> = ({
                         <TabButton name="profile" label="User Profile" />
                         {isAdmin && <TabButton name="management" label="Users Management" />}
                         {isSuperAdmin && <TabButton name="control_center" label="User Control Center" />}
+                        {isSuperAdmin && <TabButton name="drive" label="Google Drive Storage" />}
                         {isAdmin && <TabButton name="dcf" label="DCF Management" />}
                         {isAdmin && <TabButton name="lod" label="LOD Management" />}
                         {canAccessSystem && <TabButton name="system" label="System Management" />}
@@ -110,6 +120,10 @@ const Settings: React.FC<SettingsProps> = ({
                     
                     {activeTab === 'control_center' && isSuperAdmin && (
                         <UserControlCenterTab />
+                    )}
+
+                    {activeTab === 'drive' && isSuperAdmin && (
+                        <GoogleDriveStorageTab />
                     )}
 
                     {activeTab === 'management' && isAdmin && (

@@ -55,6 +55,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const hasAccess = (module: string, action: 'view' | 'edit' | 'delete'): boolean => {
         if (!currentUser) return false;
         if (['Super Admin', 'Administrator'].includes(currentUser.role)) return true;
+        if (currentUser.role === 'Guest' && (action === 'edit' || action === 'delete')) return false;
 
         if (currentUser.permissions_override && typeof currentUser.permissions_override === 'object') {
             const moduleOverride = currentUser.permissions_override[module];

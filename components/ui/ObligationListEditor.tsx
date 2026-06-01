@@ -3,14 +3,16 @@ import React from 'react';
 import { ObligationRecord } from '../../constants';
 import { Trash2, Plus } from 'lucide-react';
 import { MonthYearPicker } from './MonthYearPicker';
+import { FormattedAmountInput } from './FormattedAmountInput';
 
 interface Props {
     obligations: ObligationRecord[];
     onChange: (obligations: ObligationRecord[]) => void;
     readOnly?: boolean;
+    hideHeaderAddButton?: boolean;
 }
 
-export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChange, readOnly = false }) => {
+export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChange, readOnly = false, hideHeaderAddButton = false }) => {
     const handleAdd = () => {
         if (readOnly) return;
         const newRecord: ObligationRecord = {
@@ -34,7 +36,7 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
     const total = obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
 
     return (
-        <div className="space-y-3">
+        <div className="budget-record-list space-y-3">
             <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
                 <div className="flex flex-col">
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Obligated Amount</span>
@@ -42,11 +44,11 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
                         {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(total)}
                     </span>
                 </div>
-                {!readOnly && (
+                {!readOnly && !hideHeaderAddButton && (
                     <button
                         type="button"
                         onClick={handleAdd}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
+                        className="financial-record-list-add flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
                     >
                         <Plus className="w-3 h-3" />
                         Add Record
@@ -86,11 +88,12 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
                                 </div>
                                 <div>
                                     <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Amount</label>
-                                    <input
-                                        type="number"
-                                        value={obli.amount || ''}
-                                        onChange={(e) => handleUpdate(obli.id, { amount: parseFloat(e.target.value) || 0 })}
+                                    <FormattedAmountInput
+                                        value={Number(obli.amount) || 0}
+                                        onValueChange={(value) => handleUpdate(obli.id, { amount: value })}
                                         disabled={readOnly}
+                                        emptyWhenZero
+                                        placeholder="0.00"
                                         className="w-full px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-none rounded-lg text-xs font-bold text-emerald-600 dark:text-emerald-400 focus:ring-1 focus:ring-emerald-500 transition-all disabled:opacity-50"
                                     />
                                 </div>

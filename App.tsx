@@ -50,6 +50,15 @@ import {
     sampleGidaAreas, sampleElcacAreas
 } from './samples';
 import { sampleIPOs } from './sampleIPOs';
+import {
+    applyTheme,
+    getSavedThemePreference,
+    getSystemThemePreference,
+    resolveInitialTheme,
+    saveThemePreference,
+    THEME_STORAGE_KEY,
+    ThemeMode
+} from './lib/theme';
 
 // Helper to format page names for "Back to..." buttons
 const getPageName = (path: string) => {
@@ -93,8 +102,9 @@ const AppContent: React.FC = () => {
     const { currentUser, hasAccess, isAuthReady } = useAuth();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
     const [currentPage, setCurrentPage] = useState('/');
+    const isDarkMode = themeMode === 'dark';
 
     // Global Filter State (Triggered by AI or External links)
     const [externalFilters, setExternalFilters] = useState<{ 
@@ -363,11 +373,12 @@ const AppContent: React.FC = () => {
 
         window.addEventListener('popstate', handlePopState);
         
-        // Initial setup: Fix for 404 on refresh
-        // To satisfy the requirement of going back to homepage on refresh,
-        // we force the page to '/' regardless of the current URL hash/path.
-        const initialPath = '/';
-        window.history.replaceState({ page: initialPath, stack: [] }, '', `/#${initialPath}`);
+        // Initial setup: Fix for 404 on refresh. OAuth callbacks are the one exception
+        // because Google must return to the settings page after a full redirect.
+        const hashPath = window.location.hash.replace('#', '') || '/';
+        const isGoogleDriveCallback = hashPath.startsWith('/settings?drive=');
+        const initialPath = isGoogleDriveCallback ? '/settings' : '/';
+        window.history.replaceState({ page: initialPath, stack: [] }, '', isGoogleDriveCallback ? `/#${hashPath}` : `/#${initialPath}`);
         setCurrentPage(initialPath);
 
         return () => window.removeEventListener('popstate', handlePopState);
@@ -378,6 +389,14 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         if (currentUser && !prevUserRef.current) {
+            const hashPath = window.location.hash.replace('#', '') || '/';
+            if (hashPath.startsWith('/settings?drive=')) {
+                setCurrentPage('/settings');
+                setHistoryStack([]);
+                window.history.replaceState({ page: '/settings', stack: [] }, '', `/#${hashPath}`);
+                prevUserRef.current = currentUser;
+                return;
+            }
             setCurrentPage('/');
             setHistoryStack([]);
             window.history.replaceState({ page: '/', stack: [] }, '', '/#/');
@@ -387,17 +406,40 @@ const AppContent: React.FC = () => {
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
     const toggleDarkMode = () => {
-        setIsDarkMode(!isDarkMode);
-        document.documentElement.classList.toggle('dark');
+        setThemeMode(prevTheme => {
+            const nextTheme = prevTheme === 'dark' ? 'light' : 'dark';
+            saveThemePreference(nextTheme);
+            return nextTheme;
+        });
     };
 
     useEffect(() => {
-        if (isDarkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, [isDarkMode]);
+        applyTheme(themeMode);
+    }, [themeMode]);
+
+    useEffect(() => {
+        const themeQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+        if (!themeQuery) return;
+
+        const handleSystemThemeChange = () => {
+            if (!getSavedThemePreference()) {
+                setThemeMode(getSystemThemePreference());
+            }
+        };
+
+        themeQuery.addEventListener('change', handleSystemThemeChange);
+        return () => themeQuery.removeEventListener('change', handleSystemThemeChange);
+    }, []);
+
+    useEffect(() => {
+        const handleThemeStorageChange = (event: StorageEvent) => {
+            if (event.key !== THEME_STORAGE_KEY && event.key !== null) return;
+            setThemeMode(resolveInitialTheme());
+        };
+
+        window.addEventListener('storage', handleThemeStorageChange);
+        return () => window.removeEventListener('storage', handleThemeStorageChange);
+    }, []);
 
     // Derived References
     const derivedUacsCodes = useMemo(() => {
@@ -564,7 +606,7 @@ const AppContent: React.FC = () => {
             if (!checkAccess('Level of Development')) return denied;
         }
         if (currentPage === '/commodity-mapping') {
-            if (!checkAccess('Community Mapping')) return denied;
+            if (!checkAccess('Commodity Mapping')) return denied;
         }
         if (currentPage === '/references' && !checkAccess('References')) return denied;
         if (currentPage === '/settings' && !checkAccess('System Management')) {
@@ -732,6 +774,7 @@ const AppContent: React.FC = () => {
                             setStaffingReqs={setStaffingReqs}
                             otherProgramExpenses={visibleOtherExpenses}
                             setOtherProgramExpenses={setOtherProgramExpenses}
+                            budgetCeilings={budgetCeilings}
                             uacsCodes={derivedUacsCodes}
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
@@ -752,6 +795,7 @@ const AppContent: React.FC = () => {
                             setStaffingReqs={setStaffingReqs}
                             otherProgramExpenses={visibleOtherExpenses}
                             setOtherProgramExpenses={setOtherProgramExpenses}
+                            budgetCeilings={budgetCeilings}
                             uacsCodes={derivedUacsCodes}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
@@ -861,7 +905,13 @@ const AppContent: React.FC = () => {
                             staffingReqs={visibleStaffingReqs}
                             otherProgramExpenses={visibleOtherExpenses}
                             deadlines={deadlines}
+                            budgetCeilings={budgetCeilings}
                             uacsCodes={derivedUacsCodes}
+                            onSelectSubproject={handleSelectSubproject}
+                            onSelectActivity={handleSelectActivity}
+                            onSelectOfficeReq={handleSelectOfficeReq}
+                            onSelectStaffingReq={handleSelectStaffingReq}
+                            onSelectOtherExpense={handleSelectOtherExpense}
                         />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;
@@ -1019,7 +1069,7 @@ const AppContent: React.FC = () => {
     };
 
     return (
-        <div className={`app-shell ${isDarkMode ? 'dark' : ''}`}>
+        <div className="app-shell">
             <Sidebar 
                 isOpen={isSidebarOpen} 
                 toggleSidebar={toggleSidebar}

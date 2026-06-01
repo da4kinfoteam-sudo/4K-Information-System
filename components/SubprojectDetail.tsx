@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, FormEvent, useEffect, useMemo } from 'react';
+import React, { useState, FormEvent, useEffect, useMemo, useCallback } from 'react';
 import { Subproject, SubprojectDetail as SubprojectDetailType, IPO, objectTypes, ObjectType, fundTypes, tiers, SubprojectCommodity, filterYears, operatingUnits, ouToRegionMap, RefCommodity, RefLivestock } from '../constants';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,23 @@ import { MonthYearPicker } from './ui/MonthYearPicker';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, CheckCircle2, Edit3, Info, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
+import { ArrowLeft, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, ImageIcon, Info, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
+import {
+    canPreviewSubprojectDriveFile,
+    deleteSubprojectDriveFile,
+    formatFileSize,
+    getGoogleDriveStatus,
+    getSubprojectDriveImageUrl,
+    getSubprojectDrivePreviewUrl,
+    GoogleDriveStatus,
+    isAllowedSubprojectDriveFile,
+    isSubprojectDriveImageFile,
+    listSubprojectDriveFiles,
+    SUBPROJECT_DRIVE_FILE_ACCEPT,
+    SubprojectDriveFile,
+    uploadSubprojectDriveFile
+} from '../lib/googleDriveStorage';
 
 interface SubprojectDetailProps {
     subproject: Subproject;
@@ -73,6 +89,39 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
+const budgetItemFieldLabels: Record<string, string> = {
+    type: 'Type',
+    particulars: 'Particulars',
+    uacsCode: 'UACS Code',
+    deliveryDate: 'Delivery Month',
+    obligationMonth: 'Obligation Month',
+    disbursementMonth: 'Disbursement Month',
+    pricePerUnit: 'Price per Unit',
+    numberOfUnits: 'Number of Units'
+};
+
+type SubprojectDetailSectionKey = 'commodities' | 'budget' | 'accomplishment' | 'gallery' | 'files';
+
+const CollapsibleDetailCard: React.FC<{
+    title: string;
+    isOpen: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}> = ({ title, isOpen, onToggle, children }) => (
+    <section className="detail-card detail-card--collapsible">
+        <button
+            type="button"
+            className="detail-card__toggle-header"
+            onClick={onToggle}
+            aria-expanded={isOpen}
+        >
+            <span className="detail-card-title mb-0">{title}</span>
+            <ChevronDown className={`detail-card__collapse-icon ${isOpen ? 'is-open' : ''}`} aria-hidden="true" />
+        </button>
+        {isOpen && <div className="detail-card__collapsible-body">{children}</div>}
+    </section>
+);
+
 const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, onBack, previousPageName, onUpdateSubproject, particularTypes, uacsCodes, commodityCategories, refCommodities, refLivestock }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Subprojects');
@@ -80,6 +129,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
     const isAdmin = currentUser?.role === 'Administrator';
+    const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
 
     // Edit Modes: 'full' (legacy), 'details' (exclusive), 'commodity' (exclusive), 'budget' (exclusive), 'accomplishment'
     const [editMode, setEditMode] = useState<'none' | 'full' | 'details' | 'commodity' | 'budget' | 'accomplishment'>('none');
@@ -111,9 +161,26 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     });
     
     const [editingDetailIndex, setEditingDetailIndex] = useState<number | null>(null);
-    const [confirmDeliveryDate, setConfirmDeliveryDate] = useState<{index?: number, field: string, dateStr: string} | null>(null);
+    const [confirmBudgetItemDate, setConfirmBudgetItemDate] = useState<{index?: number, field: 'deliveryDate' | 'obligationMonth', dateStr: string} | null>(null);
     const [historyLimit, setHistoryLimit] = useState<number>(5);
     const [missingFields, setMissingFields] = useState<string[]>([]);
+    const [budgetItemErrorFields, setBudgetItemErrorFields] = useState<string[]>([]);
+    const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
+    const [driveFiles, setDriveFiles] = useState<SubprojectDriveFile[]>([]);
+    const [isDriveLoading, setIsDriveLoading] = useState(true);
+    const [isDriveUploading, setIsDriveUploading] = useState(false);
+    const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
+    const [driveMessage, setDriveMessage] = useState<string | null>(null);
+    const [previewDriveFile, setPreviewDriveFile] = useState<SubprojectDriveFile | null>(null);
+    const [expandedSections, setExpandedSections] = useState<Record<SubprojectDetailSectionKey, boolean>>({
+        commodities: false,
+        budget: false,
+        accomplishment: true,
+        gallery: false,
+        files: false
+    });
+    const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+    const [galleryImageFailed, setGalleryImageFailed] = useState(false);
 
     const isUserRole = currentUser?.role === 'User';
 
@@ -122,6 +189,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditCommodity = canEdit;
     const canEditBudget = canEdit;
     const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
+
+    const toggleSection = (section: SubprojectDetailSectionKey) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
 
     // Helper for Funding Year selection range
     const yearOptions = useMemo(() => {
@@ -156,6 +227,107 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setEditingDetailIndex(null);
         setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
     }, [subproject, editMode]);
+
+    const loadDriveFiles = useCallback(async () => {
+        if (!currentUser?.id || !subproject.id) return;
+        setIsDriveLoading(true);
+        setDriveMessage(null);
+        try {
+            const [status, files] = await Promise.all([
+                getGoogleDriveStatus(currentUser),
+                listSubprojectDriveFiles(currentUser, subproject.id)
+            ]);
+            setDriveStatus(status);
+            setDriveFiles(files);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to load Subproject files.');
+        } finally {
+            setIsDriveLoading(false);
+        }
+    }, [currentUser, subproject.id]);
+
+    useEffect(() => {
+        loadDriveFiles();
+    }, [loadDriveFiles]);
+
+    const handleDriveFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        if (!isAllowedSubprojectDriveFile(file)) {
+            setDriveMessage('Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.');
+            return;
+        }
+        if (!canEdit) {
+            setDriveMessage('You do not have permission to upload Subproject files.');
+            return;
+        }
+        if (!driveStatus?.isConnected) {
+            setDriveMessage('Google Drive storage is not connected. Ask a Super Admin to connect it first.');
+            return;
+        }
+        if (!subproject.operatingUnit) {
+            setDriveMessage('This subproject needs an operating unit before files can be uploaded.');
+            return;
+        }
+        if (!subproject.indigenousPeopleOrganization) {
+            setDriveMessage('This subproject needs a linked IPO before files can be uploaded.');
+            return;
+        }
+
+        setIsDriveUploading(true);
+        setDriveMessage(null);
+        try {
+            const uploaded = await uploadSubprojectDriveFile(currentUser, subproject.id, file);
+            setDriveFiles(prev => [uploaded, ...prev]);
+            setDriveMessage(`${uploaded.file_name} uploaded successfully.`);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to upload Subproject file.');
+        } finally {
+            setIsDriveUploading(false);
+        }
+    };
+
+    const handleDriveFileDelete = async (file: SubprojectDriveFile) => {
+        if (!canDeleteDriveFiles) return;
+        if (!confirm(`Delete "${file.file_name}" from Google Drive storage?`)) return;
+
+        setDeletingDriveFileId(file.id);
+        setDriveMessage(null);
+        try {
+            await deleteSubprojectDriveFile(currentUser, file.id);
+            setDriveFiles(prev => prev.filter(item => item.id !== file.id));
+            setDriveMessage(`${file.file_name} deleted.`);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to delete Subproject file.');
+        } finally {
+            setDeletingDriveFileId(null);
+        }
+    };
+
+    const galleryFiles = useMemo(() => driveFiles.filter(isSubprojectDriveImageFile), [driveFiles]);
+    const selectedGalleryFile = galleryIndex !== null ? galleryFiles[galleryIndex] : null;
+
+    useEffect(() => {
+        if (galleryIndex !== null && galleryIndex >= galleryFiles.length) {
+            setGalleryIndex(galleryFiles.length > 0 ? galleryFiles.length - 1 : null);
+        }
+    }, [galleryFiles.length, galleryIndex]);
+
+    useEffect(() => {
+        setGalleryImageFailed(false);
+    }, [galleryIndex]);
+
+    const showPreviousGalleryImage = () => {
+        if (galleryFiles.length === 0) return;
+        setGalleryIndex(current => current === null ? 0 : (current - 1 + galleryFiles.length) % galleryFiles.length);
+    };
+
+    const showNextGalleryImage = () => {
+        if (galleryFiles.length === 0) return;
+        setGalleryIndex(current => current === null ? 0 : (current + 1) % galleryFiles.length);
+    };
 
     // Calculate Project Completion Rate
     const projectCompletionStats = useMemo(() => {
@@ -243,20 +415,20 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         return '';
     };
 
-    const handleConfirmDeliveryDate = () => {
-        if (confirmDeliveryDate) {
-            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: confirmDeliveryDate.dateStr }));
-            if (confirmDeliveryDate.index !== undefined) {
-                handleDetailAccomplishmentChange(confirmDeliveryDate.index, confirmDeliveryDate.field as keyof SubprojectDetailInput, confirmDeliveryDate.dateStr);
+    const handleConfirmBudgetItemDate = () => {
+        if (confirmBudgetItemDate) {
+            setEditedSubproject(prev => ({ ...prev, estimatedCompletionDate: confirmBudgetItemDate.dateStr }));
+            if (confirmBudgetItemDate.index !== undefined) {
+                handleDetailAccomplishmentChange(confirmBudgetItemDate.index, confirmBudgetItemDate.field as keyof SubprojectDetailInput, confirmBudgetItemDate.dateStr);
             } else {
-                setCurrentDetail(prev => ({ ...prev, [confirmDeliveryDate.field]: confirmDeliveryDate.dateStr }));
+                setCurrentDetail(prev => ({ ...prev, [confirmBudgetItemDate.field]: confirmBudgetItemDate.dateStr }));
             }
-            setConfirmDeliveryDate(null);
+            setConfirmBudgetItemDate(null);
         }
     };
 
-    const handleCancelDeliveryDate = () => {
-        setConfirmDeliveryDate(null);
+    const handleCancelBudgetItemDate = () => {
+        setConfirmBudgetItemDate(null);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -368,8 +540,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
     
     const handleAddDetail = () => {
-        if (!currentDetail.type || !currentDetail.particulars || !currentDetail.deliveryDate || !currentDetail.pricePerUnit || !currentDetail.numberOfUnits || !currentDetail.obligationMonth || !currentDetail.disbursementMonth || !currentDetail.uacsCode) {
-            alert('Please fill out all detail fields, including UACS classification and monthly targets.');
+        const requiredDetailFields = ['type', 'particulars', 'deliveryDate', 'pricePerUnit', 'numberOfUnits', 'obligationMonth', 'disbursementMonth', 'uacsCode'];
+        const missingDetailFields = requiredDetailFields.filter(field => !currentDetail[field as keyof typeof currentDetail]);
+        if (missingDetailFields.length > 0) {
+            setBudgetItemErrorFields(missingDetailFields);
             return;
         }
         
@@ -647,9 +821,25 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return cleanD;
         });
 
+        const detailActualsChanged = cleanDetails.some(detail => {
+            const original = (subproject.details || []).find(item => item.id === detail.id);
+            if (!original) return !!detail.actualDeliveryDate || !!detail.actualNumberOfUnits;
+            return valuesDiffer(original.actualDeliveryDate, detail.actualDeliveryDate)
+                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits);
+        });
+        const submittedAt = historyEntry.date;
+        const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
+            hasPhysicalAccomplishment: !!editedSubproject.actualCompletionDate,
+            hasChanged: valuesDiffer(subproject.actualCompletionDate, editedSubproject.actualCompletionDate)
+                || (editMode === 'accomplishment' && detailActualsChanged),
+            previousSubmittedAt: subproject.physical_accomplishment_submitted_at,
+            submittedAt
+        });
+
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
             ipo_id: resolvedIpoId,
+            physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
             details: cleanDetails as SubprojectDetailType[],
             history: [...(subproject.history || []), historyEntry]
         };
@@ -1141,7 +1331,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     value={currentDetail.deliveryDate}
                                                     onChange={(val) => {
                                                         if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
-                                                            setConfirmDeliveryDate({ field: 'deliveryDate', dateStr: val });
+                                                            setConfirmBudgetItemDate({ field: 'deliveryDate', dateStr: val });
                                                             return;
                                                         }
                                                         setCurrentDetail(prev => ({ ...prev, deliveryDate: val }));
@@ -1156,7 +1346,13 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <label className="form-label">Obligation Month</label>
                                                 <MonthYearPicker
                                                     value={currentDetail.obligationMonth}
-                                                    onChange={(val) => setCurrentDetail(prev => ({ ...prev, obligationMonth: val }))}
+                                                    onChange={(val) => {
+                                                        if (editedSubproject.estimatedCompletionDate && val > editedSubproject.estimatedCompletionDate) {
+                                                            setConfirmBudgetItemDate({ field: 'obligationMonth', dateStr: val });
+                                                            return;
+                                                        }
+                                                        setCurrentDetail(prev => ({ ...prev, obligationMonth: val }));
+                                                    }}
                                                     placeholder="Select month"
                                                     defaultYear={editedSubproject.fundingYear}
                                                     className="h-9"
@@ -1417,6 +1613,90 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
     return (
         <div className="detail-page">
+            {previewDriveFile && (
+                <div className="dashboard-modal-backdrop" onClick={() => setPreviewDriveFile(null)}>
+                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <div>
+                                <h3>{previewDriveFile.file_name}</h3>
+                                <p className="dashboard-modal__metric-subtext">
+                                    {formatFileSize(previewDriveFile.file_size)} - {previewDriveFile.mime_type || 'File preview'}
+                                </p>
+                            </div>
+                            <button type="button" onClick={() => setPreviewDriveFile(null)} className="dashboard-modal__close" aria-label="Close preview">
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="drive-preview-modal__body">
+                            {canPreviewSubprojectDriveFile(previewDriveFile) ? (
+                                <iframe
+                                    src={getSubprojectDrivePreviewUrl(previewDriveFile)}
+                                    title={`Preview ${previewDriveFile.file_name}`}
+                                    className="drive-preview-modal__frame"
+                                    allow="autoplay"
+                                />
+                            ) : (
+                                <div className="drive-preview-modal__empty">
+                                    <FileText aria-hidden="true" />
+                                    <p>This file type cannot be previewed in 4KIS.</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="drive-preview-modal__footer">
+                            <p>If the preview does not load, open the file directly in Google Drive.</p>
+                            {previewDriveFile.web_view_link && (
+                                <a className="btn btn-secondary" href={previewDriveFile.web_view_link} target="_blank" rel="noreferrer">
+                                    <ExternalLink aria-hidden="true" />
+                                    Open in Drive
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {selectedGalleryFile && (
+                <div className="dashboard-modal-backdrop" onClick={() => setGalleryIndex(null)}>
+                    <div className="dashboard-modal dashboard-modal--wide ipo-gallery-modal" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <div>
+                                <h3>{selectedGalleryFile.file_name}</h3>
+                                <p className="dashboard-modal__metric-subtext">
+                                    {galleryIndex !== null ? `${galleryIndex + 1} of ${galleryFiles.length}` : 'Image preview'}
+                                </p>
+                            </div>
+                            <button type="button" onClick={() => setGalleryIndex(null)} className="dashboard-modal__close" aria-label="Close gallery">
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="ipo-gallery-modal__body">
+                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--prev" onClick={showPreviousGalleryImage} aria-label="Previous image">
+                                <ChevronLeft aria-hidden="true" />
+                            </button>
+                            {galleryImageFailed ? (
+                                <div className="drive-preview-modal__empty">
+                                    <ImageIcon aria-hidden="true" />
+                                    <p>This image could not be loaded in 4KIS.</p>
+                                    {selectedGalleryFile.web_view_link && (
+                                        <a className="btn btn-secondary" href={selectedGalleryFile.web_view_link} target="_blank" rel="noreferrer">
+                                            <ExternalLink aria-hidden="true" />
+                                            Open in Drive
+                                        </a>
+                                    )}
+                                </div>
+                            ) : (
+                                <img
+                                    src={getSubprojectDriveImageUrl(selectedGalleryFile, 1600)}
+                                    alt={selectedGalleryFile.file_name}
+                                    onError={() => setGalleryImageFailed(true)}
+                                />
+                            )}
+                            <button type="button" className="ipo-gallery-modal__nav ipo-gallery-modal__nav--next" onClick={showNextGalleryImage} aria-label="Next image">
+                                <ChevronRight aria-hidden="true" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
              <header className="detail-header">
                 <div className="detail-heading">
                     <h1 className="detail-title">{subproject.name}</h1>
@@ -1485,9 +1765,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                      </div>
 
                      {/* New Target Commodities Section */}
-                     <div className="detail-card">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="detail-card-title mb-0">Target Commodities</h3>
+                     <CollapsibleDetailCard title="Target Commodities" isOpen={expandedSections.commodities} onToggle={() => toggleSection('commodities')}>
+                        <div className="flex justify-end mb-4">
                             {canEditCommodity && (
                                 <button onClick={() => setEditMode('commodity')} className="table-action table-action--primary">
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
@@ -1512,11 +1791,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                         ) : (
                             <p className="detail-empty">No commodities recorded.</p>
                         )}
-                     </div>
+                     </CollapsibleDetailCard>
 
-                     <div className="detail-card">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="detail-card-title mb-0">Budget Breakdown</h3>
+                     <CollapsibleDetailCard title="Budget Breakdown" isOpen={expandedSections.budget} onToggle={() => toggleSection('budget')}>
+                        <div className="flex justify-end mb-4">
                             {canEditBudget && (
                                 <button onClick={() => setEditMode('budget')} className="table-action table-action--primary">
                                     <Edit3 className="btn-symbol" aria-hidden="true" />
@@ -1571,12 +1849,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 </tfoot>
                             </table>
                         </div>
-                    </div>
+                    </CollapsibleDetailCard>
 
                     {/* NEW: Accomplishment Report Section (Read-Only) */}
-                    <div className="detail-card">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="detail-card-title mb-0">Accomplishment Report</h3>
+                    <CollapsibleDetailCard title="Accomplishment Report" isOpen={expandedSections.accomplishment} onToggle={() => toggleSection('accomplishment')}>
+                        <div className="flex justify-end mb-4">
                             {canEditAccomplishment && (
                                 <button onClick={() => setEditMode('accomplishment')} className="table-action table-action--primary">
                                     <CheckCircle2 className="btn-symbol" aria-hidden="true" />
@@ -1715,7 +1992,133 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                  )}
                             </div>
                         </div>
-                    </div>
+                    </CollapsibleDetailCard>
+
+                    <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
+                        {galleryFiles.length > 0 ? (
+                            <div className="ipo-gallery-grid">
+                                {galleryFiles.map((file, index) => (
+                                    <button
+                                        key={file.id}
+                                        type="button"
+                                        className="ipo-gallery-tile"
+                                        onClick={() => setGalleryIndex(index)}
+                                        title={`Preview ${file.file_name}`}
+                                    >
+                                        <img
+                                            src={getSubprojectDriveImageUrl(file, 420)}
+                                            alt={file.file_name}
+                                            loading="lazy"
+                                            onError={(event) => {
+                                                event.currentTarget.style.display = 'none';
+                                            }}
+                                        />
+                                        <span className="ipo-gallery-tile__fallback">
+                                            <ImageIcon aria-hidden="true" />
+                                        </span>
+                                        <span className="ipo-gallery-tile__caption">{file.file_name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="detail-empty">No image files have been uploaded for this subproject yet.</p>
+                        )}
+                    </CollapsibleDetailCard>
+
+                    <CollapsibleDetailCard title="Subproject Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
+                        <div className="drive-file-card__header">
+                            <div>
+                                <p className="drive-file-card__copy">PDF and image documentation is stored by upload year under this subproject's Google Drive folder.</p>
+                            </div>
+                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : 'status-badge--neutral'}`}>
+                                <HardDrive aria-hidden="true" />
+                                {driveStatus?.isConnected ? 'Drive connected' : 'Drive not connected'}
+                            </span>
+                        </div>
+
+                        {driveMessage && <p className="drive-file-card__message" role="status">{driveMessage}</p>}
+
+                        <div className="drive-file-card__toolbar">
+                            <label
+                                htmlFor={`subproject-drive-upload-${subproject.id}`}
+                                className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
+                                title={!driveStatus?.isConnected ? 'Google Drive storage is not connected' : 'Upload Subproject file'}
+                            >
+                                {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                                {isDriveUploading ? 'Uploading...' : 'Upload File'}
+                            </label>
+                            <input
+                                id={`subproject-drive-upload-${subproject.id}`}
+                                type="file"
+                                className="hidden"
+                                accept={SUBPROJECT_DRIVE_FILE_ACCEPT}
+                                onChange={handleDriveFileUpload}
+                                disabled={!canEdit || !driveStatus?.isConnected || isDriveUploading}
+                            />
+                            <button type="button" className="btn btn-secondary" onClick={loadDriveFiles} disabled={isDriveLoading || isDriveUploading}>
+                                {isDriveLoading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <HardDrive aria-hidden="true" />}
+                                Refresh
+                            </button>
+                        </div>
+
+                        {isDriveLoading ? (
+                            <div className="drive-file-card__loading">
+                                <Loader2 className="animate-spin" aria-hidden="true" />
+                                <span>Loading Subproject files...</span>
+                            </div>
+                        ) : driveFiles.length > 0 ? (
+                            <ul className="detail-list">
+                                {driveFiles.map(file => (
+                                    <li key={file.id} className="detail-list-item drive-file-card__item">
+                                        <div className="drive-file-card__file">
+                                            <FileText aria-hidden="true" />
+                                            <div className="min-w-0">
+                                                <p className="detail-list-title">{file.file_name}</p>
+                                                <p className="detail-list-copy">
+                                                    {formatFileSize(file.file_size)} - Uploaded by {file.uploaded_by_name || 'Unknown user'} - {formatDate(file.uploaded_at)}
+                                                    {file.folder_year ? ` - ${file.folder_year}` : ''}
+                                                </p>
+                                                <p className="detail-list-copy">
+                                                    Subprojects / {file.folder_year || 'Year'} / {file.operating_unit || 'Operating Unit'} / {file.ipo_name || 'IPO'} / {file.subproject_name || 'Subproject'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="drive-file-card__actions">
+                                            {canPreviewSubprojectDriveFile(file) && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action table-action--primary"
+                                                    onClick={() => setPreviewDriveFile(file)}
+                                                >
+                                                    <Eye aria-hidden="true" />
+                                                    Preview
+                                                </button>
+                                            )}
+                                            {file.web_view_link && (
+                                                <a className="table-action table-action--primary" href={file.web_view_link} target="_blank" rel="noreferrer">
+                                                    <ExternalLink aria-hidden="true" />
+                                                    Open
+                                                </a>
+                                            )}
+                                            {canDeleteDriveFiles && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action table-action--danger"
+                                                    onClick={() => handleDriveFileDelete(file)}
+                                                    disabled={deletingDriveFileId === file.id}
+                                                >
+                                                    {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="detail-empty">No files have been uploaded for this subproject yet.</p>
+                        )}
+                    </CollapsibleDetailCard>
 
                 </div>
                  {/* Right Column */}
@@ -1755,18 +2158,37 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </div>
                 </div>
             </div>
-            {/* Delivery Date Confirmation Modal */}
-            {confirmDeliveryDate && (
+            {/* Budget Item Date Confirmation Modal */}
+            {confirmBudgetItemDate && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="dashboard-modal">
-                        <h3 className="detail-card-title">Confirm Delivery Date</h3>
+                        <h3 className="detail-card-title">Confirm Budget Item Date</h3>
                         <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
-                            The delivery date you selected is beyond the subproject's estimated completion date. 
-                            Do you want to update the subproject's estimated completion date to match this delivery date?
+                            The {budgetItemFieldLabels[confirmBudgetItemDate.field].toLowerCase()} you selected is beyond the subproject's estimated completion date.
+                            Do you want to update the subproject's estimated completion date to match this month?
                         </p>
                         <div className="flex justify-end gap-4">
-                            <button onClick={handleCancelDeliveryDate} className="btn btn-secondary">Cancel</button>
-                            <button onClick={handleConfirmDeliveryDate} className="btn btn-primary">Confirm & Update</button>
+                            <button type="button" onClick={handleCancelBudgetItemDate} className="btn btn-secondary">Cancel</button>
+                            <button type="button" onClick={handleConfirmBudgetItemDate} className="btn btn-primary">Confirm & Update</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {budgetItemErrorFields.length > 0 && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="dashboard-modal">
+                        <h3 className="detail-card-title">Complete Budget Item Fields</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                            Please complete the following required fields before adding or updating this budget item:
+                        </p>
+                        <ul className="list-disc pl-6 text-sm text-gray-700 dark:text-gray-200 mb-6 space-y-1">
+                            {budgetItemErrorFields.map(field => (
+                                <li key={field}>{budgetItemFieldLabels[field] || field}</li>
+                            ))}
+                        </ul>
+                        <div className="flex justify-end">
+                            <button type="button" onClick={() => setBudgetItemErrorFields([])} className="btn btn-primary">OK</button>
                         </div>
                     </div>
                 </div>

@@ -10,6 +10,7 @@ import BAR1Report from './reports/BAR1Report';
 import BudgetUtilizationReport from './reports/BudgetUtilizationReport';
 import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import DetailedAccomplishmentDataReport from './reports/DetailedAccomplishmentDataReport';
+import FinancialAuditReport from './reports/FinancialAuditReport';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 
@@ -22,15 +23,38 @@ interface ReportsProps {
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
     deadlines: Deadline[];
+    budgetCeilings: Array<{ operating_unit: string; year: number; amount: number }>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
+    onSelectSubproject: (subproject: Subproject) => void;
+    onSelectActivity: (activity: Training | OtherActivity) => void;
+    onSelectOfficeReq: (req: OfficeRequirement) => void;
+    onSelectStaffingReq: (req: StaffingRequirement) => void;
+    onSelectOtherExpense: (req: OtherProgramExpense) => void;
 }
 
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data';
+type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
 
-const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherActivities, officeReqs, staffingReqs, otherProgramExpenses, deadlines, uacsCodes }) => {
+const Reports: React.FC<ReportsProps> = ({
+    ipos,
+    subprojects,
+    trainings,
+    otherActivities,
+    officeReqs,
+    staffingReqs,
+    otherProgramExpenses,
+    deadlines,
+    budgetCeilings,
+    uacsCodes,
+    onSelectSubproject,
+    onSelectActivity,
+    onSelectOfficeReq,
+    onSelectStaffingReq,
+    onSelectOtherExpense,
+}) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Reports');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
+    const isSuperAdmin = currentUser?.role === 'Super Admin';
 
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     // Default to current year
@@ -51,6 +75,12 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser]);
+
+    useEffect(() => {
+        if (!isSuperAdmin && activeTab === 'Financial Audit') {
+            setActiveTab('WFP');
+        }
+    }, [activeTab, isSuperAdmin]);
 
     const availableYears = useMemo(() => {
         return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
@@ -156,6 +186,7 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
         { tabName: 'Budget Utilization Report', label: 'Budget Utilization' },
         { tabName: 'Monthly Matrix', label: 'Monthly Matrix' },
         { tabName: 'Detailed Accomplishment Data', label: 'Detailed Accomplishment Data' },
+        ...(isSuperAdmin ? [{ tabName: 'Financial Audit' as ReportTab, label: 'Financial Audit' }] : []),
     ];
 
     const TabButton: React.FC<{ tabName: ReportTab; label: string; }> = ({ tabName, label }) => {
@@ -190,6 +221,23 @@ const Reports: React.FC<ReportsProps> = ({ ipos, subprojects, trainings, otherAc
                 return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
             case 'Detailed Accomplishment Data':
                 return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
+            case 'Financial Audit':
+                if (!isSuperAdmin) return null;
+                return (
+                    <FinancialAuditReport
+                        data={financialFilteredData}
+                        budgetCeilings={budgetCeilings}
+                        selectedYear={selectedYear}
+                        selectedOu={selectedOu}
+                        selectedTier={selectedTier}
+                        selectedFundType={selectedFundType}
+                        onSelectSubproject={onSelectSubproject}
+                        onSelectActivity={onSelectActivity}
+                        onSelectOfficeReq={onSelectOfficeReq}
+                        onSelectStaffingReq={onSelectStaffingReq}
+                        onSelectOtherExpense={onSelectOtherExpense}
+                    />
+                );
             default:
                 return null;
         }

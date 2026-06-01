@@ -1,4 +1,4 @@
-import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, FundType, Tier } from '../../constants';
+import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, HistoryEntry } from '../../constants';
 
 export interface BAR1DataGroup {
     indicator: string;
@@ -101,15 +101,40 @@ export const calculateBAR1ReportData = (data: {
     ipos: IPO[];
 }, selectedYear: string, selectedOu: string, options: BAR1CalculationOptions = {}) => {
     const asOfCutoff = options.asOfDate ? new Date(`${options.asOfDate}T23:59:59.999`) : null;
-    const isSubmittedByAsOf = (item: { updated_at?: string; created_at?: string }) => {
+    const getAccomplishmentHistoryDate = (history?: HistoryEntry[]) => {
+        if (!Array.isArray(history)) return undefined;
+        const relevantDates = history
+            .filter(entry => /accomplishment|subproject completed|completed/i.test(entry.event || ''))
+            .map(entry => new Date(entry.date))
+            .filter(date => !Number.isNaN(date.getTime()))
+            .sort((a, b) => a.getTime() - b.getTime());
+        return relevantDates[0]?.toISOString();
+    };
+    const getPhysicalSubmissionDate = (item: {
+        physical_accomplishment_submitted_at?: string | null;
+        history?: HistoryEntry[];
+        updated_at?: string;
+        created_at?: string;
+    }) => item.physical_accomplishment_submitted_at || getAccomplishmentHistoryDate(item.history) || item.updated_at || item.created_at;
+    const isSubmittedByAsOf = (item: {
+        physical_accomplishment_submitted_at?: string | null;
+        history?: HistoryEntry[];
+        updated_at?: string;
+        created_at?: string;
+    }) => {
         if (!asOfCutoff) return true;
-        const submissionDate = item.updated_at || item.created_at;
+        const submissionDate = getPhysicalSubmissionDate(item);
         if (!submissionDate) return true;
         const submittedAt = new Date(submissionDate);
         if (Number.isNaN(submittedAt.getTime())) return true;
         return submittedAt <= asOfCutoff;
     };
-    const actualDateIfSubmitted = <T extends { updated_at?: string; created_at?: string }>(item: T, actualDate?: string) => {
+    const actualDateIfSubmitted = <T extends {
+        physical_accomplishment_submitted_at?: string | null;
+        history?: HistoryEntry[];
+        updated_at?: string;
+        created_at?: string;
+    }>(item: T, actualDate?: string) => {
         if (!actualDate) return undefined;
         return isSubmittedByAsOf(item) ? actualDate : undefined;
     };

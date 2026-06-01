@@ -1,6 +1,7 @@
 import React from 'react';
 import { DisbursementRecord } from '../../constants';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
+import { FormattedAmountInput } from '../ui/FormattedAmountInput';
 import { Plus, Trash2 } from 'lucide-react';
 
 interface DisbursementsEditorProps {
@@ -49,13 +50,13 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
                             />
                         </div>
                         <div className="budget-record-row__amount">
-                            <input
-                                type="number"
-                                value={db.amount === 0 && !db.date ? '' : db.amount}
-                                onChange={(e) => handleUpdate(db.id, 'amount', parseFloat(e.target.value))}
+                            <FormattedAmountInput
+                                value={Number(db.amount) || 0}
+                                onValueChange={(value) => handleUpdate(db.id, 'amount', value)}
                                 className="form-control form-control--compact"
                                 placeholder="0.00"
                                 disabled={readOnly}
+                                emptyWhenZero={!db.date}
                             />
                         </div>
                         {!readOnly && (

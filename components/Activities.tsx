@@ -426,7 +426,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         const currentYear = new Date().getFullYear();
 
         const newActivitiesPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, history, participating_ipo_ids, ...rest } = item;
+            const { id, uid, created_at, updated_at, history, participating_ipo_ids, physical_accomplishment_submitted_at, ...rest } = item;
             
             const prefix = item.type === 'Training' ? 'TRN' : 'ACT';
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
@@ -448,6 +448,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                 status: 'Proposed',
                 actualDate: null as unknown as string,
                 actualEndDate: null as unknown as string,
+                physical_accomplishment_submitted_at: null,
                 actualParticipantsMale: 0,
                 actualParticipantsFemale: 0,
                 catchUpPlanRemarks: '',

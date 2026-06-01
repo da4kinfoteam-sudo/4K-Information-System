@@ -1,0 +1,1149 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const USERINFO_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
+const OPENID_SCOPE = "openid";
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
+const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GOOGLE_DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
+const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+const IPO_DRIVE_MODULE = "IPO Management";
+const SUBPROJECT_DRIVE_MODULE = "Subprojects";
+const ALLOWED_UPLOAD_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp"
+]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".pdf", ".png", ".webp"]);
+
+export const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+};
+
+type UserRow = {
+  id: number;
+  role?: string | null;
+  fullName?: string | null;
+  username?: string | null;
+  permissions_override?: Record<string, any> | null;
+};
+
+type IpoRow = {
+  id: number;
+  name: string;
+  region?: string | null;
+};
+
+type SubprojectRow = {
+  id: number;
+  name: string;
+  operatingUnit?: string | null;
+  indigenousPeopleOrganization?: string | null;
+};
+
+type ConnectionRow = {
+  id: string;
+  encrypted_refresh_token: string;
+  google_account_email: string;
+  root_folder_id: string | null;
+  root_folder_name: string;
+  connected_at: string;
+};
+
+type TokenResponse = {
+  access_token: string;
+  expires_in: number;
+  refresh_token?: string;
+  scope?: string;
+  token_type: string;
+};
+
+type DriveFileResponse = {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  size?: string;
+  webViewLink?: string;
+  webContentLink?: string;
+};
+
+type DrivePermissionResponse = {
+  id: string;
+  type?: string;
+  role?: string;
+};
+
+type UserInfoResponse = {
+  email?: string;
+};
+
+const REGION_ALIASES: Record<string, string> = {
+  "Ilocos Region": "Region I (Ilocos Region)",
+  "Cagayan Valley": "Region II (Cagayan Valley)",
+  "Central Luzon": "Region III (Central Luzon)",
+  "CALABARZON": "Region IV-A (CALABARZON)",
+  "MIMAROPA": "MIMAROPA Region",
+  "MIMAROPA Region": "MIMAROPA Region",
+  "Bicol Region": "Region V (Bicol Region)",
+  "Western Visayas": "Region VI (Western Visayas)",
+  "Central Visayas": "Region VII (Central Visayas)",
+  "Eastern Visayas": "Region VIII (Eastern Visayas)",
+  "Zamboanga Peninsula": "Region IX (Zamboanga Peninsula)",
+  "Northern Mindanao": "Region X (Northern Mindanao)",
+  "Davao Region": "Region XI (Davao Region)",
+  "SOCCSKSARGEN": "Region XII (SOCCSKSARGEN)",
+  "Caraga": "Region XIII (Caraga)",
+  "NCR": "National Capital Region (NCR)",
+  "National Capital Region": "National Capital Region (NCR)",
+  "CAR": "Cordillera Administrative Region (CAR)",
+  "Cordillera Administrative Region": "Cordillera Administrative Region (CAR)",
+  "BARMM": "Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)",
+  "Bangsamoro Autonomous Region in Muslim Mindanao": "Bangsamoro Autonomous Region in Muslim Mindanao (BARMM)",
+  "Region 1": "Region I (Ilocos Region)",
+  "Region 2": "Region II (Cagayan Valley)",
+  "Region 3": "Region III (Central Luzon)",
+  "Region 4A": "Region IV-A (CALABARZON)",
+  "Region 4-A": "Region IV-A (CALABARZON)",
+  "Region 5": "Region V (Bicol Region)",
+  "Region 6": "Region VI (Western Visayas)",
+  "Region 7": "Region VII (Central Visayas)",
+  "Region 8": "Region VIII (Eastern Visayas)",
+  "Region 9": "Region IX (Zamboanga Peninsula)",
+  "Region 10": "Region X (Northern Mindanao)",
+  "Region 11": "Region XI (Davao Region)",
+  "Region 12": "Region XII (SOCCSKSARGEN)",
+  "Region 13": "Region XIII (Caraga)",
+  "Region I": "Region I (Ilocos Region)",
+  "Region II": "Region II (Cagayan Valley)",
+  "Region III": "Region III (Central Luzon)",
+  "Region IV-A": "Region IV-A (CALABARZON)",
+  "Region IV-B": "MIMAROPA Region",
+  "Region V": "Region V (Bicol Region)",
+  "Region VI": "Region VI (Western Visayas)",
+  "Region VII": "Region VII (Central Visayas)",
+  "Region VIII": "Region VIII (Eastern Visayas)",
+  "Region IX": "Region IX (Zamboanga Peninsula)",
+  "Region X": "Region X (Northern Mindanao)",
+  "Region XI": "Region XI (Davao Region)",
+  "Region XII": "Region XII (SOCCSKSARGEN)",
+  "Region XIII": "Region XIII (Caraga)"
+};
+
+const REGION_TO_OPERATING_UNIT: Record<string, string> = {
+  "National Capital Region (NCR)": "NPMO",
+  "Cordillera Administrative Region (CAR)": "RPMO CAR",
+  "Region I (Ilocos Region)": "RPMO 1",
+  "Region II (Cagayan Valley)": "RPMO 2",
+  "Region III (Central Luzon)": "RPMO 3",
+  "Region IV-A (CALABARZON)": "RPMO 4A",
+  "MIMAROPA Region": "RPMO 4B",
+  "Region V (Bicol Region)": "RPMO 5",
+  "Region VI (Western Visayas)": "RPMO 6",
+  "Region VII (Central Visayas)": "RPMO 7",
+  "Region VIII (Eastern Visayas)": "RPMO 8",
+  "Region IX (Zamboanga Peninsula)": "RPMO 9",
+  "Region X (Northern Mindanao)": "RPMO 10",
+  "Region XI (Davao Region)": "RPMO 11",
+  "Region XII (SOCCSKSARGEN)": "RPMO 12",
+  "Region XIII (Caraga)": "RPMO 13",
+  "Negros Island Region (NIR)": "RPMO NIR"
+};
+
+function env(name: string) {
+  return Deno.env.get(name)?.trim() || "";
+}
+
+function googleConfig() {
+  const rootFolderName = env("GOOGLE_DRIVE_ROOT_FOLDER_NAME") || "4KIS Master File Storage";
+  const missingEnv = [
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REDIRECT_URI",
+    "GOOGLE_TOKEN_ENCRYPTION_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY"
+  ].filter((name) => !env(name));
+
+  return {
+    clientId: env("GOOGLE_CLIENT_ID"),
+    clientSecret: env("GOOGLE_CLIENT_SECRET"),
+    redirectUri: env("GOOGLE_REDIRECT_URI"),
+    rootFolderName,
+    tokenEncryptionKey: env("GOOGLE_TOKEN_ENCRYPTION_KEY"),
+    appBaseUrl: env("APP_BASE_URL") || env("SITE_URL"),
+    missingEnv,
+    isConfigured: missingEnv.length === 0
+  };
+}
+
+export function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+
+export function errorResponse(message: string, status = 400) {
+  return jsonResponse({ error: message }, status);
+}
+
+export function handleOptions(request: Request) {
+  if (request.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  return null;
+}
+
+export function adminClient() {
+  const url = env("SUPABASE_URL") || env("VITE_SUPABASE_URL");
+  const key = env("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!url || !key) {
+    throw new Error("Supabase Edge Function environment is missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
+  }
+
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
+
+async function fetchUser(userId: unknown): Promise<UserRow> {
+  const numericId = Number(userId);
+  if (!Number.isFinite(numericId)) {
+    throw new Error("A valid current user is required.");
+  }
+
+  const { data, error } = await adminClient()
+    .from("users")
+    .select("*")
+    .eq("id", numericId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Current user was not found.");
+
+  return data as UserRow;
+}
+
+async function fetchIpo(ipoId: number): Promise<IpoRow> {
+  const { data, error } = await adminClient()
+    .from("ipos")
+    .select("id,name,region")
+    .eq("id", ipoId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("IPO was not found.");
+  return data as IpoRow;
+}
+
+async function fetchSubproject(subprojectId: number): Promise<SubprojectRow> {
+  const { data, error } = await adminClient()
+    .from("subprojects")
+    .select("id,name,operatingUnit,indigenousPeopleOrganization")
+    .eq("id", subprojectId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Subproject was not found.");
+  return data as SubprojectRow;
+}
+
+function normalizeRegionName(inputRegion?: string | null) {
+  const trimmed = (inputRegion || "").trim();
+  return REGION_ALIASES[trimmed] || trimmed;
+}
+
+function operatingUnitFromRegion(region?: string | null) {
+  const normalizedRegion = normalizeRegionName(region);
+  return REGION_TO_OPERATING_UNIT[normalizedRegion] || normalizedRegion || "Unassigned Operating Unit";
+}
+
+function isAdmin(user: UserRow) {
+  return user.role === "Super Admin" || user.role === "Administrator";
+}
+
+function isSuperAdmin(user: UserRow) {
+  return user.role === "Super Admin";
+}
+
+export function displayUserName(user: UserRow) {
+  return user.fullName || user.username || `User ${user.id}`;
+}
+
+export async function requireUser(userId: unknown) {
+  return fetchUser(userId);
+}
+
+export async function requireSuperAdmin(userId: unknown) {
+  const user = await fetchUser(userId);
+  if (!isSuperAdmin(user)) {
+    throw new Error("Only Super Admin users can manage Google Drive storage.");
+  }
+  return user;
+}
+
+export async function requireAdmin(userId: unknown) {
+  const user = await fetchUser(userId);
+  if (!isAdmin(user)) {
+    throw new Error("Only Super Admin and Administrator users can delete Drive files.");
+  }
+  return user;
+}
+
+export async function requireIpoEditor(userId: unknown) {
+  const user = await fetchUser(userId);
+  if (isAdmin(user)) return user;
+
+  const override = user.permissions_override?.["IPO Management"];
+  if (override && override.can_edit === true) return user;
+
+  const { data, error } = await adminClient()
+    .from("roles_config")
+    .select("can_edit")
+    .eq("role", user.role)
+    .eq("module", "IPO Management")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data?.can_edit) return user;
+
+  throw new Error("You do not have permission to upload IPO files.");
+}
+
+export async function requireSubprojectEditor(userId: unknown) {
+  const user = await fetchUser(userId);
+  if (isAdmin(user)) return user;
+
+  const override = user.permissions_override?.["Subprojects"];
+  if (override && override.can_edit === true) return user;
+
+  const { data, error } = await adminClient()
+    .from("roles_config")
+    .select("can_edit")
+    .eq("role", user.role)
+    .eq("module", "Subprojects")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data?.can_edit) return user;
+
+  throw new Error("You do not have permission to upload Subproject files.");
+}
+
+export function getEnvironmentStatus() {
+  const config = googleConfig();
+  return {
+    isConfigured: config.isConfigured,
+    missingEnv: config.missingEnv,
+    rootFolderName: config.rootFolderName
+  };
+}
+
+function base64UrlEncode(bytes: Uint8Array) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function digestKey(secret: string, usages: KeyUsage[]) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, usages);
+}
+
+async function hmacKey(secret: string) {
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+async function encryptSecret(value: string) {
+  const config = googleConfig();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await digestKey(config.tokenEncryptionKey, ["encrypt"]);
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(value)));
+  return `${base64UrlEncode(iv)}.${base64UrlEncode(encrypted)}`;
+}
+
+async function decryptSecret(value: string) {
+  const config = googleConfig();
+  const [ivValue, encryptedValue] = value.split(".");
+  if (!ivValue || !encryptedValue) throw new Error("Stored Google token is not readable.");
+  const key = await digestKey(config.tokenEncryptionKey, ["decrypt"]);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: base64UrlDecode(ivValue) },
+    key,
+    base64UrlDecode(encryptedValue)
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
+export async function createSignedState(userId: number) {
+  const config = googleConfig();
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify({
+    userId,
+    nonce: crypto.randomUUID(),
+    createdAt: Date.now()
+  })));
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", await hmacKey(config.tokenEncryptionKey), new TextEncoder().encode(payload)));
+  return `${payload}.${base64UrlEncode(signature)}`;
+}
+
+export async function readSignedState(state: string) {
+  const config = googleConfig();
+  const [payload, signature] = state.split(".");
+  if (!payload || !signature) throw new Error("Google Drive connection state is invalid.");
+  const isValid = await crypto.subtle.verify(
+    "HMAC",
+    await hmacKey(config.tokenEncryptionKey),
+    base64UrlDecode(signature),
+    new TextEncoder().encode(payload)
+  );
+  if (!isValid) throw new Error("Google Drive connection state could not be verified.");
+
+  const parsed = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as { userId: number; createdAt: number };
+  if (!parsed.userId || Date.now() - parsed.createdAt > 10 * 60 * 1000) {
+    throw new Error("Google Drive connection state has expired.");
+  }
+  return parsed;
+}
+
+async function readJsonResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : {};
+
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error_description" in payload && typeof payload.error_description === "string"
+        ? payload.error_description
+        : fallbackMessage;
+    throw new Error(message);
+  }
+
+  return payload as T;
+}
+
+async function refreshAccessToken(refreshToken: string) {
+  const config = googleConfig();
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken
+    })
+  });
+  const tokens = await readJsonResponse<TokenResponse>(response, "Unable to refresh Google Drive access.");
+  return tokens.access_token;
+}
+
+async function exchangeCodeForTokens(code: string) {
+  const config = googleConfig();
+  const response = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: config.redirectUri
+    })
+  });
+  return readJsonResponse<TokenResponse>(response, "Unable to connect Google Drive.");
+}
+
+async function getGoogleAccountEmail(accessToken: string) {
+  const response = await fetch(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await readJsonResponse<UserInfoResponse>(response, "Unable to read Google account profile.");
+  if (!data.email) throw new Error("Google account email was not returned.");
+  return data.email;
+}
+
+function escapeDriveQuery(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function cleanDriveName(value: string, fallback = "Document") {
+  return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-").replace(/\s+/g, " ").trim().slice(0, 180) || fallback;
+}
+
+function getUploadYear() {
+  return new Date().getFullYear();
+}
+
+function getFileExtension(fileName: string) {
+  const match = fileName.toLowerCase().match(/\.[^.]+$/);
+  return match?.[0] || "";
+}
+
+function isAllowedUploadFile(file: File) {
+  const mimeType = (file.type || "").toLowerCase();
+  if (mimeType && ALLOWED_UPLOAD_MIME_TYPES.has(mimeType)) return true;
+  return ALLOWED_UPLOAD_EXTENSIONS.has(getFileExtension(file.name));
+}
+
+function getPreviewUrl(fileId: string) {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/preview`;
+}
+
+function assertAllowedUploadFile(file: File) {
+  if (isAllowedUploadFile(file)) return;
+  throw new Error("Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.");
+}
+
+async function findFolder(accessToken: string, name: string, parentFolderId?: string | null) {
+  const queryParts = [
+    "mimeType = 'application/vnd.google-apps.folder'",
+    "trashed = false",
+    `name = '${escapeDriveQuery(name)}'`
+  ];
+  if (parentFolderId) {
+    queryParts.push(`'${escapeDriveQuery(parentFolderId)}' in parents`);
+  }
+  const params = new URLSearchParams({
+    q: queryParts.join(" and "),
+    fields: "files(id,name,webViewLink)",
+    pageSize: "1",
+    spaces: "drive"
+  });
+  const response = await fetch(`${GOOGLE_DRIVE_FILES_URL}?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await readJsonResponse<{ files?: DriveFileResponse[] }>(response, "Unable to search Google Drive folders.");
+  return data.files?.[0] || null;
+}
+
+async function createFolder(accessToken: string, name: string, parentFolderId?: string | null) {
+  const response = await fetch(`${GOOGLE_DRIVE_FILES_URL}?fields=id,name,webViewLink`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      mimeType: DRIVE_FOLDER_MIME_TYPE,
+      name: cleanDriveName(name, "Folder"),
+      ...(parentFolderId ? { parents: [parentFolderId] } : {})
+    })
+  });
+  return readJsonResponse<DriveFileResponse>(response, "Unable to create Google Drive folder.");
+}
+
+async function ensureFolder(accessToken: string, name: string, parentFolderId?: string | null) {
+  return await findFolder(accessToken, name, parentFolderId) || await createFolder(accessToken, name, parentFolderId);
+}
+
+async function getActiveConnection(): Promise<ConnectionRow | null> {
+  const { data, error } = await adminClient()
+    .from("google_drive_connections")
+    .select("*")
+    .eq("status", "active")
+    .order("connected_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as ConnectionRow | null;
+}
+
+export async function getConnectionStatus() {
+  const environment = getEnvironmentStatus();
+  if (!environment.isConfigured) {
+    return {
+      ...environment,
+      isConnected: false,
+      accountEmail: null,
+      connectedAt: null,
+      rootFolderId: null
+    };
+  }
+
+  const connection = await getActiveConnection();
+  return {
+    ...environment,
+    isConnected: Boolean(connection),
+    accountEmail: connection?.google_account_email ?? null,
+    connectedAt: connection?.connected_at ?? null,
+    rootFolderId: connection?.root_folder_id ?? null,
+    rootFolderName: connection?.root_folder_name ?? environment.rootFolderName
+  };
+}
+
+export async function createAuthorizationUrl(userId: number) {
+  const config = googleConfig();
+  if (!config.isConfigured) throw new Error(`Google Drive integration is missing: ${config.missingEnv.join(", ")}.`);
+  const state = await createSignedState(userId);
+  const params = new URLSearchParams({
+    access_type: "offline",
+    client_id: config.clientId,
+    include_granted_scopes: "true",
+    prompt: "consent",
+    redirect_uri: config.redirectUri,
+    response_type: "code",
+    scope: [OPENID_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_SCOPE].join(" "),
+    state
+  });
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+}
+
+export async function completeConnection(code: string, connectedBy: number) {
+  const config = googleConfig();
+  if (!config.isConfigured) throw new Error(`Google Drive integration is missing: ${config.missingEnv.join(", ")}.`);
+
+  const tokens = await exchangeCodeForTokens(code);
+  if (!tokens.refresh_token) {
+    throw new Error("Google did not return a refresh token. Reconnect and approve offline access.");
+  }
+
+  const accountEmail = await getGoogleAccountEmail(tokens.access_token);
+  const existingRoot = await findFolder(tokens.access_token, config.rootFolderName);
+  const rootFolder = existingRoot || await createFolder(tokens.access_token, config.rootFolderName);
+  const supabase = adminClient();
+
+  const { error: deactivateError } = await supabase
+    .from("google_drive_connections")
+    .update({ status: "disconnected", disconnected_at: new Date().toISOString() })
+    .eq("status", "active");
+  if (deactivateError) throw new Error(deactivateError.message);
+
+  const { error } = await supabase.from("google_drive_connections").insert({
+    connected_by: connectedBy,
+    encrypted_refresh_token: await encryptSecret(tokens.refresh_token),
+    google_account_email: accountEmail,
+    root_folder_id: rootFolder.id,
+    root_folder_name: config.rootFolderName,
+    scopes: tokens.scope?.split(" ").filter(Boolean) ?? [DRIVE_SCOPE],
+    status: "active"
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function disconnectConnection() {
+  const { error } = await adminClient()
+    .from("google_drive_connections")
+    .update({ status: "disconnected", disconnected_at: new Date().toISOString() })
+    .eq("status", "active");
+  if (error) throw new Error(error.message);
+}
+
+export function settingsRedirectUrl(status: "connected" | "error", message?: string) {
+  const base = googleConfig().appBaseUrl || "http://127.0.0.1:3000";
+  const url = new URL(base);
+  url.hash = `/settings?drive=${status}${message ? `&message=${encodeURIComponent(message)}` : ""}`;
+  return url.toString();
+}
+
+async function connectedDrive() {
+  const connection = await getActiveConnection();
+  if (!connection) throw new Error("Google Drive storage is not connected. Ask a Super Admin to connect it first.");
+  const accessToken = await refreshAccessToken(await decryptSecret(connection.encrypted_refresh_token));
+  return { connection, accessToken };
+}
+
+async function grantPreviewPermission(accessToken: string, fileId: string) {
+  const response = await fetch(`${GOOGLE_DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/permissions?fields=id,type,role`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      type: "anyone",
+      role: "reader",
+      allowFileDiscovery: false
+    })
+  });
+  return readJsonResponse<DrivePermissionResponse>(response, "Unable to create a preview permission for this Drive file.");
+}
+
+async function ensureIpoFolder(ipoId: number, ipoName: string, operatingUnit: string, user: UserRow) {
+  const supabase = adminClient();
+  const { connection, accessToken } = await connectedDrive();
+  const folderYear = getUploadYear();
+  const folderOperatingUnit = operatingUnit.trim() || "Unassigned Operating Unit";
+
+  const { data: savedFolder, error: savedError } = await supabase
+    .from("ipo_drive_folders")
+    .select("*")
+    .eq("ipo_id", ipoId)
+    .eq("connection_id", connection.id)
+    .eq("module", IPO_DRIVE_MODULE)
+    .eq("folder_year", folderYear)
+    .eq("operating_unit", folderOperatingUnit)
+    .maybeSingle();
+  if (savedError) throw new Error(savedError.message);
+  if (savedFolder?.folder_id) {
+    return {
+      connection,
+      accessToken,
+      folderId: savedFolder.folder_id as string,
+      folderYear,
+      moduleFolderId: savedFolder.module_folder_id as string | null,
+      yearFolderId: savedFolder.year_folder_id as string | null,
+      operatingUnit: folderOperatingUnit,
+      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null
+    };
+  }
+
+  if (!connection.root_folder_id) {
+    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+  }
+
+  const moduleFolder = await ensureFolder(accessToken, IPO_DRIVE_MODULE, connection.root_folder_id);
+  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(folderOperatingUnit, "Operating Unit"), yearFolder.id);
+  const folderName = cleanDriveName(ipoName, `IPO ${ipoId}`);
+  const folder = await ensureFolder(accessToken, folderName, operatingUnitFolder.id);
+
+  const folderRow = {
+    ipo_id: ipoId,
+    connection_id: connection.id,
+    folder_id: folder.id,
+    folder_name: folderName,
+    module: IPO_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: folderOperatingUnit,
+    module_folder_id: moduleFolder.id,
+    year_folder_id: yearFolder.id,
+    operating_unit_folder_id: operatingUnitFolder.id,
+    created_by: user.id
+  };
+
+  const { error: insertError } = await supabase.from("ipo_drive_folders").insert(folderRow);
+  if (insertError) {
+    const { data: existingRow, error: existingError } = await supabase
+      .from("ipo_drive_folders")
+      .select("*")
+      .eq("ipo_id", ipoId)
+      .eq("connection_id", connection.id)
+      .eq("module", IPO_DRIVE_MODULE)
+      .eq("folder_year", folderYear)
+      .eq("operating_unit", folderOperatingUnit)
+      .maybeSingle();
+    if (existingError || !existingRow?.folder_id) {
+      throw new Error(insertError.message);
+    }
+    return {
+      connection,
+      accessToken,
+      folderId: existingRow.folder_id as string,
+      folderYear,
+      moduleFolderId: existingRow.module_folder_id as string | null,
+      yearFolderId: existingRow.year_folder_id as string | null,
+      operatingUnit: folderOperatingUnit,
+      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null
+    };
+  }
+
+  return {
+    connection,
+    accessToken,
+    folderId: folder.id,
+    folderYear,
+    operatingUnit: folderOperatingUnit,
+    moduleFolderId: moduleFolder.id,
+    yearFolderId: yearFolder.id,
+    operatingUnitFolderId: operatingUnitFolder.id
+  };
+}
+
+async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) {
+  const subprojectId = Number(subprojectIdValue);
+
+  if (!Number.isFinite(subprojectId)) throw new Error("A valid subproject is required.");
+  const subproject = await fetchSubproject(subprojectId);
+  const subprojectName = (subproject.name || "").trim();
+  const operatingUnit = (subproject.operatingUnit || "").trim();
+  const ipoName = (subproject.indigenousPeopleOrganization || "").trim();
+
+  if (!subprojectName) throw new Error("Subproject name is required.");
+  if (!operatingUnit) throw new Error("This subproject needs an operating unit before files can be uploaded.");
+  if (!ipoName) throw new Error("This subproject needs a linked IPO before files can be uploaded.");
+
+  const supabase = adminClient();
+  const { connection, accessToken } = await connectedDrive();
+  const folderYear = getUploadYear();
+
+  const { data: savedFolder, error: savedError } = await supabase
+    .from("subproject_drive_folders")
+    .select("*")
+    .eq("subproject_id", subprojectId)
+    .eq("connection_id", connection.id)
+    .eq("module", SUBPROJECT_DRIVE_MODULE)
+    .eq("folder_year", folderYear)
+    .maybeSingle();
+  if (savedError) throw new Error(savedError.message);
+  if (savedFolder?.folder_id) {
+    return {
+      connection,
+      accessToken,
+      folderId: savedFolder.folder_id as string,
+      folderName: savedFolder.folder_name as string,
+      folderYear,
+      operatingUnit: (savedFolder.operating_unit as string | null) || operatingUnit,
+      ipoName: (savedFolder.ipo_name as string | null) || ipoName,
+      subprojectName: (savedFolder.subproject_name as string | null) || subprojectName,
+      moduleFolderId: savedFolder.module_folder_id as string | null,
+      yearFolderId: savedFolder.year_folder_id as string | null,
+      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null,
+      ipoFolderId: savedFolder.ipo_folder_id as string | null
+    };
+  }
+
+  if (!connection.root_folder_id) {
+    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+  }
+
+  const moduleFolder = await ensureFolder(accessToken, SUBPROJECT_DRIVE_MODULE, connection.root_folder_id);
+  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
+  const ipoFolder = await ensureFolder(accessToken, cleanDriveName(ipoName, `IPO ${subprojectId}`), operatingUnitFolder.id);
+  const folderName = cleanDriveName(subprojectName, `Subproject ${subprojectId}`);
+  const folder = await ensureFolder(accessToken, folderName, ipoFolder.id);
+
+  const folderRow = {
+    subproject_id: subprojectId,
+    connection_id: connection.id,
+    folder_id: folder.id,
+    folder_name: folderName,
+    module: SUBPROJECT_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: operatingUnit,
+    ipo_name: ipoName,
+    subproject_name: subprojectName,
+    module_folder_id: moduleFolder.id,
+    year_folder_id: yearFolder.id,
+    operating_unit_folder_id: operatingUnitFolder.id,
+    ipo_folder_id: ipoFolder.id,
+    created_by: user.id
+  };
+
+  const { error: insertError } = await supabase.from("subproject_drive_folders").insert(folderRow);
+  if (insertError) {
+    const { data: existingRow, error: existingError } = await supabase
+      .from("subproject_drive_folders")
+      .select("*")
+      .eq("subproject_id", subprojectId)
+      .eq("connection_id", connection.id)
+      .eq("module", SUBPROJECT_DRIVE_MODULE)
+      .eq("folder_year", folderYear)
+      .maybeSingle();
+    if (existingError || !existingRow?.folder_id) {
+      throw new Error(insertError.message);
+    }
+    return {
+      connection,
+      accessToken,
+      folderId: existingRow.folder_id as string,
+      folderName: existingRow.folder_name as string,
+      folderYear,
+      operatingUnit: (existingRow.operating_unit as string | null) || operatingUnit,
+      ipoName: (existingRow.ipo_name as string | null) || ipoName,
+      subprojectName: (existingRow.subproject_name as string | null) || subprojectName,
+      moduleFolderId: existingRow.module_folder_id as string | null,
+      yearFolderId: existingRow.year_folder_id as string | null,
+      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null,
+      ipoFolderId: existingRow.ipo_folder_id as string | null
+    };
+  }
+
+  return {
+    connection,
+    accessToken,
+    folderId: folder.id,
+    folderName,
+    folderYear,
+    operatingUnit,
+    ipoName,
+    subprojectName,
+    moduleFolderId: moduleFolder.id,
+    yearFolderId: yearFolder.id,
+    operatingUnitFolderId: operatingUnitFolder.id,
+    ipoFolderId: ipoFolder.id
+  };
+}
+
+function concatBytes(chunks: Uint8Array[]) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function uploadMultipartFile(accessToken: string, file: File, parentFolderId: string) {
+  const boundary = `4kis-boundary-${crypto.randomUUID()}`;
+  const encoder = new TextEncoder();
+  const metadata = {
+    name: cleanDriveName(file.name, "Uploaded file"),
+    parents: [parentFolderId]
+  };
+  const fileBytes = new Uint8Array(await file.arrayBuffer());
+  const body = concatBytes([
+    encoder.encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`),
+    encoder.encode(`--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`),
+    fileBytes,
+    encoder.encode(`\r\n--${boundary}--`)
+  ]);
+  const fields = "id,name,mimeType,size,webViewLink,webContentLink";
+  const response = await fetch(`${GOOGLE_DRIVE_UPLOAD_URL}?uploadType=multipart&fields=${fields}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`
+    },
+    body
+  });
+  return readJsonResponse<DriveFileResponse>(response, "Unable to upload file to Google Drive.");
+}
+
+async function deleteDriveFile(accessToken: string, fileId: string) {
+  const response = await fetch(`${GOOGLE_DRIVE_FILES_URL}/${encodeURIComponent(fileId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error("Unable to delete the Google Drive file.");
+  }
+}
+
+export async function listIpoFiles(ipoId: number) {
+  const { data, error } = await adminClient()
+    .from("ipo_drive_files")
+    .select("*")
+    .eq("ipo_id", ipoId)
+    .is("deleted_at", null)
+    .order("uploaded_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function uploadIpoFile(ipoId: number, file: File, user: UserRow) {
+  const supabase = adminClient();
+  assertAllowedUploadFile(file);
+  const ipo = await fetchIpo(ipoId);
+  const operatingUnit = operatingUnitFromRegion(ipo.region);
+  const {
+    connection,
+    accessToken,
+    folderId,
+    folderYear,
+    moduleFolderId,
+    yearFolderId,
+    operatingUnitFolderId
+  } = await ensureIpoFolder(ipoId, ipo.name, operatingUnit, user);
+  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  let previewPermission: DrivePermissionResponse | null = null;
+  try {
+    previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
+  } catch (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw error;
+  }
+
+  const row = {
+    ipo_id: ipoId,
+    connection_id: connection.id,
+    folder_id: folderId,
+    module: IPO_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: operatingUnit,
+    module_folder_id: moduleFolderId,
+    year_folder_id: yearFolderId,
+    operating_unit_folder_id: operatingUnitFolderId,
+    file_id: uploadedFile.id,
+    file_name: uploadedFile.name || file.name,
+    mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
+    file_size: Number(uploadedFile.size || file.size || 0),
+    web_view_link: uploadedFile.webViewLink ?? null,
+    web_content_link: uploadedFile.webContentLink ?? null,
+    preview_url: getPreviewUrl(uploadedFile.id),
+    preview_supported: true,
+    preview_permission_id: previewPermission?.id ?? null,
+    preview_permission_type: previewPermission?.type ?? "anyone",
+    uploaded_by: user.id,
+    uploaded_by_name: displayUserName(user)
+  };
+
+  const { data, error } = await supabase.from("ipo_drive_files").insert(row).select("*").single();
+  if (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw new Error(error.message);
+  }
+
+  await supabase.from("ipo_history").insert({
+    ipo_id: ipoId,
+    event: `Uploaded file: ${row.file_name}`,
+    user: displayUserName(user),
+    date: new Date().toISOString()
+  });
+
+  return data;
+}
+
+export async function deleteIpoFile(fileRowId: number, user: UserRow) {
+  const supabase = adminClient();
+  const { data: fileRow, error: fileError } = await supabase
+    .from("ipo_drive_files")
+    .select("*")
+    .eq("id", fileRowId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (fileError) throw new Error(fileError.message);
+  if (!fileRow) throw new Error("IPO Drive file was not found.");
+
+  const { accessToken } = await connectedDrive();
+  await deleteDriveFile(accessToken, fileRow.file_id);
+
+  const deletedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("ipo_drive_files")
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: user.id,
+      deleted_by_name: displayUserName(user)
+    })
+    .eq("id", fileRowId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await supabase.from("ipo_history").insert({
+    ipo_id: fileRow.ipo_id,
+    event: `Deleted file: ${fileRow.file_name}`,
+    user: displayUserName(user),
+    date: deletedAt
+  });
+
+  return data;
+}
+
+export async function listSubprojectFiles(subprojectId: number) {
+  const { data, error } = await adminClient()
+    .from("subproject_drive_files")
+    .select("*")
+    .eq("subproject_id", subprojectId)
+    .is("deleted_at", null)
+    .order("uploaded_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function uploadSubprojectFile(subprojectId: number, file: File, user: UserRow) {
+  const supabase = adminClient();
+  assertAllowedUploadFile(file);
+
+  const {
+    connection,
+    accessToken,
+    folderId,
+    folderName,
+    folderYear,
+    operatingUnit,
+    ipoName,
+    subprojectName,
+    moduleFolderId,
+    yearFolderId,
+    operatingUnitFolderId,
+    ipoFolderId
+  } = await ensureSubprojectFolder(subprojectId, user);
+
+  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  let previewPermission: DrivePermissionResponse | null = null;
+  try {
+    previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
+  } catch (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw error;
+  }
+
+  const row = {
+    subproject_id: subprojectId,
+    connection_id: connection.id,
+    folder_id: folderId,
+    folder_name: folderName,
+    module: SUBPROJECT_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: operatingUnit,
+    ipo_name: ipoName,
+    subproject_name: subprojectName,
+    module_folder_id: moduleFolderId,
+    year_folder_id: yearFolderId,
+    operating_unit_folder_id: operatingUnitFolderId,
+    ipo_folder_id: ipoFolderId,
+    file_id: uploadedFile.id,
+    file_name: uploadedFile.name || file.name,
+    mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
+    file_size: Number(uploadedFile.size || file.size || 0),
+    web_view_link: uploadedFile.webViewLink ?? null,
+    web_content_link: uploadedFile.webContentLink ?? null,
+    preview_url: getPreviewUrl(uploadedFile.id),
+    preview_supported: true,
+    preview_permission_id: previewPermission?.id ?? null,
+    preview_permission_type: previewPermission?.type ?? "anyone",
+    uploaded_by: user.id,
+    uploaded_by_name: displayUserName(user)
+  };
+
+  const { data, error } = await supabase.from("subproject_drive_files").insert(row).select("*").single();
+  if (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function deleteSubprojectFile(fileRowId: number, user: UserRow) {
+  const supabase = adminClient();
+  const { data: fileRow, error: fileError } = await supabase
+    .from("subproject_drive_files")
+    .select("*")
+    .eq("id", fileRowId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (fileError) throw new Error(fileError.message);
+  if (!fileRow) throw new Error("Subproject Drive file was not found.");
+
+  const { accessToken } = await connectedDrive();
+  await deleteDriveFile(accessToken, fileRow.file_id);
+
+  const deletedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("subproject_drive_files")
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: user.id,
+      deleted_by_name: displayUserName(user)
+    })
+    .eq("id", fileRowId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data;
+}

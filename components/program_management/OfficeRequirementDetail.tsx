@@ -10,6 +10,7 @@ import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
+import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 
 interface OfficeRequirementDetailProps {
     item: OfficeRequirement;
@@ -262,6 +263,10 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             }
         }
 
+        const timestamp = new Date().toISOString();
+        const nextActualObligationDate = (formData.obligations && formData.obligations.length === 0) ? null : (formData.actualObligationDate || null);
+        const actualDateBasis = getProgramManagementPhysicalDateBasis({ ...formData, actualObligationDate: nextActualObligationDate });
+        const previousActualDateBasis = getProgramManagementPhysicalDateBasis(item);
         const updatedItem: any = {
             ...formData,
             numberOfUnits: Number(formData.numberOfUnits),
@@ -269,9 +274,15 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             fundYear: Number(formData.fundYear),
             actualAmount: Number(formData.actualAmount) || 0,
             actualObligationAmount: (formData.obligations && formData.obligations.length === 0) ? null : Number(formData.actualObligationAmount) || 0,
-            actualObligationDate: (formData.obligations && formData.obligations.length === 0) ? null : (formData.actualObligationDate || null),
+            actualObligationDate: nextActualObligationDate,
             actualDisbursementAmount: Number(formData.actualDisbursementAmount) || 0,
-            updated_at: new Date().toISOString()
+            physical_accomplishment_submitted_at: resolvePhysicalAccomplishmentSubmittedAt({
+                hasPhysicalAccomplishment: !!actualDateBasis,
+                hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
+                previousSubmittedAt: item.physical_accomplishment_submitted_at,
+                submittedAt: timestamp
+            }),
+            updated_at: timestamp
         };
 
         if (supabase) {

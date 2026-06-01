@@ -7,11 +7,14 @@ import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
-import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter, Plus, Trash2, Calendar as CalendarIcon, Info } from 'lucide-react';
+import { FormattedAmountInput } from '../ui/FormattedAmountInput';
+import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter } from 'lucide-react';
 import { ObligationsEditor } from './ObligationsEditor';
 import { DisbursementsEditor } from './DisbursementsEditor';
 import { ObligationListEditor } from '../ui/ObligationListEditor';
 import { DisbursementListEditor } from '../ui/DisbursementListEditor';
+import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
+import { resolveDisbursementEntries, summarizeDisbursements } from '../../lib/disbursementUtils';
 
 interface Props {
     subprojects: Subproject[];
@@ -24,6 +27,7 @@ interface Props {
     setStaffingReqs: React.Dispatch<React.SetStateAction<StaffingRequirement[]>>;
     otherProgramExpenses: OtherProgramExpense[];
     setOtherProgramExpenses: React.Dispatch<React.SetStateAction<OtherProgramExpense[]>>;
+    budgetCeilings?: Array<{ operating_unit: string; year: number; amount: number }>;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
@@ -76,6 +80,8 @@ interface FinancialItem {
     actualDisbursementDec: number;
 
     status: string; // Added status field
+    isRealignment?: boolean;
+    isSavings?: boolean;
     isConfirmed: boolean; // Just a UI state for this session (or could map to 'status')
 }
 
@@ -94,9 +100,18 @@ const getMonthFromDateStr = (dateStr: string | undefined) => {
     return '';
 };
 
+const toFiniteNumber = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sumAmounts = (records: Array<{ amount?: number | string | null }> = []) => {
+    return records.reduce((sum, record) => sum + toFiniteNumber(record.amount), 0);
+};
+
 const formatCurrency = (amount: number) => {
   // Round up to nearest whole number
-  const rounded = Math.ceil(amount);
+  const rounded = Math.ceil(toFiniteNumber(amount));
   return new Intl.NumberFormat('en-PH', { 
       style: 'currency', 
       currency: 'PHP',
@@ -138,6 +153,22 @@ const getInitialDisbursements = (existingArr: DisbursementRecord[] | undefined, 
     return [];
 };
 
+const getContextDescription = (item: FinancialItem) => {
+    if (item.sourceType === 'Subproject') {
+        return item.budgetParticular && item.sourceName !== item.budgetParticular ? item.sourceName : '';
+    }
+    if (item.sourceType === 'Staffing') {
+        return item.expenseParticular !== item.sourceName ? item.sourceName : '';
+    }
+    if (item.sourceType === 'Other') {
+        return item.expenseParticular && item.expenseParticular !== item.sourceName ? item.expenseParticular : 'Other program expense';
+    }
+    if (item.sourceType === 'Activity') {
+        return item.sourceName;
+    }
+    return item.expenseParticular;
+};
+
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
 
 const FinancialAccomplishment: React.FC<Props> = ({
@@ -146,6 +177,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
     otherProgramExpenses, setOtherProgramExpenses,
+    budgetCeilings = [],
     uacsCodes,
     onSelectSubproject, onSelectActivity,
     onSelectOfficeReq, onSelectStaffingReq, onSelectOtherExpense
@@ -176,7 +208,6 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [localSavingIds, setLocalSavingIds] = useState<Set<string>>(new Set());
     const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
-    
     type SortKey = 'targetObligationAmount' | 'targetObligationMonth' | 'actualObligationAmount' | 'actualObligationMonth' | 'targetDisbursementAmount' | 'targetDisbursementMonth' | 'actualDisbursementAmount' | 'actualDisbursementMonth';
     const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
     
@@ -288,16 +319,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             sourceName: sp.name,
                             budgetParticular: d.particulars,
                             targetObligationMonth: d.obligationMonth,
-                            targetObligationAmount: d.pricePerUnit * d.numberOfUnits,
+                            targetObligationAmount: toFiniteNumber(d.pricePerUnit) * toFiniteNumber(d.numberOfUnits),
                             targetDisbursementMonth: d.disbursementMonth,
-                            targetDisbursementAmount: d.pricePerUnit * d.numberOfUnits,
+                            targetDisbursementAmount: toFiniteNumber(d.pricePerUnit) * toFiniteNumber(d.numberOfUnits),
                             actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualObligationDate || ''),
-                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (d.actualObligationAmount || 0),
+                            actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(d.actualObligationAmount),
                             actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualDisbursementDate || ''),
-                            actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (d.actualDisbursementAmount || 0),
-                            obligations: obs.length > 0 ? obs : getInitialObligations(d.obligations, d.actualObligationDate || '', d.actualObligationAmount || 0),
-                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', d.actualDisbursementAmount || 0),
+                            actualDisbursementAmount: dibs.length > 0 ? sumAmounts(dibs) : toFiniteNumber(d.actualDisbursementAmount),
+                            obligations: obs.length > 0 ? obs : getInitialObligations(d.obligations, d.actualObligationDate || '', toFiniteNumber(d.actualObligationAmount)),
+                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', toFiniteNumber(d.actualDisbursementAmount)),
                             status: sp.status,
+                            isRealignment: sp.isRealignment,
+                            isSavings: sp.isSavings,
                             ...defaultMonthly,
                             isConfirmed: false
                         });
@@ -320,16 +353,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             expenseParticular: e.expenseParticular || 'Unspecified',
                             sourceName: act.name || `${act.type} (${act.component})`,
                             targetObligationMonth: e.obligationMonth,
-                            targetObligationAmount: e.amount,
+                            targetObligationAmount: toFiniteNumber(e.amount),
                             targetDisbursementMonth: e.disbursementMonth,
-                            targetDisbursementAmount: e.amount,
+                            targetDisbursementAmount: toFiniteNumber(e.amount),
                             actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
-                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (e.actualObligationAmount || 0),
+                            actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
                             actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualDisbursementDate || ''),
-                            actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (e.actualDisbursementAmount || 0),
-                            obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
-                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', e.actualDisbursementAmount || 0),
+                            actualDisbursementAmount: dibs.length > 0 ? sumAmounts(dibs) : toFiniteNumber(e.actualDisbursementAmount),
+                            obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', toFiniteNumber(e.actualObligationAmount)),
+                            disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', toFiniteNumber(e.actualDisbursementAmount)),
                             status: act.status,
+                            isRealignment: act.isRealignment,
+                            isSavings: act.isSavings,
                             ...defaultMonthly,
                             isConfirmed: false
                         });
@@ -350,16 +385,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         expenseParticular: 'Office Requirements',
                         sourceName: o.equipment,
                         targetObligationMonth: o.obligationDate,
-                        targetObligationAmount: o.pricePerUnit * o.numberOfUnits,
+                        targetObligationAmount: toFiniteNumber(o.pricePerUnit) * toFiniteNumber(o.numberOfUnits),
                         targetDisbursementMonth: o.disbursementDate,
-                        targetDisbursementAmount: o.pricePerUnit * o.numberOfUnits,
+                        targetDisbursementAmount: toFiniteNumber(o.pricePerUnit) * toFiniteNumber(o.numberOfUnits),
                         actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (o.actualObligationDate || ''),
-                        actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (o.actualObligationAmount || 0),
+                        actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(o.actualObligationAmount),
                         actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (o.actualDisbursementDate || ''),
-                        actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (o.actualDisbursementAmount || 0),
-                        obligations: obs.length > 0 ? obs : getInitialObligations(o.obligations, o.actualObligationDate || '', o.actualObligationAmount || 0),
-                        disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(o.disbursements, o.actualDisbursementDate || '', o.actualDisbursementAmount || 0),
+                        actualDisbursementAmount: dibs.length > 0 ? sumAmounts(dibs) : toFiniteNumber(o.actualDisbursementAmount),
+                        obligations: obs.length > 0 ? obs : getInitialObligations(o.obligations, o.actualObligationDate || '', toFiniteNumber(o.actualObligationAmount)),
+                        disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(o.disbursements, o.actualDisbursementDate || '', toFiniteNumber(o.actualDisbursementAmount)),
                         status: o.status,
+                        isRealignment: o.isRealignment,
+                        isSavings: o.isSavings,
                         ...defaultMonthly,
                         isConfirmed: false
                     });
@@ -370,12 +407,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     if (s.expenses && s.expenses.length > 0) {
                         (s.expenses || []).forEach(e => {
                             const obs = getObligations('Staffing', s.id, e.id);
-                            // Staffing rarely has multiple disbursements in centralization, usually monthly root fields
-                            
-                            const monthlyActuals: any = {};
-                            SHORT_MONTHS.forEach(m => {
-                                monthlyActuals[`actualDisbursement${m}`] = (e as any)[`actualDisbursement${m}`] || 0;
-                            });
+                            const centralDibs = getDisbursements('Staffing', s.id, e.id);
+                            const disbursements = centralDibs.length > 0
+                                ? centralDibs
+                                : resolveDisbursementEntries({ ...e, disbursements: undefined }, selectedYear);
+                            const disbursementSummary = summarizeDisbursements(disbursements, selectedYear);
 
                             loadedItems.push({
                                 uniqueId: `staff-${s.id}-${e.id}`,
@@ -387,27 +423,30 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                 expenseParticular: e.expenseParticular || 'Salaries & Wages',
                                 sourceName: s.personnelPosition,
                                 targetObligationMonth: e.obligationDate,
-                                targetObligationAmount: e.amount,
+                                targetObligationAmount: toFiniteNumber(e.amount),
                                 targetDisbursementMonth: 'Monthly',
-                                targetDisbursementAmount: e.amount,
+                                targetDisbursementAmount: toFiniteNumber(e.amount),
                                 actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
-                                actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (e.actualObligationAmount || 0),
-                                actualDisbursementMonth: e.actualDisbursementDate || '',
-                                actualDisbursementAmount: e.actualDisbursementAmount || 0,
-                                obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', e.actualObligationAmount || 0),
-                                disbursements: [],
+                                actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
+                                actualDisbursementMonth: disbursementSummary.latestDate || e.actualDisbursementDate || '',
+                                actualDisbursementAmount: disbursementSummary.total,
+                                obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', toFiniteNumber(e.actualObligationAmount)),
+                                disbursements,
                                 status: s.hiringStatus,
+                                isRealignment: s.isRealignment,
+                                isSavings: s.isSavings,
                                 ...defaultMonthly,
-                                ...monthlyActuals,
+                                ...disbursementSummary.monthlyFields,
                                 isConfirmed: false
                             });
                         });
                     } else {
                          const obs = getObligations('Staffing', s.id);
-                         const monthlyActuals: any = {};
-                         SHORT_MONTHS.forEach(m => {
-                             monthlyActuals[`actualDisbursement${m}`] = (s as any)[`actualDisbursement${m}`] || 0;
-                         });
+                         const centralDibs = getDisbursements('Staffing', s.id);
+                         const disbursements = centralDibs.length > 0
+                             ? centralDibs
+                             : resolveDisbursementEntries({ ...s, disbursements: undefined }, selectedYear);
+                         const disbursementSummary = summarizeDisbursements(disbursements, selectedYear);
 
                          loadedItems.push({
                             uniqueId: `staff-${s.id}`,
@@ -418,18 +457,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             expenseParticular: 'Salaries & Wages',
                             sourceName: s.personnelPosition,
                             targetObligationMonth: s.obligationDate,
-                            targetObligationAmount: s.annualSalary,
+                            targetObligationAmount: toFiniteNumber(s.annualSalary),
                             targetDisbursementMonth: 'Monthly',
-                            targetDisbursementAmount: s.annualSalary,
+                            targetDisbursementAmount: toFiniteNumber(s.annualSalary),
                             actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (s.actualObligationDate || ''),
-                            actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (s.actualObligationAmount || 0),
-                            actualDisbursementMonth: s.actualDisbursementDate || '',
-                            actualDisbursementAmount: s.actualDisbursementAmount || 0,
-                            obligations: obs.length > 0 ? obs : getInitialObligations(s.obligations, s.actualObligationDate || '', s.actualObligationAmount || 0),
-                            disbursements: [],
+                            actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(s.actualObligationAmount),
+                            actualDisbursementMonth: disbursementSummary.latestDate || s.actualDisbursementDate || '',
+                            actualDisbursementAmount: disbursementSummary.total,
+                            obligations: obs.length > 0 ? obs : getInitialObligations(s.obligations, s.actualObligationDate || '', toFiniteNumber(s.actualObligationAmount)),
+                            disbursements,
                             status: s.hiringStatus,
+                            isRealignment: s.isRealignment,
+                            isSavings: s.isSavings,
                             ...defaultMonthly,
-                            ...monthlyActuals,
+                            ...disbursementSummary.monthlyFields,
                             isConfirmed: false
                         });
                     }
@@ -438,11 +479,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 // Other
                 (otherProgramExpenses || []).filter(matchesFilters).forEach(ope => {
                     const obs = getObligations('Other', ope.id);
-                    const dibs = getDisbursements('Other', ope.id);
-                    const monthlyActuals: any = {};
-                    SHORT_MONTHS.forEach(m => {
-                        monthlyActuals[`actualDisbursement${m}`] = (ope as any)[`actualDisbursement${m}`] || 0;
-                    });
+                    const centralDibs = getDisbursements('Other', ope.id);
+                    const disbursements = centralDibs.length > 0
+                        ? centralDibs
+                        : resolveDisbursementEntries({ ...ope, disbursements: undefined }, selectedYear);
+                    const disbursementSummary = summarizeDisbursements(disbursements, selectedYear);
 
                     loadedItems.push({
                         uniqueId: `other-${ope.id}`,
@@ -453,18 +494,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         expenseParticular: 'Other Expenses',
                         sourceName: ope.particulars,
                         targetObligationMonth: ope.obligationDate,
-                        targetObligationAmount: ope.amount,
+                        targetObligationAmount: toFiniteNumber(ope.amount),
                         targetDisbursementMonth: ope.disbursementDate,
-                        targetDisbursementAmount: ope.amount,
+                        targetDisbursementAmount: toFiniteNumber(ope.amount),
                         actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (ope.actualObligationDate || ''),
-                        actualObligationAmount: obs.length > 0 ? obs.reduce((sum, o) => sum + o.amount, 0) : (ope.actualObligationAmount || 0),
-                        actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (ope.actualDisbursementDate || ''),
-                        actualDisbursementAmount: dibs.length > 0 ? dibs.reduce((sum, d) => sum + d.amount, 0) : (ope.actualDisbursementAmount || 0),
-                        obligations: obs.length > 0 ? obs : getInitialObligations(ope.obligations, ope.actualObligationDate || '', ope.actualObligationAmount || 0),
-                        disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(ope.disbursements, ope.actualDisbursementDate || '', ope.actualDisbursementAmount || 0),
+                        actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(ope.actualObligationAmount),
+                        actualDisbursementMonth: disbursementSummary.latestDate || ope.actualDisbursementDate || '',
+                        actualDisbursementAmount: disbursementSummary.total,
+                        obligations: obs.length > 0 ? obs : getInitialObligations(ope.obligations, ope.actualObligationDate || '', toFiniteNumber(ope.actualObligationAmount)),
+                        disbursements,
                         status: ope.status,
+                        isRealignment: ope.isRealignment,
+                        isSavings: ope.isSavings,
                         ...defaultMonthly,
-                        ...monthlyActuals,
+                        ...disbursementSummary.monthlyFields,
                         isConfirmed: false
                     });
                 });
@@ -484,7 +527,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     // --- 2. Grouping Logic ---
     const groupedItems = useMemo(() => {
-        const typeGroups: { [key: string]: { uacsMap: { [code: string]: { items: FinancialItem[], description: string, totalTargetObli: number, totalActualObli: number } } } } = {};
+        const typeGroups: { [key: string]: { uacsMap: { [code: string]: { items: FinancialItem[], description: string, totalTargetObli: number, totalActualObli: number, totalTargetDisb: number, totalActualDisb: number } } } } = {};
 
         items.forEach(item => {
             const type = item.objectType || 'Unspecified';
@@ -510,14 +553,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     items: [],
                     description: desc,
                     totalTargetObli: 0,
-                    totalActualObli: 0
+                    totalActualObli: 0,
+                    totalTargetDisb: 0,
+                    totalActualDisb: 0
                 };
             }
 
             const group = typeGroups[type].uacsMap[code];
             group.items.push(item);
-            group.totalTargetObli += item.targetObligationAmount;
-            group.totalActualObli += item.actualObligationAmount;
+            group.totalTargetObli += toFiniteNumber(item.targetObligationAmount);
+            group.totalActualObli += toFiniteNumber(item.actualObligationAmount);
+            group.totalTargetDisb += toFiniteNumber(item.targetDisbursementAmount);
+            group.totalActualDisb += toFiniteNumber(item.actualDisbursementAmount);
         });
 
         // Convert to array structure for rendering
@@ -537,10 +584,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 }
                 const g = map.get(item.sourceId)!;
                 g.items.push(item);
-                g.targetObligationAmount += item.targetObligationAmount || 0;
-                g.actualObligationAmount += item.actualObligationAmount || 0;
-                g.targetDisbursementAmount += item.targetDisbursementAmount || 0;
-                g.actualDisbursementAmount += item.actualDisbursementAmount || 0;
+                g.targetObligationAmount += toFiniteNumber(item.targetObligationAmount);
+                g.actualObligationAmount += toFiniteNumber(item.actualObligationAmount);
+                g.targetDisbursementAmount += toFiniteNumber(item.targetDisbursementAmount);
+                g.actualDisbursementAmount += toFiniteNumber(item.actualDisbursementAmount);
             });
             return Array.from(map.values());
         };
@@ -554,6 +601,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 items: groupData.items,
                 totalTargetObli: groupData.totalTargetObli,
                 totalActualObli: groupData.totalActualObli,
+                totalTargetDisb: groupData.totalTargetDisb,
+                totalActualDisb: groupData.totalActualDisb,
                 subGroups: {
                     'Subprojects': groupItemsBySource(groupData.items.filter(i => i.sourceType === 'Subproject')),
                     'Activities': groupItemsBySource(groupData.items.filter(i => i.sourceType === 'Activity')),
@@ -566,12 +615,102 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // --- 2.1 Grand Total Calculation ---
     const grandTotals = useMemo(() => {
         return items.reduce((acc, item) => ({
-            targetObli: acc.targetObli + (item.targetObligationAmount || 0),
-            actualObli: acc.actualObli + (item.actualObligationAmount || 0),
-            targetDisb: acc.targetDisb + (item.targetDisbursementAmount || 0),
-            actualDisb: acc.actualDisb + (item.actualDisbursementAmount || 0)
+            targetObli: acc.targetObli + toFiniteNumber(item.targetObligationAmount),
+            actualObli: acc.actualObli + toFiniteNumber(item.actualObligationAmount),
+            targetDisb: acc.targetDisb + toFiniteNumber(item.targetDisbursementAmount),
+            actualDisb: acc.actualDisb + toFiniteNumber(item.actualDisbursementAmount)
         }), { targetObli: 0, actualObli: 0, targetDisb: 0, actualDisb: 0 });
     }, [items]);
+
+    const summaryCards = useMemo(() => {
+        const selectedYearNumber = Number(selectedYear);
+        const hasBudgetCeilingScope = selectedTier === 'Tier 1' && selectedFundType === 'Current';
+        const budgetCeiling = Number.isFinite(selectedYearNumber) && hasBudgetCeilingScope
+            ? budgetCeilings.reduce((sum, ceiling) => {
+                if (Number(ceiling.year) !== selectedYearNumber) return sum;
+                if (selectedOu !== 'All' && ceiling.operating_unit !== selectedOu) return sum;
+                return sum + toFiniteNumber(ceiling.amount);
+            }, 0)
+            : 0;
+
+        return items.reduce((acc, item) => {
+            const targetObligation = toFiniteNumber(item.targetObligationAmount);
+            const targetDisbursement = toFiniteNumber(item.targetDisbursementAmount);
+            const actualObligation = toFiniteNumber(item.actualObligationAmount);
+            const actualDisbursement = toFiniteNumber(item.actualDisbursementAmount);
+            const isTagged = !!(item.isRealignment || item.isSavings);
+
+            acc.actualObligation += actualObligation;
+            acc.actualDisbursement += actualDisbursement;
+
+            if (isTagged) {
+                acc.realignedSavings += targetObligation;
+            } else {
+                acc.totalAllocation += targetObligation;
+                acc.targetObligation += targetObligation;
+                acc.targetDisbursement += targetDisbursement;
+            }
+
+            return acc;
+        }, {
+            budgetCeiling,
+            totalAllocation: 0,
+            targetObligation: 0,
+            actualObligation: 0,
+            targetDisbursement: 0,
+            actualDisbursement: 0,
+            realignedSavings: 0,
+            hasBudgetCeilingScope
+        });
+    }, [budgetCeilings, items, selectedFundType, selectedOu, selectedTier, selectedYear]);
+
+    const getPercent = (value: number, target: number) => {
+        if (!target) return null;
+        return Math.round((value / target) * 100);
+    };
+
+    const allocationCeilingPercent = getPercent(summaryCards.totalAllocation, summaryCards.budgetCeiling);
+    const obligationUtilizationPercent = getPercent(summaryCards.actualObligation, summaryCards.targetObligation);
+    const disbursementUtilizationPercent = getPercent(summaryCards.actualDisbursement, summaryCards.targetDisbursement);
+    const taggedAllocationPercent = getPercent(summaryCards.realignedSavings, summaryCards.totalAllocation);
+    const ceilingVariance = summaryCards.budgetCeiling - summaryCards.totalAllocation;
+
+    const financialSummaryCards = [
+        {
+            label: 'Total Allocation',
+            value: summaryCards.totalAllocation,
+            indicator: !summaryCards.hasBudgetCeilingScope
+                ? 'Budget ceiling applies to Tier 1 Current only'
+                : summaryCards.budgetCeiling <= 0
+                    ? 'No budget ceiling set'
+                    : ceilingVariance < 0
+                        ? `Ceiling ${formatCurrency(summaryCards.budgetCeiling)} · ${allocationCeilingPercent}% used · ${formatCurrency(Math.abs(ceilingVariance))} exceeded`
+                        : `Ceiling ${formatCurrency(summaryCards.budgetCeiling)} · ${allocationCeilingPercent}% used · ${formatCurrency(ceilingVariance)} remaining`,
+            tone: summaryCards.hasBudgetCeilingScope && ceilingVariance < 0 ? 'danger' : 'neutral'
+        },
+        {
+            label: 'Obligation',
+            value: summaryCards.actualObligation,
+            indicator: obligationUtilizationPercent === null
+                ? `Target ${formatCurrency(summaryCards.targetObligation)} · No target set`
+                : `Target ${formatCurrency(summaryCards.targetObligation)} · ${obligationUtilizationPercent}% utilized`,
+            tone: obligationUtilizationPercent !== null && obligationUtilizationPercent > 100 ? 'danger' : 'neutral'
+        },
+        {
+            label: 'Disbursement',
+            value: summaryCards.actualDisbursement,
+            indicator: disbursementUtilizationPercent === null
+                ? `Target ${formatCurrency(summaryCards.targetDisbursement)} · No target set`
+                : `Target ${formatCurrency(summaryCards.targetDisbursement)} · ${disbursementUtilizationPercent}% utilized`,
+            tone: disbursementUtilizationPercent !== null && disbursementUtilizationPercent > 100 ? 'danger' : 'neutral'
+        },
+        {
+            label: 'Realigned/Savings',
+            value: summaryCards.realignedSavings,
+            indicator: taggedAllocationPercent === null ? '0% of allocation' : `${taggedAllocationPercent}% of allocation`,
+            tone: summaryCards.realignedSavings > 0 ? 'warning' : 'neutral'
+        },
+    ];
 
 
     // --- 3. Handlers ---
@@ -625,7 +764,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                 // If obligations were updated, auto-sum amount and update month
                 if (updates.obligations) {
-                    const total = updates.obligations.reduce((sum, o) => sum + (o.amount || 0), 0);
+                    const total = sumAmounts(updates.obligations);
                     newItem.actualObligationAmount = total;
                     
                     if (updates.obligations.length > 0) {
@@ -636,13 +775,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                 // If disbursements were updated, auto-sum amount and update month
                 if (updates.disbursements) {
-                    const total = updates.disbursements.reduce((sum, d) => sum + (d.amount || 0), 0);
-                    newItem.actualDisbursementAmount = total;
-                    
-                    if (updates.disbursements.length > 0) {
-                        const sorted = [...updates.disbursements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                        newItem.actualDisbursementMonth = sorted[0].date;
-                    }
+                    const summary = summarizeDisbursements(updates.disbursements, selectedYear?.toString());
+                    newItem.actualDisbursementAmount = summary.total;
+                    newItem.actualDisbursementMonth = summary.latestDate;
+                    Object.assign(newItem, summary.monthlyFields);
                 }
 
                 setChangedItems(prevMap => {
@@ -665,7 +801,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 // Recalculate total
                 let total = 0;
                 SHORT_MONTHS.forEach(m => {
-                    total += (newItem[`actualDisbursement${m}`] || 0);
+                    total += toFiniteNumber(newItem[`actualDisbursement${m}`]);
                 });
                 newItem.actualDisbursementAmount = total;
                 
@@ -764,7 +900,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
             parent_id: parentId,
             item_id: itemId,
             obligation_date: o.date,
-            amount: o.amount || 0,
+            amount: toFiniteNumber(o.amount),
             remarks: o.remarks || ''
         }));
 
@@ -811,7 +947,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
             parent_id: parentId,
             item_id: itemId,
             disbursement_date: d.date,
-            amount: d.amount || 0,
+            amount: toFiniteNumber(d.amount),
             remarks: d.remarks || ''
         }));
 
@@ -823,6 +959,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     };
 
     const saveItemToDB = async (item: FinancialItem) => {
+        const submittedAt = new Date().toISOString();
         if (item.sourceType === 'Subproject') {
             const sp = subprojects.find(s => s.id === item.sourceId);
             if (!sp) throw new Error("Subproject not found");
@@ -898,15 +1035,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
             if (item.detailId) {
                 updatedExpenses = updatedExpenses.map(e => {
                     if (e.id === item.detailId) {
+                        const disbursementSummary = summarizeDisbursements(item.disbursements || [], selectedYear?.toString());
                         const updatedExpense: any = {
                             ...e,
                             actualObligationDate: item.actualObligationMonth,
                             actualObligationAmount: item.actualObligationAmount,
-                            actualDisbursementDate: item.actualDisbursementMonth,
-                            actualDisbursementAmount: item.actualDisbursementAmount
+                            actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
+                            actualDisbursementAmount: disbursementSummary.total,
+                            disbursements: item.disbursements || []
                         };
                         SHORT_MONTHS.forEach(m => {
-                            updatedExpense[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                            updatedExpense[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
                         });
                         // Update targets if Proposed
                         if (item.status === 'Proposed') {
@@ -925,10 +1064,10 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 SHORT_MONTHS.forEach(m => monthlyTotals[`actualDisbursement${m}`] = 0);
 
                 updatedExpenses.forEach(e => {
-                    totalActualObli += (e.actualObligationAmount || 0);
-                    totalActualDisb += (e.actualDisbursementAmount || 0);
+                    totalActualObli += toFiniteNumber(e.actualObligationAmount);
+                    totalActualDisb += toFiniteNumber(e.actualDisbursementAmount);
                     SHORT_MONTHS.forEach(m => {
-                        monthlyTotals[`actualDisbursement${m}`] += (e as any)[`actualDisbursement${m}`] || 0;
+                        monthlyTotals[`actualDisbursement${m}`] += toFiniteNumber((e as any)[`actualDisbursement${m}`]);
                     });
                 });
 
@@ -947,19 +1086,30 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 }
 
             } else {
+                const disbursementSummary = summarizeDisbursements(item.disbursements || [], selectedYear?.toString());
                 payload = {
                      actualObligationDate: item.actualObligationMonth,
                      actualObligationAmount: item.actualObligationAmount,
-                     actualDisbursementAmount: item.actualDisbursementAmount
+                     actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
+                     actualDisbursementAmount: disbursementSummary.total
                 };
                 SHORT_MONTHS.forEach(m => {
-                    payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                    payload[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
                 });
                 if (item.status === 'Proposed') {
                     payload.obligationDate = item.targetObligationMonth;
                     payload.annualSalary = item.targetObligationAmount;
                 }
             }
+
+            const actualDateBasis = getProgramManagementPhysicalDateBasis(payload);
+            const previousActualDateBasis = getProgramManagementPhysicalDateBasis(s);
+            payload.physical_accomplishment_submitted_at = resolvePhysicalAccomplishmentSubmittedAt({
+                hasPhysicalAccomplishment: !!actualDateBasis,
+                hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
+                previousSubmittedAt: s.physical_accomplishment_submitted_at,
+                submittedAt
+            });
 
             if (supabase) {
                 const { error: updateError } = await supabase.from('staffing_requirements').update(payload).eq('id', item.sourceId);
@@ -968,15 +1118,16 @@ const FinancialAccomplishment: React.FC<Props> = ({
             setStaffingReqs(prev => prev.map(req => req.id === item.sourceId ? { ...req, ...payload } : req));
 
         } else if (item.sourceType === 'Other') {
+            const disbursementSummary = summarizeDisbursements(item.disbursements || [], selectedYear?.toString());
             const payload: any = {
                  actualObligationDate: item.actualObligationMonth,
                  actualObligationAmount: item.actualObligationAmount,
-                 actualDisbursementDate: item.actualDisbursementMonth,
-                 actualDisbursementAmount: item.actualDisbursementAmount
+                 actualDisbursementDate: disbursementSummary.latestDate || item.actualDisbursementMonth,
+                 actualDisbursementAmount: disbursementSummary.total
             };
             
             SHORT_MONTHS.forEach(m => {
-                payload[`actualDisbursement${m}`] = (item as any)[`actualDisbursement${m}`];
+                payload[`actualDisbursement${m}`] = disbursementSummary.monthlyFields[`actualDisbursement${m}`];
             });
 
             if (item.status === 'Proposed') {
@@ -1005,6 +1156,15 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 payload.pricePerUnit = item.targetObligationAmount;
                 payload.numberOfUnits = 1;
             }
+            const o = officeReqs.find(req => req.id === item.sourceId);
+            const actualDateBasis = getProgramManagementPhysicalDateBasis(payload);
+            const previousActualDateBasis = getProgramManagementPhysicalDateBasis(o || {});
+            payload.physical_accomplishment_submitted_at = resolvePhysicalAccomplishmentSubmittedAt({
+                hasPhysicalAccomplishment: !!actualDateBasis,
+                hasChanged: valuesDiffer(previousActualDateBasis, actualDateBasis),
+                previousSubmittedAt: o?.physical_accomplishment_submitted_at,
+                submittedAt
+            });
             if (supabase) {
                 const { error: updateError } = await supabase.from('office_requirements').update(payload).eq('id', item.sourceId);
                 if (updateError) throw updateError;
@@ -1204,121 +1364,131 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 </div>
             ) : (
             <div className="data-table-card">
-            <div className="data-table-scroll">
-                <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <section className="financial-accomplishment-summary-grid" aria-label="Financial accomplishment summary">
+                {financialSummaryCards.map(card => (
+                    <div key={card.label} className={`financial-accomplishment-summary-card financial-accomplishment-summary-card--${card.tone}`}>
+                        <div className="financial-accomplishment-summary-card__header">
+                            <span>{card.label}</span>
+                        </div>
+                        <strong>{formatCurrency(card.value)}</strong>
+                        <small>{card.indicator}</small>
+                    </div>
+                ))}
+            </section>
+            <div className="data-table-scroll financial-accomplishment-table-scroll custom-scrollbar">
+                <table className="data-table financial-accomplishment-table min-w-[1240px] divide-y divide-gray-200 dark:divide-gray-700">
+                    <colgroup>
+                        <col className="fac-width-particulars" />
+                        {Array.from({ length: 8 }).map((_, index) => (
+                            <col key={`financial-col-${index}`} className="fac-width-financial" />
+                        ))}
+                        <col className="fac-width-action" />
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th rowSpan={2} className="px-4 py-3 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider w-1/4 align-bottom">Particulars / UACS</th>
+                            <th rowSpan={2} className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars financial-accomplishment-sticky-head fac-header-particulars px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider align-middle">Particulars / UACS</th>
                             {/* Target Obligation */}
-                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Obligation</th>
+                            <th colSpan={2} className="fac-col-target-obligation px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Obligation</th>
                             
                             {/* Actual Obligation */}
-                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Obligation</th>
+                            <th colSpan={2} className="fac-col-actual-obligation px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Obligation</th>
                             
                             {/* Target Disbursement */}
-                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Disbursement</th>
+                            <th colSpan={2} className="fac-col-target-disbursement px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-b border-gray-200 dark:border-gray-700">Target Disbursement</th>
                             
                             {/* Actual Disbursement */}
-                            <th colSpan={2} className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Disbursement</th>
+                            <th colSpan={2} className="fac-col-actual-disbursement px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-b border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30">Actual Disbursement</th>
                             
-                            <th rowSpan={2} className="px-4 py-3 text-right text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider align-bottom">Action</th>
+                            <th rowSpan={2} className="fac-header-action fac-col-action px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider align-middle">Action</th>
                         </tr>
                         <tr>
                             {/* Target Obligation */}
-                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationAmount')}>
+                            <th className="fac-col-target-obligation px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationAmount')}>
                                 Amount {SortIcon('targetObligationAmount')}
                             </th>
-                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationMonth')}>
+                            <th className="fac-col-target-obligation px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetObligationMonth')}>
                                 Date {SortIcon('targetObligationMonth')}
                             </th>
                             
-                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30" colSpan={2}>
-                                Obligations (Multiple)
+                            <th className="fac-col-actual-obligation px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30" colSpan={2}>
+                                Obligations
                             </th>
                             
                             {/* Target Disbursement */}
-                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementAmount')}>
+                            <th className="fac-col-target-disbursement px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-l border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementAmount')}>
                                 Amount {SortIcon('targetDisbursementAmount')}
                             </th>
-                            <th className="px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementMonth')}>
+                            <th className="fac-col-target-disbursement px-2 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => handleSort('targetDisbursementMonth')}>
                                 Date {SortIcon('targetDisbursementMonth')}
                             </th>
                             
                             {/* Actual Disbursement */}
-                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualDisbursementAmount')}>
-                                Amount {SortIcon('actualDisbursementAmount')}
-                            </th>
-                            <th className="px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider bg-emerald-100/50 dark:bg-emerald-800/30 cursor-pointer hover:bg-emerald-200/50 dark:hover:bg-emerald-800/50" onClick={() => handleSort('actualDisbursementMonth')}>
-                                Date {SortIcon('actualDisbursementMonth')}
+                            <th className="fac-col-actual-disbursement px-2 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800 bg-emerald-100/50 dark:bg-emerald-800/30" colSpan={2}>
+                                Disbursements
                             </th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
                         {groupedItems.map((typeGroup) => {
                             const isTypeExpanded = expandedObjectTypes.includes(typeGroup.objectType);
+                            const objectTypeTotalTargetObli = typeGroup.uacsGroups.reduce((sum, group) => sum + toFiniteNumber(group.totalTargetObli), 0);
+                            const objectTypeTotalActualObli = typeGroup.uacsGroups.reduce((sum, group) => sum + toFiniteNumber(group.totalActualObli), 0);
+                            const objectTypeTotalTargetDisb = typeGroup.uacsGroups.reduce((sum, group) => sum + toFiniteNumber(group.totalTargetDisb), 0);
+                            const objectTypeTotalActualDisb = typeGroup.uacsGroups.reduce((sum, group) => sum + toFiniteNumber(group.totalActualDisb), 0);
                             return (
                                 <React.Fragment key={typeGroup.objectType}>
                                     {/* Level 1: Object Type Header (Container) */}
-                                    <tr className="bg-emerald-200/80 dark:bg-gray-700/80 border-b-2 border-emerald-300 dark:border-gray-600">
-                                        <td colSpan={10} className="px-4 py-3">
-                                            <button onClick={() => toggleObjectType(typeGroup.objectType)} className="flex items-center gap-2 text-md font-bold text-emerald-900 dark:text-white focus:outline-none group w-full">
-                                                 <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-emerald-700 dark:text-emerald-400 transition-transform duration-200 ${isTypeExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                </svg>
-                                                {typeGroup.objectType}
+                                    <tr className="fac-row-object bg-emerald-200/80 dark:bg-gray-700/80 border-b-2 border-emerald-300 dark:border-gray-600">
+                                        <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-4 py-3">
+                                            <button onClick={() => toggleObjectType(typeGroup.objectType)} className="fac-drill-button text-md font-bold text-emerald-900 dark:text-white focus:outline-none group w-full">
+                                                <span className="fac-expand-toggle" aria-hidden="true">{isTypeExpanded ? '-' : '+'}</span>
+                                                <span className="fac-drill-text">{typeGroup.objectType}</span>
                                             </button>
                                         </td>
+                                        <td className="fac-col-target-obligation fac-collapsed-total px-4 py-3 text-center text-xs font-semibold border-l border-gray-200 dark:border-gray-700">
+                                            {formatCurrency(objectTypeTotalTargetObli)}
+                                        </td>
+                                        <td className="fac-col-target-obligation px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                        <td className="fac-col-actual-obligation fac-collapsed-total px-4 py-3 text-center text-xs border-l border-emerald-100 dark:border-emerald-800" colSpan={2}>{formatCurrency(objectTypeTotalActualObli)}</td>
+                                        <td className="fac-col-target-disbursement fac-collapsed-total px-4 py-3 text-center text-xs border-l border-gray-200 dark:border-gray-700">{formatCurrency(objectTypeTotalTargetDisb)}</td>
+                                        <td className="fac-col-target-disbursement px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                        <td className="fac-col-actual-disbursement fac-collapsed-total px-4 py-3 text-center text-xs border-l border-emerald-100 dark:border-emerald-800" colSpan={2}>{formatCurrency(objectTypeTotalActualDisb)}</td>
+                                        <td className="fac-col-action px-4 py-3"></td>
                                     </tr>
 
                                     {/* Level 2: UACS Groups */}
                                     {isTypeExpanded && typeGroup.uacsGroups.map((group) => {
                                         const isExpanded = expandedGroups.includes(group.key);
                                         // Determine if all items have same month to display in group header
-                                        const commonObliMonth = group.items.every(i => i.actualObligationMonth === group.items[0].actualObligationMonth) ? group.items[0].actualObligationMonth : '';
-                                        const commonDisbMonth = group.items.every(i => i.actualDisbursementMonth === group.items[0].actualDisbursementMonth) ? group.items[0].actualDisbursementMonth : '';
-
                                         return (
                                             <React.Fragment key={group.key}>
                                                 {/* Group Header Row (UACS) */}
-                                                <tr className="bg-emerald-50 dark:bg-gray-700/40 hover:bg-emerald-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700 border-l-4 border-l-emerald-400 dark:border-l-emerald-600">
-                                                    <td className="px-4 py-3 pl-8">
-                                                        <button onClick={() => toggleGroup(group.key)} className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200 focus:outline-none group text-left w-full">
-                                                             <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-emerald-500 transition-transform duration-200 ${isExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                            </svg>
-                                                            <span>
-                                                                <span className="font-mono text-gray-500 dark:text-gray-400 mr-2">{group.uacsCode}</span>
-                                                                {group.description}
+                                                <tr className="fac-row-uacs bg-emerald-50 dark:bg-gray-700/40 hover:bg-emerald-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-200 dark:border-gray-700 border-l-4 border-l-emerald-400 dark:border-l-emerald-600">
+                                                    <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-4 py-3">
+                                                        <button onClick={() => toggleGroup(group.key)} className="fac-drill-button text-sm text-gray-700 dark:text-gray-200 focus:outline-none group text-left w-full" title={`${group.uacsCode} ${group.description}`}>
+                                                            <span className="fac-expand-toggle" aria-hidden="true">{isExpanded ? '-' : '+'}</span>
+                                                            <span className="fac-drill-text" title={`${group.uacsCode} ${group.description}`}>
+                                                                <span className="fac-uacs-code font-mono text-gray-500 dark:text-gray-400 mr-2">{group.uacsCode}</span>
+                                                                <span className="fac-uacs-description">{group.description}</span>
                                                             </span>
                                                         </button>
                                                     </td>
                                                     {/* Targets Total */}
-                                                    <td className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 border-l border-gray-200 dark:border-gray-700">{formatCurrency(group.totalTargetObli)}</td>
-                                                    <td className="px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                                    <td className="fac-col-target-obligation fac-collapsed-total px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 border-l border-gray-200 dark:border-gray-700">{formatCurrency(group.totalTargetObli)}</td>
+                                                    <td className="fac-col-target-obligation px-4 py-3 text-center text-xs text-gray-400">-</td>
                                                     
                                                     {/* Actual Obli Total & Batch */}
-                                                    <td className="px-4 py-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-400 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10" colSpan={2}>
+                                                    <td className="fac-col-actual-obligation px-4 py-3 text-center text-xs font-bold text-emerald-600 dark:text-emerald-400 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10" colSpan={2}>
                                                         {formatCurrency(group.totalActualObli)}
                                                     </td>
                                                     
                                                     {/* Target Disb Total */}
-                                                    <td className="px-4 py-3 text-center text-xs text-gray-500 border-l border-gray-200 dark:border-gray-700">-</td>
-                                                    <td className="px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                                    <td className="fac-col-target-disbursement fac-collapsed-total px-4 py-3 text-center text-xs text-gray-500 border-l border-gray-200 dark:border-gray-700">{formatCurrency(group.totalTargetDisb)}</td>
+                                                    <td className="fac-col-target-disbursement px-4 py-3 text-center text-xs text-gray-400">-</td>
 
                                                     {/* Actual Disb Total & Batch */}
-                                                    <td className="px-4 py-3 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10">-</td>
-                                                    <td className="px-4 py-3 text-center bg-emerald-50/50 dark:bg-emerald-900/10">
-                                                        {isExpanded && canEdit && (
-                                                            <MonthYearPicker 
-                                                                value={commonDisbMonth} 
-                                                                onChange={(val) => handleGroupMonthChange(group.key, 'actualDisbursementMonth', val)}
-                                                                disabled={!canEdit}
-                                                                className="h-7 text-[10px] py-0"
-                                                                placeholder={commonDisbMonth ? 'Mixed' : 'Batch Set...'}
-                                                            />
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3"></td>
+                                                    <td className="fac-col-actual-disbursement fac-collapsed-total px-4 py-3 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10" colSpan={2}>{formatCurrency(group.totalActualDisb)}</td>
+                                                    <td className="fac-col-action px-4 py-3"></td>
                                                 </tr>
 
                                                 {/* Expanded Content (Subgroups) */}
@@ -1328,18 +1498,29 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                     if (typedSourceGroups.length === 0) return null;
                                                     const subId = `${group.key}-${subKey}`;
                                                     const isSubExpanded = expandedSubGroups.includes(subId);
+                                                    const subGroupTotalTargetObli = typedSourceGroups.reduce((sum, sourceGroup) => sum + toFiniteNumber(sourceGroup.targetObligationAmount), 0);
+                                                    const subGroupTotalActualObli = typedSourceGroups.reduce((sum, sourceGroup) => sum + toFiniteNumber(sourceGroup.actualObligationAmount), 0);
+                                                    const subGroupTotalTargetDisb = typedSourceGroups.reduce((sum, sourceGroup) => sum + toFiniteNumber(sourceGroup.targetDisbursementAmount), 0);
+                                                    const subGroupTotalActualDisb = typedSourceGroups.reduce((sum, sourceGroup) => sum + toFiniteNumber(sourceGroup.actualDisbursementAmount), 0);
 
                                                     return (
                                                         <React.Fragment key={subId}>
-                                                            <tr className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
-                                                                <td colSpan={10} className="px-4 py-2 pl-12">
-                                                                     <button onClick={() => toggleSubGroup(subId)} className="flex items-center gap-2 text-xs font-bold uppercase text-gray-500 dark:text-gray-400 tracking-wider hover:text-emerald-600 transition-colors">
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-200 ${isSubExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                                        </svg>
-                                                                        {subKey} ({typedSourceGroups.length})
-                                                                    </button>
+                                                            <tr className="fac-row-category bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+                                                                <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-4 py-2">
+                                                                     <button onClick={() => toggleSubGroup(subId)} className="fac-drill-button text-xs uppercase text-gray-500 dark:text-gray-400 tracking-wider hover:text-emerald-600 transition-colors">
+                                                                        <span className="fac-expand-toggle fac-expand-toggle--small" aria-hidden="true">{isSubExpanded ? '-' : '+'}</span>
+                                                                        <span className="fac-drill-text">{subKey}</span>
+                                                                     </button>
                                                                 </td>
+                                                                <td className="fac-col-target-obligation fac-collapsed-total px-4 py-2 text-center text-xs font-semibold border-l border-gray-200 dark:border-gray-700">
+                                                                    {formatCurrency(subGroupTotalTargetObli)}
+                                                                </td>
+                                                                <td className="fac-col-target-obligation px-4 py-2 text-center text-xs text-gray-400">-</td>
+                                                                <td className="fac-col-actual-obligation fac-collapsed-total px-4 py-2 text-center text-xs border-l border-emerald-100 dark:border-emerald-800" colSpan={2}>{formatCurrency(subGroupTotalActualObli)}</td>
+                                                                <td className="fac-col-target-disbursement fac-collapsed-total px-4 py-2 text-center text-xs border-l border-gray-200 dark:border-gray-700">{formatCurrency(subGroupTotalTargetDisb)}</td>
+                                                                <td className="fac-col-target-disbursement px-4 py-2 text-center text-xs text-gray-400">-</td>
+                                                                <td className="fac-col-actual-disbursement fac-collapsed-total px-4 py-2 text-center text-xs border-l border-emerald-100 dark:border-emerald-800" colSpan={2}>{formatCurrency(subGroupTotalActualDisb)}</td>
+                                                                <td className="fac-col-action px-4 py-2"></td>
                                                             </tr>
                                                             {isSubExpanded && typedSourceGroups.map(sourceGroup => {
                                                                 const sourceId = `${subId}-${sourceGroup.sourceId}`;
@@ -1358,69 +1539,60 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
                                                                 return (
                                                                     <React.Fragment key={sourceId}>
-                                                                        <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
-                                                                            <td className="px-3 py-1.5 pl-16 text-sm font-medium text-gray-700 dark:text-gray-300">
-                                                                                <button onClick={() => toggleRowExpansion(sourceId)} className="flex items-center gap-2 hover:text-emerald-600 focus:outline-none">
-                                                                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-200 ${isSourceExpanded ? 'transform rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                                                                    </svg>
-                                                                                    {sourceGroup.sourceName}
+                                                                        <tr className="fac-row-source bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-700">
+                                                                            <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                                                                <button onClick={() => toggleRowExpansion(sourceId)} className="fac-drill-button hover:text-emerald-600 focus:outline-none" title={sourceGroup.sourceName}>
+                                                                                    <span className="fac-expand-toggle fac-expand-toggle--small" aria-hidden="true">{isSourceExpanded ? '-' : '+'}</span>
+                                                                                    <span className="fac-drill-text leading-tight" title={sourceGroup.sourceName}>{sourceGroup.sourceName}</span>
                                                                                 </button>
                                                                             </td>
-                                                                            <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetObligationAmount)}</td>
-                                                                            <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
-                                                                            <td className="px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">{formatCurrency(sourceGroup.actualObligationAmount)}</td>
-                                                                            <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">-</td>
-                                                                            <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetDisbursementAmount)}</td>
-                                                                            <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
-                                                                            <td className="px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5">{formatCurrency(sourceGroup.actualDisbursementAmount)}</td>
-                                                                            <td className="px-2 py-1.5 bg-emerald-50/30 dark:bg-emerald-900/5">-</td>
-                                                                            <td className="px-4 py-1.5 text-right"></td>
+                                                                            <td className="fac-col-target-obligation fac-collapsed-total px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetObligationAmount)}</td>
+                                                                            <td className="fac-col-target-obligation px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                                                            <td className="fac-col-actual-obligation fac-collapsed-total px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>{formatCurrency(sourceGroup.actualObligationAmount)}</td>
+                                                                            <td className="fac-col-target-disbursement fac-collapsed-total px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">{formatCurrency(sourceGroup.targetDisbursementAmount)}</td>
+                                                                            <td className="fac-col-target-disbursement px-2 py-1.5 text-center text-[10px] text-gray-400">-</td>
+                                                                            <td className="fac-col-actual-disbursement fac-collapsed-total px-2 py-1.5 text-center text-xs text-emerald-600 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>{formatCurrency(sourceGroup.actualDisbursementAmount)}</td>
+                                                                            <td className="fac-col-action px-4 py-1.5 text-right"></td>
                                                                         </tr>
                                                                         {isSourceExpanded && sortedItems.map(item => {
                                                                             const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
-                                                                            const supportsMonthly = item.sourceType === 'Staffing' || item.sourceType === 'Other';
                                                                             const isChanged = changedItems.has(item.uniqueId);
+                                                                            const contextDescription = getContextDescription(item);
 
                                                                             return (
                                                                             <React.Fragment key={item.uniqueId}>
-                                                                                <tr className={`hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
-                                                                                    <td className="px-3 py-1.5 pl-24 text-sm text-gray-600 dark:text-gray-400">
-                                                                                        <button 
-                                                                                            onClick={() => {
-                                                                                                if (!isBreakdownExpanded) toggleRowExpansion(item.uniqueId);
-                                                                                                handleTitleClick(item);
-                                                                                            }} 
-                                                                                            className="text-left hover:text-emerald-600 hover:underline focus:outline-none"
+                                                                                <tr className={`fac-row-item hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'is-changed bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                                                    <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">
+                                                                                        <button
+                                                                                            onClick={() => handleTitleClick(item)}
+                                                                                            className="fac-item-title text-left hover:text-emerald-600 hover:underline focus:outline-none"
+                                                                                            title={`${item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}${contextDescription ? ` - ${contextDescription}` : ''}`}
                                                                                         >
-                                                                                            {item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}
-                                                                                        </button>
-                                                                                        {/* Obligations Toggle */}
-                                                                                        <button 
-                                                                                            onClick={() => toggleRowExpansion(item.uniqueId)} 
-                                                                                            className="ml-2 inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-100 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
-                                                                                        >
-                                                                                            <Info className="w-2.5 h-2.5" />
-                                                                                            {item.obligations.length > 0 ? `${item.obligations.length} records` : 'Breakdown'}
+                                                                                            <span className="block leading-tight">{item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}</span>
+                                                                                            {contextDescription && (
+                                                                                                <span className="fac-item-description mt-0.5 block text-[11px] font-medium leading-tight text-gray-400 dark:text-gray-500 no-underline">
+                                                                                                    {contextDescription}
+                                                                                                </span>
+                                                                                            )}
                                                                                         </button>
                                                                                     </td>
                                                                         
                                                                         {/* Target Obli */}
-                                                                        <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                        <td className="fac-col-target-obligation px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
                                                                             {item.status === 'Proposed' ? (
-                                                                                <input 
-                                                                                    type="number" 
-                                                                                    value={item.targetObligationAmount || ''} 
-                                                                                    onChange={(e) => updateLocalItem(item.uniqueId, { targetObligationAmount: parseFloat(e.target.value) || 0 })}
+                                                                                <FormattedAmountInput
+                                                                                    value={toFiniteNumber(item.targetObligationAmount)}
+                                                                                    onValueChange={(value) => updateLocalItem(item.uniqueId, { targetObligationAmount: value })}
                                                                                     disabled={!canEdit}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
-                                                                                    placeholder="0"
+                                                                                    placeholder="0.00"
+                                                                                    emptyWhenZero
                                                                                 />
                                                                             ) : (
                                                                                 formatCurrency(item.targetObligationAmount)
                                                                             )}
                                                                         </td>
-                                                                        <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                        <td className="fac-col-target-obligation px-2 py-1.5 text-center text-[10px] text-gray-400">
                                                                             {item.targetObligationMonth === 'Monthly' ? (
                                                                                 'Monthly'
                                                                             ) : item.status === 'Proposed' ? (
@@ -1436,7 +1608,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Actual Obli */}
-                                                                        <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
+                                                                        <td className="fac-col-actual-obligation px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
                                                                             <ObligationsEditor
                                                                                 obligations={item.obligations || []}
                                                                                 onChange={(newObs, total) => updateLocalItem(item.uniqueId, { obligations: newObs, actualObligationAmount: total })}
@@ -1446,21 +1618,21 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Target Disb */}
-                                                                        <td className="px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                        <td className="fac-col-target-disbursement px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
                                                                             {item.status === 'Proposed' ? (
-                                                                                <input 
-                                                                                    type="number" 
-                                                                                    value={item.targetDisbursementAmount || ''} 
-                                                                                    onChange={(e) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: parseFloat(e.target.value) || 0 })}
+                                                                                <FormattedAmountInput
+                                                                                    value={toFiniteNumber(item.targetDisbursementAmount)}
+                                                                                    onValueChange={(value) => updateLocalItem(item.uniqueId, { targetDisbursementAmount: value })}
                                                                                     disabled={!canEdit}
                                                                                     className="w-full text-xs text-right p-1 border rounded dark:bg-gray-700 dark:border-gray-600 focus:ring-emerald-500 focus:border-emerald-500"
-                                                                                    placeholder="0"
+                                                                                    placeholder="0.00"
+                                                                                    emptyWhenZero
                                                                                 />
                                                                             ) : (
                                                                                 formatCurrency(item.targetDisbursementAmount)
                                                                             )}
                                                                         </td>
-                                                                        <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                        <td className="fac-col-target-disbursement px-2 py-1.5 text-center text-[10px] text-gray-400">
                                                                             {item.targetDisbursementMonth === 'Monthly' ? (
                                                                                 'Monthly'
                                                                             ) : item.status === 'Proposed' ? (
@@ -1476,29 +1648,28 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Actual Disbursement */}
-                                                                        {supportsMonthly ? (
-                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
-                                                                                 <div className="flex flex-col items-center">
-                                                                                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                                                                                        {formatCurrency(item.actualDisbursementAmount)}
-                                                                                    </span>
-                                                                                    <span className="text-[9px] text-gray-400 uppercase font-medium">Monthly Breakdown</span>
-                                                                                </div>
-                                                                            </td>
-                                                                        ) : (
-                                                                            <td className="px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
-                                                                                <DisbursementsEditor
-                                                                                    disbursements={item.disbursements || []}
-                                                                                    onChange={(newDibs, total) => updateLocalItem(item.uniqueId, { disbursements: newDibs, actualDisbursementAmount: total })}
-                                                                                    defaultYear={selectedYear?.toString()}
-                                                                                    readOnly={!canEdit}
-                                                                                />
-                                                                            </td>
-                                                                        )}
+                                                                        <td className="fac-col-actual-disbursement px-2 py-1.5 border-l border-emerald-100 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-900/5" colSpan={2}>
+                                                                            <DisbursementsEditor
+                                                                                disbursements={item.disbursements || []}
+                                                                                onChange={(newDibs, total) => updateLocalItem(item.uniqueId, { disbursements: newDibs, actualDisbursementAmount: total })}
+                                                                                defaultYear={selectedYear?.toString()}
+                                                                                readOnly={!canEdit}
+                                                                            />
+                                                                        </td>
 
-                                                                        <td className="px-4 py-1.5 text-right">
-                                                                            {canEdit && (
-                                                                                <div className="flex items-center gap-1 justify-end">
+                                                                        <td className="fac-col-action px-4 py-1.5 text-right">
+                                                                            <div className="flex items-center gap-1 justify-end">
+                                                                                <button
+                                                                                    onClick={() => toggleRowExpansion(item.uniqueId)}
+                                                                                    className={`fac-breakdown-button px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center shadow-sm min-w-[74px] ${isBreakdownExpanded ? 'is-expanded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/60 dark:text-emerald-200' : 'bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 dark:bg-gray-800 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/30'}`}
+                                                                                    title={isBreakdownExpanded ? 'Hide breakdown' : 'Show breakdown'}
+                                                                                    aria-label={isBreakdownExpanded ? 'Hide breakdown' : 'Show breakdown'}
+                                                                                    aria-expanded={isBreakdownExpanded}
+                                                                                >
+                                                                                    {isBreakdownExpanded ? 'Collapse' : 'Expand'}
+                                                                                </button>
+                                                                                {canEdit && (
+                                                                                    <>
                                                                                     {isChanged && !localSavingIds.has(item.uniqueId) && (
                                                                                         <button
                                                                                             onClick={() => undoLocalItem(item.uniqueId)}
@@ -1511,18 +1682,20 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     <button 
                                                                                         onClick={() => handleConfirmItem(item)}
                                                                                         disabled={localSavingIds.has(item.uniqueId)}
-                                                                                        className="px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 min-w-[60px]"
+                                                                                        className="fac-save-button px-3 py-1 rounded text-xs font-bold transition-all flex items-center justify-center gap-1 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm disabled:opacity-50 min-w-[60px]"
                                                                                     >
                                                                                         {localSavingIds.has(item.uniqueId) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
                                                                                     </button>
-                                                                                </div>
-                                                                            )}
+                                                                                    </>
+                                                                                )}
+                                                                            </div>
                                                                         </td>
                                                                     </tr>
                                                                     {/* Expandable Breakdown (Monthly or Obligations) */}
                                                                     {isBreakdownExpanded && (
-                                                                        <tr className="bg-gray-50 dark:bg-gray-700/30 animate-fadeIn overflow-hidden">
-                                                                            <td colSpan={10} className="px-4 py-4 border-l-4 border-l-emerald-600">
+                                                                        <tr className="fac-row-breakdown bg-gray-50 dark:bg-gray-700/30 animate-fadeIn overflow-hidden">
+                                                                            <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-3 py-4"></td>
+                                                                            <td colSpan={9} className="px-4 py-4 border-l-4 border-l-emerald-600">
                                                                                 <div className="flex flex-col lg:flex-row gap-6">
                                                                                     {/* Multi-Obligation Section */}
                                                                                     <div className="flex-1">
@@ -1534,48 +1707,25 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                             obligations={item.obligations}
                                                                                             onChange={(obs) => updateLocalItem(item.uniqueId, { obligations: obs })}
                                                                                             readOnly={!canEdit}
+                                                                                            hideHeaderAddButton
                                                                                         />
                                                                                     </div>
 
                                                                                     {/* Monthly Disbursement Section (If supported) */}
-                                                                                    {supportsMonthly ? (
-                                                                                        <div className="lg:w-1/2">
-                                                                                            <h4 className="text-[11px] font-black uppercase text-blue-800 dark:text-blue-400 mb-3 flex items-center gap-2">
-                                                                                                <CalendarIcon className="w-4 h-4" />
-                                                                                                Monthly Disbursement Breakdown
-                                                                                            </h4>
-                                                                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                                                                                                {SHORT_MONTHS.map(m => (
-                                                                                                    <div key={m} className="flex flex-col">
-                                                                                                        <label className="text-[9px] uppercase font-bold text-gray-500 mb-1">{m}</label>
-                                                                                                        <input 
-                                                                                                            type="number" 
-                                                                                                            // @ts-ignore
-                                                                                                            value={item[`actualDisbursement${m}`] || ''}
-                                                                                                            onChange={(e) => updateLocalMonthly(item.uniqueId, m, parseFloat(e.target.value) || 0)}
-                                                                                                            disabled={!canEdit}
-                                                                                                            className="w-full text-xs p-1.5 border border-blue-100 dark:border-blue-900/50 rounded-lg dark:bg-gray-800 focus:ring-blue-500"
-                                                                                                            placeholder="0"
-                                                                                                        />
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ) : (
-                                                                                        <div className="flex-1">
-                                                                                            <h4 className="text-[11px] font-black uppercase text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
-                                                                                                <ListFilter className="w-4 h-4" />
-                                                                                                Multi-Disbursement Records
-                                                                                            </h4>
-                                                                                            <DisbursementListEditor 
-                                                                                                disbursements={item.disbursements || []}
-                                                                                                onChange={(newDb) => {
-                                                                                                    updateLocalItem(item.uniqueId, { disbursements: newDb });
-                                                                                                }}
-                                                                                                readOnly={!canEdit}
-                                                                                            />
-                                                                                        </div>
-                                                                                    )}
+                                                                                    <div className="flex-1">
+                                                                                        <h4 className="text-[11px] font-black uppercase text-emerald-800 dark:text-emerald-400 mb-3 flex items-center gap-2">
+                                                                                            <ListFilter className="w-4 h-4" />
+                                                                                            Multi-Disbursement Records
+                                                                                        </h4>
+                                                                                        <DisbursementListEditor
+                                                                                            disbursements={item.disbursements || []}
+                                                                                            onChange={(newDb) => {
+                                                                                                updateLocalItem(item.uniqueId, { disbursements: newDb });
+                                                                                            }}
+                                                                                            readOnly={!canEdit}
+                                                                                            hideHeaderAddButton
+                                                                                        />
+                                                                                    </div>
                                                                                 </div>
                                                                             </td>
                                                                         </tr>
@@ -1597,22 +1747,23 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         })}
                         {groupedItems.length === 0 && (
                             <tr>
-                                <td colSpan={10} className="px-6 py-8 text-center text-gray-500 italic">No financial items found for the selected criteria.</td>
+                                <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-4 py-8"></td>
+                                <td colSpan={9} className="px-6 py-8 text-center text-gray-500 italic">No financial items found for the selected criteria.</td>
                             </tr>
                         )}
                     </tbody>
                     <tfoot className="bg-emerald-100 dark:bg-emerald-900 border-t-2 border-emerald-300 dark:border-emerald-700 font-bold">
                         <tr>
-                            <td className="px-4 py-3 text-right text-emerald-900 dark:text-emerald-100">GRAND TOTAL</td>
-                            <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetObli)}</td>
-                            <td className="px-4 py-3"></td>
-                            <td className="px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualObli)}</td>
-                            <td className="px-4 py-3"></td>
-                            <td className="px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetDisb)}</td>
-                            <td className="px-4 py-3"></td>
-                            <td className="px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualDisb)}</td>
-                            <td className="px-4 py-3"></td>
-                            <td className="px-4 py-3"></td>
+                            <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-4 py-3 text-right text-emerald-900 dark:text-emerald-100">GRAND TOTAL</td>
+                            <td className="fac-col-target-obligation px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetObli)}</td>
+                            <td className="fac-col-target-obligation px-4 py-3"></td>
+                            <td className="fac-col-actual-obligation px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualObli)}</td>
+                            <td className="fac-col-actual-obligation px-4 py-3"></td>
+                            <td className="fac-col-target-disbursement px-4 py-3 text-center text-gray-700 dark:text-gray-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.targetDisb)}</td>
+                            <td className="fac-col-target-disbursement px-4 py-3"></td>
+                            <td className="fac-col-actual-disbursement px-4 py-3 text-center text-emerald-800 dark:text-emerald-300 border-l border-emerald-200 dark:border-emerald-800">{formatCurrency(grandTotals.actualDisb)}</td>
+                            <td className="fac-col-actual-disbursement px-4 py-3"></td>
+                            <td className="fac-col-action px-4 py-3"></td>
                         </tr>
                     </tfoot>
                 </table>

@@ -4,6 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { IPO, LodSection, LodQuestion, LodChoice, LodAssessment, LodAnswer, LodLevelConfig } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
+import { useUserAccess } from '../mainfunctions/TableHooks';
 
 interface LODDetailsProps {
     ipo: IPO;
@@ -14,6 +15,9 @@ interface LODDetailsProps {
 const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
+    const { canEdit } = useUserAccess('Level of Development');
+    const isLodAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
+    const isLocked = !canEdit;
 
     const [selectedYear, setSelectedYear] = useState<number>(initialYear ?? new Date().getFullYear());
     
@@ -148,6 +152,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     };
 
     const handleAnswerChange = (questionId: number, choiceId: number) => {
+        if (isLocked) return;
         const qId = Number(questionId);
         const cId = Number(choiceId);
         console.log(`Answer changed: Q:${qId} -> C:${cId}`);
@@ -158,6 +163,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     };
 
     const handleAnswerRemarkChange = (questionId: number, remark: string) => {
+        if (isLocked) return;
         setLocalAnswerRemarks(prev => ({
             ...prev,
             [questionId]: remark
@@ -251,6 +257,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
     };
 
     const handleSave = async () => {
+        if (isLocked) return;
         if (!ipo || !supabase) return;
         setSaving(true);
 
@@ -262,12 +269,12 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
             year: selectedYear,
             total_score: totalScore,
             computed_level: level,
-            manual_level: manualLevel === '' ? null : Number(manualLevel),
-            is_carried_over: isCarriedOver,
-            is_dropped: isDropped,
+            manual_level: isLodAdmin ? (manualLevel === '' ? null : Number(manualLevel)) : (assessment?.manual_level ?? null),
+            is_carried_over: isLodAdmin ? isCarriedOver : (assessment?.is_carried_over ?? false),
+            is_dropped: isLodAdmin ? isDropped : (assessment?.is_dropped ?? false),
             remarks: remarks,
             assessed_by: currentUser?.id,
-            assessor_name: currentUser?.user_metadata?.full_name || currentUser?.email,
+            assessor_name: currentUser?.fullName || currentUser?.email,
             updated_at: new Date().toISOString()
         };
 
@@ -359,9 +366,6 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
 
     const { totalScore, level, maxPossibleScore } = calculateScore();
     const currentLevel = manualLevel !== '' ? manualLevel : level;
-    const isAdmin = currentUser?.role === 'Administrator';
-    const isManagement = currentUser?.role === 'Management';
-    const isLocked = (assessment && !isAdmin) || isManagement;
 
     const toggleSection = (sectionId: number) => {
         setExpandedSections(prev => ({
@@ -569,9 +573,13 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                                                         <input 
                                                                             type="text"
                                                                             value={localSpecificValues[question.id] || ''}
-                                                                            onChange={(e) => setLocalSpecificValues(prev => ({ ...prev, [question.id]: e.target.value }))}
-                                                                            className="w-full px-3 py-1.5 text-sm border border-purple-200 dark:border-purple-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-purple-500 outline-none"
+                                                                            onChange={(e) => {
+                                                                                if (isLocked) return;
+                                                                                setLocalSpecificValues(prev => ({ ...prev, [question.id]: e.target.value }));
+                                                                            }}
+                                                                            className="w-full px-3 py-1.5 text-sm border border-purple-200 dark:border-purple-800 rounded bg-white dark:bg-gray-800 focus:ring-1 focus:ring-purple-500 outline-none disabled:opacity-50"
                                                                             placeholder="Enter specific answer"
+                                                                            disabled={isLocked}
                                                                         />
                                                                     </div>
                                                                 )}
@@ -627,10 +635,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                         </svg>
                         <p className="text-sm font-medium">
-                            {isManagement 
-                                ? "You have view-only access to this assessment." 
-                                : "This assessment is locked for reference. Only Administrators can modify existing assessments."
-                            }
+                            You have view-only access to this assessment. Request Level of Development edit permission to modify LOD records.
                         </p>
                     </div>
                 )}
@@ -646,7 +651,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                                 disabled={isLocked}
                             />
                         </div>
-                        {isAdmin && (
+                        {isLodAdmin && (
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Manual Level Override (Admin Only)</label>
@@ -693,7 +698,7 @@ const LODDetails: React.FC<LODDetailsProps> = ({ ipo, onBack, initialYear }) => 
                         >
                             Cancel
                         </button>
-                        {(!isLocked || isAdmin) && (
+                        {!isLocked && (
                             <button 
                                 onClick={handleSave}
                                 disabled={saving}

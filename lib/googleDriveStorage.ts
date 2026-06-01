@@ -1,0 +1,235 @@
+import { supabase } from '../supabaseClient';
+import { User } from '../constants';
+
+export interface GoogleDriveStatus {
+    isConfigured: boolean;
+    isConnected: boolean;
+    accountEmail: string | null;
+    connectedAt: string | null;
+    rootFolderId: string | null;
+    rootFolderName: string;
+    missingEnv: string[];
+}
+
+export interface IpoDriveFile {
+    id: number;
+    ipo_id: number;
+    folder_id: string;
+    module?: string | null;
+    folder_year?: number | null;
+    operating_unit?: string | null;
+    module_folder_id?: string | null;
+    year_folder_id?: string | null;
+    operating_unit_folder_id?: string | null;
+    file_id: string;
+    file_name: string;
+    mime_type: string | null;
+    file_size: number | null;
+    web_view_link: string | null;
+    web_content_link: string | null;
+    preview_url?: string | null;
+    preview_supported?: boolean | null;
+    preview_permission_id?: string | null;
+    preview_permission_type?: string | null;
+    uploaded_by: number | null;
+    uploaded_by_name: string | null;
+    uploaded_at: string;
+}
+
+export interface SubprojectDriveFile {
+    id: number;
+    subproject_id: number;
+    folder_id: string;
+    folder_name: string;
+    module?: string | null;
+    folder_year?: number | null;
+    operating_unit: string;
+    ipo_name: string;
+    subproject_name: string;
+    module_folder_id?: string | null;
+    year_folder_id?: string | null;
+    operating_unit_folder_id?: string | null;
+    ipo_folder_id?: string | null;
+    file_id: string;
+    file_name: string;
+    mime_type: string | null;
+    file_size: number | null;
+    web_view_link: string | null;
+    web_content_link: string | null;
+    preview_url?: string | null;
+    preview_supported?: boolean | null;
+    preview_permission_id?: string | null;
+    preview_permission_type?: string | null;
+    uploaded_by: number | null;
+    uploaded_by_name: string | null;
+    uploaded_at: string;
+}
+
+export const ALLOWED_IPO_DRIVE_FILE_TYPES = [
+    'application/pdf',
+    'image/gif',
+    'image/jpeg',
+    'image/png',
+    'image/webp'
+];
+
+export const IPO_DRIVE_FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif';
+export const SUBPROJECT_DRIVE_FILE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
+
+const ALLOWED_IPO_DRIVE_EXTENSIONS = ['.gif', '.jpeg', '.jpg', '.pdf', '.png', '.webp'];
+const IMAGE_DRIVE_MIME_TYPES = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
+const IMAGE_DRIVE_EXTENSIONS = ['.gif', '.jpeg', '.jpg', '.png', '.webp'];
+
+export const isAllowedIpoDriveFile = (file: File) => {
+    const mimeType = file.type?.toLowerCase();
+    if (mimeType && ALLOWED_IPO_DRIVE_FILE_TYPES.includes(mimeType)) return true;
+    const name = file.name.toLowerCase();
+    return ALLOWED_IPO_DRIVE_EXTENSIONS.some(extension => name.endsWith(extension));
+};
+
+export const isAllowedSubprojectDriveFile = isAllowedIpoDriveFile;
+
+export const canPreviewIpoDriveFile = (file: Pick<IpoDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    if (file.preview_supported === false) return false;
+    const mimeType = file.mime_type?.toLowerCase() || '';
+    if (ALLOWED_IPO_DRIVE_FILE_TYPES.includes(mimeType)) return true;
+    const name = file.file_name.toLowerCase();
+    return ALLOWED_IPO_DRIVE_EXTENSIONS.some(extension => name.endsWith(extension));
+};
+
+export const canPreviewSubprojectDriveFile = (file: Pick<SubprojectDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    return canPreviewIpoDriveFile(file);
+};
+
+export const getIpoDrivePreviewUrl = (file: Pick<IpoDriveFile, 'file_id' | 'preview_url'>) => {
+    return file.preview_url || `https://drive.google.com/file/d/${encodeURIComponent(file.file_id)}/preview`;
+};
+
+export const isIpoDriveImageFile = (file: Pick<IpoDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    if (file.preview_supported === false) return false;
+    const mimeType = file.mime_type?.toLowerCase() || '';
+    if (IMAGE_DRIVE_MIME_TYPES.includes(mimeType)) return true;
+    const name = file.file_name.toLowerCase();
+    return IMAGE_DRIVE_EXTENSIONS.some(extension => name.endsWith(extension));
+};
+
+export const isSubprojectDriveImageFile = (file: Pick<SubprojectDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    return isIpoDriveImageFile(file);
+};
+
+export const getIpoDriveImageUrl = (file: Pick<IpoDriveFile, 'file_id'>, size = 1000) => {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(file.file_id)}&sz=w${size}`;
+};
+
+export const getSubprojectDriveImageUrl = (file: Pick<SubprojectDriveFile, 'file_id'>, size = 1000) => {
+    return getIpoDriveImageUrl(file, size);
+};
+
+export const getSubprojectDrivePreviewUrl = (file: Pick<SubprojectDriveFile, 'file_id' | 'preview_url'>) => {
+    return file.preview_url || `https://drive.google.com/file/d/${encodeURIComponent(file.file_id)}/preview`;
+};
+
+const requireSupabase = () => {
+    if (!supabase) {
+        throw new Error('Supabase is not configured.');
+    }
+    return supabase;
+};
+
+const currentUserPayload = (currentUser: User | null) => {
+    if (!currentUser?.id) {
+        throw new Error('A current user session is required.');
+    }
+    return { user_id: currentUser.id };
+};
+
+const readFunctionResult = <T>(data: T | null, error: any): T => {
+    if (error) {
+        throw new Error(error.message || 'Supabase Edge Function request failed.');
+    }
+    if (!data) {
+        throw new Error('Supabase Edge Function returned no data.');
+    }
+    return data;
+};
+
+export const getGoogleDriveStatus = async (currentUser: User | null) => {
+    const { data, error } = await requireSupabase().functions.invoke<GoogleDriveStatus>('google-drive-status', {
+        body: currentUserPayload(currentUser)
+    });
+    return readFunctionResult(data, error);
+};
+
+export const startGoogleDriveConnection = async (currentUser: User | null) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ authUrl: string }>('google-drive-connect-start', {
+        body: currentUserPayload(currentUser)
+    });
+    return readFunctionResult(data, error).authUrl;
+};
+
+export const disconnectGoogleDrive = async (currentUser: User | null) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ message: string }>('google-drive-disconnect', {
+        body: currentUserPayload(currentUser)
+    });
+    return readFunctionResult(data, error);
+};
+
+export const listIpoDriveFiles = async (currentUser: User | null, ipoId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ files: IpoDriveFile[] }>('ipo-drive-files-list', {
+        body: { ...currentUserPayload(currentUser), ipo_id: ipoId }
+    });
+    return readFunctionResult(data, error).files;
+};
+
+export const uploadIpoDriveFile = async (currentUser: User | null, ipoId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('user_id', String(currentUserPayload(currentUser).user_id));
+    formData.append('ipo_id', String(ipoId));
+    formData.append('file', file);
+
+    const { data, error } = await requireSupabase().functions.invoke<{ file: IpoDriveFile }>('ipo-drive-file-upload', {
+        body: formData
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const deleteIpoDriveFile = async (currentUser: User | null, fileRowId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ file: IpoDriveFile }>('ipo-drive-file-delete', {
+        body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const listSubprojectDriveFiles = async (currentUser: User | null, subprojectId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ files: SubprojectDriveFile[] }>('subproject-drive-files-list', {
+        body: { ...currentUserPayload(currentUser), subproject_id: subprojectId }
+    });
+    return readFunctionResult(data, error).files;
+};
+
+export const uploadSubprojectDriveFile = async (currentUser: User | null, subprojectId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('user_id', String(currentUserPayload(currentUser).user_id));
+    formData.append('subproject_id', String(subprojectId));
+    formData.append('file', file);
+
+    const { data, error } = await requireSupabase().functions.invoke<{ file: SubprojectDriveFile }>('subproject-drive-file-upload', {
+        body: formData
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const deleteSubprojectDriveFile = async (currentUser: User | null, fileRowId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ file: SubprojectDriveFile }>('subproject-drive-file-delete', {
+        body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const formatFileSize = (size?: number | null) => {
+    const bytes = Number(size || 0);
+    if (!bytes) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return `${(bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+};

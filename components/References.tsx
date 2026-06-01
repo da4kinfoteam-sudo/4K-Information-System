@@ -4,9 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Download, Info, Plus, RefreshCw, Upload } from 'lucide-react';
 import { objectTypes, GidaArea, ElcacArea, normalizeRegionName, IPO, RefCommodity, RefLivestock, RefEquipment, equipmentCategories, RefInput, RefInfrastructure, RefTrainingReference } from '../constants';
 import { supabase } from '../supabaseClient';
-import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
-import { usePagination } from './mainfunctions/TableHooks';
+import { usePagination, useUserAccess } from './mainfunctions/TableHooks';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -147,7 +146,7 @@ const TRAINING_TOOLTIPS = {
 };
 
 const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particularList, setParticularList, refCommodities, setRefCommodities, refLivestock, setRefLivestock, refEquipment, setRefEquipment, refInputs, setRefInputs, refInfrastructure, setRefInfrastructure, refTrainings, setRefTrainings, gidaList, setGidaList, elcacList, setElcacList, ipos, setIpos }) => {
-    const { currentUser } = useAuth();
+    const { canEdit, canDelete } = useUserAccess('References');
     const [activeGroup, setActiveGroup] = useState<'DCF Reference' | 'Commodity References' | 'Intervention References' | 'Policy References'>('DCF Reference');
     const [activeTab, setActiveTab] = useState<'UACS' | 'Items' | 'Crop Reference' | 'Livestock Reference' | 'Equipment Reference' | 'Agricultural Input Reference' | 'Infrastructure Reference' | 'Training Reference' | 'GIDA' | 'ELCAC'>('UACS');
     const [searchTerm, setSearchTerm] = useState('');
@@ -165,9 +164,6 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
     const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
-
-    // Access Control: User role is Read-Only
-    const canEdit = currentUser?.role !== 'User';
 
     // --- UACS Form State ---
     const [uacsForm, setUacsForm] = useState({
@@ -294,6 +290,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     });
 
     const handleRetroactiveGidaUpdate = async () => {
+        if (!canEdit) return;
         if (!supabase) return;
         if (!window.confirm("This will check all IPOs and update their 'Within GIDA Areas' status based on the current GIDA list. Continue?")) return;
 
@@ -340,6 +337,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleRetroactiveElcacUpdate = async () => {
+        if (!canEdit) return;
         if (!supabase) return;
         if (!window.confirm("This will check all IPOs and update their 'Within ELCAC Areas' status based on the current ELCAC list. Continue?")) return;
 
@@ -681,6 +679,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     // --- Handlers ---
     const handleOpenAdd = () => {
+        if (!canEdit) return;
         setEditingItem(null);
         setUacsForm({ objectType: 'MOOE', particular: '', uacsCode: '', description: '' });
         setItemForm({ type: '', particular: '' });
@@ -734,6 +733,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleOpenEdit = (item: any) => {
+        if (!canEdit) return;
         setEditingItem(item);
         if (activeTab === 'UACS') {
             setUacsForm({
@@ -857,6 +857,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canEdit) return;
         const id = editingItem ? editingItem.id : crypto.randomUUID();
 
         if (activeTab === 'UACS') {
@@ -1112,6 +1113,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleDeleteConfirm = async () => {
+        if (!canDelete) return;
         if (!deleteItem) return;
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => i.id !== deleteItem.id));
@@ -1203,6 +1205,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
     // --- Multi-Delete Handlers ---
     const handleToggleSelectionMode = () => {
+        if (!canDelete) return;
         if (isSelectionMode) {
             setIsSelectionMode(false);
             setSelectedIds([]);
@@ -1212,6 +1215,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!canDelete) return;
         if (e.target.checked) {
             const ids = paginatedData.map(i => i.id);
             setSelectedIds(prev => Array.from(new Set([...prev, ...ids])));
@@ -1222,6 +1226,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleSelectRow = (id: string) => {
+        if (!canDelete) return;
         setSelectedIds(prev => {
             if (prev.includes(id)) {
                 return prev.filter(i => i !== id);
@@ -1232,6 +1237,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const confirmMultiDelete = async () => {
+        if (!canDelete) return;
         if (activeTab === 'UACS') {
             setUacsList(prev => prev.filter(i => !selectedIds.includes(i.id)));
         } else if (activeTab === 'Items') {
@@ -1479,6 +1485,10 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!canEdit) {
+            if (e.target) e.target.value = '';
+            return;
+        }
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -1778,7 +1788,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
     return (
         <div className="data-list-page">
             {/* Multi Delete Modal */}
-            {isMultiDeleteModalOpen && canEdit && (
+            {isMultiDeleteModalOpen && canDelete && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
@@ -1867,23 +1877,24 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                         className="data-table-search w-full md:w-80 px-4"
                     />
                 </div>
-                
-                {canEdit && (
+
                     <div className="data-toolbar-group data-toolbar-group--actions">
-                        {isSelectionMode && selectedIds.length > 0 && (
+                        {canDelete && isSelectionMode && selectedIds.length > 0 && (
                             <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
-                        <button 
-                            onClick={handleOpenAdd}
-                            className="btn btn-primary btn-responsive"
-                            title={`Add New ${activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}`}
-                        >
-                            <Plus className="btn-symbol" aria-hidden="true" />
-                            <span className="btn-text">Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}</span>
-                        </button>
-                        <button 
+                        {canEdit && (
+                            <button
+                                onClick={handleOpenAdd}
+                                className="btn btn-primary btn-responsive"
+                                title={`Add New ${activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}`}
+                            >
+                                <Plus className="btn-symbol" aria-hidden="true" />
+                                <span className="btn-text">Add New {activeTab === 'UACS' ? 'UACS Code' : activeTab === 'Items' ? 'Item' : activeTab === 'Crop Reference' ? 'Crop Reference' : activeTab === 'Livestock Reference' ? 'Livestock Reference' : activeTab === 'Equipment Reference' ? 'Equipment Reference' : activeTab === 'Agricultural Input Reference' ? 'Agricultural Input Reference' : activeTab === 'Infrastructure Reference' ? 'Infrastructure Reference' : activeTab === 'Training Reference' ? 'Training Reference' : activeTab === 'GIDA' ? 'GIDA Area' : 'ELCAC Area'}</span>
+                            </button>
+                        )}
+                        <button
                             onClick={handleDownloadTemplate}
                             className="btn btn-secondary btn-responsive"
                             title="Download Template"
@@ -1891,23 +1902,27 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                             <Download className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Download Template</span>
                         </button>
-                        <label 
-                            htmlFor="ref-upload" 
-                            className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}
-                            title={isUploading ? 'Uploading...' : 'Upload XLSX'}
-                        >
-                            <Upload className="btn-symbol" aria-hidden="true" />
-                            <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
-                        </label>
-                        <input 
-                            id="ref-upload" 
-                            type="file" 
-                            className="hidden" 
-                            onChange={handleFileUpload} 
-                            accept=".xlsx, .xls"
-                            disabled={isUploading}
-                        />
-                        {activeTab === 'GIDA' && (
+                        {canEdit && (
+                            <>
+                                <label
+                                    htmlFor="ref-upload"
+                                    className={`btn btn-primary btn-responsive ${isUploading ? 'is-disabled' : 'cursor-pointer'}`}
+                                    title={isUploading ? 'Uploading...' : 'Upload XLSX'}
+                                >
+                                    <Upload className="btn-symbol" aria-hidden="true" />
+                                    <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
+                                </label>
+                                <input
+                                    id="ref-upload"
+                                    type="file"
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                    accept=".xlsx, .xls"
+                                    disabled={isUploading}
+                                />
+                            </>
+                        )}
+                        {canEdit && activeTab === 'GIDA' && (
                             <button 
                                 onClick={handleRetroactiveGidaUpdate}
                                 disabled={isUploading}
@@ -1918,7 +1933,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 <span className="btn-text">Retroactive Update</span>
                             </button>
                         )}
-                        {activeTab === 'ELCAC' && (
+                        {canEdit && activeTab === 'ELCAC' && (
                             <button 
                                 onClick={handleRetroactiveElcacUpdate}
                                 disabled={isUploading}
@@ -1929,15 +1944,16 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                 <span className="btn-text">Retroactive Update</span>
                             </button>
                         )}
-                        <button
-                            onClick={handleToggleSelectionMode}
-                            className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
-                            title="Toggle Multi-Delete Mode"
-                        >
-                            <TrashIcon />
-                        </button>
+                        {canDelete && (
+                            <button
+                                onClick={handleToggleSelectionMode}
+                                className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
+                                title="Toggle Multi-Delete Mode"
+                            >
+                                <TrashIcon />
+                            </button>
+                        )}
                     </div>
-                )}
                     </div>
                 </div>
 
@@ -2007,9 +2023,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         <SortableHeader label="Barangay" sortKey="barangay" />
                                     </>
                                 )}
-                                {canEdit && (
+                                {(canEdit || canDelete) && (
                                     <th className="text-right">
-                                        {isSelectionMode ? (
+                                        {canDelete && isSelectionMode ? (
                                             <div className="flex items-center justify-end gap-2">
                                                 <span className="text-xs">Select All</span>
                                                 <input 
@@ -2134,9 +2150,9 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{item.barangay}</td>
                                                 </>
                                             )}
-                                            {canEdit && (
+                                            {(canEdit || canDelete) && (
                                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                    {isSelectionMode ? (
+                                                    {canDelete && isSelectionMode ? (
                                                         <input 
                                                             type="checkbox" 
                                                             checked={selectedIds.includes(item.id)} 
@@ -2147,8 +2163,8 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                                     ) : (
                                                         <>
                                                             <div className="flex justify-end gap-2">
-                                                                <button onClick={() => handleOpenEdit(item)} className="table-action table-action--primary">Edit</button>
-                                                                <button onClick={() => setDeleteItem(item)} className="table-action table-action--danger">Delete</button>
+                                                                {canEdit && <button onClick={() => handleOpenEdit(item)} className="table-action table-action--primary">Edit</button>}
+                                                                {canDelete && <button onClick={() => setDeleteItem(item)} className="table-action table-action--danger">Delete</button>}
                                                             </div>
                                                         </>
                                                     )}
@@ -2157,7 +2173,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         </tr>
                                         {expandedRowId === item.id && activeTab === 'Crop Reference' && (
                                             <tr className="bg-emerald-50/30 dark:bg-emerald-900/10">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <td colSpan={(canEdit || canDelete) ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-sm">
                                                         <div>
                                                             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1" title={CROP_TOOLTIPS.min_elevation_masl + " " + CROP_TOOLTIPS.max_elevation_masl}>
@@ -2226,7 +2242,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
                                         {expandedRowId === item.id && activeTab === 'Livestock Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <td colSpan={(canEdit || canDelete) ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Housing & Space</h4>
@@ -2263,7 +2279,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
                                         {expandedRowId === item.id && activeTab === 'Equipment Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <td colSpan={(canEdit || canDelete) ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
@@ -2295,7 +2311,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
                                         {expandedRowId === item.id && activeTab === 'Agricultural Input Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <td colSpan={(canEdit || canDelete) ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
@@ -2325,7 +2341,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
 
                                         {expandedRowId === item.id && activeTab === 'Infrastructure Reference' && (
                                             <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                <td colSpan={canEdit ? 5 : 4} className="px-6 py-4">
+                                                <td colSpan={(canEdit || canDelete) ? 5 : 4} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Technical Specs</h4>
@@ -2353,7 +2369,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                         )}
                                         {expandedRowId === item.id && activeTab === 'Training Reference' && (
                                                 <tr className="bg-gray-50 dark:bg-gray-800/50">
-                                                    <td colSpan={canEdit ? 5 : 3} className="px-6 py-4">
+                                                    <td colSpan={(canEdit || canDelete) ? 5 : 3} className="px-6 py-4">
                                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         <div className="space-y-3">
                                                             <h4 className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Training Details</h4>
@@ -2386,7 +2402,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
                                     </React.Fragment>
                                 ))
                             ) : (
-                                <tr><td colSpan={canEdit ? (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference', 'Training Reference'].includes(activeTab) ? 5 : 3) : (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference'].includes(activeTab) ? 4 : activeTab === 'Training Reference' ? 3 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
+                                <tr><td colSpan={(canEdit || canDelete) ? (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference', 'Training Reference'].includes(activeTab) ? 5 : 3) : (['UACS', 'GIDA', 'ELCAC', 'Crop Reference', 'Livestock Reference', 'Equipment Reference', 'Agricultural Input Reference', 'Infrastructure Reference'].includes(activeTab) ? 4 : activeTab === 'Training Reference' ? 3 : 2)} className="px-6 py-4 text-center text-sm text-gray-500">No items found.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -3085,7 +3101,7 @@ const References: React.FC<ReferencesProps> = ({ uacsList, setUacsList, particul
             )}
 
             {/* Delete Confirmation Modal */}
-            {deleteItem && canEdit && (
+            {deleteItem && canDelete && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Delete</h3>

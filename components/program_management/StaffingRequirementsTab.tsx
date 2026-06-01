@@ -591,7 +591,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         const workflow_status = currentUser?.requires_approver ? 'PENDING' : 'APPROVED';
         const currentTimestamp = new Date().toISOString();
         const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, obligations, ...rest } = item;
+            const { id, uid, created_at, updated_at, obligations, physical_accomplishment_submitted_at, ...rest } = item;
             const newUid = `SR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
             // Deep copy and reset expenses actuals
@@ -619,6 +619,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                 actualDisbursementJan: 0, actualDisbursementFeb: 0, actualDisbursementMar: 0, actualDisbursementApr: 0,
                 actualDisbursementMay: 0, actualDisbursementJun: 0, actualDisbursementJul: 0, actualDisbursementAug: 0,
                 actualDisbursementSep: 0, actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0,
+                physical_accomplishment_submitted_at: null,
                 hiringStatus: 'Proposed'
             };
 

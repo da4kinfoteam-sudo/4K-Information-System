@@ -440,7 +440,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         const currentYear = new Date().getFullYear();
 
         const newItemsPayload = itemsToClone.map((item, index) => {
-            const { id, uid, created_at, updated_at, history, ...rest } = item;
+            const { id, uid, created_at, updated_at, history, physical_accomplishment_submitted_at, ...rest } = item;
             
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             const newUid = `SP-${currentYear}-${sequence}${index}`;
@@ -469,6 +469,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                 uid: newUid,
                 status: 'Proposed',
                 actualCompletionDate: undefined,
+                physical_accomplishment_submitted_at: null,
                 catchUpPlanRemarks: '',
                 newTargetCompletionDate: '',
                 details: clonedDetails,
