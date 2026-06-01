@@ -257,6 +257,8 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         data={filteredData} 
                         setModalData={setModalData} 
                         selectedYear={selectedYear}
+                        selectedOu={selectedOu}
+                        isAllOuView={selectedOu === 'All'}
                         onSelectIpo={props.onSelectIpo}
                         onSelectSubproject={props.onSelectSubproject}
                         onSelectActivity={props.onSelectActivity}
