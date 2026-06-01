@@ -3293,6 +3293,14 @@
   background: #fffbeb !important;
 }
 
+.financial-accomplishment-table .fac-row-item.is-tagged-exclusion > .financial-accomplishment-sticky-particulars {
+  background: #fff7ed !important;
+  box-shadow:
+    inset var(--fac-stripe-width) 0 0 rgba(245, 158, 11, 0.16),
+    inset 5px 0 0 #f59e0b,
+    inset 10px 0 0 rgba(245, 158, 11, 0.18);
+}
+
 .dark .financial-accomplishment-table .fac-row-item > .financial-accomplishment-sticky-particulars {
   background: #111827 !important;
 }
@@ -3304,6 +3312,14 @@
 
 .dark .financial-accomplishment-table .fac-row-item.is-changed > .financial-accomplishment-sticky-particulars {
   background: #2f2317 !important;
+}
+
+.dark .financial-accomplishment-table .fac-row-item.is-tagged-exclusion > .financial-accomplishment-sticky-particulars {
+  background: #2a2115 !important;
+  box-shadow:
+    inset var(--fac-stripe-width) 0 0 rgba(251, 191, 36, 0.16),
+    inset 5px 0 0 #fbbf24,
+    inset 10px 0 0 rgba(251, 191, 36, 0.2);
 }
 
 .financial-accomplishment-table .fac-row-breakdown > td {
@@ -3328,10 +3344,18 @@
   background: #edf8f4 !important;
 }
 
+.financial-accomplishment-table .fac-row-item.is-tagged-exclusion:hover > .financial-accomplishment-sticky-particulars {
+  background: #fff7ed !important;
+}
+
 .dark .financial-accomplishment-table .fac-row-uacs:hover > .financial-accomplishment-sticky-particulars,
 .dark .financial-accomplishment-table .fac-row-source:hover > .financial-accomplishment-sticky-particulars,
 .dark .financial-accomplishment-table .fac-row-item:hover > .financial-accomplishment-sticky-particulars {
   background: #053527 !important;
+}
+
+.dark .financial-accomplishment-table .fac-row-item.is-tagged-exclusion:hover > .financial-accomplishment-sticky-particulars {
+  background: #2a2115 !important;
 }
 
 .financial-accomplishment-table .fac-item-title {
@@ -3353,11 +3377,69 @@
   font-weight: 600;
 }
 
+.financial-accomplishment-table .fac-row-item .fac-item-primary {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.financial-accomplishment-table .fac-row-item .fac-item-primary > span:first-child {
+  color: var(--brand-green-700) !important;
+  font-weight: 600;
+}
+
 .financial-accomplishment-table .fac-row-item .fac-item-title span:nth-child(2) {
   color: var(--app-text-soft) !important;
   font-size: 0.76rem;
   font-weight: 550;
   line-height: 1.25;
+}
+
+.financial-accomplishment-table .fac-tagged-badge {
+  align-items: center;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 999px;
+  color: #92400e !important;
+  display: inline-flex;
+  font-size: 0.62rem;
+  font-weight: 850 !important;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  padding: 0.16rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.dark .financial-accomplishment-table .fac-tagged-badge {
+  background: rgba(146, 64, 14, 0.55);
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fde68a !important;
+}
+
+.financial-accomplishment-table :is(td).fac-target-excluded {
+  background: #fff7ed !important;
+  color: #92400e !important;
+}
+
+.financial-accomplishment-table :is(td).fac-target-excluded-amount::after {
+  color: #b45309;
+  content: "Excluded from target total";
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-top: 0.12rem;
+  text-transform: uppercase;
+}
+
+.dark .financial-accomplishment-table :is(td).fac-target-excluded {
+  background: #2a2115 !important;
+  color: #fbbf24 !important;
+}
+
+.dark .financial-accomplishment-table :is(td).fac-target-excluded-amount::after {
+  color: #fde68a;
 }
 
 .financial-accomplishment-table .fac-save-button,

@@ -1,14 +1,14 @@
 
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, FundType, Tier, ObligationRecord, DisbursementRecord } from '../../constants';
+import { Subproject, Activity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, operatingUnits, fundTypes, tiers, filterYears, ObligationRecord, DisbursementRecord } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { FormattedAmountInput } from '../ui/FormattedAmountInput';
-import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter } from 'lucide-react';
+import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { ObligationsEditor } from './ObligationsEditor';
 import { DisbursementsEditor } from './DisbursementsEditor';
 import { ObligationListEditor } from '../ui/ObligationListEditor';
@@ -169,7 +169,16 @@ const getContextDescription = (item: FinancialItem) => {
     return item.expenseParticular;
 };
 
-const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings);
+
+const getTargetObligationForTotals = (item: FinancialItem) =>
+    isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetObligationAmount);
+
+const getTargetDisbursementForTotals = (item: FinancialItem) =>
+    isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetDisbursementAmount);
+
+const getTaggedAllocationAmount = (item: FinancialItem) =>
+    isTaggedExclusion(item) ? toFiniteNumber(item.targetObligationAmount) : 0;
 
 const FinancialAccomplishment: React.FC<Props> = ({
     subprojects, setSubprojects,
@@ -184,21 +193,14 @@ const FinancialAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Financial');
+    const defaultYear = new Date().getFullYear();
 
     // Filter States (Persistent)
-    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', null);
+    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('fin_selectedYear', defaultYear);
     const [selectedOu, setSelectedOu] = useLocalStorageState<string>('fin_selectedOu', 'All');
     const [selectedTier, setSelectedTier] = useLocalStorageState<string>('fin_selectedTier', 'Tier 1');
     const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('fin_selectedFundType', 'Current');
-    
-    // Filter States (Form/Modal)
-    const [formYear, setFormYear] = useState<string>(selectedYear ? selectedYear.toString() : new Date().getFullYear().toString());
-    const [formOu, setFormOu] = useState<string>(selectedOu);
-    const [formTier, setFormTier] = useState<string>(selectedTier);
-    const [formFundType, setFormFundType] = useState<string>(selectedFundType);
-
-    // Only open modal if no year is selected (first load or cleared)
-    const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
+    const [filtersOpen, setFiltersOpen] = useState(false);
     
     const [isLoading, setIsLoading] = useState(false);
     const [originalItems, setOriginalItems] = useState<FinancialItem[]>([]);
@@ -219,11 +221,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     // Initialize User OU lock based on permissions
     useEffect(() => {
-        if (!canViewAll && currentUser) {
-            setFormOu(currentUser.operatingUnit);
+        if (!selectedYear) {
+            setSelectedYear(defaultYear);
+        }
+        if (!canViewAll && currentUser?.operatingUnit) {
             setSelectedOu(currentUser.operatingUnit);
         }
-    }, [currentUser, canViewAll]);
+    }, [currentUser, canViewAll, defaultYear, selectedYear, setSelectedOu, setSelectedYear]);
 
     // --- 1. Load and Normalize Data ---
     useEffect(() => {
@@ -561,9 +565,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
             const group = typeGroups[type].uacsMap[code];
             group.items.push(item);
-            group.totalTargetObli += toFiniteNumber(item.targetObligationAmount);
+            group.totalTargetObli += getTargetObligationForTotals(item);
             group.totalActualObli += toFiniteNumber(item.actualObligationAmount);
-            group.totalTargetDisb += toFiniteNumber(item.targetDisbursementAmount);
+            group.totalTargetDisb += getTargetDisbursementForTotals(item);
             group.totalActualDisb += toFiniteNumber(item.actualDisbursementAmount);
         });
 
@@ -584,9 +588,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 }
                 const g = map.get(item.sourceId)!;
                 g.items.push(item);
-                g.targetObligationAmount += toFiniteNumber(item.targetObligationAmount);
+                g.targetObligationAmount += getTargetObligationForTotals(item);
                 g.actualObligationAmount += toFiniteNumber(item.actualObligationAmount);
-                g.targetDisbursementAmount += toFiniteNumber(item.targetDisbursementAmount);
+                g.targetDisbursementAmount += getTargetDisbursementForTotals(item);
                 g.actualDisbursementAmount += toFiniteNumber(item.actualDisbursementAmount);
             });
             return Array.from(map.values());
@@ -615,9 +619,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
     // --- 2.1 Grand Total Calculation ---
     const grandTotals = useMemo(() => {
         return items.reduce((acc, item) => ({
-            targetObli: acc.targetObli + toFiniteNumber(item.targetObligationAmount),
+            targetObli: acc.targetObli + getTargetObligationForTotals(item),
             actualObli: acc.actualObli + toFiniteNumber(item.actualObligationAmount),
-            targetDisb: acc.targetDisb + toFiniteNumber(item.targetDisbursementAmount),
+            targetDisb: acc.targetDisb + getTargetDisbursementForTotals(item),
             actualDisb: acc.actualDisb + toFiniteNumber(item.actualDisbursementAmount)
         }), { targetObli: 0, actualObli: 0, targetDisb: 0, actualDisb: 0 });
     }, [items]);
@@ -634,22 +638,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
             : 0;
 
         return items.reduce((acc, item) => {
-            const targetObligation = toFiniteNumber(item.targetObligationAmount);
-            const targetDisbursement = toFiniteNumber(item.targetDisbursementAmount);
+            const targetObligation = getTargetObligationForTotals(item);
+            const targetDisbursement = getTargetDisbursementForTotals(item);
             const actualObligation = toFiniteNumber(item.actualObligationAmount);
             const actualDisbursement = toFiniteNumber(item.actualDisbursementAmount);
-            const isTagged = !!(item.isRealignment || item.isSavings);
 
             acc.actualObligation += actualObligation;
             acc.actualDisbursement += actualDisbursement;
-
-            if (isTagged) {
-                acc.realignedSavings += targetObligation;
-            } else {
-                acc.totalAllocation += targetObligation;
-                acc.targetObligation += targetObligation;
-                acc.targetDisbursement += targetDisbursement;
-            }
+            acc.realignedSavings += getTaggedAllocationAmount(item);
+            acc.totalAllocation += targetObligation;
+            acc.targetObligation += targetObligation;
+            acc.targetDisbursement += targetDisbursement;
 
             return acc;
         }, {
@@ -712,21 +711,24 @@ const FinancialAccomplishment: React.FC<Props> = ({
         },
     ];
 
+    const availableYears = useMemo(() => {
+        const years = new Set<string>(filterYears);
+        [
+            ...subprojects.map(item => item.fundingYear),
+            ...activities.map(item => item.fundingYear),
+            ...officeReqs.map(item => item.fundYear),
+            ...staffingReqs.map(item => item.fundYear),
+            ...otherProgramExpenses.map(item => item.fundYear),
+            ...budgetCeilings.map(item => item.year),
+            defaultYear,
+        ].forEach(year => {
+            if (year) years.add(year.toString());
+        });
+        return Array.from(years).sort((a, b) => Number(b) - Number(a));
+    }, [activities, budgetCeilings, defaultYear, officeReqs, otherProgramExpenses, staffingReqs, subprojects]);
+
 
     // --- 3. Handlers ---
-
-    const handleLoadData = () => {
-        const y = parseInt(formYear);
-        if (!isNaN(y) && y > 2000 && y < 2100) {
-            setSelectedYear(y);
-            setSelectedOu(formOu);
-            setSelectedTier(formTier);
-            setSelectedFundType(formFundType);
-            setIsYearModalOpen(false);
-        } else {
-            alert("Please enter a valid year.");
-        }
-    };
 
     const toggleObjectType = (type: string) => {
         setExpandedObjectTypes(prev => {
@@ -1264,97 +1266,91 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
     return (
         <div className="data-list-page">
-             {/* Load Data Modal */}
-            {isYearModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fadeIn">
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl max-w-md w-full relative">
-                        {selectedYear && (
-                             <button 
-                                onClick={() => setIsYearModalOpen(false)}
-                                className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        )}
-                        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6 border-b pb-2 dark:border-gray-700">Filter Financial Data</h3>
-                        
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Year</label>
-                                <input 
-                                    type="number" 
-                                    value={formYear} 
-                                    onChange={(e) => setFormYear(e.target.value)} 
-                                    className={commonInputClasses}
-                                    placeholder="Enter Year (e.g. 2024)"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Operating Unit</label>
-                                <select 
-                                    value={formOu} 
-                                    onChange={(e) => setFormOu(e.target.value)} 
-                                    disabled={!canViewAll}
-                                    className={`${commonInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}
-                                >
-                                    <option value="All">All OUs</option>
-                                    {operatingUnits.map(ou => (
-                                        <option key={ou} value={ou}>{ou}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tier</label>
-                                <select 
-                                    value={formTier} 
-                                    onChange={(e) => setFormTier(e.target.value)} 
-                                    className={commonInputClasses}
-                                >
-                                    <option value="All">All Tiers</option>
-                                    {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Type</label>
-                                <select 
-                                    value={formFundType} 
-                                    onChange={(e) => setFormFundType(e.target.value)} 
-                                    className={commonInputClasses}
-                                >
-                                    <option value="All">All Fund Types</option>
-                                    {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="mt-8 flex justify-end">
-                            <button onClick={handleLoadData} className="w-full bg-emerald-600 text-white py-2 rounded-md font-semibold hover:bg-emerald-700 transition-colors">
-                                Load Data
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="data-list-header">
                 <div>
                     <h2 className="data-list-title">Financial Accomplishment Collection Form</h2>
-                    <div className="detail-meta flex gap-2">
-                        <span className="font-medium text-emerald-600 dark:text-emerald-400">Year: {selectedYear || 'None'}</span>
-                        <span>|</span>
-                        <span>OU: {selectedOu}</span>
-                        <span>|</span>
-                        <span>Tier: {selectedTier}</span>
-                        <span>|</span>
-                        <span>Fund: {selectedFundType}</span>
+                </div>
+                <div className="page-filter-toggle">
+                    <span className="page-filter-summary">
+                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear].join(' / ')}
+                    </span>
+                    <button
+                        type="button"
+                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
+                        onClick={() => setFiltersOpen(prev => !prev)}
+                        aria-expanded={filtersOpen}
+                        aria-controls="financial-accomplishment-filter-panel"
+                    >
+                        <SlidersHorizontal aria-hidden="true" />
+                        <span>Filters</span>
+                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
+                    </button>
+                </div>
+            </div>
+
+            <div
+                id="financial-accomplishment-filter-panel"
+                className={`report-filter-panel dashboard-filter-panel page-filter-panel ${filtersOpen ? 'is-open' : ''}`}
+                hidden={!filtersOpen}
+            >
+                <div className="report-filter-grid">
+                    <div className="report-filter">
+                        <label htmlFor="financial-ou-filter" className="form-label">OU</label>
+                        <select
+                            id="financial-ou-filter"
+                            value={selectedOu}
+                            onChange={(event) => setSelectedOu(event.target.value)}
+                            disabled={!canViewAll}
+                            className="form-control"
+                        >
+                            <option value="All">All OUs</option>
+                            {operatingUnits.map(ou => (
+                                <option key={ou} value={ou}>{ou}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="financial-tier-filter" className="form-label">Tier</label>
+                        <select
+                            id="financial-tier-filter"
+                            value={selectedTier}
+                            onChange={(event) => setSelectedTier(event.target.value)}
+                            className="form-control"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="financial-fund-type-filter" className="form-label">Fund Type</label>
+                        <select
+                            id="financial-fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(event) => setSelectedFundType(event.target.value)}
+                            className="form-control"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(fundType => (
+                                <option key={fundType} value={fundType}>{fundType}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="financial-year-filter" className="form-label">Year</label>
+                        <select
+                            id="financial-year-filter"
+                            value={(selectedYear || defaultYear).toString()}
+                            onChange={(event) => setSelectedYear(Number(event.target.value))}
+                            className="form-control"
+                        >
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
-                <button onClick={() => setIsYearModalOpen(true)} className="btn btn-secondary">Change Filter</button>
             </div>
 
             {isLoading ? (
@@ -1558,17 +1554,22 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             const isBreakdownExpanded = expandedRows.includes(item.uniqueId);
                                                                             const isChanged = changedItems.has(item.uniqueId);
                                                                             const contextDescription = getContextDescription(item);
+                                                                            const isTagged = isTaggedExclusion(item);
+                                                                            const taggedLabel = item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
 
                                                                             return (
                                                                             <React.Fragment key={item.uniqueId}>
-                                                                                <tr className={`fac-row-item hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isChanged ? 'is-changed bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+                                                                                <tr className={`fac-row-item hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors border-b border-gray-100 dark:border-gray-800 ${isTagged ? 'is-tagged-exclusion' : ''} ${isChanged ? 'is-changed bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
                                                                                     <td className="financial-accomplishment-sticky-col financial-accomplishment-sticky-particulars px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">
                                                                                         <button
                                                                                             onClick={() => handleTitleClick(item)}
                                                                                             className="fac-item-title text-left hover:text-emerald-600 hover:underline focus:outline-none"
-                                                                                            title={`${item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}${contextDescription ? ` - ${contextDescription}` : ''}`}
+                                                                                            title={`${item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}${contextDescription ? ` - ${contextDescription}` : ''}${taggedLabel ? ` (${taggedLabel})` : ''}`}
                                                                                         >
-                                                                                            <span className="block leading-tight">{item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}</span>
+                                                                                            <span className="fac-item-primary block leading-tight">
+                                                                                                <span>{item.sourceType === 'Subproject' && item.budgetParticular ? item.budgetParticular : item.expenseParticular}</span>
+                                                                                                {taggedLabel && <span className="fac-tagged-badge">{taggedLabel}</span>}
+                                                                                            </span>
                                                                                             {contextDescription && (
                                                                                                 <span className="fac-item-description mt-0.5 block text-[11px] font-medium leading-tight text-gray-400 dark:text-gray-500 no-underline">
                                                                                                     {contextDescription}
@@ -1578,7 +1579,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                     </td>
                                                                         
                                                                         {/* Target Obli */}
-                                                                        <td className="fac-col-target-obligation px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                        <td className={`fac-col-target-obligation px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700 ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
                                                                             {item.status === 'Proposed' ? (
                                                                                 <FormattedAmountInput
                                                                                     value={toFiniteNumber(item.targetObligationAmount)}
@@ -1592,7 +1593,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 formatCurrency(item.targetObligationAmount)
                                                                             )}
                                                                         </td>
-                                                                        <td className="fac-col-target-obligation px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                        <td className={`fac-col-target-obligation px-2 py-1.5 text-center text-[10px] text-gray-400 ${isTagged ? 'fac-target-excluded' : ''}`}>
                                                                             {item.targetObligationMonth === 'Monthly' ? (
                                                                                 'Monthly'
                                                                             ) : item.status === 'Proposed' ? (
@@ -1618,7 +1619,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                         </td>
 
                                                                         {/* Target Disb */}
-                                                                        <td className="fac-col-target-disbursement px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700">
+                                                                        <td className={`fac-col-target-disbursement px-2 py-1.5 text-center text-xs text-gray-500 border-l border-gray-100 dark:border-gray-700 ${isTagged ? 'fac-target-excluded fac-target-excluded-amount' : ''}`}>
                                                                             {item.status === 'Proposed' ? (
                                                                                 <FormattedAmountInput
                                                                                     value={toFiniteNumber(item.targetDisbursementAmount)}
@@ -1632,7 +1633,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                                 formatCurrency(item.targetDisbursementAmount)
                                                                             )}
                                                                         </td>
-                                                                        <td className="fac-col-target-disbursement px-2 py-1.5 text-center text-[10px] text-gray-400">
+                                                                        <td className={`fac-col-target-disbursement px-2 py-1.5 text-center text-[10px] text-gray-400 ${isTagged ? 'fac-target-excluded' : ''}`}>
                                                                             {item.targetDisbursementMonth === 'Monthly' ? (
                                                                                 'Monthly'
                                                                             ) : item.status === 'Proposed' ? (
