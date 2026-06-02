@@ -11,6 +11,7 @@ const GOOGLE_DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/file
 const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const IPO_DRIVE_MODULE = "IPO Management";
 const SUBPROJECT_DRIVE_MODULE = "Subprojects";
+const ACTIVITY_DRIVE_MODULE = "Activities";
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "application/pdf",
   "image/gif",
@@ -45,6 +46,14 @@ type SubprojectRow = {
   name: string;
   operatingUnit?: string | null;
   indigenousPeopleOrganization?: string | null;
+};
+
+type ActivityRow = {
+  id: number;
+  name: string;
+  type?: string | null;
+  operatingUnit?: string | null;
+  component?: string | null;
 };
 
 type ConnectionRow = {
@@ -254,6 +263,18 @@ async function fetchSubproject(subprojectId: number): Promise<SubprojectRow> {
   return data as SubprojectRow;
 }
 
+async function fetchActivity(activityId: number): Promise<ActivityRow> {
+  const { data, error } = await adminClient()
+    .from("activities")
+    .select("id,name,type,operatingUnit,component")
+    .eq("id", activityId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Activity was not found.");
+  return data as ActivityRow;
+}
+
 function normalizeRegionName(inputRegion?: string | null) {
   const trimmed = (inputRegion || "").trim();
   return REGION_ALIASES[trimmed] || trimmed;
@@ -334,6 +355,26 @@ export async function requireSubprojectEditor(userId: unknown) {
   if (data?.can_edit) return user;
 
   throw new Error("You do not have permission to upload Subproject files.");
+}
+
+export async function requireActivityEditor(userId: unknown) {
+  const user = await fetchUser(userId);
+  if (isAdmin(user)) return user;
+
+  const override = user.permissions_override?.["Activities"];
+  if (override && override.can_edit === true) return user;
+
+  const { data, error } = await adminClient()
+    .from("roles_config")
+    .select("can_edit")
+    .eq("role", user.role)
+    .eq("module", "Activities")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data?.can_edit) return user;
+
+  throw new Error("You do not have permission to upload Activity files.");
 }
 
 export function getEnvironmentStatus() {
@@ -884,6 +925,127 @@ async function ensureSubprojectFolder(subprojectIdValue: number, user: UserRow) 
   };
 }
 
+async function ensureActivityFolder(activityIdValue: number, user: UserRow) {
+  const activityId = Number(activityIdValue);
+
+  if (!Number.isFinite(activityId)) throw new Error("A valid activity is required.");
+  const activity = await fetchActivity(activityId);
+  const activityName = (activity.name || "").trim();
+  const operatingUnit = (activity.operatingUnit || "").trim();
+  const component = (activity.component || "").trim();
+  const activityType = (activity.type || "Activity").trim();
+
+  if (!activityName) throw new Error("Activity name is required.");
+  if (!operatingUnit) throw new Error("This activity needs an operating unit before files can be uploaded.");
+  if (!component) throw new Error("This activity needs a component before files can be uploaded.");
+
+  const supabase = adminClient();
+  const { connection, accessToken } = await connectedDrive();
+  const folderYear = getUploadYear();
+
+  const { data: savedFolder, error: savedError } = await supabase
+    .from("activity_drive_folders")
+    .select("*")
+    .eq("activity_id", activityId)
+    .eq("connection_id", connection.id)
+    .eq("module", ACTIVITY_DRIVE_MODULE)
+    .eq("folder_year", folderYear)
+    .maybeSingle();
+  if (savedError) throw new Error(savedError.message);
+  if (savedFolder?.folder_id) {
+    return {
+      connection,
+      accessToken,
+      folderId: savedFolder.folder_id as string,
+      folderName: savedFolder.folder_name as string,
+      folderYear,
+      operatingUnit: (savedFolder.operating_unit as string | null) || operatingUnit,
+      component: (savedFolder.component as string | null) || component,
+      activityName: (savedFolder.activity_name as string | null) || activityName,
+      activityType: (savedFolder.activity_type as string | null) || activityType,
+      moduleFolderId: savedFolder.module_folder_id as string | null,
+      yearFolderId: savedFolder.year_folder_id as string | null,
+      operatingUnitFolderId: savedFolder.operating_unit_folder_id as string | null,
+      componentFolderId: savedFolder.component_folder_id as string | null
+    };
+  }
+
+  if (!connection.root_folder_id) {
+    throw new Error("Google Drive master folder is not configured. Reconnect Google Drive storage in User Settings.");
+  }
+
+  const moduleFolder = await ensureFolder(accessToken, ACTIVITY_DRIVE_MODULE, connection.root_folder_id);
+  const yearFolder = await ensureFolder(accessToken, String(folderYear), moduleFolder.id);
+  const operatingUnitFolder = await ensureFolder(accessToken, cleanDriveName(operatingUnit, "Operating Unit"), yearFolder.id);
+  const componentFolder = await ensureFolder(accessToken, cleanDriveName(component, "Component"), operatingUnitFolder.id);
+  const folderName = cleanDriveName(activityName, `Activity ${activityId}`);
+  const folder = await ensureFolder(accessToken, folderName, componentFolder.id);
+
+  const folderRow = {
+    activity_id: activityId,
+    connection_id: connection.id,
+    folder_id: folder.id,
+    folder_name: folderName,
+    module: ACTIVITY_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: operatingUnit,
+    component,
+    activity_name: activityName,
+    activity_type: activityType,
+    module_folder_id: moduleFolder.id,
+    year_folder_id: yearFolder.id,
+    operating_unit_folder_id: operatingUnitFolder.id,
+    component_folder_id: componentFolder.id,
+    created_by: user.id
+  };
+
+  const { error: insertError } = await supabase.from("activity_drive_folders").insert(folderRow);
+  if (insertError) {
+    const { data: existingRow, error: existingError } = await supabase
+      .from("activity_drive_folders")
+      .select("*")
+      .eq("activity_id", activityId)
+      .eq("connection_id", connection.id)
+      .eq("module", ACTIVITY_DRIVE_MODULE)
+      .eq("folder_year", folderYear)
+      .maybeSingle();
+    if (existingError || !existingRow?.folder_id) {
+      throw new Error(insertError.message);
+    }
+    return {
+      connection,
+      accessToken,
+      folderId: existingRow.folder_id as string,
+      folderName: existingRow.folder_name as string,
+      folderYear,
+      operatingUnit: (existingRow.operating_unit as string | null) || operatingUnit,
+      component: (existingRow.component as string | null) || component,
+      activityName: (existingRow.activity_name as string | null) || activityName,
+      activityType: (existingRow.activity_type as string | null) || activityType,
+      moduleFolderId: existingRow.module_folder_id as string | null,
+      yearFolderId: existingRow.year_folder_id as string | null,
+      operatingUnitFolderId: existingRow.operating_unit_folder_id as string | null,
+      componentFolderId: existingRow.component_folder_id as string | null
+    };
+  }
+
+  return {
+    connection,
+    accessToken,
+    folderId: folder.id,
+    folderName,
+    folderYear,
+    operatingUnit,
+    component,
+    activityName,
+    activityType,
+    moduleFolderId: moduleFolder.id,
+    yearFolderId: yearFolder.id,
+    operatingUnitFolderId: operatingUnitFolder.id,
+    componentFolderId: componentFolder.id
+  };
+}
+
 function concatBytes(chunks: Uint8Array[]) {
   const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const result = new Uint8Array(totalLength);
@@ -1135,6 +1297,114 @@ export async function deleteSubprojectFile(fileRowId: number, user: UserRow) {
   const deletedAt = new Date().toISOString();
   const { data, error } = await supabase
     .from("subproject_drive_files")
+    .update({
+      deleted_at: deletedAt,
+      deleted_by: user.id,
+      deleted_by_name: displayUserName(user)
+    })
+    .eq("id", fileRowId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  return data;
+}
+
+export async function listActivityFiles(activityId: number) {
+  const { data, error } = await adminClient()
+    .from("activity_drive_files")
+    .select("*")
+    .eq("activity_id", activityId)
+    .is("deleted_at", null)
+    .order("uploaded_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function uploadActivityFile(activityId: number, file: File, user: UserRow) {
+  const supabase = adminClient();
+  assertAllowedUploadFile(file);
+
+  const {
+    connection,
+    accessToken,
+    folderId,
+    folderName,
+    folderYear,
+    operatingUnit,
+    component,
+    activityName,
+    activityType,
+    moduleFolderId,
+    yearFolderId,
+    operatingUnitFolderId,
+    componentFolderId
+  } = await ensureActivityFolder(activityId, user);
+
+  const uploadedFile = await uploadMultipartFile(accessToken, file, folderId);
+  let previewPermission: DrivePermissionResponse | null = null;
+  try {
+    previewPermission = await grantPreviewPermission(accessToken, uploadedFile.id);
+  } catch (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw error;
+  }
+
+  const row = {
+    activity_id: activityId,
+    connection_id: connection.id,
+    folder_id: folderId,
+    folder_name: folderName,
+    module: ACTIVITY_DRIVE_MODULE,
+    folder_year: folderYear,
+    operating_unit: operatingUnit,
+    component,
+    activity_name: activityName,
+    activity_type: activityType,
+    module_folder_id: moduleFolderId,
+    year_folder_id: yearFolderId,
+    operating_unit_folder_id: operatingUnitFolderId,
+    component_folder_id: componentFolderId,
+    file_id: uploadedFile.id,
+    file_name: uploadedFile.name || file.name,
+    mime_type: uploadedFile.mimeType || file.type || "application/octet-stream",
+    file_size: Number(uploadedFile.size || file.size || 0),
+    web_view_link: uploadedFile.webViewLink ?? null,
+    web_content_link: uploadedFile.webContentLink ?? null,
+    preview_url: getPreviewUrl(uploadedFile.id),
+    preview_supported: true,
+    preview_permission_id: previewPermission?.id ?? null,
+    preview_permission_type: previewPermission?.type ?? "anyone",
+    uploaded_by: user.id,
+    uploaded_by_name: displayUserName(user)
+  };
+
+  const { data, error } = await supabase.from("activity_drive_files").insert(row).select("*").single();
+  if (error) {
+    await deleteDriveFile(accessToken, uploadedFile.id);
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+export async function deleteActivityFile(fileRowId: number, user: UserRow) {
+  const supabase = adminClient();
+  const { data: fileRow, error: fileError } = await supabase
+    .from("activity_drive_files")
+    .select("*")
+    .eq("id", fileRowId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (fileError) throw new Error(fileError.message);
+  if (!fileRow) throw new Error("Activity Drive file was not found.");
+
+  const { accessToken } = await connectedDrive();
+  await deleteDriveFile(accessToken, fileRow.file_id);
+
+  const deletedAt = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("activity_drive_files")
     .update({
       deleted_at: deletedAt,
       deleted_by: user.id,

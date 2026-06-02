@@ -65,6 +65,36 @@ export interface SubprojectDriveFile {
     uploaded_at: string;
 }
 
+export interface ActivityDriveFile {
+    id: number;
+    activity_id: number;
+    folder_id: string;
+    folder_name: string;
+    module?: string | null;
+    folder_year?: number | null;
+    operating_unit: string;
+    component: string;
+    activity_name: string;
+    activity_type?: string | null;
+    module_folder_id?: string | null;
+    year_folder_id?: string | null;
+    operating_unit_folder_id?: string | null;
+    component_folder_id?: string | null;
+    file_id: string;
+    file_name: string;
+    mime_type: string | null;
+    file_size: number | null;
+    web_view_link: string | null;
+    web_content_link: string | null;
+    preview_url?: string | null;
+    preview_supported?: boolean | null;
+    preview_permission_id?: string | null;
+    preview_permission_type?: string | null;
+    uploaded_by: number | null;
+    uploaded_by_name: string | null;
+    uploaded_at: string;
+}
+
 export const ALLOWED_IPO_DRIVE_FILE_TYPES = [
     'application/pdf',
     'image/gif',
@@ -75,6 +105,7 @@ export const ALLOWED_IPO_DRIVE_FILE_TYPES = [
 
 export const IPO_DRIVE_FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif';
 export const SUBPROJECT_DRIVE_FILE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
+export const ACTIVITY_DRIVE_FILE_ACCEPT = IPO_DRIVE_FILE_ACCEPT;
 
 const ALLOWED_IPO_DRIVE_EXTENSIONS = ['.gif', '.jpeg', '.jpg', '.pdf', '.png', '.webp'];
 const IMAGE_DRIVE_MIME_TYPES = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
@@ -88,6 +119,7 @@ export const isAllowedIpoDriveFile = (file: File) => {
 };
 
 export const isAllowedSubprojectDriveFile = isAllowedIpoDriveFile;
+export const isAllowedActivityDriveFile = isAllowedIpoDriveFile;
 
 export const canPreviewIpoDriveFile = (file: Pick<IpoDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
     if (file.preview_supported === false) return false;
@@ -98,6 +130,10 @@ export const canPreviewIpoDriveFile = (file: Pick<IpoDriveFile, 'mime_type' | 'f
 };
 
 export const canPreviewSubprojectDriveFile = (file: Pick<SubprojectDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    return canPreviewIpoDriveFile(file);
+};
+
+export const canPreviewActivityDriveFile = (file: Pick<ActivityDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
     return canPreviewIpoDriveFile(file);
 };
 
@@ -117,6 +153,10 @@ export const isSubprojectDriveImageFile = (file: Pick<SubprojectDriveFile, 'mime
     return isIpoDriveImageFile(file);
 };
 
+export const isActivityDriveImageFile = (file: Pick<ActivityDriveFile, 'mime_type' | 'file_name' | 'preview_supported'>) => {
+    return isIpoDriveImageFile(file);
+};
+
 export const getIpoDriveImageUrl = (file: Pick<IpoDriveFile, 'file_id'>, size = 1000) => {
     return `https://drive.google.com/thumbnail?id=${encodeURIComponent(file.file_id)}&sz=w${size}`;
 };
@@ -126,6 +166,14 @@ export const getSubprojectDriveImageUrl = (file: Pick<SubprojectDriveFile, 'file
 };
 
 export const getSubprojectDrivePreviewUrl = (file: Pick<SubprojectDriveFile, 'file_id' | 'preview_url'>) => {
+    return file.preview_url || `https://drive.google.com/file/d/${encodeURIComponent(file.file_id)}/preview`;
+};
+
+export const getActivityDriveImageUrl = (file: Pick<ActivityDriveFile, 'file_id'>, size = 1000) => {
+    return getIpoDriveImageUrl(file, size);
+};
+
+export const getActivityDrivePreviewUrl = (file: Pick<ActivityDriveFile, 'file_id' | 'preview_url'>) => {
     return file.preview_url || `https://drive.google.com/file/d/${encodeURIComponent(file.file_id)}/preview`;
 };
 
@@ -221,6 +269,32 @@ export const uploadSubprojectDriveFile = async (currentUser: User | null, subpro
 
 export const deleteSubprojectDriveFile = async (currentUser: User | null, fileRowId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ file: SubprojectDriveFile }>('subproject-drive-file-delete', {
+        body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const listActivityDriveFiles = async (currentUser: User | null, activityId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ files: ActivityDriveFile[] }>('activity-drive-files-list', {
+        body: { ...currentUserPayload(currentUser), activity_id: activityId }
+    });
+    return readFunctionResult(data, error).files;
+};
+
+export const uploadActivityDriveFile = async (currentUser: User | null, activityId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('user_id', String(currentUserPayload(currentUser).user_id));
+    formData.append('activity_id', String(activityId));
+    formData.append('file', file);
+
+    const { data, error } = await requireSupabase().functions.invoke<{ file: ActivityDriveFile }>('activity-drive-file-upload', {
+        body: formData
+    });
+    return readFunctionResult(data, error).file;
+};
+
+export const deleteActivityDriveFile = async (currentUser: User | null, fileRowId: number) => {
+    const { data, error } = await requireSupabase().functions.invoke<{ file: ActivityDriveFile }>('activity-drive-file-delete', {
         body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
     });
     return readFunctionResult(data, error).file;

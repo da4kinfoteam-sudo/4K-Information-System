@@ -1,8 +1,8 @@
 
 // Author: 4K 
-import React, { useState, useEffect, FormEvent, useMemo } from 'react';
+import React, { useState, useEffect, FormEvent, useMemo, useCallback } from 'react';
 import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
-import { IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, LodAssessment } from '../constants';
+import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, LodAssessment } from '../constants';
 import { getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,12 +30,14 @@ interface IPODetailProps {
     ipo: IPO;
     subprojects: Subproject[];
     trainings: Training[];
+    monitoringActivities?: Activity[];
     marketingPartners: MarketingPartner[];
     onBack: () => void;
     previousPageName: string;
     onUpdateIpo: (updatedIpo: IPO) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Training) => void;
+    onOpenMonitoringReport?: (activity: Activity, ipo: IPO, report?: ActivityMonitoringReport | null) => void;
     onSelectLodYear?: (ipo: IPO, year: number) => void;
     onSelectMarketingPartner?: (partner: MarketingPartner) => void;
     particularTypes: { [key: string]: string[] };
@@ -222,7 +224,7 @@ const PaginationControls: React.FC<{
     </div>
 );
 
-type IpoDetailSectionKey = 'subprojects' | 'trainings' | 'marketLinkages' | 'gallery' | 'files' | 'history';
+type IpoDetailSectionKey = 'subprojects' | 'trainings' | 'monitoringReports' | 'marketLinkages' | 'gallery' | 'files' | 'history';
 
 const CollapsibleDetailCard: React.FC<{
     title: string;
@@ -244,7 +246,7 @@ const CollapsibleDetailCard: React.FC<{
     </section>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('IPO Management');
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
@@ -270,11 +272,16 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     const [expandedSections, setExpandedSections] = useState<Record<IpoDetailSectionKey, boolean>>({
         subprojects: false,
         trainings: false,
+        monitoringReports: false,
         marketLinkages: false,
         gallery: false,
         files: false,
         history: false
     });
+    const [monitoringReports, setMonitoringReports] = useState<ActivityMonitoringReport[]>([]);
+    const [latestMonitoringActions, setLatestMonitoringActions] = useState<Record<number, ActivityMonitoringAction | undefined>>({});
+    const [isMonitoringLoading, setIsMonitoringLoading] = useState(false);
+    const [monitoringMessage, setMonitoringMessage] = useState<string | null>(null);
     
     // Commodity State
     const [currentCommodity, setCurrentCommodity] = useState({
@@ -321,6 +328,59 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
     const toggleSection = (section: IpoDetailSectionKey) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
+
+    const monitoringActivityById = useMemo(() => {
+        return new Map(monitoringActivities.map(activity => [Number(activity.id), activity]));
+    }, [monitoringActivities]);
+
+    const loadMonitoringReports = useCallback(async () => {
+        if (!supabase || !ipo.id) return;
+        setIsMonitoringLoading(true);
+        setMonitoringMessage(null);
+        try {
+            const { data: reports, error } = await supabase
+                .from('activity_monitoring_reports')
+                .select('*')
+                .eq('ipo_id', ipo.id)
+                .is('deleted_at', null)
+                .order('updated_at', { ascending: false });
+            if (error) throw error;
+
+            const visibleReports = ((reports || []) as ActivityMonitoringReport[])
+                .filter(report => monitoringActivityById.has(Number(report.activity_id)));
+            setMonitoringReports(visibleReports);
+
+            const reportIds = visibleReports.map(report => report.id);
+            if (reportIds.length === 0) {
+                setLatestMonitoringActions({});
+                return;
+            }
+
+            const { data: actions, error: actionError } = await supabase
+                .from('activity_monitoring_actions')
+                .select('*')
+                .in('monitoring_report_id', reportIds)
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false });
+            if (actionError) throw actionError;
+
+            const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
+            ((actions || []) as ActivityMonitoringAction[]).forEach(action => {
+                if (!latestMap[action.monitoring_report_id]) {
+                    latestMap[action.monitoring_report_id] = action;
+                }
+            });
+            setLatestMonitoringActions(latestMap);
+        } catch (error: any) {
+            setMonitoringMessage(error.message || 'Unable to load Monitoring Reports.');
+        } finally {
+            setIsMonitoringLoading(false);
+        }
+    }, [ipo.id, monitoringActivityById]);
+
+    useEffect(() => {
+        loadMonitoringReports();
+    }, [loadMonitoringReports]);
 
     const loadDriveFiles = async () => {
         if (!ipo.id) return;
@@ -1345,6 +1405,60 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, mark
                         )}
                     </CollapsibleDetailCard>
                     
+                    <CollapsibleDetailCard title="Monitoring Reports" isOpen={expandedSections.monitoringReports} onToggle={() => toggleSection('monitoringReports')}>
+                        {monitoringMessage && <p className="drive-file-card__message" role="status">{monitoringMessage}</p>}
+                        {isMonitoringLoading ? (
+                            <div className="drive-file-card__loading">
+                                <Loader2 className="animate-spin" aria-hidden="true" />
+                                <span>Loading Monitoring Reports...</span>
+                            </div>
+                        ) : monitoringReports.length > 0 ? (
+                            <ul className="detail-list">
+                                {monitoringReports.map(report => {
+                                    const activity = monitoringActivityById.get(Number(report.activity_id));
+                                    const latestAction = latestMonitoringActions[report.id];
+                                    if (!activity) return null;
+                                    return (
+                                        <li key={report.id} className="detail-list-item">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                <div className="min-w-0">
+                                                    <button
+                                                        type="button"
+                                                        className="detail-list-title table-link text-left"
+                                                        onClick={() => onOpenMonitoringReport?.(activity, ipo, report)}
+                                                    >
+                                                        {activity.name}
+                                                    </button>
+                                                    <p className="detail-list-copy">{activity.component} - {formatDate(activity.date)}</p>
+                                                </div>
+                                                <span className={`status-badge status-badge--compact ${report.status === 'Completed' ? 'status-badge--completed' : report.status === 'Ongoing' ? 'status-badge--ongoing' : 'status-badge--pending'}`}>
+                                                    {report.status}
+                                                </span>
+                                            </div>
+                                            <div className="mt-3 space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                                <p><span className="font-semibold">Findings:</span> {report.findings || 'No findings recorded.'}</p>
+                                                <p><span className="font-semibold">Issues:</span> {report.issues || 'No issues recorded.'}</p>
+                                                <p><span className="font-semibold">Latest action:</span> {latestAction?.action_taken || 'No action updates yet.'}</p>
+                                            </div>
+                                            <div className="mt-3 flex justify-end">
+                                                <button
+                                                    type="button"
+                                                    className="table-action table-action--primary"
+                                                    onClick={() => onOpenMonitoringReport?.(activity, ipo, report)}
+                                                >
+                                                    <ExternalLink aria-hidden="true" />
+                                                    Open Report
+                                                </button>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        ) : (
+                            <p className="detail-empty">No monitoring reports are linked to this IPO yet.</p>
+                        )}
+                    </CollapsibleDetailCard>
+
                     {/* Market Linkages Card (New) */}
                     <CollapsibleDetailCard title="Market Linkages" isOpen={expandedSections.marketLinkages} onToggle={() => toggleSection('marketLinkages')}>
                         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

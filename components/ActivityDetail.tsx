@@ -1,9 +1,25 @@
 
-import React, { useMemo } from 'react';
-import { ArrowLeft, CheckCircle2, Edit3 } from 'lucide-react';
-import { Activity, IPO } from '../constants';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Plus, Trash2, UploadCloud, X } from 'lucide-react';
+import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
+import { supabase } from '../supabaseClient';
+import {
+    ACTIVITY_DRIVE_FILE_ACCEPT,
+    ActivityDriveFile,
+    canPreviewActivityDriveFile,
+    deleteActivityDriveFile,
+    formatFileSize,
+    getActivityDriveImageUrl,
+    getActivityDrivePreviewUrl,
+    getGoogleDriveStatus,
+    GoogleDriveStatus,
+    isActivityDriveImageFile,
+    isAllowedActivityDriveFile,
+    listActivityDriveFiles,
+    uploadActivityDriveFile
+} from '../lib/googleDriveStorage';
 
 interface ActivityDetailProps {
     activity: Activity;
@@ -12,9 +28,10 @@ interface ActivityDetailProps {
     previousPageName: string;
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
-    referenceActivities?: any[];
+    referenceActivities?: ReferenceActivity[];
     onSelectIpo: (ipo: IPO) => void;
     onEdit: (mode: 'details' | 'expenses' | 'accomplishment') => void;
+    onOpenMonitoringReport?: (activity: Activity, ipo: IPO, report?: ActivityMonitoringReport | null) => void;
 }
 
 const formatDate = (dateString?: string) => {
@@ -54,13 +71,54 @@ const DetailItem: React.FC<{ label: string; value?: string | number | React.Reac
     </div>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes }) => {
+type ActivityDetailSectionKey = 'monitoring' | 'gallery' | 'files';
+
+const CollapsibleDetailCard: React.FC<{
+    title: string;
+    isOpen: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}> = ({ title, isOpen, onToggle, children }) => (
+    <section className="detail-card detail-card--collapsible">
+        <button
+            type="button"
+            className="detail-card__toggle-header"
+            onClick={onToggle}
+            aria-expanded={isOpen}
+        >
+            <span className="detail-card-title mb-0">{title}</span>
+            <ChevronDown className={`detail-card__collapse-icon ${isOpen ? 'is-open' : ''}`} aria-hidden="true" />
+        </button>
+        {isOpen && <div className="detail-card__collapsible-body">{children}</div>}
+    </section>
+);
+
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], onOpenMonitoringReport }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
 
     const isAdmin = currentUser?.role === 'Administrator';
+    const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
+    const [driveStatus, setDriveStatus] = useState<GoogleDriveStatus | null>(null);
+    const [driveFiles, setDriveFiles] = useState<ActivityDriveFile[]>([]);
+    const [isDriveLoading, setIsDriveLoading] = useState(true);
+    const [isDriveUploading, setIsDriveUploading] = useState(false);
+    const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
+    const [driveMessage, setDriveMessage] = useState<string | null>(null);
+    const [previewDriveFile, setPreviewDriveFile] = useState<ActivityDriveFile | null>(null);
+    const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+    const [galleryImageFailed, setGalleryImageFailed] = useState(false);
+    const [expandedSections, setExpandedSections] = useState<Record<ActivityDetailSectionKey, boolean>>({
+        monitoring: true,
+        gallery: false,
+        files: false
+    });
+    const [monitoringReports, setMonitoringReports] = useState<ActivityMonitoringReport[]>([]);
+    const [latestActionsByReportId, setLatestActionsByReportId] = useState<Record<number, ActivityMonitoringAction | undefined>>({});
+    const [isMonitoringLoading, setIsMonitoringLoading] = useState(false);
+    const [monitoringMessage, setMonitoringMessage] = useState<string | null>(null);
     
     // Helper to get UACS Description
     const getUacsDescription = (ot: string, ep: string, code: string) => {
@@ -83,12 +141,255 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     // Accomplishment: Editable based on tracking permissions
     const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
 
+    const toggleSection = (section: ActivityDetailSectionKey) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
     const totalBudget = useMemo(() => {
        return activity.expenses.reduce((acc, item) => acc + item.amount, 0);
     }, [activity.expenses]);
 
+    const monitoringReference = useMemo(() => referenceActivities.find(ref =>
+        ref.activity_name === 'Subproject Monitoring' &&
+        ref.component === 'Program Management' &&
+        ref.type === 'Activity'
+    ), [referenceActivities]);
+
+    const isMonitoringActivity = !!activity.reference_activity_id &&
+        !!monitoringReference?.id &&
+        String(activity.reference_activity_id) === String(monitoringReference.id);
+
+    const participatingIpos = useMemo(() => {
+        const byId = new Map<number, IPO>(ipos.map(ipo => [Number(ipo.id), ipo]));
+        const byName = new Map<string, IPO>(ipos.map(ipo => [ipo.name, ipo]));
+        const resolved: IPO[] = [];
+        const seen = new Set<number>();
+
+        (activity.participating_ipo_ids || []).forEach(id => {
+            const ipo = byId.get(Number(id));
+            if (ipo && !seen.has(ipo.id)) {
+                resolved.push(ipo);
+                seen.add(ipo.id);
+            }
+        });
+
+        (activity.participatingIpos || []).forEach(name => {
+            const ipo = byName.get(name);
+            if (ipo && !seen.has(ipo.id)) {
+                resolved.push(ipo);
+                seen.add(ipo.id);
+            }
+        });
+
+        return resolved;
+    }, [activity.participatingIpos, activity.participating_ipo_ids, ipos]);
+
+    const loadDriveFiles = useCallback(async () => {
+        if (!currentUser?.id || !activity.id) return;
+        setIsDriveLoading(true);
+        setDriveMessage(null);
+        try {
+            const [status, files] = await Promise.all([
+                getGoogleDriveStatus(currentUser),
+                listActivityDriveFiles(currentUser, activity.id)
+            ]);
+            setDriveStatus(status);
+            setDriveFiles(files);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to load Activity files.');
+        } finally {
+            setIsDriveLoading(false);
+        }
+    }, [activity.id, currentUser]);
+
+    useEffect(() => {
+        loadDriveFiles();
+    }, [loadDriveFiles]);
+
+    const loadMonitoringReports = useCallback(async () => {
+        if (!supabase || !activity.id || !isMonitoringActivity) return;
+        setIsMonitoringLoading(true);
+        setMonitoringMessage(null);
+        try {
+            const { data: reports, error } = await supabase
+                .from('activity_monitoring_reports')
+                .select('*')
+                .eq('activity_id', activity.id)
+                .is('deleted_at', null)
+                .order('updated_at', { ascending: false });
+            if (error) throw error;
+
+            const activeReports = (reports || []) as ActivityMonitoringReport[];
+            setMonitoringReports(activeReports);
+
+            const reportIds = activeReports.map(report => report.id);
+            if (reportIds.length === 0) {
+                setLatestActionsByReportId({});
+                return;
+            }
+
+            const { data: actions, error: actionsError } = await supabase
+                .from('activity_monitoring_actions')
+                .select('*')
+                .in('monitoring_report_id', reportIds)
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false });
+            if (actionsError) throw actionsError;
+
+            const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
+            ((actions || []) as ActivityMonitoringAction[]).forEach(action => {
+                if (!latestMap[action.monitoring_report_id]) {
+                    latestMap[action.monitoring_report_id] = action;
+                }
+            });
+            setLatestActionsByReportId(latestMap);
+        } catch (error: any) {
+            setMonitoringMessage(error.message || 'Unable to load Monitoring Reports.');
+        } finally {
+            setIsMonitoringLoading(false);
+        }
+    }, [activity.id, isMonitoringActivity]);
+
+    useEffect(() => {
+        loadMonitoringReports();
+    }, [loadMonitoringReports]);
+
+    const handleDriveFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+
+        if (!isAllowedActivityDriveFile(file)) {
+            setDriveMessage('Only PDF and image files are allowed. Please upload a PDF, PNG, JPG, WEBP, or GIF file.');
+            return;
+        }
+        if (!canEdit) {
+            setDriveMessage('You do not have permission to upload Activity files.');
+            return;
+        }
+        if (!driveStatus?.isConnected) {
+            setDriveMessage('Google Drive storage is not connected. Ask a Super Admin to connect it first.');
+            return;
+        }
+        if (!activity.operatingUnit) {
+            setDriveMessage('This activity needs an operating unit before files can be uploaded.');
+            return;
+        }
+        if (!activity.component) {
+            setDriveMessage('This activity needs a component before files can be uploaded.');
+            return;
+        }
+
+        setIsDriveUploading(true);
+        setDriveMessage(null);
+        try {
+            const uploaded = await uploadActivityDriveFile(currentUser, activity.id, file);
+            setDriveFiles(prev => [uploaded, ...prev]);
+            setDriveMessage(`${uploaded.file_name} uploaded successfully.`);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to upload Activity file.');
+        } finally {
+            setIsDriveUploading(false);
+        }
+    };
+
+    const handleDriveFileDelete = async (file: ActivityDriveFile) => {
+        if (!canDeleteDriveFiles) return;
+        if (!confirm(`Delete "${file.file_name}" from Google Drive storage?`)) return;
+
+        setDeletingDriveFileId(file.id);
+        setDriveMessage(null);
+        try {
+            await deleteActivityDriveFile(currentUser, file.id);
+            setDriveFiles(prev => prev.filter(item => item.id !== file.id));
+            setDriveMessage(`${file.file_name} deleted.`);
+        } catch (error: any) {
+            setDriveMessage(error.message || 'Unable to delete Activity file.');
+        } finally {
+            setDeletingDriveFileId(null);
+        }
+    };
+
+    const galleryFiles = useMemo(() => driveFiles.filter(isActivityDriveImageFile), [driveFiles]);
+    const selectedGalleryFile = galleryIndex !== null ? galleryFiles[galleryIndex] : null;
+
+    useEffect(() => {
+        if (galleryIndex !== null && galleryIndex >= galleryFiles.length) {
+            setGalleryIndex(galleryFiles.length > 0 ? galleryFiles.length - 1 : null);
+        }
+    }, [galleryFiles.length, galleryIndex]);
+
+    useEffect(() => {
+        setGalleryImageFailed(false);
+    }, [galleryIndex]);
+
     return (
         <div className="detail-page animate-fadeIn">
+            {previewDriveFile && (
+                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setPreviewDriveFile(null)}>
+                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <h3>{previewDriveFile.file_name}</h3>
+                            <button type="button" className="dashboard-modal__close" onClick={() => setPreviewDriveFile(null)} aria-label="Close preview">
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="drive-preview-modal__body">
+                            {canPreviewActivityDriveFile(previewDriveFile) ? (
+                                <iframe
+                                    title={previewDriveFile.file_name}
+                                    src={getActivityDrivePreviewUrl(previewDriveFile)}
+                                    className="drive-preview-modal__frame"
+                                    allow="autoplay"
+                                />
+                            ) : (
+                                <div className="drive-preview-modal__empty">
+                                    <FileText aria-hidden="true" />
+                                    <p>Preview is not available for this file.</p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="drive-preview-modal__footer">
+                            <p>If the preview does not load, open the file directly in Google Drive.</p>
+                            {previewDriveFile.web_view_link && (
+                                <a className="btn btn-primary" href={previewDriveFile.web_view_link} target="_blank" rel="noreferrer">
+                                    <ExternalLink aria-hidden="true" />
+                                    Open in Drive
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedGalleryFile && (
+                <div className="dashboard-modal-backdrop animate-fadeIn" onClick={() => setGalleryIndex(null)}>
+                    <div className="dashboard-modal dashboard-modal--wide drive-preview-modal" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <h3>{selectedGalleryFile.file_name}</h3>
+                            <button type="button" className="dashboard-modal__close" onClick={() => setGalleryIndex(null)} aria-label="Close gallery">
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="drive-preview-modal__body">
+                            {!galleryImageFailed ? (
+                                <img
+                                    src={getActivityDriveImageUrl(selectedGalleryFile, 1400)}
+                                    alt={selectedGalleryFile.file_name}
+                                    className="max-h-[72vh] max-w-full rounded-lg object-contain"
+                                    onError={() => setGalleryImageFailed(true)}
+                                />
+                            ) : (
+                                <div className="drive-preview-modal__empty">
+                                    <ImageIcon aria-hidden="true" />
+                                    <p>Image preview is not available.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="detail-header">
                 <div className="detail-heading">
@@ -331,6 +632,192 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                             </div>
                         </div>
                     </div>
+
+                    {isMonitoringActivity && (
+                        <CollapsibleDetailCard title="Monitoring Reports" isOpen={expandedSections.monitoring} onToggle={() => toggleSection('monitoring')}>
+                            {monitoringMessage && <p className="drive-file-card__message" role="status">{monitoringMessage}</p>}
+                            {isMonitoringLoading ? (
+                                <div className="drive-file-card__loading">
+                                    <Loader2 className="animate-spin" aria-hidden="true" />
+                                    <span>Loading Monitoring Reports...</span>
+                                </div>
+                            ) : participatingIpos.length > 0 ? (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    {participatingIpos.map(ipo => {
+                                        const report = monitoringReports.find(item => Number(item.ipo_id) === Number(ipo.id));
+                                        const latestAction = report ? latestActionsByReportId[report.id] : undefined;
+                                        return (
+                                            <article key={ipo.id} className="detail-list-item">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div className="min-w-0">
+                                                        <button
+                                                            type="button"
+                                                            className="detail-list-title table-link text-left"
+                                                            onClick={() => onSelectIpo(ipo)}
+                                                        >
+                                                            {ipo.name}
+                                                        </button>
+                                                        <p className="detail-list-copy">{ipo.region || 'No region recorded'}</p>
+                                                    </div>
+                                                    <span className={`status-badge status-badge--compact ${report?.status === 'Completed' ? 'status-badge--completed' : report?.status === 'Ongoing' ? 'status-badge--ongoing' : 'status-badge--pending'}`}>
+                                                        {report?.status || 'Pending'}
+                                                    </span>
+                                                </div>
+                                                {report ? (
+                                                    <div className="mt-3 space-y-2 text-xs text-gray-600 dark:text-gray-300">
+                                                        <p><span className="font-semibold">Findings:</span> {report.findings || 'No findings recorded.'}</p>
+                                                        <p><span className="font-semibold">Issues:</span> {report.issues || 'No issues recorded.'}</p>
+                                                        <p><span className="font-semibold">Recommendations:</span> {report.recommendations || 'No recommendations recorded.'}</p>
+                                                        <p><span className="font-semibold">Latest action:</span> {latestAction?.action_taken || 'No action updates yet.'}</p>
+                                                    </div>
+                                                ) : (
+                                                    <p className="detail-empty mt-3">No report has been created for this IPO yet.</p>
+                                                )}
+                                                <div className="mt-3 flex justify-end">
+                                                    <button
+                                                        type="button"
+                                                        className="table-action table-action--primary"
+                                                        onClick={() => onOpenMonitoringReport?.(activity, ipo, report || null)}
+                                                    >
+                                                        {report ? <Eye aria-hidden="true" /> : <Plus aria-hidden="true" />}
+                                                        {report ? 'Open Report' : 'Create Report'}
+                                                    </button>
+                                                </div>
+                                            </article>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <p className="detail-empty">No participating IPOs are linked to this monitoring activity.</p>
+                            )}
+                        </CollapsibleDetailCard>
+                    )}
+
+                    <CollapsibleDetailCard title="Gallery" isOpen={expandedSections.gallery} onToggle={() => toggleSection('gallery')}>
+                        {galleryFiles.length > 0 ? (
+                            <div className="ipo-gallery-grid">
+                                {galleryFiles.map((file, index) => (
+                                    <button
+                                        key={file.id}
+                                        type="button"
+                                        className="ipo-gallery-tile"
+                                        onClick={() => setGalleryIndex(index)}
+                                        title={`Preview ${file.file_name}`}
+                                    >
+                                        <img
+                                            src={getActivityDriveImageUrl(file, 420)}
+                                            alt={file.file_name}
+                                            loading="lazy"
+                                            onError={(event) => {
+                                                event.currentTarget.style.display = 'none';
+                                            }}
+                                        />
+                                        <span className="ipo-gallery-tile__fallback">
+                                            <ImageIcon aria-hidden="true" />
+                                        </span>
+                                        <span className="ipo-gallery-tile__caption">{file.file_name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="detail-empty">No image files have been uploaded for this activity yet.</p>
+                        )}
+                    </CollapsibleDetailCard>
+
+                    <CollapsibleDetailCard title="Activity Files" isOpen={expandedSections.files} onToggle={() => toggleSection('files')}>
+                        <div className="drive-file-card__header">
+                            <div>
+                                <p className="drive-file-card__copy">PDF and image documentation is stored by upload year under this activity's Google Drive folder.</p>
+                            </div>
+                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : 'status-badge--neutral'}`}>
+                                <HardDrive aria-hidden="true" />
+                                {driveStatus?.isConnected ? 'Drive connected' : 'Drive not connected'}
+                            </span>
+                        </div>
+
+                        {driveMessage && <p className="drive-file-card__message" role="status">{driveMessage}</p>}
+
+                        <div className="drive-file-card__toolbar">
+                            <label
+                                htmlFor={`activity-drive-upload-${activity.id}`}
+                                className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
+                                title={!driveStatus?.isConnected ? 'Google Drive storage is not connected' : 'Upload Activity file'}
+                            >
+                                {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
+                                {isDriveUploading ? 'Uploading...' : 'Upload File'}
+                            </label>
+                            <input
+                                id={`activity-drive-upload-${activity.id}`}
+                                type="file"
+                                className="hidden"
+                                accept={ACTIVITY_DRIVE_FILE_ACCEPT}
+                                onChange={handleDriveFileUpload}
+                                disabled={!canEdit || !driveStatus?.isConnected || isDriveUploading}
+                            />
+                            <button type="button" className="btn btn-secondary" onClick={loadDriveFiles} disabled={isDriveLoading || isDriveUploading}>
+                                {isDriveLoading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <HardDrive aria-hidden="true" />}
+                                Refresh
+                            </button>
+                        </div>
+
+                        {isDriveLoading ? (
+                            <div className="drive-file-card__loading">
+                                <Loader2 className="animate-spin" aria-hidden="true" />
+                                <span>Loading Activity files...</span>
+                            </div>
+                        ) : driveFiles.length > 0 ? (
+                            <ul className="detail-list">
+                                {driveFiles.map(file => (
+                                    <li key={file.id} className="detail-list-item drive-file-card__item">
+                                        <div className="drive-file-card__file">
+                                            <FileText aria-hidden="true" />
+                                            <div className="min-w-0">
+                                                <p className="detail-list-title">{file.file_name}</p>
+                                                <p className="detail-list-copy">
+                                                    {formatFileSize(file.file_size)} - Uploaded by {file.uploaded_by_name || 'Unknown user'} - {formatDate(file.uploaded_at)}
+                                                    {file.folder_year ? ` - ${file.folder_year}` : ''}
+                                                </p>
+                                                <p className="detail-list-copy">
+                                                    Activities / {file.folder_year || 'Year'} / {file.operating_unit || 'Operating Unit'} / {file.component || 'Component'} / {file.activity_name || 'Activity'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="drive-file-card__actions">
+                                            {canPreviewActivityDriveFile(file) && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action table-action--primary"
+                                                    onClick={() => setPreviewDriveFile(file)}
+                                                >
+                                                    <Eye aria-hidden="true" />
+                                                    Preview
+                                                </button>
+                                            )}
+                                            {file.web_view_link && (
+                                                <a className="table-action table-action--primary" href={file.web_view_link} target="_blank" rel="noreferrer">
+                                                    <ExternalLink aria-hidden="true" />
+                                                    Open
+                                                </a>
+                                            )}
+                                            {canDeleteDriveFiles && (
+                                                <button
+                                                    type="button"
+                                                    className="table-action table-action--danger"
+                                                    onClick={() => handleDriveFileDelete(file)}
+                                                    disabled={deletingDriveFileId === file.id}
+                                                >
+                                                    {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+                                                    Delete
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="detail-empty">No files have been uploaded for this activity yet.</p>
+                        )}
+                    </CollapsibleDetailCard>
                 </div>
 
                 {/* Right Column: History */}

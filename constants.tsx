@@ -291,6 +291,7 @@ export interface ActivityExpense {
 export interface Activity extends BaseEntity {
     uid?: string;
     type: 'Training' | 'Activity'; // Database Discriminator
+    reference_activity_id?: number | string | null;
     name: string;
     date: string; // Start Date
     endDate?: string; // End Date (Optional, same as date if single day)
@@ -693,6 +694,41 @@ export interface ReferenceActivity {
     component: string;
     activity_name: string;
     type: 'Activity' | 'Training';
+}
+
+export type ActivityMonitoringStatus = 'Pending' | 'Ongoing' | 'Completed';
+
+export interface ActivityMonitoringReport {
+    id: number;
+    activity_id: number;
+    ipo_id: number;
+    status: ActivityMonitoringStatus;
+    findings?: string | null;
+    issues?: string | null;
+    recommendations?: string | null;
+    reported_by?: number | null;
+    reported_by_name?: string | null;
+    created_at: string;
+    updated_at: string;
+    deleted_at?: string | null;
+    deleted_by?: number | null;
+    deleted_by_name?: string | null;
+}
+
+export interface ActivityMonitoringAction {
+    id: number;
+    monitoring_report_id: number;
+    action_taken: string;
+    created_by?: number | null;
+    created_by_name?: string | null;
+    created_at: string;
+    updated_at: string;
+    edited_by?: number | null;
+    edited_by_name?: string | null;
+    edited_at?: string | null;
+    deleted_by?: number | null;
+    deleted_by_name?: string | null;
+    deleted_at?: string | null;
 }
 
 export interface GidaArea {

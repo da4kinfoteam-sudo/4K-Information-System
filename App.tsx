@@ -14,6 +14,7 @@ import SubprojectDetail from './components/SubprojectDetail';
 import SubprojectEdit from './components/SubprojectEdit';
 import IPODetail from './components/IPODetail';
 import { ActivityDetail } from './components/ActivityDetail';
+import ActivityMonitoringReportDetail from './components/ActivityMonitoringReportDetail';
 import ActivityEdit from './components/ActivityEdit';
 import Settings from './components/Settings';
 import Login from './components/Login';
@@ -41,7 +42,7 @@ import {
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
     Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment,
-    RefInput, RefInfrastructure, RefTrainingReference
+    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringReport
 } from './constants';
 import {
     sampleActivities, sampleMarketingPartners, sampleOfficeRequirements, sampleOtherProgramExpenses, sampleReferenceUacsList,
@@ -310,6 +311,11 @@ const AppContent: React.FC = () => {
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
     const [selectedIpo, setSelectedIpo] = useState<IPO | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+    const [selectedMonitoringReportContext, setSelectedMonitoringReportContext] = useState<{
+        activity: Activity;
+        ipo: IPO;
+        report?: ActivityMonitoringReport | null;
+    } | null>(null);
     const [selectedOfficeReq, setSelectedOfficeReq] = useState<OfficeRequirement | null>(null);
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
@@ -350,6 +356,7 @@ const AppContent: React.FC = () => {
             
             if (leavingPage === '/subproject-detail') setSelectedSubproject(null);
             if (leavingPage === '/activity-detail') setSelectedActivity(null);
+            if (leavingPage === '/activity-monitoring-report') setSelectedMonitoringReportContext(null);
             if (leavingPage === '/ipo-detail') setSelectedIpo(null);
             if (leavingPage === '/program-management/office-detail') setSelectedOfficeReq(null);
             if (leavingPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
@@ -500,6 +507,11 @@ const AppContent: React.FC = () => {
         navigateTo('/activity-detail');
     };
 
+    const handleOpenMonitoringReport = (activity: Activity, ipo: IPO, report?: ActivityMonitoringReport | null) => {
+        setSelectedMonitoringReportContext({ activity, ipo, report: report || null });
+        navigateTo('/activity-monitoring-report');
+    };
+
     const handleSelectOfficeReq = (req: OfficeRequirement) => {
         setSelectedOfficeReq(req);
         navigateTo('/program-management/office-detail');
@@ -587,7 +599,7 @@ const AppContent: React.FC = () => {
         if (['/subprojects', '/subproject-edit', '/subproject-detail'].includes(currentPage)) {
             if (!checkAccess('Subprojects')) return denied;
         }
-        if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail'].includes(currentPage)) {
+        if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail', '/activity-monitoring-report'].includes(currentPage)) {
             if (!checkAccess('Activities')) return denied;
         }
         if (['/program-management', '/program-management/office-detail', '/program-management/staffing-detail', '/program-management/other-expense-detail'].includes(currentPage)) {
@@ -961,6 +973,7 @@ const AppContent: React.FC = () => {
                             ipo={selectedIpo} 
                             subprojects={subprojects.filter(s => s.indigenousPeopleOrganization === selectedIpo.name)}
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
+                            monitoringActivities={visibleActivities}
                             marketingPartners={marketingPartners}
                             onBack={handleBack}
                             previousPageName={getPageName(previousPage)}
@@ -970,6 +983,7 @@ const AppContent: React.FC = () => {
                             }}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            onOpenMonitoringReport={handleOpenMonitoringReport}
                             onSelectLodYear={handleSelectIpoForLod}
                             onSelectMarketingPartner={handleSelectMarketingPartner}
                             particularTypes={derivedParticularTypes}
@@ -994,6 +1008,15 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
                             onSelectIpo={handleSelectIpo}
+                            onOpenMonitoringReport={handleOpenMonitoringReport}
+                        />;
+            case '/activity-monitoring-report':
+                if (!selectedMonitoringReportContext) return <div>Select a monitoring report</div>;
+                return <ActivityMonitoringReportDetail
+                            activity={selectedMonitoringReportContext.activity}
+                            ipo={selectedMonitoringReportContext.ipo}
+                            initialReport={selectedMonitoringReportContext.report}
+                            onBack={handleBack}
                         />;
             case '/settings':
                 return <Settings 

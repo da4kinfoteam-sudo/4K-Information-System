@@ -170,10 +170,15 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 setConductType('Single');
             }
             if (activity.type === 'Training') {
-                const ref = referenceActivities?.find(ra => ra.component === activity.component && ra.type === 'Training');
+                const ref = activity.reference_activity_id
+                    ? referenceActivities?.find(ra => String(ra.id) === String(activity.reference_activity_id))
+                    : referenceActivities?.find(ra => ra.component === activity.component && ra.type === 'Training');
                 setSelectedActivityType(ref ? ref.activity_name : `${activity.component} Training`);
             } else {
-                setSelectedActivityType(activity.name);
+                const ref = activity.reference_activity_id
+                    ? referenceActivities?.find(ra => String(ra.id) === String(activity.reference_activity_id))
+                    : undefined;
+                setSelectedActivityType(ref ? ref.activity_name : activity.name);
             }
         } else {
             // Create Mode Defaults
@@ -229,6 +234,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
 
         setFormData(prev => {
             const newData = { ...prev, [name]: value };
+            if (name === 'component') {
+                newData.reference_activity_id = null;
+            }
             if (name === 'operatingUnit') {
                 const mappedRegion = ouToRegionMap[value] || 'All';
                 setIpoRegionFilter(mappedRegion);
@@ -299,7 +307,8 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         setFormData(prev => ({ 
             ...prev, 
             name: type === 'Training' && (!activity || activity.type !== 'Training') ? '' : selectedName, 
-            type: type 
+            type: type,
+            reference_activity_id: ref?.id ? Number(ref.id) : null
         }));
     };
 
@@ -551,6 +560,9 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                     
                     // Sanitize date fields: convert empty strings to null
                     const sanitizedPayload: any = { ...payload };
+                    if (sanitizedPayload.reference_activity_id === '' || sanitizedPayload.reference_activity_id === undefined) {
+                        sanitizedPayload.reference_activity_id = null;
+                    }
                     const dateFields = ['date', 'endDate', 'newTargetDate', 'actualDate', 'actualEndDate'];
                     dateFields.forEach(field => {
                         if (sanitizedPayload[field] === '') {
