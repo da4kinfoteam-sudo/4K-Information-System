@@ -7,6 +7,7 @@ import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
+import type { DataScope } from '../../lib/scopedDataFetch';
 
 interface Props {
     subprojects: Subproject[];
@@ -21,6 +22,7 @@ interface Props {
     onSelectActivity: (activity: Activity) => void;
     onSelectOfficeReq: (item: OfficeRequirement) => void;
     onSelectStaffingReq: (item: StaffingRequirement) => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 interface PhysicalItem {
@@ -66,7 +68,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     officeReqs, setOfficeReqs,
     staffingReqs, setStaffingReqs,
     onSelectSubproject, onSelectActivity,
-    onSelectOfficeReq, onSelectStaffingReq
+    onSelectOfficeReq, onSelectStaffingReq,
+    onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
@@ -106,6 +109,17 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser, canViewAll]);
+
+    useEffect(() => {
+        onDataScopeChange?.({
+            year: selectedYear || new Date().getFullYear(),
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
+            canViewAllOus: canViewAll,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [canViewAll, currentUser?.id, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
 
     // --- 1. Load Data ---
     useEffect(() => {

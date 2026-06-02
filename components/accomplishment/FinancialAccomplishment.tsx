@@ -15,6 +15,7 @@ import { ObligationListEditor } from '../ui/ObligationListEditor';
 import { DisbursementListEditor } from '../ui/DisbursementListEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { resolveDisbursementEntries, summarizeDisbursements } from '../../lib/disbursementUtils';
+import type { DataScope } from '../../lib/scopedDataFetch';
 
 interface Props {
     subprojects: Subproject[];
@@ -34,6 +35,7 @@ interface Props {
     onSelectOfficeReq: (item: OfficeRequirement) => void;
     onSelectStaffingReq: (item: StaffingRequirement) => void;
     onSelectOtherExpense: (item: OtherProgramExpense) => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 interface FinancialItem {
@@ -189,7 +191,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
     budgetCeilings = [],
     uacsCodes,
     onSelectSubproject, onSelectActivity,
-    onSelectOfficeReq, onSelectStaffingReq, onSelectOtherExpense
+    onSelectOfficeReq, onSelectStaffingReq, onSelectOtherExpense,
+    onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Financial');
@@ -228,6 +231,17 @@ const FinancialAccomplishment: React.FC<Props> = ({
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser, canViewAll, defaultYear, selectedYear, setSelectedOu, setSelectedYear]);
+
+    useEffect(() => {
+        onDataScopeChange?.({
+            year: selectedYear || defaultYear,
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
+            canViewAllOus: canViewAll,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [canViewAll, currentUser?.id, defaultYear, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
 
     // --- 1. Load and Normalize Data ---
     useEffect(() => {

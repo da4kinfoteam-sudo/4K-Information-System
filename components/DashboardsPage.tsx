@@ -13,6 +13,7 @@ import CommodityDashboard from './dashboards/CommodityDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import type { DataScope } from '../lib/scopedDataFetch';
 
 export interface DashboardsPageProps {
     subprojects: Subproject[];
@@ -27,6 +28,7 @@ export interface DashboardsPageProps {
     onSelectActivity?: (activity: Training | OtherActivity) => void;
     setExternalFilters?: (filters: any) => void;
     navigateTo?: (page: string) => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'Commodities' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
@@ -35,6 +37,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
+    const { onDataScopeChange } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
     const [modalData, setModalData] = useState<{ title: string; items: ModalItem[] } | null>(null);
@@ -43,6 +46,17 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [filtersOpen, setFiltersOpen] = useState(false);
+
+    useEffect(() => {
+        onDataScopeChange?.({
+            year: selectedYear,
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
+            canViewAllOus: !isLockedToOwnOu,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [currentUser?.id, isLockedToOwnOu, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
 
     // Enforce User OU restriction on mount/change
     useEffect(() => {

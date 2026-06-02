@@ -9,6 +9,10 @@ interface HeaderProps {
     toggleDarkMode: () => void;
     isDarkMode: boolean;
     setCurrentPage: (page: string) => void;
+    onRefreshData?: () => Promise<void> | void;
+    isRefreshingData?: boolean;
+    lastDataRefreshAt?: string | null;
+    dataRefreshError?: string | null;
 }
 
 const SunIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -29,7 +33,23 @@ const UserCircleIcon = (props: React.SVGProps<SVGSVGElement>) => (
     </svg>
 );
 
-const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMode, setCurrentPage }) => {
+const RefreshIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} {...props}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.75 15.25A7.5 7.5 0 0 0 18.5 18M18.25 8.75A7.5 7.5 0 0 0 5.5 6" />
+    </svg>
+);
+
+const Header: React.FC<HeaderProps> = ({
+    toggleSidebar,
+    toggleDarkMode,
+    isDarkMode,
+    setCurrentPage,
+    onRefreshData,
+    isRefreshingData = false,
+    lastDataRefreshAt = null,
+    dataRefreshError = null
+}) => {
     const { currentUser, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -78,7 +98,7 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
 
         checkDb();
 
-        const intervalId = setInterval(() => checkDb(false), 30000);
+        const intervalId = setInterval(() => checkDb(false), 60000);
         return () => clearInterval(intervalId);
     }, []);
 
@@ -96,6 +116,27 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
             : 'app-topbar__status--loading';
 
     const dbStatusLabel = dbStatus === 'connected' ? 'System Online' : dbStatus === 'offline' ? 'Offline Mode' : 'Connecting...';
+    const dbStatusTitle = dbStatus === 'connected'
+        ? 'System Online - connected to Supabase'
+        : dbStatus === 'offline'
+            ? 'Offline Mode - using local data until refresh succeeds'
+            : 'Connecting to Supabase...';
+
+    const formatRefreshTime = (value: string | null) => {
+        if (!value) return 'Not refreshed yet';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return 'Not refreshed yet';
+        return parsed.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    };
+
+    const refreshTitle = dataRefreshError
+        ? `Refresh failed: ${dataRefreshError}`
+        : lastDataRefreshAt
+            ? `Refresh Data - Last refreshed ${formatRefreshTime(lastDataRefreshAt)}`
+            : 'Refresh Data';
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -124,33 +165,40 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, toggleDarkMode, isDarkMo
                     </svg>
                 </button>
 
-                <div className="app-topbar__search" aria-label="Search placeholder">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z" />
-                    </svg>
-                    <input type="search" placeholder="Search or type command..." aria-label="Search" />
-                    <kbd>Ctrl K</kbd>
-                </div>
-
                 <span className="app-topbar__date">
                     {formattedDate}
                 </span>
             </div>
 
             <div className="app-topbar__actions">
-                <div className={`hidden md:flex app-topbar__status ${dbStatusClass}`} title={dbStatus === 'connected' ? 'Connected to Supabase' : 'Using Local Data / Offline'}>
+                <div
+                    className={`app-topbar__status ${dbStatusClass}`}
+                    title={dbStatusTitle}
+                    aria-label={dbStatusLabel}
+                    role="status"
+                >
                     <span className="app-topbar__status-dot"></span>
-                    {dbStatusLabel}
                 </div>
 
-                <button
-                    onClick={toggleDarkMode}
-                    className="app-icon-button"
-                    aria-label={isDarkMode ? 'Set light mode' : 'Set dark mode'}
-                    title={isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
-                >
-                    {isDarkMode ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-                </button>
+                <div className="app-topbar__sync">
+                    <span className="app-topbar__refresh-time hidden xl:inline">
+                        {isRefreshingData
+                            ? 'Refreshing...'
+                            : lastDataRefreshAt
+                                ? `Updated ${formatRefreshTime(lastDataRefreshAt)}`
+                                : 'Manual refresh'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => { void onRefreshData?.(); }}
+                        className={`app-icon-button app-topbar__refresh ${isRefreshingData ? 'is-loading' : ''} ${dataRefreshError ? 'has-error' : ''}`}
+                        aria-label="Refresh data"
+                        title={refreshTitle}
+                        disabled={!onRefreshData || isRefreshingData}
+                    >
+                        <RefreshIcon />
+                    </button>
+                </div>
 
                 {currentUser && (
                     <div className="app-topbar__user" ref={menuRef}>

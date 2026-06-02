@@ -1,8 +1,8 @@
 // Author: 4K 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 
-export async function fetchAll(tableName: string, orderBy: string = 'id', ascending: boolean = true) {
+export async function fetchAll(tableName: string, orderBy: string = 'id', ascending: boolean = true, throwOnError: boolean = false) {
     if (!supabase) return [];
     
     let allData: any[] = [];
@@ -19,6 +19,9 @@ export async function fetchAll(tableName: string, orderBy: string = 'id', ascend
 
         if (error) {
             console.error(`Error fetching ${tableName}:`, error);
+            if (throwOnError) {
+                throw error;
+            }
             break;
         }
 
@@ -36,43 +39,69 @@ export async function fetchAll(tableName: string, orderBy: string = 'id', ascend
     return allData;
 }
 
+export interface SupabaseTableSyncState {
+    refresh: () => Promise<void>;
+    replaceLocalData: (nextData: any[]) => void;
+    isLoading: boolean;
+    lastFetchedAt: string | null;
+    error: string | null;
+}
+
+export interface SupabaseTableOptions<T> {
+    autoFetch?: boolean;
+    fetcher?: () => Promise<T[]>;
+}
+
 export function useSupabaseTable<T extends { id: number | string }>(
     tableName: string,
-    initialData: T[]
-): [T[], React.Dispatch<React.SetStateAction<T[]>>] {
+    initialData: T[],
+    options: SupabaseTableOptions<T> = {}
+): [T[], React.Dispatch<React.SetStateAction<T[]>>, SupabaseTableSyncState] {
     const [data, setData] = useState<T[]>(initialData);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const autoFetch = options.autoFetch !== false;
+    const fetcher = options.fetcher;
 
-    useEffect(() => {
+    const refresh = useCallback(async () => {
         if (!supabase) return;
 
-        const fetchData = async () => {
-            const dbData = await fetchAll(tableName);
-            if (dbData && dbData.length > 0) {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const dbData = fetcher
+                ? await fetcher()
+                : await fetchAll(tableName, 'id', true, true);
+            if (dbData && (dbData.length > 0 || initialData.length === 0)) {
                 setData(dbData as T[]);
             }
+            setLastFetchedAt(new Date().toISOString());
             setIsLoaded(true);
-        };
+        } catch (err: any) {
+            const message = err?.message || `Unable to fetch ${tableName}.`;
+            setError(message);
+            console.error(`Error refreshing ${tableName}:`, err);
+            throw err;
+        } finally {
+            setIsLoading(false);
+        }
+    }, [fetcher, initialData.length, tableName]);
 
-        fetchData();
+    useEffect(() => {
+        if (!autoFetch) return;
+        refresh().catch(() => {
+            // Individual refresh errors are stored in hook state and surfaced by callers.
+        });
+    }, [autoFetch, refresh]);
 
-        // Subscribe to real-time changes
-        const channel = supabase
-            .channel(`public:${tableName}`)
-            .on(
-                'postgres_changes',
-                { event: '*', table: tableName, schema: 'public' },
-                () => {
-                    // Re-fetch all data on any change for consistency, as complex relations might be affected
-                    fetchData();
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [tableName]);
+    const replaceLocalData = useCallback((nextData: any[]) => {
+        setData((nextData || []) as T[]);
+        setLastFetchedAt(new Date().toISOString());
+        setError(null);
+        setIsLoaded(true);
+    }, []);
 
     const setSupabaseData = (action: React.SetStateAction<T[]>) => {
         setData((prev) => {
@@ -125,6 +154,6 @@ export function useSupabaseTable<T extends { id: number | string }>(
         });
     };
 
-    return [data, setSupabaseData];
+    return [data, setSupabaseData, { refresh, replaceLocalData, isLoading, lastFetchedAt, error }];
 }
 // --- End of useSupabaseTable.ts ---

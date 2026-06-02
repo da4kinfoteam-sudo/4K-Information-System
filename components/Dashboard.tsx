@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
+import type { DataScope } from '../lib/scopedDataFetch';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
 declare const L: any;
@@ -260,12 +261,13 @@ interface DashboardProps {
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
     externalFilters?: { region?: string; year?: string; search?: string } | null;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     subprojects, ipos, activities, systemSettings,
     officeReqs, staffingReqs, otherProgramExpenses,
-    onSelectSubproject, onSelectActivity, externalFilters
+    onSelectSubproject, onSelectActivity, externalFilters, onDataScopeChange
 }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     
@@ -278,6 +280,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [totalBudgetView, setTotalBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
+
+    useEffect(() => {
+        onDataScopeChange?.({
+            year: selectedYear,
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
+            canViewAllOus: !isLockedToOwnOu,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [currentUser?.id, isLockedToOwnOu, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
     const [spBudgetView, setSpBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     const [trBudgetView, setTrBudgetView] = useState<'Obligated' | 'Disbursed'>('Obligated');
     

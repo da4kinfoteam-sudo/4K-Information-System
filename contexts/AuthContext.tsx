@@ -14,6 +14,7 @@ interface AuthContextType {
     rolesConfigs: RoleConfig[];
     hasAccess: (module: string, action: 'view' | 'edit' | 'delete') => boolean;
     getVisibilityScope: (module: string) => 'All' | 'Own OU';
+    refreshUsersList: () => Promise<void>;
     refreshUser: () => Promise<void>;
     refreshPermissions: () => Promise<void>;
     isAuthReady: boolean;
@@ -24,7 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [currentUser, setCurrentUser] = useLocalStorageState<User | null>('currentUserSession', null);
     const [isAuthReady, setIsAuthReady] = useState(false);
-    const [usersList, setUsersList] = useSupabaseTable<User>('users', []);
+    const [usersList, setUsersList, usersSync] = useSupabaseTable<User>('users', []);
     const [rolesConfigs, setRolesConfigs] = useState<RoleConfig[]>([]);
 
     const fetchRolesConfigs = async () => {
@@ -112,7 +113,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return (
         <AuthContext.Provider value={{ 
             currentUser, login, logout, usersList, setUsersList, rolesConfigs, 
-            hasAccess, getVisibilityScope, refreshUser: fetchCurrentUser, refreshPermissions: fetchRolesConfigs,
+            hasAccess, getVisibilityScope, refreshUsersList: usersSync.refresh, refreshUser: fetchCurrentUser, refreshPermissions: fetchRolesConfigs,
             isAuthReady
         }}>
             {children}

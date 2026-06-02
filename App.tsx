@@ -1,6 +1,6 @@
 
 // Author: 4K 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -35,9 +35,10 @@ import LODDetails from './components/LOD/LODDetails';
 import AIChatbot from './components/AIChatbot'; // Import Chatbot
 
 import useLocalStorageState from './hooks/useLocalStorageState';
-import { useSupabaseTable, fetchAll } from './hooks/useSupabaseTable'; 
+import { useSupabaseTable } from './hooks/useSupabaseTable'; 
 import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
@@ -100,7 +101,7 @@ const AccessDenied: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) 
 );
 
 const AppContent: React.FC = () => {
-    const { currentUser, hasAccess, isAuthReady } = useAuth();
+    const { currentUser, hasAccess, getVisibilityScope, isAuthReady, refreshUser, refreshUsersList, refreshPermissions } = useAuth();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
@@ -123,19 +124,20 @@ const AppContent: React.FC = () => {
     // --- DATA STATE MANAGEMENT ---
     
     // Subprojects, IPOs, Activities use the sync hook
-    const [subprojects, setSubprojects] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects);
-    const [ipos, setIpos] = useSupabaseTable<IPO>('ipos', sampleIPOs);
-    const [activities, setActivities] = useSupabaseTable<Activity>('activities', sampleActivities);
-    const [marketingPartners, setMarketingPartners] = useSupabaseTable<MarketingPartner>('marketing_partners', sampleMarketingPartners);
+    const scopedTableOptions = { autoFetch: false };
+    const [subprojects, setSubprojects, subprojectsSync] = useSupabaseTable<Subproject>('subprojects', sampleSubprojects, scopedTableOptions);
+    const [ipos, setIpos, iposSync] = useSupabaseTable<IPO>('ipos', sampleIPOs, scopedTableOptions);
+    const [activities, setActivities, activitiesSync] = useSupabaseTable<Activity>('activities', sampleActivities, scopedTableOptions);
+    const [marketingPartners, setMarketingPartners, marketingPartnersSync] = useSupabaseTable<MarketingPartner>('marketing_partners', sampleMarketingPartners, scopedTableOptions);
     
-    // Program Management States - Now using useSupabaseTable for real-time support
-    const [officeReqs, setOfficeReqs] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements);
-    const [staffingReqs, setStaffingReqs] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements);
-    const [otherProgramExpenses, setOtherProgramExpenses] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses);
+    // Program Management States - loaded at startup and refreshed manually
+    const [officeReqs, setOfficeReqs, officeReqsSync] = useSupabaseTable<OfficeRequirement>('office_requirements', sampleOfficeRequirements, scopedTableOptions);
+    const [staffingReqs, setStaffingReqs, staffingReqsSync] = useSupabaseTable<StaffingRequirement>('staffing_requirements', sampleStaffingRequirements, scopedTableOptions);
+    const [otherProgramExpenses, setOtherProgramExpenses, otherProgramExpensesSync] = useSupabaseTable<OtherProgramExpense>('other_program_expenses', sampleOtherProgramExpenses, scopedTableOptions);
 
-    // Financial Records - Now using useSupabaseTable for real-time support
-    const [allFinancialObligations, setAllFinancialObligations] = useSupabaseTable<any>('financial_obligations', []);
-    const [allFinancialDisbursements, setAllFinancialDisbursements] = useSupabaseTable<any>('financial_disbursements', []);
+    // Financial Records - loaded at startup and refreshed manually
+    const [allFinancialObligations, setAllFinancialObligations, financialObligationsSync] = useSupabaseTable<any>('financial_obligations', [], scopedTableOptions);
+    const [allFinancialDisbursements, setAllFinancialDisbursements, financialDisbursementsSync] = useSupabaseTable<any>('financial_disbursements', [], scopedTableOptions);
 
     // Hydration Logic
     const obligationsMap = useMemo(() => {
@@ -246,29 +248,21 @@ const AppContent: React.FC = () => {
     // Managed manually to support direct DB operations
     const [deadlines, setDeadlines] = useState<Deadline[]>([]);
     const [budgetCeilings, setBudgetCeilings] = useState<any[]>([]);
-
-    // Fetch Program Management & System Settings Data on mount
-    useEffect(() => {
-        if (!supabase || !isAuthReady) return;
-        const fetchAllData = async () => {
-            // Fetch System Settings
-            const dl = await fetchAll('deadlines', 'date', true);
-            setDeadlines(dl as Deadline[]);
-
-            // Fetch Budget Ceilings
-            const { data: bc } = await supabase.from('budget_ceilings').select('*');
-            setBudgetCeilings(bc || []);
-
-            // Fetch GIDA Areas
-            const ga = await fetchAll('gida_areas', 'id', true);
-            if (ga.length > 0) setGidaAreas(ga as GidaArea[]);
-
-            // Fetch ELCAC Areas
-            const ea = await fetchAll('elcac_areas', 'id', true);
-            if (ea.length > 0) setElcacAreas(ea as ElcacArea[]);
-        };
-        fetchAllData();
-    }, [isAuthReady]);
+    const [isGlobalRefreshing, setIsGlobalRefreshing] = useState(false);
+    const [globalLastRefreshedAt, setGlobalLastRefreshedAt] = useState<string | null>(null);
+    const [globalRefreshError, setGlobalRefreshError] = useState<string | null>(null);
+    const activeDataScopeKeyRef = useRef<string | null>(null);
+    const activeDataScopeRef = useRef<DataScope | null>(null);
+    const scopeRequestSeqRef = useRef(0);
+    const replaceSubprojects = subprojectsSync.replaceLocalData;
+    const replaceIpos = iposSync.replaceLocalData;
+    const replaceActivities = activitiesSync.replaceLocalData;
+    const replaceMarketingPartners = marketingPartnersSync.replaceLocalData;
+    const replaceOfficeReqs = officeReqsSync.replaceLocalData;
+    const replaceStaffingReqs = staffingReqsSync.replaceLocalData;
+    const replaceOtherProgramExpenses = otherProgramExpensesSync.replaceLocalData;
+    const replaceFinancialObligations = financialObligationsSync.replaceLocalData;
+    const replaceFinancialDisbursements = financialDisbursementsSync.replaceLocalData;
 
     // Helper to filter data based on visibility scope
     const filterByVisibility = <T extends { operatingUnit?: string }>(data: T[]): T[] => {
@@ -290,15 +284,24 @@ const AppContent: React.FC = () => {
     const otherActivities = useMemo(() => visibleActivities.filter(a => a.type === 'Activity'), [visibleActivities]);
 
     // Reference States
-    const [referenceUacsList, setReferenceUacsList] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList);
-    const [referenceParticularList, setReferenceParticularList] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList);
-    const [refCommodities, setRefCommodities] = useSupabaseTable<RefCommodity>('ref_commodities', sampleRefCommodities);
-    const [refLivestock, setRefLivestock] = useSupabaseTable<RefLivestock>('ref_livestock', sampleRefLivestock);
-    const [refEquipment, setRefEquipment] = useSupabaseTable<RefEquipment>('ref_equipment', sampleRefEquipment);
-    const [refInputs, setRefInputs] = useSupabaseTable<RefInput>('ref_inputs', sampleRefInputs);
-    const [refInfrastructure, setRefInfrastructure] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', sampleRefInfrastructure);
-    const [refTrainings, setRefTrainings] = useSupabaseTable<RefTrainingReference>('ref_trainings', sampleRefTrainings);
-    const [referenceActivities, setReferenceActivities] = useSupabaseTable<ReferenceActivity>('reference_activities', []);
+    const [referenceUacsList, setReferenceUacsList, referenceUacsSync] = useSupabaseTable<ReferenceUacs>('reference_uacs', sampleReferenceUacsList, scopedTableOptions);
+    const [referenceParticularList, setReferenceParticularList, referenceParticularsSync] = useSupabaseTable<ReferenceParticular>('reference_particulars', sampleReferenceParticularList, scopedTableOptions);
+    const [refCommodities, setRefCommodities, refCommoditiesSync] = useSupabaseTable<RefCommodity>('ref_commodities', sampleRefCommodities, scopedTableOptions);
+    const [refLivestock, setRefLivestock, refLivestockSync] = useSupabaseTable<RefLivestock>('ref_livestock', sampleRefLivestock, scopedTableOptions);
+    const [refEquipment, setRefEquipment, refEquipmentSync] = useSupabaseTable<RefEquipment>('ref_equipment', sampleRefEquipment, scopedTableOptions);
+    const [refInputs, setRefInputs, refInputsSync] = useSupabaseTable<RefInput>('ref_inputs', sampleRefInputs, scopedTableOptions);
+    const [refInfrastructure, setRefInfrastructure, refInfrastructureSync] = useSupabaseTable<RefInfrastructure>('ref_infrastructure', sampleRefInfrastructure, scopedTableOptions);
+    const [refTrainings, setRefTrainings, refTrainingsSync] = useSupabaseTable<RefTrainingReference>('ref_trainings', sampleRefTrainings, scopedTableOptions);
+    const [referenceActivities, setReferenceActivities, referenceActivitiesSync] = useSupabaseTable<ReferenceActivity>('reference_activities', [], scopedTableOptions);
+    const replaceReferenceUacs = referenceUacsSync.replaceLocalData;
+    const replaceReferenceParticulars = referenceParticularsSync.replaceLocalData;
+    const replaceRefCommodities = refCommoditiesSync.replaceLocalData;
+    const replaceRefLivestock = refLivestockSync.replaceLocalData;
+    const replaceRefEquipment = refEquipmentSync.replaceLocalData;
+    const replaceRefInputs = refInputsSync.replaceLocalData;
+    const replaceRefInfrastructure = refInfrastructureSync.replaceLocalData;
+    const replaceRefTrainings = refTrainingsSync.replaceLocalData;
+    const replaceReferenceActivities = referenceActivitiesSync.replaceLocalData;
     const [gidaAreas, setGidaAreas] = useState<GidaArea[]>(sampleGidaAreas);
     const [elcacAreas, setElcacAreas] = useState<ElcacArea[]>(sampleElcacAreas);
 
@@ -306,6 +309,115 @@ const AppContent: React.FC = () => {
     const systemSettings = useMemo(() => ({
         deadlines
     }), [deadlines]);
+
+    const buildDefaultDataScope = useCallback((overrides: Partial<DataScope> = {}): DataScope => {
+        const canViewAllOus = currentUser ? getVisibilityScope('Dashboards') !== 'Own OU' : true;
+        return {
+            year: overrides.year ?? new Date().getFullYear().toString(),
+            operatingUnit: canViewAllOus
+                ? (overrides.operatingUnit ?? 'All')
+                : (currentUser?.operatingUnit || overrides.operatingUnit || 'All'),
+            tier: overrides.tier ?? 'Tier 1',
+            fundType: overrides.fundType ?? 'Current',
+            canViewAllOus,
+            requestedBy: currentUser?.id ?? null
+        };
+    }, [currentUser, getVisibilityScope]);
+
+    const applyScopedData = useCallback((data: Awaited<ReturnType<typeof loadScopedAppData>>) => {
+        replaceSubprojects(data.subprojects);
+        replaceIpos(data.ipos);
+        replaceActivities(data.activities);
+        replaceMarketingPartners(data.marketingPartners);
+        replaceOfficeReqs(data.officeReqs);
+        replaceStaffingReqs(data.staffingReqs);
+        replaceOtherProgramExpenses(data.otherProgramExpenses);
+        replaceFinancialObligations(data.financialObligations);
+        replaceFinancialDisbursements(data.financialDisbursements);
+        replaceReferenceUacs(data.referenceUacsList);
+        replaceReferenceParticulars(data.referenceParticularList);
+        replaceRefCommodities(data.refCommodities);
+        replaceRefLivestock(data.refLivestock);
+        replaceRefEquipment(data.refEquipment);
+        replaceRefInputs(data.refInputs);
+        replaceRefInfrastructure(data.refInfrastructure);
+        replaceRefTrainings(data.refTrainings);
+        replaceReferenceActivities(data.referenceActivities);
+        setDeadlines(data.deadlines as Deadline[]);
+        setBudgetCeilings(data.budgetCeilings || []);
+        setGidaAreas((data.gidaAreas || []) as GidaArea[]);
+        setElcacAreas((data.elcacAreas || []) as ElcacArea[]);
+    }, [
+        replaceActivities,
+        replaceFinancialDisbursements,
+        replaceFinancialObligations,
+        replaceIpos,
+        replaceMarketingPartners,
+        replaceOfficeReqs,
+        replaceOtherProgramExpenses,
+        replaceRefCommodities,
+        replaceRefEquipment,
+        replaceRefInfrastructure,
+        replaceRefInputs,
+        replaceRefLivestock,
+        replaceRefTrainings,
+        replaceReferenceActivities,
+        replaceReferenceParticulars,
+        replaceReferenceUacs,
+        replaceStaffingReqs,
+        replaceSubprojects
+    ]);
+
+    const ensureDataScope = useCallback(async (scopeOverrides: Partial<DataScope> = {}, force = false) => {
+        const nextScope = buildDefaultDataScope(scopeOverrides);
+        const nextScopeKey = getDataScopeKey(nextScope);
+
+        if (!force && activeDataScopeKeyRef.current === nextScopeKey) {
+            return;
+        }
+
+        const requestSeq = scopeRequestSeqRef.current + 1;
+        scopeRequestSeqRef.current = requestSeq;
+        setIsGlobalRefreshing(true);
+        setGlobalRefreshError(null);
+
+        try {
+            const data = await loadScopedAppData(nextScope);
+            if (requestSeq !== scopeRequestSeqRef.current) {
+                return;
+            }
+            applyScopedData(data);
+            activeDataScopeKeyRef.current = nextScopeKey;
+            activeDataScopeRef.current = nextScope;
+            setGlobalLastRefreshedAt(new Date().toISOString());
+        } catch (error: any) {
+            if (requestSeq !== scopeRequestSeqRef.current) {
+                return;
+            }
+            const message = error?.message || 'Unable to refresh scoped data.';
+            setGlobalRefreshError(message);
+            console.error('Scoped data refresh failed:', error);
+        } finally {
+            if (requestSeq === scopeRequestSeqRef.current) {
+                setIsGlobalRefreshing(false);
+            }
+        }
+    }, [applyScopedData, buildDefaultDataScope]);
+
+    const refreshAllData = useCallback(async () => {
+        const currentScope = activeDataScopeRef.current || {};
+        await Promise.all([
+            ensureDataScope(currentScope, true),
+            refreshUsersList(),
+            refreshPermissions(),
+            refreshUser()
+        ]);
+    }, [ensureDataScope, refreshPermissions, refreshUser, refreshUsersList]);
+
+    useEffect(() => {
+        if (!isAuthReady) return;
+        ensureDataScope();
+    }, [ensureDataScope, isAuthReady]);
 
     // Selection States
     const [selectedSubproject, setSelectedSubproject] = useState<Subproject | null>(null);
@@ -640,6 +752,7 @@ const AppContent: React.FC = () => {
                             onSelectActivity={handleSelectActivity}
                             // @ts-ignore
                             externalFilters={externalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/dashboards':
                  return <DashboardsPage 
@@ -655,6 +768,7 @@ const AppContent: React.FC = () => {
                             onSelectActivity={handleSelectActivity}
                             setExternalFilters={setExternalFilters}
                             navigateTo={navigateTo}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/subprojects':
                 return <Subprojects 
@@ -814,6 +928,7 @@ const AppContent: React.FC = () => {
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/accomplishment/physical':
                 return <PhysicalAccomplishment 
@@ -829,6 +944,7 @@ const AppContent: React.FC = () => {
                             onSelectActivity={handleSelectActivity}
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
+                            onDataScopeChange={ensureDataScope}
                         />;
                 
             case '/program-management/office-detail':
@@ -924,6 +1040,7 @@ const AppContent: React.FC = () => {
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;
@@ -1106,6 +1223,10 @@ const AppContent: React.FC = () => {
                     toggleDarkMode={toggleDarkMode} 
                     isDarkMode={isDarkMode} 
                     setCurrentPage={navigateTo}
+                    onRefreshData={refreshAllData}
+                    isRefreshingData={isGlobalRefreshing}
+                    lastDataRefreshAt={globalLastRefreshedAt}
+                    dataRefreshError={globalRefreshError}
                 />
                 <main className="app-main">
                     {renderPage()}

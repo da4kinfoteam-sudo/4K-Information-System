@@ -404,12 +404,11 @@
 }
 
 .app-topbar__status {
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  gap: 0.5rem;
-  padding: 0.45rem 0.75rem;
-  white-space: nowrap;
+  flex-shrink: 0;
+  height: 0.9rem;
+  justify-content: center;
+  padding: 0.2rem;
+  width: 0.9rem;
 }
 
 .app-topbar__user {
@@ -420,38 +419,77 @@
   min-width: 0;
 }
 
-.app-topbar__status--connected {
-  background: var(--brand-green-100);
-  color: var(--brand-green-800);
-}
-
-.app-topbar__status--offline {
-  background: #fee4e2;
-  color: #b42318;
-}
-
-.app-topbar__status--loading {
-  background: var(--app-surface-muted);
-  color: var(--app-text-muted);
-}
-
 .app-topbar__status-dot {
   border-radius: 999px;
-  height: 0.5rem;
-  width: 0.5rem;
+  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 12%, transparent);
+  height: 0.62rem;
+  width: 0.62rem;
 }
 
 .app-topbar__status--connected .app-topbar__status-dot {
   background: var(--brand-green-600);
+  color: var(--brand-green-600);
 }
 
 .app-topbar__status--offline .app-topbar__status-dot {
   background: #d92d20;
+  color: #d92d20;
 }
 
 .app-topbar__status--loading .app-topbar__status-dot {
   animation: pulse 1.5s ease-in-out infinite;
   background: var(--app-text-soft);
+  color: var(--app-text-soft);
+}
+
+.app-topbar__sync {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.app-topbar__refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.app-topbar__refresh.is-loading svg {
+  animation: spin 1s linear infinite;
+}
+
+.app-topbar__refresh.has-error {
+  background: #fee4e2;
+  border-color: #fda29b;
+  color: #b42318;
+}
+
+.app-topbar__refresh-time {
+  color: var(--app-text-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .app-topbar__user {
@@ -555,10 +593,6 @@
     padding-left: 1.5rem;
     padding-right: 1.5rem;
   }
-
-  .app-topbar__search {
-    display: flex;
-  }
 }
 
 @media (max-width: 1279px) {
@@ -567,12 +601,6 @@
   }
 
   .app-topbar__user-text {
-    display: none !important;
-  }
-}
-
-@media (max-width: 1120px) {
-  .app-topbar__status {
     display: none !important;
   }
 }

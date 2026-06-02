@@ -13,6 +13,7 @@ import DetailedAccomplishmentDataReport from './reports/DetailedAccomplishmentDa
 import FinancialAuditReport from './reports/FinancialAuditReport';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import type { DataScope } from '../lib/scopedDataFetch';
 
 interface ReportsProps {
     ipos: IPO[];
@@ -30,6 +31,7 @@ interface ReportsProps {
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
@@ -50,6 +52,7 @@ const Reports: React.FC<ReportsProps> = ({
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
+    onDataScopeChange,
 }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Reports');
@@ -63,6 +66,32 @@ const Reports: React.FC<ReportsProps> = ({
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const requiresFinancialHistoryScope = activeTab === 'Monthly Matrix' || activeTab === 'Financial Audit';
+
+    useEffect(() => {
+        if (requiresFinancialHistoryScope) return;
+        onDataScopeChange?.({
+            year: selectedYear,
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: selectedFundType,
+            canViewAllOus: !isLockedToOwnOu,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [currentUser?.id, isLockedToOwnOu, onDataScopeChange, requiresFinancialHistoryScope, selectedFundType, selectedOu, selectedTier, selectedYear]);
+
+    useEffect(() => {
+        if (!requiresFinancialHistoryScope) return;
+        if (activeTab === 'Financial Audit' && !isSuperAdmin) return;
+        onDataScopeChange?.({
+            year: 'All',
+            operatingUnit: selectedOu,
+            tier: selectedTier,
+            fundType: 'All',
+            canViewAllOus: !isLockedToOwnOu,
+            requestedBy: currentUser?.id ?? null
+        });
+    }, [activeTab, currentUser?.id, isLockedToOwnOu, isSuperAdmin, onDataScopeChange, requiresFinancialHistoryScope, selectedOu, selectedTier]);
 
     useEffect(() => {
         if (isLockedToOwnOu && currentUser) {
