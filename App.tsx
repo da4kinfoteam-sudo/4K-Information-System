@@ -39,11 +39,12 @@ import { useSupabaseTable } from './hooks/useSupabaseTable';
 import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
+import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
     Deadline, PlanningSchedule, ReferenceActivity, MarketingPartner, GidaArea, ElcacArea, RefCommodity, RefLivestock, RefEquipment,
-    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringReport
+    RefInput, RefInfrastructure, RefTrainingReference, ActivityMonitoringAction, ActivityMonitoringReport
 } from './constants';
 import {
     sampleActivities, sampleMarketingPartners, sampleOfficeRequirements, sampleOtherProgramExpenses, sampleReferenceUacsList,
@@ -248,9 +249,12 @@ const AppContent: React.FC = () => {
     // Managed manually to support direct DB operations
     const [deadlines, setDeadlines] = useState<Deadline[]>([]);
     const [budgetCeilings, setBudgetCeilings] = useState<any[]>([]);
+    const [activityMonitoringReports, setActivityMonitoringReports] = useState<ActivityMonitoringReport[]>([]);
+    const [activityMonitoringActions, setActivityMonitoringActions] = useState<ActivityMonitoringAction[]>([]);
     const [isGlobalRefreshing, setIsGlobalRefreshing] = useState(false);
     const [globalLastRefreshedAt, setGlobalLastRefreshedAt] = useState<string | null>(null);
     const [globalRefreshError, setGlobalRefreshError] = useState<string | null>(null);
+    const [globalCacheStatus, setGlobalCacheStatus] = useState<string | null>(null);
     const activeDataScopeKeyRef = useRef<string | null>(null);
     const activeDataScopeRef = useRef<DataScope | null>(null);
     const scopeRequestSeqRef = useRef(0);
@@ -347,6 +351,8 @@ const AppContent: React.FC = () => {
         setBudgetCeilings(data.budgetCeilings || []);
         setGidaAreas((data.gidaAreas || []) as GidaArea[]);
         setElcacAreas((data.elcacAreas || []) as ElcacArea[]);
+        setActivityMonitoringReports((data.activityMonitoringReports || []) as ActivityMonitoringReport[]);
+        setActivityMonitoringActions((data.activityMonitoringActions || []) as ActivityMonitoringAction[]);
     }, [
         replaceActivities,
         replaceFinancialDisbursements,
@@ -380,22 +386,45 @@ const AppContent: React.FC = () => {
         scopeRequestSeqRef.current = requestSeq;
         setIsGlobalRefreshing(true);
         setGlobalRefreshError(null);
+        setGlobalCacheStatus(null);
+        let hadCachedData = false;
 
         try {
+            const cachedData = await readScopedCache(nextScope);
+            if (requestSeq !== scopeRequestSeqRef.current) {
+                return;
+            }
+
+            if (cachedData) {
+                hadCachedData = true;
+                applyScopedData(cachedData);
+                activeDataScopeKeyRef.current = nextScopeKey;
+                activeDataScopeRef.current = nextScope;
+                const cachedAt = await getScopeCacheMeta(nextScope);
+                const savedAt = cachedAt?.savedAt || new Date().toISOString();
+                setGlobalLastRefreshedAt(savedAt);
+                setGlobalCacheStatus(`Cached data from ${new Date(savedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`);
+            }
+
             const data = await loadScopedAppData(nextScope);
             if (requestSeq !== scopeRequestSeqRef.current) {
                 return;
             }
             applyScopedData(data);
+            await writeScopedCache(nextScope, data);
             activeDataScopeKeyRef.current = nextScopeKey;
             activeDataScopeRef.current = nextScope;
             setGlobalLastRefreshedAt(new Date().toISOString());
+            setGlobalCacheStatus(null);
         } catch (error: any) {
             if (requestSeq !== scopeRequestSeqRef.current) {
                 return;
             }
             const message = error?.message || 'Unable to refresh scoped data.';
-            setGlobalRefreshError(message);
+            setGlobalRefreshError(hadCachedData ? `Showing cached data. ${message}` : `No cached data for this filter. Connect and refresh data. ${message}`);
+            if (hadCachedData) {
+                setGlobalCacheStatus('Showing cached data');
+            }
             console.error('Scoped data refresh failed:', error);
         } finally {
             if (requestSeq === scopeRequestSeqRef.current) {
@@ -413,6 +442,14 @@ const AppContent: React.FC = () => {
             refreshUser()
         ]);
     }, [ensureDataScope, refreshPermissions, refreshUser, refreshUsersList]);
+
+    const clearLocalCache = useCallback(async () => {
+        if (!currentUser?.id) return;
+        await clearUserCache(currentUser.id);
+        setGlobalCacheStatus(null);
+        setGlobalLastRefreshedAt(null);
+        setGlobalRefreshError('Local cache cleared. Refresh data to rebuild the cache.');
+    }, [currentUser?.id]);
 
     useEffect(() => {
         if (!isAuthReady) return;
@@ -1091,6 +1128,8 @@ const AppContent: React.FC = () => {
                             subprojects={subprojects.filter(s => s.indigenousPeopleOrganization === selectedIpo.name)}
                             trainings={trainings.filter(t => t.participatingIpos.includes(selectedIpo.name))}
                             monitoringActivities={visibleActivities}
+                            cachedMonitoringReports={activityMonitoringReports}
+                            cachedMonitoringActions={activityMonitoringActions}
                             marketingPartners={marketingPartners}
                             onBack={handleBack}
                             previousPageName={getPageName(previousPage)}
@@ -1124,6 +1163,8 @@ const AppContent: React.FC = () => {
                             }}
                             uacsCodes={derivedUacsCodes}
                             referenceActivities={referenceActivities}
+                            cachedMonitoringReports={activityMonitoringReports}
+                            cachedMonitoringActions={activityMonitoringActions}
                             onSelectIpo={handleSelectIpo}
                             onOpenMonitoringReport={handleOpenMonitoringReport}
                         />;
@@ -1133,6 +1174,9 @@ const AppContent: React.FC = () => {
                             activity={selectedMonitoringReportContext.activity}
                             ipo={selectedMonitoringReportContext.ipo}
                             initialReport={selectedMonitoringReportContext.report}
+                            initialActions={selectedMonitoringReportContext.report?.id
+                                ? activityMonitoringActions.filter(action => Number(action.monitoring_report_id) === Number(selectedMonitoringReportContext.report?.id))
+                                : []}
                             onBack={handleBack}
                         />;
             case '/settings':
@@ -1224,9 +1268,11 @@ const AppContent: React.FC = () => {
                     isDarkMode={isDarkMode} 
                     setCurrentPage={navigateTo}
                     onRefreshData={refreshAllData}
+                    onClearLocalCache={clearLocalCache}
                     isRefreshingData={isGlobalRefreshing}
                     lastDataRefreshAt={globalLastRefreshedAt}
                     dataRefreshError={globalRefreshError}
+                    cacheStatus={globalCacheStatus}
                 />
                 <main className="app-main">
                     {renderPage()}

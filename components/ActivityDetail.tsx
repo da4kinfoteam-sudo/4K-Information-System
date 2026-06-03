@@ -29,6 +29,8 @@ interface ActivityDetailProps {
     onUpdateActivity: (updatedActivity: Activity) => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     referenceActivities?: ReferenceActivity[];
+    cachedMonitoringReports?: ActivityMonitoringReport[];
+    cachedMonitoringActions?: ActivityMonitoringAction[];
     onSelectIpo: (ipo: IPO) => void;
     onEdit: (mode: 'details' | 'expenses' | 'accomplishment') => void;
     onOpenMonitoringReport?: (activity: Activity, ipo: IPO, report?: ActivityMonitoringReport | null) => void;
@@ -93,7 +95,7 @@ const CollapsibleDetailCard: React.FC<{
     </section>
 );
 
-export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], onOpenMonitoringReport }) => {
+export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, onBack, previousPageName, onSelectIpo, onEdit, uacsCodes, referenceActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], onOpenMonitoringReport }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Activities');
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
@@ -115,7 +117,25 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         gallery: false,
         files: false
     });
-    const [monitoringReports, setMonitoringReports] = useState<ActivityMonitoringReport[]>([]);
+    const cachedReportsForActivity = useMemo(() =>
+        cachedMonitoringReports.filter(report => Number(report.activity_id) === Number(activity.id)),
+    [activity.id, cachedMonitoringReports]);
+
+    const buildLatestActionMap = useCallback((reports: ActivityMonitoringReport[], actions: ActivityMonitoringAction[]) => {
+        const reportIds = new Set(reports.map(report => Number(report.id)));
+        const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
+        actions
+            .filter(action => reportIds.has(Number(action.monitoring_report_id)))
+            .sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime())
+            .forEach(action => {
+                if (!latestMap[action.monitoring_report_id]) {
+                    latestMap[action.monitoring_report_id] = action;
+                }
+            });
+        return latestMap;
+    }, []);
+
+    const [monitoringReports, setMonitoringReports] = useState<ActivityMonitoringReport[]>(cachedReportsForActivity);
     const [latestActionsByReportId, setLatestActionsByReportId] = useState<Record<number, ActivityMonitoringAction | undefined>>({});
     const [isMonitoringLoading, setIsMonitoringLoading] = useState(false);
     const [monitoringMessage, setMonitoringMessage] = useState<string | null>(null);
@@ -206,8 +226,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
         loadDriveFiles();
     }, [loadDriveFiles]);
 
+    useEffect(() => {
+        setMonitoringReports(cachedReportsForActivity);
+        setLatestActionsByReportId(buildLatestActionMap(cachedReportsForActivity, cachedMonitoringActions));
+    }, [buildLatestActionMap, cachedMonitoringActions, cachedReportsForActivity]);
+
     const loadMonitoringReports = useCallback(async () => {
-        if (!supabase || !activity.id || !isMonitoringActivity) return;
+        if (!activity.id || !isMonitoringActivity) return;
+        if (!supabase) {
+            setMonitoringReports(cachedReportsForActivity);
+            setLatestActionsByReportId(buildLatestActionMap(cachedReportsForActivity, cachedMonitoringActions));
+            setMonitoringMessage(cachedReportsForActivity.length > 0 ? 'Showing cached Monitoring Reports.' : null);
+            return;
+        }
         setIsMonitoringLoading(true);
         setMonitoringMessage(null);
         try {
@@ -236,19 +267,17 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                 .order('created_at', { ascending: false });
             if (actionsError) throw actionsError;
 
-            const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
-            ((actions || []) as ActivityMonitoringAction[]).forEach(action => {
-                if (!latestMap[action.monitoring_report_id]) {
-                    latestMap[action.monitoring_report_id] = action;
-                }
-            });
-            setLatestActionsByReportId(latestMap);
+            setLatestActionsByReportId(buildLatestActionMap(activeReports, (actions || []) as ActivityMonitoringAction[]));
         } catch (error: any) {
-            setMonitoringMessage(error.message || 'Unable to load Monitoring Reports.');
+            setMonitoringReports(cachedReportsForActivity);
+            setLatestActionsByReportId(buildLatestActionMap(cachedReportsForActivity, cachedMonitoringActions));
+            setMonitoringMessage(cachedReportsForActivity.length > 0
+                ? `Showing cached Monitoring Reports. ${error.message || 'Unable to refresh live data.'}`
+                : error.message || 'Unable to load Monitoring Reports.');
         } finally {
             setIsMonitoringLoading(false);
         }
-    }, [activity.id, isMonitoringActivity]);
+    }, [activity.id, buildLatestActionMap, cachedMonitoringActions, cachedReportsForActivity, isMonitoringActivity]);
 
     useEffect(() => {
         loadMonitoringReports();

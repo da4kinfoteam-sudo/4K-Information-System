@@ -10,9 +10,11 @@ interface HeaderProps {
     isDarkMode: boolean;
     setCurrentPage: (page: string) => void;
     onRefreshData?: () => Promise<void> | void;
+    onClearLocalCache?: () => Promise<void> | void;
     isRefreshingData?: boolean;
     lastDataRefreshAt?: string | null;
     dataRefreshError?: string | null;
+    cacheStatus?: string | null;
 }
 
 const SunIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -46,9 +48,11 @@ const Header: React.FC<HeaderProps> = ({
     isDarkMode,
     setCurrentPage,
     onRefreshData,
+    onClearLocalCache,
     isRefreshingData = false,
     lastDataRefreshAt = null,
-    dataRefreshError = null
+    dataRefreshError = null,
+    cacheStatus = null
 }) => {
     const { currentUser, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -184,6 +188,8 @@ const Header: React.FC<HeaderProps> = ({
                     <span className="app-topbar__refresh-time hidden xl:inline">
                         {isRefreshingData
                             ? 'Refreshing...'
+                            : cacheStatus
+                                ? cacheStatus
                             : lastDataRefreshAt
                                 ? `Updated ${formatRefreshTime(lastDataRefreshAt)}`
                                 : 'Manual refresh'}
@@ -248,6 +254,15 @@ const Header: React.FC<HeaderProps> = ({
                                     {isDarkMode ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
                                     {isDarkMode ? 'Set Light Mode' : 'Set Dark Mode'}
                                 </button>
+                                {onClearLocalCache && (
+                                    <button
+                                        onClick={() => { void onClearLocalCache(); setIsMenuOpen(false); }}
+                                        className="app-topbar__menu-item"
+                                    >
+                                        <RefreshIcon className="h-4 w-4" />
+                                        Clear Local Cache
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => { logout(); setIsMenuOpen(false); }}
                                     className="app-topbar__menu-item app-topbar__menu-item--danger"

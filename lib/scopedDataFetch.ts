@@ -33,6 +33,8 @@ export interface ScopedAppData {
   budgetCeilings: any[];
   gidaAreas: any[];
   elcacAreas: any[];
+  activityMonitoringReports: any[];
+  activityMonitoringActions: any[];
 }
 
 const PAGE_SIZE = 1000;
@@ -158,6 +160,26 @@ async function fetchFinancialRows(tableName: 'financial_obligations' | 'financia
   return results.flat();
 }
 
+async function fetchRowsByIds(tableName: string, columnName: string, ids: number[], extraQuery?: (query: any) => any) {
+  if (!supabase || ids.length === 0) return [];
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += CHUNK_SIZE) {
+    chunks.push(ids.slice(index, index + CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(chunks.map(chunk => {
+    let query = supabase
+      .from(tableName)
+      .select('*')
+      .in(columnName, chunk)
+      .order('id', { ascending: true });
+    if (extraQuery) query = extraQuery(query);
+    return fetchQuery(query);
+  }));
+
+  return results.flat();
+}
+
 async function fetchScopedFinancialRows(
   subprojects: any[],
   activities: any[],
@@ -181,6 +203,28 @@ async function fetchScopedFinancialRows(
   return {
     financialObligations: obligationGroups.flat(),
     financialDisbursements: disbursementGroups.flat(),
+  };
+}
+
+async function fetchScopedMonitoringRows(activities: any[]) {
+  const activityIds = uniqueNumbers(activities.map(item => item.id));
+  const activityMonitoringReports = await fetchRowsByIds(
+    'activity_monitoring_reports',
+    'activity_id',
+    activityIds,
+    query => query.is('deleted_at', null)
+  );
+  const reportIds = uniqueNumbers(activityMonitoringReports.map(item => item.id));
+  const activityMonitoringActions = await fetchRowsByIds(
+    'activity_monitoring_actions',
+    'monitoring_report_id',
+    reportIds,
+    query => query.is('deleted_at', null)
+  );
+
+  return {
+    activityMonitoringReports,
+    activityMonitoringActions,
   };
 }
 
@@ -231,13 +275,19 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     fetchReferenceTable('elcac_areas'),
   ]);
 
-  const { financialObligations, financialDisbursements } = await fetchScopedFinancialRows(
-    subprojects,
-    activities,
-    officeReqs,
-    staffingReqs,
-    otherProgramExpenses
-  );
+  const [
+    { financialObligations, financialDisbursements },
+    { activityMonitoringReports, activityMonitoringActions },
+  ] = await Promise.all([
+    fetchScopedFinancialRows(
+      subprojects,
+      activities,
+      officeReqs,
+      staffingReqs,
+      otherProgramExpenses
+    ),
+    fetchScopedMonitoringRows(activities),
+  ]);
 
   return {
     subprojects,
@@ -262,5 +312,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     budgetCeilings,
     gidaAreas,
     elcacAreas,
+    activityMonitoringReports,
+    activityMonitoringActions,
   };
 }

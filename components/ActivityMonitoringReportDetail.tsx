@@ -9,6 +9,7 @@ interface ActivityMonitoringReportDetailProps {
     activity: Activity;
     ipo: IPO;
     initialReport?: ActivityMonitoringReport | null;
+    initialActions?: ActivityMonitoringAction[];
     onBack: () => void;
 }
 
@@ -34,6 +35,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
     activity,
     ipo,
     initialReport,
+    initialActions = [],
     onBack
 }) => {
     const { currentUser } = useAuth();
@@ -44,7 +46,7 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
     const [findings, setFindings] = useState(initialReport?.findings || '');
     const [issues, setIssues] = useState(initialReport?.issues || '');
     const [recommendations, setRecommendations] = useState(initialReport?.recommendations || '');
-    const [actions, setActions] = useState<ActivityMonitoringAction[]>([]);
+    const [actions, setActions] = useState<ActivityMonitoringAction[]>(initialActions);
     const [newAction, setNewAction] = useState('');
     const [message, setMessage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -53,8 +55,18 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
 
     const canEditReport = canEdit || isAdmin;
 
+    useEffect(() => {
+        setActions(initialActions);
+    }, [initialActions]);
+
     const loadReport = useCallback(async () => {
-        if (!supabase || !activity.id || !ipo.id) return;
+        if (!activity.id || !ipo.id) return;
+        if (!supabase) {
+            setActions(initialActions);
+            setMessage(initialReport ? 'Showing cached Monitoring Report.' : null);
+            setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         setMessage(null);
         try {
@@ -92,11 +104,14 @@ const ActivityMonitoringReportDetail: React.FC<ActivityMonitoringReportDetailPro
             if (actionError) throw actionError;
             setActions((actionRows || []) as ActivityMonitoringAction[]);
         } catch (error: any) {
-            setMessage(error.message || 'Unable to load monitoring report.');
+            setActions(initialActions);
+            setMessage(initialReport
+                ? `Showing cached Monitoring Report. ${error.message || 'Unable to refresh live data.'}`
+                : error.message || 'Unable to load monitoring report.');
         } finally {
             setIsLoading(false);
         }
-    }, [activity.id, ipo.id, report]);
+    }, [activity.id, initialActions, initialReport, ipo.id, report]);
 
     useEffect(() => {
         loadReport();

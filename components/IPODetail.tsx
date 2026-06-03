@@ -31,6 +31,8 @@ interface IPODetailProps {
     subprojects: Subproject[];
     trainings: Training[];
     monitoringActivities?: Activity[];
+    cachedMonitoringReports?: ActivityMonitoringReport[];
+    cachedMonitoringActions?: ActivityMonitoringAction[];
     marketingPartners: MarketingPartner[];
     onBack: () => void;
     previousPageName: string;
@@ -246,7 +248,7 @@ const CollapsibleDetailCard: React.FC<{
     </section>
 );
 
-const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
+const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, monitoringActivities = [], cachedMonitoringReports = [], cachedMonitoringActions = [], marketingPartners, onBack, previousPageName, onUpdateIpo, onSelectSubproject, onSelectActivity, onOpenMonitoringReport, onSelectLodYear, onSelectMarketingPartner, particularTypes, commodityCategories }) => {
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('IPO Management');
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
@@ -333,8 +335,39 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
         return new Map(monitoringActivities.map(activity => [Number(activity.id), activity]));
     }, [monitoringActivities]);
 
+    const cachedReportsForIpo = useMemo(() =>
+        cachedMonitoringReports
+            .filter(report => Number(report.ipo_id) === Number(ipo.id))
+            .filter(report => monitoringActivityById.has(Number(report.activity_id))),
+    [cachedMonitoringReports, ipo.id, monitoringActivityById]);
+
+    const buildLatestActionMap = useCallback((reports: ActivityMonitoringReport[], actions: ActivityMonitoringAction[]) => {
+        const reportIds = new Set(reports.map(report => Number(report.id)));
+        const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
+        actions
+            .filter(action => reportIds.has(Number(action.monitoring_report_id)))
+            .sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime())
+            .forEach(action => {
+                if (!latestMap[action.monitoring_report_id]) {
+                    latestMap[action.monitoring_report_id] = action;
+                }
+            });
+        return latestMap;
+    }, []);
+
+    useEffect(() => {
+        setMonitoringReports(cachedReportsForIpo);
+        setLatestMonitoringActions(buildLatestActionMap(cachedReportsForIpo, cachedMonitoringActions));
+    }, [buildLatestActionMap, cachedMonitoringActions, cachedReportsForIpo]);
+
     const loadMonitoringReports = useCallback(async () => {
-        if (!supabase || !ipo.id) return;
+        if (!ipo.id) return;
+        if (!supabase) {
+            setMonitoringReports(cachedReportsForIpo);
+            setLatestMonitoringActions(buildLatestActionMap(cachedReportsForIpo, cachedMonitoringActions));
+            setMonitoringMessage(cachedReportsForIpo.length > 0 ? 'Showing cached Monitoring Reports.' : null);
+            return;
+        }
         setIsMonitoringLoading(true);
         setMonitoringMessage(null);
         try {
@@ -364,19 +397,17 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                 .order('created_at', { ascending: false });
             if (actionError) throw actionError;
 
-            const latestMap: Record<number, ActivityMonitoringAction | undefined> = {};
-            ((actions || []) as ActivityMonitoringAction[]).forEach(action => {
-                if (!latestMap[action.monitoring_report_id]) {
-                    latestMap[action.monitoring_report_id] = action;
-                }
-            });
-            setLatestMonitoringActions(latestMap);
+            setLatestMonitoringActions(buildLatestActionMap(visibleReports, (actions || []) as ActivityMonitoringAction[]));
         } catch (error: any) {
-            setMonitoringMessage(error.message || 'Unable to load Monitoring Reports.');
+            setMonitoringReports(cachedReportsForIpo);
+            setLatestMonitoringActions(buildLatestActionMap(cachedReportsForIpo, cachedMonitoringActions));
+            setMonitoringMessage(cachedReportsForIpo.length > 0
+                ? `Showing cached Monitoring Reports. ${error.message || 'Unable to refresh live data.'}`
+                : error.message || 'Unable to load Monitoring Reports.');
         } finally {
             setIsMonitoringLoading(false);
         }
-    }, [ipo.id, monitoringActivityById]);
+    }, [buildLatestActionMap, cachedMonitoringActions, cachedReportsForIpo, ipo.id, monitoringActivityById]);
 
     useEffect(() => {
         loadMonitoringReports();
