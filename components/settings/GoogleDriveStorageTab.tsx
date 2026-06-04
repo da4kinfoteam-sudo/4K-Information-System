@@ -20,6 +20,9 @@ const GoogleDriveStorageTab: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [isWorking, setIsWorking] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
+    const isDriveExpired = status?.tokenStatus === 'expired';
+    const statusLabel = isDriveExpired ? 'Reconnect required' : status?.isConnected ? 'Connected' : 'Not connected';
+    const statusClass = status?.isConnected ? 'status-badge--completed' : isDriveExpired ? 'status-badge--cancelled' : 'status-badge--neutral';
 
     const callbackMessage = useMemo(() => {
         const hash = window.location.hash || '';
@@ -98,13 +101,19 @@ const GoogleDriveStorageTab: React.FC = () => {
                     </h3>
                     <p className="drive-panel__copy">Connect one Super Admin-owned Google Drive folder for IPO file uploads.</p>
                 </div>
-                <span className={`status-badge ${status?.isConnected ? 'status-badge--completed' : 'status-badge--neutral'}`}>
+                <span className={`status-badge ${statusClass}`}>
                     {status?.isConnected ? <CheckCircle2 aria-hidden="true" /> : <XCircle aria-hidden="true" />}
-                    {status?.isConnected ? 'Connected' : 'Not connected'}
+                    {statusLabel}
                 </span>
             </div>
 
             {message && <p className="drive-panel__message" role="status">{message}</p>}
+            {isDriveExpired && (
+                <div className="drive-panel__warning drive-panel__warning--danger" role="alert">
+                    <p className="font-bold">Google Drive connection expired.</p>
+                    <p>{status?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.'}</p>
+                </div>
+            )}
 
             {!status?.isConfigured && (
                 <div className="drive-panel__warning">
@@ -129,6 +138,10 @@ const GoogleDriveStorageTab: React.FC = () => {
                 <div>
                     <dt>Connected date</dt>
                     <dd>{formatConnectionDate(status?.connectedAt)}</dd>
+                </div>
+                <div>
+                    <dt>Token status</dt>
+                    <dd>{isDriveExpired ? 'Expired - reconnect required' : status?.isConnected ? 'Valid' : 'Not connected'}</dd>
                 </div>
             </dl>
 

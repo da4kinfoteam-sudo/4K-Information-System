@@ -449,7 +449,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
             return;
         }
         if (!driveStatus?.isConnected) {
-            showDriveToast('error', 'Google Drive storage is not connected. Ask a Super Admin to connect it first.');
+            showDriveToast('error', driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
             return;
         }
 
@@ -1680,8 +1680,8 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                             <label
                                 htmlFor={`ipo-drive-upload-${ipo.id}`}
                                 className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
-                                title={!driveStatus?.isConnected ? 'Google Drive storage is not connected' : 'Upload IPO file'}
-                                aria-label={!driveStatus?.isConnected ? 'Google Drive storage is not connected' : 'Upload IPO file'}
+                                title={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload IPO file'}
+                                aria-label={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload IPO file'}
                             >
                                 {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
                                 {isDriveUploading ? 'Uploading...' : 'Upload File'}

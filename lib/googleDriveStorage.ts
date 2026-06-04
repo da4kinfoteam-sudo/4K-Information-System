@@ -4,6 +4,9 @@ import { User } from '../constants';
 export interface GoogleDriveStatus {
     isConfigured: boolean;
     isConnected: boolean;
+    hasConnection?: boolean;
+    tokenStatus?: 'valid' | 'expired' | 'not_connected';
+    connectionMessage?: string | null;
     accountEmail: string | null;
     connectedAt: string | null;
     rootFolderId: string | null;

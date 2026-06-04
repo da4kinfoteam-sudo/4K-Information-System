@@ -330,7 +330,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return;
         }
         if (!driveStatus?.isConnected) {
-            setDriveMessage('Google Drive storage is not connected. Ask a Super Admin to connect it first.');
+            setDriveMessage(driveStatus?.connectionMessage || 'Ask an Admin to reconnect Google Drive storage.');
             return;
         }
         if (!subproject.operatingUnit) {
@@ -2323,9 +2323,9 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <div>
                                 <p className="drive-file-card__copy">PDF and image documentation is stored by upload year under this subproject's Google Drive folder.</p>
                             </div>
-                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : 'status-badge--neutral'}`}>
+                            <span className={`status-badge ${driveStatus?.isConnected ? 'status-badge--completed' : driveStatus?.tokenStatus === 'expired' ? 'status-badge--cancelled' : 'status-badge--neutral'}`}>
                                 <HardDrive aria-hidden="true" />
-                                {driveStatus?.isConnected ? 'Drive connected' : 'Drive not connected'}
+                                {driveStatus?.isConnected ? 'Drive connected' : driveStatus?.tokenStatus === 'expired' ? 'Reconnect required' : 'Drive not connected'}
                             </span>
                         </div>
 
@@ -2335,7 +2335,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             <label
                                 htmlFor={`subproject-drive-upload-${subproject.id}`}
                                 className={`btn btn-primary ${(!canEdit || !driveStatus?.isConnected || isDriveUploading) ? 'is-disabled' : 'cursor-pointer'}`}
-                                title={!driveStatus?.isConnected ? 'Google Drive storage is not connected' : 'Upload Subproject file'}
+                                title={!driveStatus?.isConnected ? 'Ask an Admin to reconnect Google Drive storage' : 'Upload Subproject file'}
                             >
                                 {isDriveUploading ? <Loader2 className="animate-spin" aria-hidden="true" /> : <UploadCloud aria-hidden="true" />}
                                 {isDriveUploading ? 'Uploading...' : 'Upload File'}

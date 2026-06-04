@@ -631,6 +631,9 @@ export async function getConnectionStatus() {
     return {
       ...environment,
       isConnected: false,
+      hasConnection: false,
+      tokenStatus: "not_connected",
+      connectionMessage: null,
       accountEmail: null,
       connectedAt: null,
       rootFolderId: null
@@ -638,9 +641,24 @@ export async function getConnectionStatus() {
   }
 
   const connection = await getActiveConnection();
+  let tokenStatus = connection ? "valid" : "not_connected";
+  let connectionMessage: string | null = null;
+
+  if (connection) {
+    try {
+      await refreshAccessToken(await decryptSecret(connection.encrypted_refresh_token));
+    } catch (error) {
+      tokenStatus = "expired";
+      connectionMessage = "Google Drive connection expired. Ask an Admin to reconnect Google Drive storage.";
+    }
+  }
+
   return {
     ...environment,
-    isConnected: Boolean(connection),
+    isConnected: Boolean(connection) && tokenStatus === "valid",
+    hasConnection: Boolean(connection),
+    tokenStatus,
+    connectionMessage,
     accountEmail: connection?.google_account_email ?? null,
     connectedAt: connection?.connected_at ?? null,
     rootFolderId: connection?.root_folder_id ?? null,
@@ -714,8 +732,13 @@ export function settingsRedirectUrl(status: "connected" | "error", message?: str
 
 async function connectedDrive() {
   const connection = await getActiveConnection();
-  if (!connection) throw new Error("Google Drive storage is not connected. Ask a Super Admin to connect it first.");
-  const accessToken = await refreshAccessToken(await decryptSecret(connection.encrypted_refresh_token));
+  if (!connection) throw new Error("Google Drive storage is not connected. Ask an Admin to reconnect Google Drive storage.");
+  let accessToken: string;
+  try {
+    accessToken = await refreshAccessToken(await decryptSecret(connection.encrypted_refresh_token));
+  } catch {
+    throw new Error("Google Drive connection expired. Ask an Admin to reconnect Google Drive storage.");
+  }
   return { connection, accessToken };
 }
 
