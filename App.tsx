@@ -800,9 +800,11 @@ const AppContent: React.FC = () => {
                             officeReqs={visibleOfficeReqs}
                             staffingReqs={visibleStaffingReqs}
                             otherProgramExpenses={visibleOtherExpenses}
+                            marketingPartners={marketingPartners}
                             onSelectIpo={handleSelectIpo}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            onSelectMarketingPartner={handleSelectMarketingPartner}
                             setExternalFilters={setExternalFilters}
                             navigateTo={navigateTo}
                             onDataScopeChange={ensureDataScope}

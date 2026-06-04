@@ -9128,6 +9128,565 @@
   width: 18%;
 }
 
+.farm-productivity-dashboard {
+  --farm-green: #16a34a;
+  --farm-blue: #2563eb;
+  --farm-orange: #ea580c;
+  --farm-violet: #7c3aed;
+  --farm-red: #dc2626;
+}
+
+.farm-impact-hero {
+  align-items: center;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-soft);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.farm-impact-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.farm-impact-section__header {
+  align-items: end;
+  border-bottom: 1px solid var(--app-border);
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.15rem 0 0.55rem;
+}
+
+.farm-impact-section__header h3 {
+  color: var(--app-text);
+  font-size: 0.92rem;
+  font-weight: 900;
+  letter-spacing: 0.035em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.farm-impact-section__header span {
+  color: var(--app-text-soft);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-align: right;
+}
+
+.farm-impact-kpi-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(13.5rem, 1fr));
+}
+
+.farm-impact-kpi {
+  align-items: stretch;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-soft);
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  min-height: 9.5rem;
+  min-width: 0;
+  padding: 1rem;
+}
+
+.farm-impact-kpi__icon {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  height: 2.75rem;
+  justify-content: center;
+  width: 2.75rem;
+}
+
+.farm-impact-kpi__icon svg {
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+.farm-impact-kpi--green .farm-impact-kpi__icon,
+.farm-impact-kpi--good .farm-impact-kpi__icon { background: #dcfce7; color: var(--farm-green); }
+.farm-impact-kpi--blue .farm-impact-kpi__icon { background: #dbeafe; color: var(--farm-blue); }
+.farm-impact-kpi--orange .farm-impact-kpi__icon,
+.farm-impact-kpi--warning .farm-impact-kpi__icon { background: #ffedd5; color: var(--farm-orange); }
+.farm-impact-kpi--violet .farm-impact-kpi__icon { background: #ede9fe; color: var(--farm-violet); }
+.farm-impact-kpi--red .farm-impact-kpi__icon,
+.farm-impact-kpi--danger .farm-impact-kpi__icon { background: #fee2e2; color: var(--farm-red); }
+
+.farm-impact-kpi__body {
+  display: grid;
+  grid-template-rows: minmax(2rem, auto) auto 1fr;
+  min-width: 0;
+}
+
+.farm-impact-kpi__body span {
+  color: var(--app-text-muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.farm-impact-kpi__body strong {
+  color: var(--app-text);
+  font-size: clamp(1.2rem, 2vw, 1.7rem);
+  font-weight: 900;
+  line-height: 1.08;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.farm-impact-kpi__body small {
+  align-self: end;
+  color: var(--app-text-soft);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+  margin-top: 0.3rem;
+}
+
+.farm-impact-analytics-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.8fr) minmax(18rem, 0.8fr);
+}
+
+.farm-impact-analytics-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.farm-impact-card {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.farm-impact-card--wide {
+  min-height: 24rem;
+}
+
+.farm-impact-empty {
+  align-items: center;
+  display: grid;
+  justify-items: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.farm-impact-empty svg {
+  color: var(--brand-green-600);
+  height: 2rem;
+  margin-bottom: 0.5rem;
+  width: 2rem;
+}
+
+.farm-impact-empty h3 {
+  color: var(--app-text);
+  font-size: 1.1rem;
+  font-weight: 900;
+  margin: 0;
+}
+
+.farm-impact-empty p {
+  color: var(--app-text-muted);
+  margin: 0.35rem 0 0;
+  max-width: 34rem;
+}
+
+.farm-impact-scatter {
+  min-height: 18rem;
+  position: relative;
+}
+
+.farm-impact-scatter svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.farm-impact-scatter line {
+  stroke: var(--app-border);
+  stroke-width: 1;
+}
+
+.farm-impact-scatter__median {
+  stroke-dasharray: 4 5;
+  opacity: 0.8;
+}
+
+.farm-impact-scatter__point {
+  fill: var(--farm-green);
+  opacity: 0.72;
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.farm-impact-scatter__point--1 { fill: var(--farm-blue); }
+.farm-impact-scatter__point--2 { fill: var(--farm-orange); }
+.farm-impact-scatter__point--3 { fill: var(--farm-violet); }
+
+.farm-impact-scatter text {
+  fill: var(--app-text-muted);
+  font-size: 0.58rem;
+  font-weight: 800;
+}
+
+.farm-impact-summary {
+  align-items: center;
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+}
+
+.farm-impact-donut {
+  align-items: center;
+  border-radius: 999px;
+  display: flex;
+  height: 9rem;
+  justify-content: center;
+  width: 9rem;
+}
+
+.farm-impact-donut > div {
+  align-items: center;
+  background: var(--app-surface);
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  height: 6.2rem;
+  justify-content: center;
+  width: 6.2rem;
+}
+
+.farm-impact-donut strong {
+  color: var(--app-text);
+  font-size: 1.3rem;
+  font-weight: 900;
+}
+
+.farm-impact-donut span {
+  color: var(--app-text-muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.farm-impact-summary__list,
+.farm-impact-source-list {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.farm-impact-summary__list div,
+.farm-impact-source-list div {
+  align-items: center;
+  border-bottom: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+  display: grid;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 0.45rem;
+  grid-template-columns: auto 1fr auto;
+  padding-bottom: 0.5rem;
+}
+
+.farm-impact-summary__list div {
+  grid-template-columns: 1fr auto;
+}
+
+.farm-impact-summary__list strong,
+.farm-impact-source-list strong {
+  color: var(--app-text);
+  font-weight: 900;
+}
+
+.farm-impact-source-list__marker {
+  border-radius: 999px;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.farm-impact-source-list__marker--green { background: var(--farm-green); }
+.farm-impact-source-list__marker--blue { background: var(--farm-blue); }
+
+.farm-impact-yield-mix {
+  display: grid;
+  gap: 1rem;
+}
+
+.farm-impact-yield-mix__bar {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  display: flex;
+  height: 0.95rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.farm-impact-yield-mix__bar span {
+  display: block;
+  min-width: 0;
+}
+
+.farm-impact-yield-mix__segment--marketed { background: var(--farm-blue); }
+.farm-impact-yield-mix__segment--food { background: var(--farm-orange); }
+.farm-impact-yield-mix__segment--other { background: #94a3b8; }
+
+.farm-impact-yield-mix__legend {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.farm-impact-yield-mix__legend div {
+  align-items: center;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  display: grid;
+  gap: 0.25rem 0.55rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0.8rem;
+}
+
+.farm-impact-yield-mix__legend i {
+  border-radius: 999px;
+  height: 0.65rem;
+  width: 0.65rem;
+}
+
+.farm-impact-yield-mix__legend span {
+  color: var(--app-text-muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+  min-width: 0;
+}
+
+.farm-impact-yield-mix__legend strong {
+  color: var(--app-text);
+  font-weight: 900;
+  text-align: right;
+}
+
+.farm-impact-yield-mix__legend small {
+  color: var(--app-text-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+  grid-column: 2 / -1;
+}
+
+.farm-impact-market-metrics {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.farm-impact-market-metrics div {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-md);
+  padding: 0.8rem;
+}
+
+.farm-impact-market-metrics span {
+  color: var(--app-text-muted);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.farm-impact-market-metrics strong {
+  color: var(--app-text);
+  display: block;
+  font-size: 1rem;
+  font-weight: 900;
+  margin-top: 0.25rem;
+}
+
+.farm-impact-market-row {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.farm-impact-market-row:disabled {
+  cursor: default;
+}
+
+.farm-impact-table {
+  min-width: 52rem;
+}
+
+.farm-impact-table--wide {
+  min-width: 76rem;
+}
+
+.farm-impact-table td:first-child {
+  min-width: 13rem;
+}
+
+.farm-impact-table td strong {
+  color: var(--app-text);
+  display: block;
+  font-weight: 900;
+}
+
+.farm-impact-table td span:not(.status-badge) {
+  color: var(--app-text-soft);
+  display: block;
+  font-size: 0.76rem;
+  margin-top: 0.15rem;
+}
+
+.farm-impact-rate-cell {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.farm-impact-rate-cell span {
+  color: var(--app-text) !important;
+  font-weight: 900;
+  margin: 0 !important;
+}
+
+.farm-impact-progress {
+  background: var(--app-surface-muted);
+  border-radius: 999px;
+  height: 0.42rem;
+  overflow: hidden;
+  width: 4.4rem;
+}
+
+.farm-impact-progress span {
+  background: var(--farm-green);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.farm-impact-progress--blue span { background: var(--farm-blue); }
+.farm-impact-progress--orange span { background: var(--farm-orange); }
+
+.farm-impact-trend svg {
+  display: block;
+  width: 100%;
+}
+
+.farm-impact-trend line {
+  stroke: var(--app-border);
+}
+
+.farm-impact-trend rect {
+  fill: rgba(22, 163, 74, 0.68);
+}
+
+.farm-impact-trend polyline {
+  fill: none;
+  stroke: var(--farm-blue);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.farm-impact-trend circle {
+  fill: var(--farm-blue);
+  stroke: #ffffff;
+  stroke-width: 2;
+}
+
+.farm-impact-trend text {
+  fill: var(--app-text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.farm-impact-legend__income { background: var(--farm-green); }
+.farm-impact-legend__yield { background: var(--farm-blue); }
+
+@media (max-width: 1100px) {
+  .farm-impact-analytics-grid,
+  .farm-impact-analytics-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .farm-impact-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .farm-impact-hero .btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .farm-impact-section__header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .farm-impact-section__header span {
+    text-align: left;
+  }
+
+  .farm-impact-kpi-grid {
+    gap: 0.75rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .farm-impact-kpi {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    min-height: auto;
+    padding: 0.9rem;
+  }
+
+  .farm-impact-kpi__icon {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+
+  .farm-impact-card {
+    padding: 0.85rem;
+  }
+
+  .farm-impact-market-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .farm-impact-yield-mix__legend {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .farm-impact-rate-cell {
+    justify-content: flex-start;
+  }
+}
+
+.dark .farm-impact-kpi,
+.dark .farm-impact-hero,
+.dark .farm-impact-card,
+.dark .farm-impact-empty {
+  background: var(--app-surface);
+}
+
 .dark .financial-hierarchy__row--province:hover,
 .dark .financial-hierarchy__row--ad:hover {
   background: rgba(13, 162, 101, 0.12);

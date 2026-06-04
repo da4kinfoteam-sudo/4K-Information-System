@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears } from '../constants';
+import { Subproject, IPO, Training, OtherActivity, tiers, fundTypes, operatingUnits, ouToRegionMap, OfficeRequirement, StaffingRequirement, OtherProgramExpense, filterYears, MarketingPartner } from '../constants';
 import PhysicalDashboard from './dashboards/PhysicalDashboard';
 import FinancialDashboard from './dashboards/FinancialDashboard';
 import GADDashboard from './dashboards/GADDashboard';
@@ -23,9 +23,11 @@ export interface DashboardsPageProps {
     officeReqs: OfficeRequirement[];
     staffingReqs: StaffingRequirement[];
     otherProgramExpenses: OtherProgramExpense[];
+    marketingPartners: MarketingPartner[];
     onSelectIpo?: (ipo: IPO) => void;
     onSelectSubproject?: (project: Subproject) => void;
     onSelectActivity?: (activity: Training | OtherActivity) => void;
+    onSelectMarketingPartner?: (partner: MarketingPartner) => void;
     setExternalFilters?: (filters: any) => void;
     navigateTo?: (page: string) => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
@@ -295,7 +297,20 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}
                 {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
-                {activeTab === 'Farm Productivity and Income' && <FarmProductivityDashboard />}
+                {activeTab === 'Farm Productivity and Income' && (
+                    <FarmProductivityDashboard
+                        subprojects={filteredData.subprojects}
+                        ipos={filteredData.ipos}
+                        marketingPartners={props.marketingPartners}
+                        selectedYear={selectedYear}
+                        selectedOu={selectedOu}
+                        selectedTier={selectedTier}
+                        selectedFundType={selectedFundType}
+                        onSelectSubproject={props.onSelectSubproject}
+                        onSelectIpo={props.onSelectIpo}
+                        onSelectMarketingPartner={props.onSelectMarketingPartner}
+                    />
+                )}
             </div>
             
             {modalData && (
