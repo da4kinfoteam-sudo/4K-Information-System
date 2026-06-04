@@ -481,6 +481,23 @@ async function readJsonResponse<T>(response: Response, fallbackMessage: string):
   return payload as T;
 }
 
+async function readResponseErrorMessage(response: Response, fallbackMessage: string) {
+  const text = await response.text().catch(() => "");
+  if (!text) return fallbackMessage;
+
+  try {
+    const payload = JSON.parse(text);
+    if (typeof payload?.error_description === "string") return payload.error_description;
+    if (typeof payload?.error?.message === "string") return payload.error.message;
+    if (typeof payload?.error === "string") return payload.error;
+    if (typeof payload?.message === "string") return payload.message;
+  } catch {
+    return text;
+  }
+
+  return fallbackMessage;
+}
+
 async function refreshAccessToken(refreshToken: string) {
   const config = googleConfig();
   const response = await fetch(GOOGLE_TOKEN_URL, {
@@ -1088,9 +1105,16 @@ async function deleteDriveFile(accessToken: string, fileId: string) {
     method: "DELETE",
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  if (!response.ok && response.status !== 404) {
-    throw new Error("Unable to delete the Google Drive file.");
+  if (response.ok || response.status === 404 || response.status === 410) {
+    return;
   }
+
+  const message = await readResponseErrorMessage(response, "Unable to delete the Google Drive file.");
+  if (response.status === 401 || response.status === 403) {
+    throw new Error(`Google Drive refused the delete request: ${message}. Reconnect Google Drive storage or confirm the connected account owns this file.`);
+  }
+
+  throw new Error(`Unable to delete the Google Drive file: ${message}`);
 }
 
 export async function listIpoFiles(ipoId: number) {

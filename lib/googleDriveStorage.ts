@@ -191,9 +191,26 @@ const currentUserPayload = (currentUser: User | null) => {
     return { user_id: currentUser.id };
 };
 
-const readFunctionResult = <T>(data: T | null, error: any): T => {
+const readFunctionErrorMessage = async (error: any) => {
+    const fallback = error?.message || 'Supabase Edge Function request failed.';
+    const response = error?.context;
+
+    if (response && typeof response.clone === 'function') {
+        try {
+            const payload = await response.clone().json();
+            if (payload?.error && typeof payload.error === 'string') return payload.error;
+            if (payload?.message && typeof payload.message === 'string') return payload.message;
+        } catch {
+            // Supabase function errors may not always contain a JSON body.
+        }
+    }
+
+    return fallback;
+};
+
+const readFunctionResult = async <T>(data: T | null, error: any): Promise<T> => {
     if (error) {
-        throw new Error(error.message || 'Supabase Edge Function request failed.');
+        throw new Error(await readFunctionErrorMessage(error));
     }
     if (!data) {
         throw new Error('Supabase Edge Function returned no data.');
@@ -212,7 +229,7 @@ export const startGoogleDriveConnection = async (currentUser: User | null) => {
     const { data, error } = await requireSupabase().functions.invoke<{ authUrl: string }>('google-drive-connect-start', {
         body: currentUserPayload(currentUser)
     });
-    return readFunctionResult(data, error).authUrl;
+    return (await readFunctionResult(data, error)).authUrl;
 };
 
 export const disconnectGoogleDrive = async (currentUser: User | null) => {
@@ -226,7 +243,7 @@ export const listIpoDriveFiles = async (currentUser: User | null, ipoId: number)
     const { data, error } = await requireSupabase().functions.invoke<{ files: IpoDriveFile[] }>('ipo-drive-files-list', {
         body: { ...currentUserPayload(currentUser), ipo_id: ipoId }
     });
-    return readFunctionResult(data, error).files;
+    return (await readFunctionResult(data, error)).files;
 };
 
 export const uploadIpoDriveFile = async (currentUser: User | null, ipoId: number, file: File) => {
@@ -238,21 +255,21 @@ export const uploadIpoDriveFile = async (currentUser: User | null, ipoId: number
     const { data, error } = await requireSupabase().functions.invoke<{ file: IpoDriveFile }>('ipo-drive-file-upload', {
         body: formData
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const deleteIpoDriveFile = async (currentUser: User | null, fileRowId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ file: IpoDriveFile }>('ipo-drive-file-delete', {
         body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const listSubprojectDriveFiles = async (currentUser: User | null, subprojectId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ files: SubprojectDriveFile[] }>('subproject-drive-files-list', {
         body: { ...currentUserPayload(currentUser), subproject_id: subprojectId }
     });
-    return readFunctionResult(data, error).files;
+    return (await readFunctionResult(data, error)).files;
 };
 
 export const uploadSubprojectDriveFile = async (currentUser: User | null, subprojectId: number, file: File) => {
@@ -264,21 +281,21 @@ export const uploadSubprojectDriveFile = async (currentUser: User | null, subpro
     const { data, error } = await requireSupabase().functions.invoke<{ file: SubprojectDriveFile }>('subproject-drive-file-upload', {
         body: formData
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const deleteSubprojectDriveFile = async (currentUser: User | null, fileRowId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ file: SubprojectDriveFile }>('subproject-drive-file-delete', {
         body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const listActivityDriveFiles = async (currentUser: User | null, activityId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ files: ActivityDriveFile[] }>('activity-drive-files-list', {
         body: { ...currentUserPayload(currentUser), activity_id: activityId }
     });
-    return readFunctionResult(data, error).files;
+    return (await readFunctionResult(data, error)).files;
 };
 
 export const uploadActivityDriveFile = async (currentUser: User | null, activityId: number, file: File) => {
@@ -290,14 +307,14 @@ export const uploadActivityDriveFile = async (currentUser: User | null, activity
     const { data, error } = await requireSupabase().functions.invoke<{ file: ActivityDriveFile }>('activity-drive-file-upload', {
         body: formData
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const deleteActivityDriveFile = async (currentUser: User | null, fileRowId: number) => {
     const { data, error } = await requireSupabase().functions.invoke<{ file: ActivityDriveFile }>('activity-drive-file-delete', {
         body: { ...currentUserPayload(currentUser), file_row_id: fileRowId }
     });
-    return readFunctionResult(data, error).file;
+    return (await readFunctionResult(data, error)).file;
 };
 
 export const formatFileSize = (size?: number | null) => {
