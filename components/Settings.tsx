@@ -64,6 +64,7 @@ const Settings: React.FC<SettingsProps> = ({
     // We keep these legacy admin checks as absolute fallbacks for settings only
     const isAdmin = currentUser?.role === 'Administrator' || currentUser?.role === 'Super Admin';
     const isSuperAdmin = currentUser?.role === 'Super Admin';
+    const isGuest = currentUser?.role === 'Guest';
 
     useEffect(() => {
         if (isSuperAdmin && window.location.hash.includes('drive=')) {
@@ -71,16 +72,43 @@ const Settings: React.FC<SettingsProps> = ({
         }
     }, [isSuperAdmin]);
 
-    if (!currentUser) return null;
-    
     // Use granular rules from user overrides/roles config where applicable
-    const canAccessSystem = hasAccess('System Management', 'view') || isAdmin;
+    const canAccessSystem = !isGuest && (hasAccess('System Management', 'view') || isAdmin);
+
+    const isTabAllowed = (name: TabName): boolean => {
+        if (name === 'profile') return true;
+        if (isGuest) return false;
+
+        switch (name) {
+            case 'management':
+            case 'dcf':
+            case 'lod':
+            case 'logs':
+            case 'archive':
+                return isAdmin;
+            case 'control_center':
+            case 'drive':
+                return isSuperAdmin;
+            case 'system':
+                return canAccessSystem;
+            default:
+                return false;
+        }
+    };
+
+    useEffect(() => {
+        if (!isTabAllowed(activeTab)) {
+            setActiveTab('profile');
+        }
+    }, [activeTab, isAdmin, isSuperAdmin, isGuest, canAccessSystem]);
+
+    if (!currentUser) return null;
 
     const TabButton: React.FC<{ name: TabName; label: string }> = ({ name, label }) => {
         const isActive = activeTab === name;
         return (
             <button
-                onClick={() => setActiveTab(name)}
+                onClick={() => isTabAllowed(name) && setActiveTab(name)}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-200 whitespace-nowrap
                     ${isActive
                         ? 'border-accent text-accent'
@@ -96,7 +124,7 @@ const Settings: React.FC<SettingsProps> = ({
         <div className="max-w-7xl mx-auto animate-fadeIn pb-10">
              <h2 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">Settings</h2>
 
-             <SystemHealthCard />
+             {!isGuest && <SystemHealthCard />}
 
              <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg mb-6 overflow-hidden">
                 <div className="border-b border-gray-200 dark:border-gray-700">
