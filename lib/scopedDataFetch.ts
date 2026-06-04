@@ -1,5 +1,31 @@
 import { supabase } from '../supabaseClient';
 import { ouToRegionMap } from '../constants';
+import {
+  sampleActivities,
+  sampleActivityMonitoringActions,
+  sampleActivityMonitoringReports,
+  sampleBudgetCeilings,
+  sampleBudgetItemAdjustmentHistory,
+  sampleElcacAreas,
+  sampleFinancialDisbursements,
+  sampleFinancialObligations,
+  sampleGidaAreas,
+  sampleMarketingPartners,
+  sampleOfficeRequirements,
+  sampleOtherProgramExpenses,
+  sampleReferenceActivities,
+  sampleReferenceParticularList,
+  sampleReferenceUacsList,
+  sampleRefCommodities,
+  sampleRefEquipment,
+  sampleRefInfrastructure,
+  sampleRefInputs,
+  sampleRefLivestock,
+  sampleRefTrainings,
+  sampleStaffingRequirements,
+  sampleSubprojects,
+} from '../samples';
+import { sampleIPOs } from '../sampleIPOs';
 
 export interface DataScope {
   year: string | number;
@@ -35,6 +61,7 @@ export interface ScopedAppData {
   elcacAreas: any[];
   activityMonitoringReports: any[];
   activityMonitoringActions: any[];
+  budgetItemAdjustmentHistory: any[];
 }
 
 const PAGE_SIZE = 1000;
@@ -228,8 +255,154 @@ async function fetchScopedMonitoringRows(activities: any[]) {
   };
 }
 
+async function fetchBudgetItemAdjustmentHistory(subprojects: any[], activities: any[], staffingReqs: any[]) {
+  if (!supabase) return [];
+  const groups = [
+    { sourceType: 'subproject_detail', ids: uniqueNumbers(subprojects.map(item => item.id)) },
+    { sourceType: 'activity_expense', ids: uniqueNumbers(activities.map(item => item.id)) },
+    { sourceType: 'staffing_expense', ids: uniqueNumbers(staffingReqs.map(item => item.id)) },
+  ];
+
+  try {
+    const results = await Promise.all(groups.map(group =>
+      fetchRowsByIds(
+        'budget_item_adjustment_history',
+        'parent_id',
+        group.ids,
+        query => query.eq('source_type', group.sourceType)
+      )
+    ));
+    return results.flat();
+  } catch (error) {
+    console.warn('Unable to fetch budget item adjustment history', error);
+    return [];
+  }
+}
+
+function applyLocalCommonScope<T extends Record<string, any>>(
+  rows: T[],
+  scope: DataScope,
+  yearColumn: 'fundingYear' | 'fundYear'
+) {
+  return rows.filter(row => {
+    if (!isAll(scope.year) && Number(row[yearColumn]) !== Number(scope.year)) return false;
+    if (!isAll(scope.operatingUnit) && row.operatingUnit !== scope.operatingUnit) return false;
+    if (!isAll(scope.tier) && row.tier !== scope.tier) return false;
+    if (!isAll(scope.fundType) && row.fundType !== scope.fundType) return false;
+    return true;
+  });
+}
+
+function applyLocalIpoScope(scope: DataScope) {
+  if (isAll(scope.operatingUnit)) return sampleIPOs;
+  const targetRegion = ouToRegionMap[scope.operatingUnit];
+  if (!targetRegion) return sampleIPOs;
+  return sampleIPOs.filter(ipo => ipo.region === targetRegion);
+}
+
+function filterLocalBudgetCeilings(scope: DataScope) {
+  return sampleBudgetCeilings.filter(row => {
+    if (!isAll(scope.year) && Number(row.year) !== Number(scope.year)) return false;
+    if (!isAll(scope.operatingUnit) && row.operating_unit !== scope.operatingUnit) return false;
+    return true;
+  });
+}
+
+function filterLocalFinancialRows(rows: any[], sourceRows: {
+  subprojects: any[];
+  activities: any[];
+  officeReqs: any[];
+  staffingReqs: any[];
+  otherProgramExpenses: any[];
+}) {
+  const scopedParents = new Map<string, Set<number>>();
+  [
+    ['subproject_detail', sourceRows.subprojects],
+    ['activity_expense', sourceRows.activities],
+    ['office_requirement', sourceRows.officeReqs],
+    ['staffing_expense', sourceRows.staffingReqs],
+    ['other_program_expense', sourceRows.otherProgramExpenses],
+  ].forEach(([entityType, parents]) => {
+    scopedParents.set(String(entityType), new Set((parents as any[]).map(parent => Number(parent.id))));
+  });
+
+  return rows.filter(row => scopedParents.get(row.entity_type)?.has(Number(row.parent_id)));
+}
+
+function filterLocalMonitoringRows(activities: any[]) {
+  const activityIds = new Set(activities.map(item => Number(item.id)));
+  const activityMonitoringReports = sampleActivityMonitoringReports.filter(report => activityIds.has(Number(report.activity_id)));
+  const reportIds = new Set(activityMonitoringReports.map(report => Number(report.id)));
+  const activityMonitoringActions = sampleActivityMonitoringActions.filter(action => reportIds.has(Number(action.monitoring_report_id)));
+
+  return {
+    activityMonitoringReports,
+    activityMonitoringActions,
+  };
+}
+
+function filterLocalAdjustmentHistory(subprojects: any[], activities: any[], staffingReqs: any[]) {
+  const scopedParents = new Map<string, Set<number>>([
+    ['subproject_detail', new Set(subprojects.map(item => Number(item.id)))],
+    ['activity_expense', new Set(activities.map(item => Number(item.id)))],
+    ['staffing_expense', new Set(staffingReqs.map(item => Number(item.id)))],
+  ]);
+
+  return sampleBudgetItemAdjustmentHistory.filter(row => scopedParents.get(row.source_type)?.has(Number(row.parent_id)));
+}
+
+function loadLocalSeedScopedData(scope: DataScope): ScopedAppData {
+  const normalizedScope = normalizeDataScope(scope);
+  const subprojects = applyLocalCommonScope(sampleSubprojects, normalizedScope, 'fundingYear');
+  const ipos = applyLocalIpoScope(normalizedScope);
+  const activities = applyLocalCommonScope(sampleActivities, normalizedScope, 'fundingYear');
+  const marketingPartners = sampleMarketingPartners;
+  const officeReqs = applyLocalCommonScope(sampleOfficeRequirements, normalizedScope, 'fundYear');
+  const staffingReqs = applyLocalCommonScope(sampleStaffingRequirements, normalizedScope, 'fundYear');
+  const otherProgramExpenses = applyLocalCommonScope(sampleOtherProgramExpenses, normalizedScope, 'fundYear');
+  const financialSourceRows = {
+    subprojects,
+    activities,
+    officeReqs,
+    staffingReqs,
+    otherProgramExpenses,
+  };
+  const { activityMonitoringReports, activityMonitoringActions } = filterLocalMonitoringRows(activities);
+
+  return {
+    subprojects,
+    ipos,
+    activities,
+    marketingPartners,
+    officeReqs,
+    staffingReqs,
+    otherProgramExpenses,
+    financialObligations: filterLocalFinancialRows(sampleFinancialObligations, financialSourceRows),
+    financialDisbursements: filterLocalFinancialRows(sampleFinancialDisbursements, financialSourceRows),
+    referenceUacsList: sampleReferenceUacsList,
+    referenceParticularList: sampleReferenceParticularList,
+    refCommodities: sampleRefCommodities,
+    refLivestock: sampleRefLivestock,
+    refEquipment: sampleRefEquipment,
+    refInputs: sampleRefInputs,
+    refInfrastructure: sampleRefInfrastructure,
+    refTrainings: sampleRefTrainings,
+    referenceActivities: sampleReferenceActivities,
+    deadlines: [],
+    budgetCeilings: filterLocalBudgetCeilings(normalizedScope),
+    gidaAreas: sampleGidaAreas,
+    elcacAreas: sampleElcacAreas,
+    activityMonitoringReports,
+    activityMonitoringActions,
+    budgetItemAdjustmentHistory: filterLocalAdjustmentHistory(subprojects, activities, staffingReqs),
+  };
+}
+
 export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData> {
   const normalizedScope = normalizeDataScope(scope);
+  if (!supabase) {
+    return loadLocalSeedScopedData(normalizedScope);
+  }
 
   const [
     subprojects,
@@ -278,6 +451,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
   const [
     { financialObligations, financialDisbursements },
     { activityMonitoringReports, activityMonitoringActions },
+    budgetItemAdjustmentHistory,
   ] = await Promise.all([
     fetchScopedFinancialRows(
       subprojects,
@@ -287,6 +461,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
       otherProgramExpenses
     ),
     fetchScopedMonitoringRows(activities),
+    fetchBudgetItemAdjustmentHistory(subprojects, activities, staffingReqs),
   ]);
 
   return {
@@ -314,5 +489,6 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     elcacAreas,
     activityMonitoringReports,
     activityMonitoringActions,
+    budgetItemAdjustmentHistory,
   };
 }

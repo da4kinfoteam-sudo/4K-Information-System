@@ -12,6 +12,17 @@ import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { createDisbursementsFromMonthlyFields, summarizeDisbursements } from '../../lib/disbursementUtils';
+import {
+    BudgetItemAdjustmentHistory,
+    ensureOriginalBudgetSnapshot,
+    getBudgetLineAmount,
+    getBudgetLineTag,
+    isBudgetLineExcludedFromTargets,
+    normalizeBudgetLineStatus,
+    requestAdjustmentReason,
+    summarizeBudgetAdjustments,
+    writeBudgetItemAdjustmentHistory
+} from '../../lib/budgetLineAdjustments';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
@@ -36,6 +47,22 @@ const formatDate = (dateString?: string) => {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return dateString; // Return original if parse fails
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+const normalizeMoneyInput = (value: string) => {
+    const cleaned = value.replace(/[^\d.]/g, '');
+    const [whole = '', ...decimalParts] = cleaned.split('.');
+    const decimals = decimalParts.join('').slice(0, 2);
+    return decimalParts.length > 0 ? `${whole}.${decimals}` : whole;
+};
+
+const formatMoneyInput = (value: string | number | undefined) => {
+    if (value === undefined || value === null || value === '') return '';
+    const normalized = normalizeMoneyInput(String(value));
+    if (!normalized) return '';
+    const [whole, decimals] = normalized.split('.');
+    const formattedWhole = whole ? Number(whole).toLocaleString('en-US') : '';
+    return decimals !== undefined ? `${formattedWhole}.${decimals}` : formattedWhole;
 };
 
 const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
@@ -98,7 +125,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 ? summarizeDisbursements(exp.disbursements, item.fundYear)
                 : null;
 
-            return {
+            return ensureOriginalBudgetSnapshot({
                 ...exp,
                 ...(disbursementSummary ? {
                     ...disbursementSummary.monthlyFields,
@@ -113,7 +140,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                         remarks: 'Legacy Record'
                     }] : []
                 )
-            };
+            });
         });
     }, [item]);
 
@@ -130,12 +157,47 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         obligationDate: '',
         amount: 0,
         disbursementJan: 0, disbursementFeb: 0, disbursementMar: 0, disbursementApr: 0, disbursementMay: 0, disbursementJun: 0,
-        disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0
+        disbursementJul: 0, disbursementAug: 0, disbursementSep: 0, disbursementOct: 0, disbursementNov: 0, disbursementDec: 0,
+        isCancelled: false,
+        isRealignment: false,
+        isSavings: false,
+        adjustmentReason: '',
     };
     const [currentExpense, setCurrentExpense] = useState(initialExpenseState);
     const [selectedParticular, setSelectedParticular] = useState('');
     const [isExpenseScheduleOpen, setIsExpenseScheduleOpen] = useState(false);
     const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+    const [budgetAdjustmentHistory, setBudgetAdjustmentHistory] = useState<BudgetItemAdjustmentHistory[]>([]);
+    const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(expensesList), [expensesList]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const loadHistory = async () => {
+            if (!supabase) {
+                setBudgetAdjustmentHistory([]);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('budget_item_adjustment_history')
+                .select('*')
+                .eq('source_type', 'staffing_expense')
+                .eq('parent_id', item.id)
+                .order('created_at', { ascending: false });
+
+            if (!isMounted) return;
+            if (error) {
+                console.warn('Unable to load staffing budget adjustment history', error);
+                setBudgetAdjustmentHistory([]);
+                return;
+            }
+            setBudgetAdjustmentHistory((data || []) as BudgetItemAdjustmentHistory[]);
+        };
+        loadHistory();
+        return () => {
+            isMounted = false;
+        };
+    }, [item.id]);
 
     // Initial load and whenever the item ID changes
     useEffect(() => {
@@ -276,7 +338,25 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
     };
 
-    const handleAddExpense = () => {
+    const persistExpenseAdjustmentHistory = async (action: any, beforeSnapshot: any, afterSnapshot: any, reason: string) => {
+        if (!item?.id) return;
+        try {
+            await writeBudgetItemAdjustmentHistory({
+                sourceType: 'staffing_expense',
+                parentId: item.id,
+                itemId: afterSnapshot?.id || beforeSnapshot?.id,
+                action,
+                beforeSnapshot,
+                afterSnapshot,
+                reason,
+                currentUser,
+            });
+        } catch {
+            // The parent staffing save remains the source of truth for nested expense updates.
+        }
+    };
+
+    const handleAddExpense = async () => {
         const requiredFields = [
             { name: 'expenseParticular', label: 'Particular' },
             { name: 'uacsCode', label: 'UACS Code' },
@@ -291,7 +371,12 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             return;
         }
         
-        const newExpenseData: StaffingExpense = {
+        if ((currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && !currentExpense.adjustmentReason.trim()) {
+            alert('A short reason is required when adding a cancelled, realignment, or savings financial item.');
+            return;
+        }
+
+        const newExpenseData: StaffingExpense = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
             id: editingExpenseId || Date.now(),
             ...currentExpense,
             amount: Number(currentExpense.amount),
@@ -300,13 +385,30 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             disbursementApr: Number(currentExpense.disbursementApr), disbursementMay: Number(currentExpense.disbursementMay), disbursementJun: Number(currentExpense.disbursementJun),
             disbursementJul: Number(currentExpense.disbursementJul), disbursementAug: Number(currentExpense.disbursementAug), disbursementSep: Number(currentExpense.disbursementSep),
             disbursementOct: Number(currentExpense.disbursementOct), disbursementNov: Number(currentExpense.disbursementNov), disbursementDec: Number(currentExpense.disbursementDec)
-        };
+        }));
 
         if (editingExpenseId) {
-            setExpensesList(prev => prev.map(e => e.id === editingExpenseId ? { ...e, ...newExpenseData } : e));
+            const beforeExpense = expensesList.find(e => e.id === editingExpenseId);
+            const afterExpense = { ...beforeExpense, ...newExpenseData, id: editingExpenseId };
+            setExpensesList(prev => prev.map(e => e.id === editingExpenseId ? afterExpense : e));
+            if (beforeExpense && (beforeExpense.isCancelled || beforeExpense.isRealignment || beforeExpense.isSavings || afterExpense.isCancelled || afterExpense.isRealignment || afterExpense.isSavings)) {
+                await persistExpenseAdjustmentHistory(
+                    afterExpense.isCancelled ? 'cancel'
+                        : afterExpense.isRealignment ? 'tag_realignment'
+                            : afterExpense.isSavings ? 'tag_savings'
+                                : beforeExpense.isCancelled ? 'restore'
+                                    : 'clear_tag',
+                    beforeExpense,
+                    afterExpense,
+                    currentExpense.adjustmentReason || 'Updated staffing expense adjustment.'
+                );
+            }
             setEditingExpenseId(null);
         } else {
             setExpensesList(prev => [...prev, newExpenseData]);
+            if (newExpenseData.isRealignment || newExpenseData.isSavings) {
+                await persistExpenseAdjustmentHistory('create_adjustment_item', null, newExpenseData, newExpenseData.adjustmentReason || 'Created staffing expense adjustment item.');
+            }
         }
         
         setCurrentExpense(initialExpenseState);
@@ -315,26 +417,54 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
     };
 
     const handleEditExpense = (expense: StaffingExpense) => {
-        setEditingExpenseId(expense.id);
+        const normalizedExpense = normalizeBudgetLineStatus(expense);
+        setEditingExpenseId(normalizedExpense.id);
         setCurrentExpense({
             ...initialExpenseState,
-            ...expense,
+            ...normalizedExpense,
             // Ensure month fields are copied
-            disbursementJan: expense.disbursementJan || 0, disbursementFeb: expense.disbursementFeb || 0, disbursementMar: expense.disbursementMar || 0,
-            disbursementApr: expense.disbursementApr || 0, disbursementMay: expense.disbursementMay || 0, disbursementJun: expense.disbursementJun || 0,
-            disbursementJul: expense.disbursementJul || 0, disbursementAug: expense.disbursementAug || 0, disbursementSep: expense.disbursementSep || 0,
-            disbursementOct: expense.disbursementOct || 0, disbursementNov: expense.disbursementNov || 0, disbursementDec: expense.disbursementDec || 0
+            disbursementJan: normalizedExpense.disbursementJan || 0, disbursementFeb: normalizedExpense.disbursementFeb || 0, disbursementMar: normalizedExpense.disbursementMar || 0,
+            disbursementApr: normalizedExpense.disbursementApr || 0, disbursementMay: normalizedExpense.disbursementMay || 0, disbursementJun: normalizedExpense.disbursementJun || 0,
+            disbursementJul: normalizedExpense.disbursementJul || 0, disbursementAug: normalizedExpense.disbursementAug || 0, disbursementSep: normalizedExpense.disbursementSep || 0,
+            disbursementOct: normalizedExpense.disbursementOct || 0, disbursementNov: normalizedExpense.disbursementNov || 0, disbursementDec: normalizedExpense.disbursementDec || 0,
+            isCancelled: !!normalizedExpense.isCancelled,
+            isRealignment: !!normalizedExpense.isRealignment,
+            isSavings: !!normalizedExpense.isSavings,
+            adjustmentReason: normalizedExpense.adjustmentReason || '',
         });
-        setSelectedParticular(expense.expenseParticular);
+        setSelectedParticular(normalizedExpense.expenseParticular);
         setIsExpenseScheduleOpen(true);
     };
 
     const handleRemoveExpense = (id: number) => {
+        const expense = expensesList.find(e => e.id === id);
+        const isSavedLine = !!(expense && (item.expenses || []).some(existing => existing.id === id));
+        const hasActuals = !!expense && (((expense.obligations?.length || 0) > 0) || ((expense.disbursements?.length || 0) > 0) || Number(expense.actualObligationAmount) > 0 || Number(expense.actualDisbursementAmount) > 0);
+        if (expense && (isSavedLine || hasActuals)) {
+            handleExpenseTagChange(id, 'Cancelled');
+            return;
+        }
         setExpensesList(prev => prev.filter(e => e.id !== id));
         if (editingExpenseId === id) {
             setEditingExpenseId(null);
             setCurrentExpense(initialExpenseState);
         }
+    };
+
+    const handleExpenseTagChange = async (id: number, tag: 'Cancelled' | 'Realignment' | 'Savings' | null) => {
+        const beforeExpense = expensesList.find(e => e.id === id);
+        if (!beforeExpense) return;
+        const reason = requestAdjustmentReason(tag ? `marking this financial item as ${tag}` : 'clearing this financial item tag');
+        if (!reason) return;
+        const afterExpense = {
+            ...beforeExpense,
+            isCancelled: tag === 'Cancelled',
+            isRealignment: tag === 'Realignment',
+            isSavings: tag === 'Savings',
+            adjustmentReason: reason,
+        };
+        setExpensesList(prev => prev.map(e => e.id === id ? afterExpense : e));
+        await persistExpenseAdjustmentHistory(tag === 'Cancelled' ? 'cancel' : tag === 'Realignment' ? 'tag_realignment' : tag === 'Savings' ? 'tag_savings' : beforeExpense.isCancelled ? 'restore' : 'clear_tag', beforeExpense, afterExpense, reason);
     };
 
     const handleCancelExpenseEdit = () => {
@@ -430,7 +560,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                     exp.actualObligationDate = null;
                 }
 
-                aggregatedTotals.annualSalary += exp.amount;
+                if (!isBudgetLineExcludedFromTargets(exp)) {
+                    aggregatedTotals.annualSalary += getBudgetLineAmount(exp);
+                }
                 aggregatedTotals.actualObligationAmount += (exp.actualObligationAmount || 0);
                 
                 // Recalculate total actual disbursement per item
@@ -440,7 +572,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
 
                 months.forEach(m => {
                     // @ts-ignore
-                    aggregatedTotals[`disbursement${m}`] += (exp[`disbursement${m}`] || 0);
+                    aggregatedTotals[`disbursement${m}`] += isBudgetLineExcludedFromTargets(exp) ? 0 : (exp[`disbursement${m}`] || 0);
                     // @ts-ignore
                     aggregatedTotals[`actualDisbursement${m}`] += (exp[`actualDisbursement${m}`] || 0);
                 });
@@ -611,15 +743,19 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                             
                             <div className="budget-item-list">
                                 {expensesList.map((expense, idx) => (
-                                    <div key={idx} className="budget-item-card">
+                                    <div key={idx} className={`budget-item-card ${isBudgetLineExcludedFromTargets(expense) ? 'budget-item-card--excluded' : ''} ${expense.isCancelled ? 'budget-item-card--cancelled' : ''} ${expense.isRealignment ? 'budget-item-card--realignment' : ''} ${expense.isSavings ? 'budget-item-card--savings' : ''} ${editingExpenseId === expense.id ? 'budget-item-card--editing' : ''}`}>
                                         <div className="budget-item-card__summary">
-                                            <p className="budget-item-card__title">{expense.expenseParticular || 'Unspecified Particular'}</p>
+                                            <p className="budget-item-card__title">
+                                                {expense.expenseParticular || 'Unspecified Particular'}
+                                                {getBudgetLineTag(expense) && <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(expense)?.toLowerCase()}`}>{getBudgetLineTag(expense)}</span>}
+                                            </p>
                                             <p className="budget-item-card__meta">{expense.uacsCode} | Obligated: {expense.obligationDate}</p>
+                                            {isBudgetLineExcludedFromTargets(expense) && <span className="budget-line-exclusion-note">{expense.adjustmentReason || 'No adjustment justification recorded.'}</span>}
                                         </div>
                                         <div className="budget-item-card__actions">
-                                            <p className="budget-item-card__total">{formatCurrency(expense.amount)}</p>
+                                            <p className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(expense))}</p>
                                             <div className="budget-item-card__buttons">
-                                                <button type="button" onClick={() => handleEditExpense(expense)} className="table-action table-action--edit" aria-label="Edit financial item">
+                                                <button type="button" onClick={() => handleEditExpense(expense)} className="table-action table-action--primary" aria-label="Edit financial item">
                                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z" /></svg>
                                                 </button>
                                                 <button type="button" onClick={() => handleRemoveExpense(expense.id)} className="table-action table-action--danger" aria-label="Remove financial item">
@@ -631,7 +767,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                 ))}
                                 {expensesList.length === 0 && <p className="detail-empty detail-empty--compact">No financial items added.</p>}
                                 <div className="budget-item-list__total">
-                                    Total Annual Requirement: {formatCurrency(expensesList.reduce((acc, curr) => acc + curr.amount, 0))}
+                                    Total Allocation: {formatCurrency(expensesList.reduce((acc, curr) => acc + (isBudgetLineExcludedFromTargets(curr) ? 0 : getBudgetLineAmount(curr)), 0))}
                                 </div>
                             </div>
 
@@ -714,39 +850,142 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                                             className={validationErrors.includes('obligationDate') ? 'border-red-500 ring-1 ring-red-500' : ''}
                                         />
                                     </div>
-                                    <div><label className="form-label">Amount <span className="text-red-500">*</span></label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={getInputClasses('amount')} min="0" /></div>
-                                </div>
-
-                                <div className="budget-item-form-grid budget-item-form-grid--nested">
                                     <div>
-                                    <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="btn btn-secondary btn-sm">
-                                        {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule (Target)
-                                    </button>
-                                    {isExpenseScheduleOpen && (
-                                        <div className="program-month-grid">
-                                            {months.map(month => (
-                                                <div key={`exp-${month}`} className="program-month-cell">
-                                                    <label className="program-month-cell__label">{month}</label>
-                                                    <input type="number" name={`disbursement${month}`} 
-                                                    // @ts-ignore
-                                                    value={currentExpense[`disbursement${month}`]} onChange={handleExpenseChange} className="form-control form-control--compact" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                        <label className="form-label">Amount <span className="text-red-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            name="amount"
+                                            value={formatMoneyInput(currentExpense.amount)}
+                                            onChange={e => {
+                                                const value = normalizeMoneyInput(e.target.value);
+                                                setCurrentExpense(prev => ({ ...prev, amount: value as any }));
+                                                if (validationErrors.includes('amount')) {
+                                                    setValidationErrors(prev => prev.filter(err => err !== 'amount'));
+                                                }
+                                            }}
+                                            className={getInputClasses('amount')}
+                                            inputMode="decimal"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div className="program-form-grid__full budget-line-adjustment-options">
+                                        {editingExpenseId && (
+                                            <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={currentExpense.isCancelled}
+                                                    onChange={e => setCurrentExpense(prev => ({
+                                                        ...prev,
+                                                        isCancelled: e.target.checked,
+                                                        isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                        isSavings: e.target.checked ? false : prev.isSavings,
+                                                    }))}
+                                                    className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                                />
+                                                Cancelled
+                                            </label>
+                                        )}
+                                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentExpense.isRealignment}
+                                                onChange={e => setCurrentExpense(prev => ({
+                                                    ...prev,
+                                                    isRealignment: e.target.checked,
+                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                    isSavings: e.target.checked ? false : prev.isSavings,
+                                                }))}
+                                                className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                            />
+                                            Realignment
+                                        </label>
+                                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentExpense.isSavings}
+                                                onChange={e => setCurrentExpense(prev => ({
+                                                    ...prev,
+                                                    isSavings: e.target.checked,
+                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                    isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                }))}
+                                                className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                            />
+                                            Savings
+                                        </label>
+                                        {(currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && (
+                                            <input type="text" name="adjustmentReason" value={currentExpense.adjustmentReason} onChange={handleExpenseChange} placeholder="Reason for this adjustment" className={`${commonInputClasses} budget-line-adjustment-options__reason`} />
+                                        )}
+                                    </div>
                                 </div>
 
-                                <div className="budget-item-form-grid__actions">
-                                    <button type="button" onClick={handleAddExpense} className="btn btn-primary">
-                                        {editingExpenseId ? 'Update Item' : 'Add Item to List'}
-                                    </button>
-                                    {editingExpenseId && (
-                                        <button type="button" onClick={handleCancelExpenseEdit} className="btn btn-secondary">
-                                            Cancel
+                                <div className="budget-item-form-grid budget-item-form-grid--nested staffing-expense-editor">
+                                    <div className="staffing-expense-schedule-panel">
+                                        <div className="staffing-expense-schedule-panel__header">
+                                            <button type="button" onClick={() => setIsExpenseScheduleOpen(!isExpenseScheduleOpen)} className="btn btn-secondary btn-sm">
+                                                {isExpenseScheduleOpen ? 'Hide' : 'Show'} Disbursement Schedule (Target)
+                                            </button>
+                                        </div>
+                                        {isExpenseScheduleOpen && (
+                                            <div className="program-month-grid staffing-expense-schedule-grid">
+                                                {months.map(month => (
+                                                    <div key={`exp-${month}`} className="program-month-cell">
+                                                        <label className="program-month-cell__label">{month}</label>
+                                                        <input
+                                                            type="text"
+                                                            name={`disbursement${month}`}
+                                                            // @ts-ignore
+                                                            value={formatMoneyInput(currentExpense[`disbursement${month}`])}
+                                                            onChange={(e) => {
+                                                                const value = normalizeMoneyInput(e.target.value);
+                                                                setCurrentExpense(prev => ({ ...prev, [`disbursement${month}`]: value as any }));
+                                                            }}
+                                                            className="form-control form-control--compact"
+                                                            inputMode="decimal"
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="budget-item-form-grid__actions staffing-expense-editor__actions">
+                                        <button type="button" onClick={handleAddExpense} className="btn btn-primary">
+                                            {editingExpenseId ? 'Update Item' : 'Add Item to List'}
                                         </button>
-                                    )}
+                                        {editingExpenseId && (
+                                            <button type="button" onClick={handleCancelExpenseEdit} className="btn btn-secondary">
+                                                Cancel
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+
+                                <div className="budget-adjustment-summary">
+                                    <div className="budget-adjustment-summary__header">
+                                        <h4>Expense Calculator</h4>
+                                    </div>
+                                    <div className="budget-adjustment-summary__grid">
+                                        <div><span>Allocation</span><strong>{formatCurrency(budgetAdjustmentSummary.originalPlannedBudget)}</strong></div>
+                                        <div><span>Active Target</span><strong>{formatCurrency(budgetAdjustmentSummary.activeTargetBudget)}</strong></div>
+                                        <div><span>Cancelled</span><strong>{formatCurrency(budgetAdjustmentSummary.cancelledAmount)}</strong></div>
+                                        <div><span>Realigned</span><strong>{formatCurrency(budgetAdjustmentSummary.realignedAmount)}</strong></div>
+                                        <div><span>Savings</span><strong>{formatCurrency(budgetAdjustmentSummary.savingsAmount)}</strong></div>
+                                        <div><span>Actual Obligated</span><strong>{formatCurrency(budgetAdjustmentSummary.actualObligated)}</strong></div>
+                                        <div><span>Actual Disbursed</span><strong>{formatCurrency(budgetAdjustmentSummary.actualDisbursed)}</strong></div>
+                                    </div>
+                                    <div className="budget-adjustment-history">
+                                        {budgetAdjustmentHistory.slice(0, 6).map(entry => (
+                                            <div key={entry.id || `${entry.item_id}-${entry.created_at}`} className="budget-adjustment-history__row">
+                                                <strong>{entry.action.replace(/_/g, ' ')}</strong>
+                                                <span>{entry.reason}</span>
+                                                <small>{entry.created_by_name || entry.created_by || 'System'} · {entry.created_at ? new Date(entry.created_at).toLocaleString() : 'No date'}</small>
+                                            </div>
+                                        ))}
+                                        {budgetAdjustmentHistory.length === 0 && <p className="detail-empty detail-empty--compact">No budget adjustment history recorded yet.</p>}
+                                    </div>
+                                </div>
                             </div>
                         </fieldset>
 

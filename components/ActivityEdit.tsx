@@ -8,9 +8,20 @@ import { useLogAction } from '../hooks/useLogAction';
 import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
+import { Pencil, Trash2 } from 'lucide-react';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
+import {
+    ensureOriginalBudgetSnapshot,
+    getBudgetLineAmount,
+    getBudgetLineTag,
+    isBudgetLineExcludedFromTargets,
+    normalizeBudgetLineStatus,
+    requestAdjustmentReason,
+    summarizeBudgetAdjustments,
+    writeBudgetItemAdjustmentHistory
+} from '../lib/budgetLineAdjustments';
 
 interface ActivityEditProps {
     mode: 'create' | 'details' | 'expenses' | 'accomplishment';
@@ -29,6 +40,18 @@ const MONTH_NAMES = [
 ];
 
 const commonInputClasses = "form-control";
+
+const formatCurrency = (amount: number) => {
+    const finiteAmount = Number.isFinite(amount) ? amount : 0;
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(finiteAmount);
+};
+
+const formatActivityMonthYear = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+};
 
 const defaultFormData: Activity = {
     id: 0,
@@ -97,8 +120,14 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         uacsCode: '',
         obligationMonth: '',
         disbursementMonth: '',
-        amount: ''
+        amount: '',
+        isRealignment: false,
+        isSavings: false,
+        isCancelled: false,
+        adjustmentReason: '',
     });
+
+    const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(formData.expenses || []), [formData.expenses]);
 
     // Helper to get month index from YYYY-MM-DD string
     const getMonthFromDateStr = (dateStr: string) => {
@@ -416,41 +445,121 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
     };
 
     const handleEditExpense = (expense: ActivityExpense) => {
-        setEditingExpenseId(expense.id);
+        const normalizedExpense = normalizeBudgetLineStatus(expense);
+        setEditingExpenseId(normalizedExpense.id);
         setCurrentExpense({
-            objectType: expense.objectType,
-            expenseParticular: expense.expenseParticular,
-            uacsCode: expense.uacsCode,
-            obligationMonth: expense.obligationMonth,
-            disbursementMonth: expense.disbursementMonth,
-            amount: String(expense.amount)
+            objectType: normalizedExpense.objectType,
+            expenseParticular: normalizedExpense.expenseParticular,
+            uacsCode: normalizedExpense.uacsCode,
+            obligationMonth: normalizedExpense.obligationMonth,
+            disbursementMonth: normalizedExpense.disbursementMonth,
+            amount: String(normalizedExpense.amount),
+            isRealignment: !!normalizedExpense.isRealignment,
+            isSavings: !!normalizedExpense.isSavings,
+            isCancelled: !!normalizedExpense.isCancelled,
+            adjustmentReason: normalizedExpense.adjustmentReason || '',
         });
     }
 
+    const resetCurrentExpense = () => {
+        setCurrentExpense({ objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '', amount: '', isRealignment: false, isSavings: false, isCancelled: false, adjustmentReason: '' });
+    };
+
     const handleCancelEditExpense = () => {
         setEditingExpenseId(null);
-        setCurrentExpense({ objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '', amount: '' });
+        resetCurrentExpense();
     }
 
-    const handleAddExpense = () => {
+    const persistExpenseAdjustmentHistory = async (action: any, beforeSnapshot: any, afterSnapshot: any, reason: string) => {
+        if (!activity?.id) return;
+        try {
+            await writeBudgetItemAdjustmentHistory({
+                sourceType: 'activity_expense',
+                parentId: activity.id,
+                itemId: afterSnapshot?.id || beforeSnapshot?.id,
+                action,
+                beforeSnapshot,
+                afterSnapshot,
+                reason,
+                currentUser,
+            });
+        } catch {
+            // Keep the local edit; the parent activity save remains authoritative for the nested expense.
+        }
+    };
+
+    const handleAddExpense = async () => {
         if (!currentExpense.amount || !currentExpense.obligationMonth || !currentExpense.disbursementMonth || !currentExpense.uacsCode) {
             alert('Please fill out all expense fields (UACS, Dates, Amount).'); return;
         }
-        const newExpense: ActivityExpense = {
+        if ((currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && !currentExpense.adjustmentReason.trim()) {
+            alert('A short reason is required when adding a cancelled, realignment, or savings expense.');
+            return;
+        }
+        const newExpense: ActivityExpense = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
             id: Date.now(),
             ...currentExpense,
             amount: parseFloat(currentExpense.amount),
             // Init actuals
             actualObligationAmount: 0, actualObligationDate: '', actualDisbursementAmount: 0, actualDisbursementDate: '', actualAmount: 0
-        };
+        }));
 
         if (editingExpenseId !== null) {
-            setFormData(prev => ({ ...prev, expenses: prev.expenses.map(e => e.id === editingExpenseId ? { ...e, ...newExpense, id: e.id } : e) }));
+            const beforeExpense = formData.expenses.find(e => e.id === editingExpenseId);
+            const afterExpense = { ...beforeExpense, ...newExpense, id: editingExpenseId };
+            setFormData(prev => ({ ...prev, expenses: prev.expenses.map(e => e.id === editingExpenseId ? afterExpense : e) }));
+            if (beforeExpense && (beforeExpense.isCancelled || beforeExpense.isRealignment || beforeExpense.isSavings || afterExpense.isCancelled || afterExpense.isRealignment || afterExpense.isSavings)) {
+                await persistExpenseAdjustmentHistory(
+                    afterExpense.isCancelled ? 'cancel'
+                        : afterExpense.isRealignment ? 'tag_realignment'
+                            : afterExpense.isSavings ? 'tag_savings'
+                                : beforeExpense.isCancelled ? 'restore'
+                                    : 'clear_tag',
+                    beforeExpense,
+                    afterExpense,
+                    currentExpense.adjustmentReason || 'Updated expense adjustment.'
+                );
+            }
             setEditingExpenseId(null);
         } else {
             setFormData(prev => ({ ...prev, expenses: [...prev.expenses, newExpense] }));
+            if (newExpense.isRealignment || newExpense.isSavings) {
+                await persistExpenseAdjustmentHistory('create_adjustment_item', null, newExpense, newExpense.adjustmentReason || 'Created expense adjustment item.');
+            }
         }
-        setCurrentExpense({ objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '', amount: '' });
+        resetCurrentExpense();
+    };
+
+    const handleExpenseTagChange = async (expenseId: number, tag: 'Cancelled' | 'Realignment' | 'Savings' | null) => {
+        const beforeExpense = formData.expenses.find(e => e.id === expenseId);
+        if (!beforeExpense) return;
+        const reason = requestAdjustmentReason(tag ? `marking this expense as ${tag}` : 'clearing this expense tag');
+        if (!reason) return;
+        const afterExpense = {
+            ...beforeExpense,
+            isCancelled: tag === 'Cancelled',
+            isRealignment: tag === 'Realignment',
+            isSavings: tag === 'Savings',
+            adjustmentReason: reason,
+        };
+        setFormData(prev => ({ ...prev, expenses: prev.expenses.map(e => e.id === expenseId ? afterExpense : e) }));
+        await persistExpenseAdjustmentHistory(tag === 'Cancelled' ? 'cancel' : tag === 'Realignment' ? 'tag_realignment' : tag === 'Savings' ? 'tag_savings' : beforeExpense.isCancelled ? 'restore' : 'clear_tag', beforeExpense, afterExpense, reason);
+    };
+
+    const handleRemoveExpense = async (expense: ActivityExpense) => {
+        const isSavedLine = !!(activity?.expenses || []).some(existing => existing.id === expense.id);
+        const hasActuals = ((expense.obligations?.length || 0) > 0)
+            || ((expense.disbursements?.length || 0) > 0)
+            || Number(expense.actualObligationAmount) > 0
+            || Number(expense.actualDisbursementAmount) > 0;
+        if (isSavedLine || hasActuals) {
+            await handleExpenseTagChange(expense.id, 'Cancelled');
+            return;
+        }
+        setFormData(prev => ({...prev, expenses: prev.expenses.filter(item => item.id !== expense.id)}));
+        if (editingExpenseId === expense.id) {
+            handleCancelEditExpense();
+        }
     };
 
     // Accomplishment Handlers
@@ -933,20 +1042,38 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                 {((mode === 'create' && activeTab === 'expenses') || mode === 'expenses') && (
                      <fieldset className="border border-gray-300 dark:border-gray-600 p-4 rounded-md mt-6" disabled={isDetailsLocked}>
                         <legend className="px-2 font-semibold text-emerald-700 dark:text-emerald-400">Expenses</legend>
-                        <div className="mb-4 space-y-2">
+                        <div className="mb-4 budget-item-list">
                             {formData.expenses.map((exp, idx) => (
-                                <div key={idx} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                                    <span className="text-sm">
-                                        <strong>{exp.expenseParticular}</strong> ({exp.uacsCode}) - {exp.amount.toLocaleString()} 
-                                        {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
-                                            <span className="block text-xs text-gray-500">{getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</span>
-                                        )}
-                                        <span className="block text-xs text-gray-500 mt-1">Ob: {exp.obligationMonth} | Disb: {exp.disbursementMonth}</span>
-                                    </span>
+                                <div key={idx} className={`budget-item-card ${editingExpenseId === exp.id ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                    <div className="budget-item-card__summary">
+                                        <span className="budget-item-card__title">
+                                            {exp.expenseParticular || 'Unspecified expense'}
+                                            {getBudgetLineTag(exp) && <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(exp)?.toLowerCase()} ml-2`}>{getBudgetLineTag(exp)}</span>}
+                                        </span>
+                                        <div className="budget-item-card__meta">
+                                            <div>
+                                                {exp.uacsCode || 'No UACS code'}
+                                                {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
+                                                    <> - {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode)}</>
+                                                )}
+                                            </div>
+                                            <span className="block mt-1">
+                                                Obligation: {formatActivityMonthYear(exp.obligationMonth)} | Disbursement: {formatActivityMonthYear(exp.disbursementMonth)}
+                                            </span>
+                                        </div>
+                                        {isBudgetLineExcludedFromTargets(exp) && <span className="budget-line-exclusion-note">{exp.adjustmentReason || 'No adjustment justification recorded.'}</span>}
+                                    </div>
                                     {!isDetailsLocked && (
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => handleEditExpense(exp)} className="text-blue-500 text-xs font-bold">Edit</button>
-                                            <button type="button" onClick={() => setFormData(prev => ({...prev, expenses: prev.expenses.filter((_, i) => i !== idx)}))} className="text-red-500 text-xs font-bold">Remove</button>
+                                        <div className="budget-item-card__actions">
+                                            <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(exp))}</span>
+                                            <div className="budget-item-card__buttons">
+                                                <button type="button" onClick={() => handleEditExpense(exp)} className="table-action table-action--primary" title="Edit expense" aria-label="Edit expense">
+                                                    <Pencil className="btn-symbol" aria-hidden="true" />
+                                                </button>
+                                                <button type="button" onClick={() => handleRemoveExpense(exp)} className="table-action table-action--danger" title="Remove expense" aria-label="Remove expense">
+                                                    <Trash2 className="btn-symbol" aria-hidden="true" />
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -1005,6 +1132,55 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                         </select>
                                     </div>
                                     <div><label className="block text-xs font-medium">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} /></div>
+                                    <div className="md:col-span-3 budget-line-adjustment-options">
+                                        {editingExpenseId !== null && (
+                                            <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={currentExpense.isCancelled}
+                                                    onChange={e => setCurrentExpense(prev => ({
+                                                        ...prev,
+                                                        isCancelled: e.target.checked,
+                                                        isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                        isSavings: e.target.checked ? false : prev.isSavings,
+                                                    }))}
+                                                    className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                                />
+                                                Cancelled
+                                            </label>
+                                        )}
+                                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentExpense.isRealignment}
+                                                onChange={e => setCurrentExpense(prev => ({
+                                                    ...prev,
+                                                    isRealignment: e.target.checked,
+                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                    isSavings: e.target.checked ? false : prev.isSavings,
+                                                }))}
+                                                className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                            />
+                                            Realignment
+                                        </label>
+                                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={currentExpense.isSavings}
+                                                onChange={e => setCurrentExpense(prev => ({
+                                                    ...prev,
+                                                    isSavings: e.target.checked,
+                                                    isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                    isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                }))}
+                                                className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                            />
+                                            Savings
+                                        </label>
+                                        {(currentExpense.isCancelled || currentExpense.isRealignment || currentExpense.isSavings) && (
+                                            <input type="text" name="adjustmentReason" value={currentExpense.adjustmentReason} onChange={handleExpenseChange} placeholder="Reason for this adjustment" className={`${commonInputClasses} budget-line-adjustment-options__reason`} />
+                                        )}
+                                    </div>
                                 
                                     <div className="md:col-span-3 flex gap-2">
                                         {editingExpenseId !== null && (
@@ -1017,6 +1193,20 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                 </div>
                             </div>
                         )}
+                        <div className="budget-adjustment-summary">
+                            <div className="budget-adjustment-summary__header">
+                                <h4>Expense Calculator</h4>
+                            </div>
+                            <div className="budget-adjustment-summary__grid">
+                                <div><span>Allocation</span><strong>{formatCurrency(budgetAdjustmentSummary.originalPlannedBudget)}</strong></div>
+                                <div><span>Active Target</span><strong>{formatCurrency(budgetAdjustmentSummary.activeTargetBudget)}</strong></div>
+                                <div><span>Cancelled</span><strong>{formatCurrency(budgetAdjustmentSummary.cancelledAmount)}</strong></div>
+                                <div><span>Realigned</span><strong>{formatCurrency(budgetAdjustmentSummary.realignedAmount)}</strong></div>
+                                <div><span>Savings</span><strong>{formatCurrency(budgetAdjustmentSummary.savingsAmount)}</strong></div>
+                                <div><span>Actual Obligated</span><strong>{formatCurrency(budgetAdjustmentSummary.actualObligated)}</strong></div>
+                                <div><span>Actual Disbursed</span><strong>{formatCurrency(budgetAdjustmentSummary.actualDisbursed)}</strong></div>
+                            </div>
+                        </div>
                      </fieldset>
                 )}
 

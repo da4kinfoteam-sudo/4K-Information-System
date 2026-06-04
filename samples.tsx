@@ -36,6 +36,13 @@ export const sampleRefInfrastructure: RefInfrastructure[] = [];
 export const sampleRefTrainings: RefTrainingReference[] = [];
 export const sampleGidaAreas: GidaArea[] = [];
 export const sampleElcacAreas: ElcacArea[] = [];
+export const sampleReferenceActivities: any[] = [];
+export const sampleBudgetCeilings: any[] = [];
+export const sampleFinancialObligations: any[] = [];
+export const sampleFinancialDisbursements: any[] = [];
+export const sampleActivityMonitoringReports: any[] = [];
+export const sampleActivityMonitoringActions: any[] = [];
+export const sampleBudgetItemAdjustmentHistory: any[] = [];
 
 // --- Sample Data: Cleared for DB Connection ---
 export const sampleSubprojects: Subproject[] = [];

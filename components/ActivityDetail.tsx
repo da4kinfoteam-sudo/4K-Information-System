@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, ChevronDown, Edit3, ExternalLink, Eye, FileTex
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, ReferenceActivity } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
+import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import { supabase } from '../supabaseClient';
 import {
     ACTIVITY_DRIVE_FILE_ACCEPT,
@@ -166,9 +167,8 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
     };
 
     const totalBudget = useMemo(() => {
-       return activity.expenses.reduce((acc, item) => acc + item.amount, 0);
+       return activity.expenses.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
     }, [activity.expenses]);
-
     const monitoringReference = useMemo(() => referenceActivities.find(ref =>
         ref.activity_name === 'Subproject Monitoring' &&
         ref.component === 'Program Management' &&
@@ -541,6 +541,7 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 <thead>
                                     <tr>
                                         <th>Particulars</th>
+                                        <th>Status</th>
                                         <th>UACS Code</th>
                                         <th>Obligation</th>
                                         <th>Disbursement</th>
@@ -550,8 +551,19 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                 <tbody>
                                     {activity.expenses.length > 0 ? (
                                         activity.expenses.map(exp => (
-                                            <tr key={exp.id}>
-                                                <td className="font-medium">{exp.expenseParticular}</td>
+                                            <tr key={exp.id} className={`${isBudgetLineExcludedFromTargets(exp) ? 'budget-item-card--excluded' : ''} ${exp.isCancelled ? 'budget-item-card--cancelled' : ''} ${exp.isRealignment ? 'budget-item-card--realignment' : ''} ${exp.isSavings ? 'budget-item-card--savings' : ''}`}>
+                                                <td className="font-medium">
+                                                    {exp.expenseParticular}
+                                                </td>
+                                                <td>
+                                                    {getBudgetLineTag(exp) ? (
+                                                        <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(exp)?.toLowerCase()}`}>
+                                                            {getBudgetLineTag(exp)}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">-</span>
+                                                    )}
+                                                </td>
                                                 <td>
                                                     {exp.uacsCode}
                                                     {getUacsDescription(exp.objectType, exp.expenseParticular, exp.uacsCode) && (
@@ -560,16 +572,16 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 </td>
                                                 <td>{formatMonthYear(exp.obligationMonth)}</td>
                                                 <td>{formatMonthYear(exp.disbursementMonth)}</td>
-                                                <td className="text-right font-medium">{formatCurrency(exp.amount)}</td>
+                                                <td className="text-right font-medium">{formatCurrency(getBudgetLineAmount(exp))}</td>
                                             </tr>
                                         ))
                                     ) : (
-                                        <tr><td colSpan={5} className="text-center italic">No expenses recorded.</td></tr>
+                                        <tr><td colSpan={6} className="text-center italic">No expenses recorded.</td></tr>
                                     )}
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <td colSpan={4} className="text-right font-bold">Total Budget</td>
+                                        <td colSpan={5} className="text-right font-bold">Active Target Budget</td>
                                         <td className="text-right font-bold">{formatCurrency(totalBudget)}</td>
                                     </tr>
                                 </tfoot>

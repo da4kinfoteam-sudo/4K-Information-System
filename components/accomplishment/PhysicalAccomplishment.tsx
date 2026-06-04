@@ -7,6 +7,7 @@ import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
+import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import type { DataScope } from '../../lib/scopedDataFetch';
 
 interface Props {
@@ -56,6 +57,7 @@ interface PhysicalItem {
     isParent: boolean;
     isLocked: boolean; 
     status: string;
+    lineTag?: string | null;
     children?: PhysicalItem[];
 }
 
@@ -148,13 +150,14 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     detailId: d.id,
                     name: d.particulars,
                     targetDateStart: d.deliveryDate,
-                    targetQty: d.numberOfUnits,
+                    targetQty: isBudgetLineExcludedFromTargets(d) ? 0 : d.numberOfUnits,
                     unitOfMeasure: d.unitOfMeasure,
                     actualDateStart: d.actualDeliveryDate || '',
                     actualQty: d.actualNumberOfUnits || 0,
                     isParent: false,
                     isLocked: false, // Individual items editable
-                    status: sp.status
+                    status: sp.status,
+                    lineTag: getBudgetLineTag(d)
                 }));
 
                 loadedItems.push({
@@ -780,6 +783,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                                     <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
                                                                         {item.name}
                                                                     </button>
+                                                                    {item.lineTag && <span className={`budget-line-badge budget-line-badge--${item.lineTag.toLowerCase()} ml-2`}>{item.lineTag}</span>}
                                                                     {item.subName && <div className="text-xs text-gray-500">{item.subName}</div>}
                                                                 </div>
                                                             </div>
@@ -880,10 +884,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                          const isChildChanged = changedItems.has(child.uniqueId);
                                                          
                                                          return (
-                                                            <tr key={child.uniqueId} className={`border-b border-gray-100 dark:border-gray-800 ${isChildChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-white dark:bg-gray-800'}`}>
+                                                            <tr key={child.uniqueId} className={`border-b border-gray-100 dark:border-gray-800 ${child.lineTag ? 'budget-item-card--excluded' : ''} ${isChildChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-white dark:bg-gray-800'}`}>
                                                                 <td className="px-4 py-2 pl-16 text-xs text-gray-600 dark:text-gray-300 flex items-center">
                                                                     <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mr-2"></span>
                                                                     {child.name}
+                                                                    {child.lineTag && <span className={`budget-line-badge budget-line-badge--${child.lineTag.toLowerCase()} ml-2`}>{child.lineTag}</span>}
                                                                 </td>
                                                                 <td className="px-4 py-2 text-center text-xs text-gray-500">
                                                                     {isChildTargetEditable ? (

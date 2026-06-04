@@ -16,7 +16,11 @@ export type FinancialAuditIssueType =
     | 'Disbursement greater than obligation'
     | 'Actual greater than allocation'
     | 'Budget ceiling exceeded'
-    | 'Missing budget ceiling';
+    | 'Missing budget ceiling'
+    | 'Excluded line with target amount'
+    | 'Cancelled line with actuals'
+    | 'Realignment/savings line missing reason'
+    | 'Line missing original budget snapshot';
 
 export interface FinancialAuditBudgetCeiling {
     operating_unit: string;
@@ -298,6 +302,54 @@ export const buildFinancialAudit = (
         totalTargetObligationDue += schedule.targetObligationDue;
         totalTargetDisbursementDue += schedule.targetDisbursementDue;
         addCeilingGroup(item.operatingUnit || 'Unspecified', recordYear, targetAllocation);
+
+        if ((item.excludedTargetAllocation || 0) > 0) {
+            addIssue(
+                item,
+                'Excluded line with target amount',
+                'Info',
+                item.excludedTargetAllocation || 0,
+                ['Financial Accomplishment', 'WFP', 'BEDS 1', 'BEDS 3', 'Budget Utilization'],
+                'This cancelled/realignment/savings line keeps its encoded target for reference, but target reports exclude it from totals.',
+                metrics
+            );
+        }
+
+        if (item.lineTag === 'Cancelled' && (actualObligation > 0 || actualDisbursement > 0)) {
+            addIssue(
+                item,
+                'Cancelled line with actuals',
+                'Warning',
+                Math.max(actualObligation, actualDisbursement),
+                ['Financial Accomplishment', 'Budget Utilization', 'Monthly Matrix'],
+                'Review whether actual accomplishment should remain encoded on a cancelled budget line.',
+                metrics
+            );
+        }
+
+        if ((item.lineTag === 'Realignment' || item.lineTag === 'Savings') && !item.line.adjustmentReason) {
+            addIssue(
+                item,
+                'Realignment/savings line missing reason',
+                'Warning',
+                item.excludedTargetAllocation || targetAllocation,
+                ['Financial Accomplishment', 'Financial Audit'],
+                'Add an adjustment reason so reviewers can trace why this line is excluded from target totals.',
+                metrics
+            );
+        }
+
+        if ((item.line.isCancelled || item.line.isRealignment || item.line.isSavings) && !item.line.originalCapturedAt) {
+            addIssue(
+                item,
+                'Line missing original budget snapshot',
+                'Warning',
+                item.excludedTargetAllocation || targetAllocation,
+                ['Financial Accomplishment', 'Financial Audit'],
+                'Open and save the source record so the original planned amount is captured for audit reference.',
+                metrics
+            );
+        }
 
         if (targetAllocation <= 0) {
             if (actualDisbursement > actualObligation && actualObligation > 0) {

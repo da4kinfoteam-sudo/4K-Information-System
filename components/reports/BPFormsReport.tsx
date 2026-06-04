@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
 import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
+import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 
 interface BPFormsReportProps {
     data: {
@@ -202,7 +203,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         const lineItems: any[] = [];
         const addLineItem = (item: any) => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled) return;
             ensureHeader(item.objectType, item.particularName, item.uacsCode, item.amount);
             lineItems.push(item);
         };
@@ -211,11 +212,12 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             sp.details.forEach(d => {
                 addLineItem({
                     component: 'Production and Livelihood', packageType: sp.packageType, activityName: sp.name,
-                    objectType: d.objectType, uacsCode: d.uacsCode, amount: d.pricePerUnit * d.numberOfUnits,
+                    objectType: d.objectType, uacsCode: d.uacsCode, amount: getBudgetLineAmount(d),
                     particularName: d.expenseParticular,
                     itemParticular: d.particulars,
-                    isRealignment: sp.isRealignment,
-                    isSavings: sp.isSavings
+                    isRealignment: sp.isRealignment || d.isRealignment,
+                    isSavings: sp.isSavings || d.isSavings,
+                    isCancelled: sp.status === 'Cancelled' || d.isCancelled
                 });
             });
         });
@@ -224,10 +226,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
             t.expenses.forEach(e => {
                 addLineItem({
                     component: t.component, packageType: t.component === 'Program Management' ? 'Activities' : undefined, activityName: t.name,
-                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: getBudgetLineAmount(e),
                     isTraining: true, particularName: e.expenseParticular,
-                    isRealignment: t.isRealignment,
-                    isSavings: t.isSavings
+                    isRealignment: t.isRealignment || e.isRealignment,
+                    isSavings: t.isSavings || e.isSavings,
+                    isCancelled: t.status === 'Cancelled' || e.isCancelled
                 });
             });
         });
@@ -237,10 +240,11 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 const packageType = oa.component === 'Program Management' ? 'Activities' : undefined;
                 addLineItem({
                     component: oa.component, packageType, activityName: oa.name,
-                    objectType: e.objectType, uacsCode: e.uacsCode, amount: e.amount,
+                    objectType: e.objectType, uacsCode: e.uacsCode, amount: getBudgetLineAmount(e),
                     particularName: e.expenseParticular,
-                    isRealignment: oa.isRealignment,
-                    isSavings: oa.isSavings
+                    isRealignment: oa.isRealignment || e.isRealignment,
+                    isSavings: oa.isSavings || e.isSavings,
+                    isCancelled: oa.status === 'Cancelled' || e.isCancelled
                 });
             });
         });
@@ -255,11 +259,12 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                         activityName: sr.personnelPosition,
                         objectType: objType,
                         uacsCode: expense.uacsCode,
-                        amount: expense.amount,
+                        amount: getBudgetLineAmount(expense),
                         particularName: expense.expenseParticular || 'Salaries & Wages',
                         itemParticular: expense.expenseParticular,
-                        isRealignment: sr.isRealignment,
-                        isSavings: sr.isSavings
+                        isRealignment: sr.isRealignment || expense.isRealignment,
+                        isSavings: sr.isSavings || expense.isSavings,
+                        isCancelled: sr.status === 'Cancelled' || expense.isCancelled
                     });
                 });
                 return;
@@ -331,7 +336,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         };
         
         lineItems.forEach(item => {
-            if (item.amount <= 0 || item.isRealignment || item.isSavings) return;
+            if (item.amount <= 0 || item.isRealignment || item.isSavings || item.isCancelled) return;
 
             let targetList;
             const packageKey = item.packageType || (item.isTraining ? 'Trainings' : 'Activities');

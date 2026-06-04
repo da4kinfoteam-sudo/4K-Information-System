@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseLocation } from './LocationPicker';
 import { aggregateHomepageFinancials } from '../lib/financialAggregation';
 import { aggregateHomepagePhysicalStats } from '../lib/physicalAggregation';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
 import type { DataScope } from '../lib/scopedDataFetch';
 
 // Since Leaflet is loaded from a script tag, we need to declare it for TypeScript
@@ -244,7 +245,7 @@ const getStatusBadge = (status: Subproject['status']) => {
 }
 
 const calculateTotalBudget = (details: SubprojectDetail[]) => {
-    return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+    return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
 }
 
 // ... Icons (FinancialsIcon, AdIcon) remain same ...

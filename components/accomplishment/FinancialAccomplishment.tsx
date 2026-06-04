@@ -15,6 +15,7 @@ import { ObligationListEditor } from '../ui/ObligationListEditor';
 import { DisbursementListEditor } from '../ui/DisbursementListEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { resolveDisbursementEntries, summarizeDisbursements } from '../../lib/disbursementUtils';
+import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 import type { DataScope } from '../../lib/scopedDataFetch';
 
 interface Props {
@@ -84,6 +85,7 @@ interface FinancialItem {
     status: string; // Added status field
     isRealignment?: boolean;
     isSavings?: boolean;
+    isCancelled?: boolean;
     isConfirmed: boolean; // Just a UI state for this session (or could map to 'status')
 }
 
@@ -171,7 +173,7 @@ const getContextDescription = (item: FinancialItem) => {
     return item.expenseParticular;
 };
 
-const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings);
+const isTaggedExclusion = (item: FinancialItem) => !!(item.isRealignment || item.isSavings || item.isCancelled);
 
 const getTargetObligationForTotals = (item: FinancialItem) =>
     isTaggedExclusion(item) ? 0 : toFiniteNumber(item.targetObligationAmount);
@@ -337,9 +339,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             sourceName: sp.name,
                             budgetParticular: d.particulars,
                             targetObligationMonth: d.obligationMonth,
-                            targetObligationAmount: toFiniteNumber(d.pricePerUnit) * toFiniteNumber(d.numberOfUnits),
+                            targetObligationAmount: getBudgetLineAmount(d),
                             targetDisbursementMonth: d.disbursementMonth,
-                            targetDisbursementAmount: toFiniteNumber(d.pricePerUnit) * toFiniteNumber(d.numberOfUnits),
+                            targetDisbursementAmount: getBudgetLineAmount(d),
                             actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualObligationDate || ''),
                             actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(d.actualObligationAmount),
                             actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (d.actualDisbursementDate || ''),
@@ -347,8 +349,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             obligations: obs.length > 0 ? obs : getInitialObligations(d.obligations, d.actualObligationDate || '', toFiniteNumber(d.actualObligationAmount)),
                             disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(d.disbursements, d.actualDisbursementDate || '', toFiniteNumber(d.actualDisbursementAmount)),
                             status: sp.status,
-                            isRealignment: sp.isRealignment,
-                            isSavings: sp.isSavings,
+                            isRealignment: sp.isRealignment || d.isRealignment,
+                            isSavings: sp.isSavings || d.isSavings,
+                            isCancelled: sp.status === 'Cancelled' || d.isCancelled,
                             ...defaultMonthly,
                             isConfirmed: false
                         });
@@ -371,9 +374,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             expenseParticular: e.expenseParticular || 'Unspecified',
                             sourceName: act.name || `${act.type} (${act.component})`,
                             targetObligationMonth: e.obligationMonth,
-                            targetObligationAmount: toFiniteNumber(e.amount),
+                            targetObligationAmount: getBudgetLineAmount(e),
                             targetDisbursementMonth: e.disbursementMonth,
-                            targetDisbursementAmount: toFiniteNumber(e.amount),
+                            targetDisbursementAmount: getBudgetLineAmount(e),
                             actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
                             actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
                             actualDisbursementMonth: dibs.length > 0 ? dibs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualDisbursementDate || ''),
@@ -381,8 +384,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                             obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', toFiniteNumber(e.actualObligationAmount)),
                             disbursements: dibs.length > 0 ? dibs : getInitialDisbursements(e.disbursements, e.actualDisbursementDate || '', toFiniteNumber(e.actualDisbursementAmount)),
                             status: act.status,
-                            isRealignment: act.isRealignment,
-                            isSavings: act.isSavings,
+                            isRealignment: act.isRealignment || e.isRealignment,
+                            isSavings: act.isSavings || e.isSavings,
+                            isCancelled: act.status === 'Cancelled' || e.isCancelled,
                             ...defaultMonthly,
                             isConfirmed: false
                         });
@@ -441,9 +445,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                 expenseParticular: e.expenseParticular || 'Salaries & Wages',
                                 sourceName: s.personnelPosition,
                                 targetObligationMonth: e.obligationDate,
-                                targetObligationAmount: toFiniteNumber(e.amount),
+                                targetObligationAmount: getBudgetLineAmount(e),
                                 targetDisbursementMonth: 'Monthly',
-                                targetDisbursementAmount: toFiniteNumber(e.amount),
+                                targetDisbursementAmount: getBudgetLineAmount(e),
                                 actualObligationMonth: obs.length > 0 ? obs.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].date : (e.actualObligationDate || ''),
                                 actualObligationAmount: obs.length > 0 ? sumAmounts(obs) : toFiniteNumber(e.actualObligationAmount),
                                 actualDisbursementMonth: disbursementSummary.latestDate || e.actualDisbursementDate || '',
@@ -451,8 +455,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                 obligations: obs.length > 0 ? obs : getInitialObligations(e.obligations, e.actualObligationDate || '', toFiniteNumber(e.actualObligationAmount)),
                                 disbursements,
                                 status: s.hiringStatus,
-                                isRealignment: s.isRealignment,
-                                isSavings: s.isSavings,
+                                isRealignment: s.isRealignment || e.isRealignment,
+                                isSavings: s.isSavings || e.isSavings,
+                                isCancelled: s.status === 'Cancelled' || e.isCancelled,
                                 ...defaultMonthly,
                                 ...disbursementSummary.monthlyFields,
                                 isConfirmed: false
@@ -1569,7 +1574,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                                                                             const isChanged = changedItems.has(item.uniqueId);
                                                                             const contextDescription = getContextDescription(item);
                                                                             const isTagged = isTaggedExclusion(item);
-                                                                            const taggedLabel = item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
+                                                                            const taggedLabel = item.isCancelled ? 'Cancelled' : item.isSavings ? 'Savings' : item.isRealignment ? 'Realignment' : '';
 
                                                                             return (
                                                                             <React.Fragment key={item.uniqueId}>

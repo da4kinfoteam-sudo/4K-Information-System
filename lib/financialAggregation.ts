@@ -1,4 +1,5 @@
 import type { Activity, OtherProgramExpense, OfficeRequirement, StaffingRequirement, Subproject } from '../constants';
+import { getBudgetLineTag, isRecordOrLineExcludedFromTargets } from './budgetLineAdjustments';
 
 type YearFilter = string | 'All';
 
@@ -64,6 +65,15 @@ export type FinancialLine = {
     particulars?: string;
     equipment?: string;
     personnelPosition?: string;
+    isCancelled?: boolean;
+    isRealignment?: boolean;
+    isSavings?: boolean;
+    originalPlannedAmount?: number;
+    originalPricePerUnit?: number;
+    originalNumberOfUnits?: number;
+    originalCapturedAt?: string;
+    sourceItemId?: number | string | null;
+    adjustmentReason?: string | null;
     disbursementJan?: number;
     disbursementFeb?: number;
     disbursementMar?: number;
@@ -117,6 +127,8 @@ export interface FinancialLineItem {
     workflowStatus?: string;
     isRealignment?: boolean;
     isSavings?: boolean;
+    isCancelledLine?: boolean;
+    lineTag?: string | null;
     excludedTargetAllocation?: number;
     operatingUnit?: string;
     location?: string;
@@ -323,7 +335,7 @@ const addLineItem = (
     }
 ) => {
     const fallbackYear = getRecordYear(record);
-    const isTaggedExclusion = !!(record.isRealignment || record.isSavings);
+    const isTaggedExclusion = isRecordOrLineExcludedFromTargets(record, line);
     const isTarget = isTargetRecord(record, filters);
     const includeTarget = isTarget && !isTaggedExclusion;
     const includeActual = isActualRecord(record, filters);
@@ -354,6 +366,8 @@ const addLineItem = (
         workflowStatus: record.workflow_status,
         isRealignment: record.isRealignment,
         isSavings: record.isSavings,
+        isCancelledLine: !!line.isCancelled,
+        lineTag: getBudgetLineTag(line),
         excludedTargetAllocation,
         operatingUnit: metadata.operatingUnit,
         location: metadata.location,

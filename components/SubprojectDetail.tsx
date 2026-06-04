@@ -11,6 +11,17 @@ import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
+import {
+    BudgetItemAdjustmentHistory,
+    ensureOriginalBudgetSnapshot,
+    getBudgetLineAmount,
+    getBudgetLineTag,
+    isBudgetLineExcludedFromTargets,
+    normalizeBudgetLineStatus,
+    requestAdjustmentReason,
+    summarizeBudgetAdjustments,
+    writeBudgetItemAdjustmentHistory
+} from '../lib/budgetLineAdjustments';
 import { ArrowLeft, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, ImageIcon, Info, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
 import {
     canPreviewSubprojectDriveFile,
@@ -151,7 +162,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         uacsCode: '',
         obligationMonth: '',
         disbursementMonth: '',
+        isRealignment: false,
+        isSavings: false,
+        isCancelled: false,
+        adjustmentReason: '',
     });
+    const [budgetAdjustmentHistory, setBudgetAdjustmentHistory] = useState<BudgetItemAdjustmentHistory[]>([]);
     
     const [currentCommodity, setCurrentCommodity] = useState<SubprojectCommodity>({
         typeName: '',
@@ -190,6 +206,26 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const canEditBudget = canEdit;
     const canEditAccomplishment = canEdit || canEditFinancial || canEditPhysical;
 
+    const resetCurrentDetail = () => {
+        setCurrentDetail({
+            type: '',
+            particulars: '',
+            deliveryDate: '',
+            unitOfMeasure: 'pcs',
+            pricePerUnit: '',
+            numberOfUnits: '',
+            objectType: 'MOOE',
+            expenseParticular: '',
+            uacsCode: '',
+            obligationMonth: '',
+            disbursementMonth: '',
+            isRealignment: false,
+            isSavings: false,
+            isCancelled: false,
+            adjustmentReason: '',
+        });
+    };
+
     const toggleSection = (section: SubprojectDetailSectionKey) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
@@ -207,7 +243,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     useEffect(() => {
         setEditedSubproject(subproject);
         // Map details and preserve ID for tracking, plus virtualize logic
-        setDetailItems((subproject.details || []).map(d => ({
+        setDetailItems((subproject.details || []).map(d => ensureOriginalBudgetSnapshot({
             ...d,
             obligations: (d.obligations && d.obligations.length > 0) ? d.obligations : (
                 ((d.actualObligationAmount || 0) > 0) ? [{
@@ -225,8 +261,37 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         
         // Reset local editing states
         setEditingDetailIndex(null);
-        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
+        resetCurrentDetail();
     }, [subproject, editMode]);
+
+    useEffect(() => {
+        let isMounted = true;
+        const loadHistory = async () => {
+            if (!supabase) {
+                setBudgetAdjustmentHistory([]);
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('budget_item_adjustment_history')
+                .select('*')
+                .eq('source_type', 'subproject_detail')
+                .eq('parent_id', subproject.id)
+                .order('created_at', { ascending: false });
+
+            if (!isMounted) return;
+            if (error) {
+                console.warn('Unable to load subproject budget adjustment history', error);
+                setBudgetAdjustmentHistory([]);
+                return;
+            }
+            setBudgetAdjustmentHistory((data || []) as BudgetItemAdjustmentHistory[]);
+        };
+        loadHistory();
+        return () => {
+            isMounted = false;
+        };
+    }, [subproject.id]);
 
     const loadDriveFiles = useCallback(async () => {
         if (!currentUser?.id || !subproject.id) return;
@@ -371,12 +436,38 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     }, [detailItems, editMode]);
 
     const totalBudget = useMemo(() => {
-       return detailItems.reduce((acc, item) => acc + (Number(item.pricePerUnit) * Number(item.numberOfUnits)), 0);
+       return detailItems.reduce((acc, item) => acc + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
     }, [detailItems]);
 
     const calculateTotalBudget = (details: SubprojectDetailType[]) => {
-        return details.reduce((total, item) => total + (item.pricePerUnit * item.numberOfUnits), 0);
+        return details.reduce((total, item) => total + (isBudgetLineExcludedFromTargets(item) ? 0 : getBudgetLineAmount(item)), 0);
     }
+
+    const budgetAdjustmentSummary = useMemo(() => summarizeBudgetAdjustments(detailItems), [detailItems]);
+
+    const persistBudgetAdjustmentHistory = async (
+        action: BudgetItemAdjustmentHistory['action'],
+        beforeSnapshot: any,
+        afterSnapshot: any,
+        reason: string
+    ) => {
+        try {
+            const saved = await writeBudgetItemAdjustmentHistory({
+                sourceType: 'subproject_detail',
+                parentId: subproject.id,
+                itemId: afterSnapshot?.id || beforeSnapshot?.id,
+                action,
+                beforeSnapshot,
+                afterSnapshot,
+                sourceItemId: afterSnapshot?.sourceItemId || beforeSnapshot?.sourceItemId || null,
+                reason,
+                currentUser,
+            });
+            setBudgetAdjustmentHistory(prev => [saved, ...prev]);
+        } catch {
+            // History failure should not block editing the nested budget line.
+        }
+    };
 
     // Helper to get month index from YYYY-MM-DD string
     const availableUacsCodes = useMemo(() => {
@@ -539,7 +630,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
     
-    const handleAddDetail = () => {
+    const handleAddDetail = async () => {
         const requiredDetailFields = ['type', 'particulars', 'deliveryDate', 'pricePerUnit', 'numberOfUnits', 'obligationMonth', 'disbursementMonth', 'uacsCode'];
         const missingDetailFields = requiredDetailFields.filter(field => !currentDetail[field as keyof typeof currentDetail]);
         if (missingDetailFields.length > 0) {
@@ -549,7 +640,12 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         
         // Removed start date validation
 
-        const newItem: SubprojectDetailInput = {
+        if ((currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && !currentDetail.adjustmentReason.trim()) {
+            window.alert('A short reason is required when adding a cancelled, realignment, or savings budget item.');
+            return;
+        }
+
+        const newItem: SubprojectDetailInput = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
             ...currentDetail,
             pricePerUnit: parseFloat(currentDetail.pricePerUnit),
             numberOfUnits: parseFloat(currentDetail.numberOfUnits),
@@ -563,15 +659,36 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             actualAmount: 0,
             actualObligationAmount: 0,
             actualDisbursementAmount: 0
-        };
+        }));
 
         let updatedDetailItems: SubprojectDetailInput[] = [];
 
         if (editingDetailIndex !== null) {
+            const beforeItem = detailItems[editingDetailIndex];
             updatedDetailItems = detailItems.map((item, index) => index === editingDetailIndex ? { ...item, ...newItem, id: item.id } : item);
+            if (currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings || beforeItem.isRealignment || beforeItem.isSavings || beforeItem.isCancelled) {
+                await persistBudgetAdjustmentHistory(
+                    currentDetail.isCancelled ? 'cancel'
+                        : currentDetail.isRealignment ? 'tag_realignment'
+                            : currentDetail.isSavings ? 'tag_savings'
+                                : beforeItem.isCancelled ? 'restore'
+                                    : 'clear_tag',
+                    beforeItem,
+                    { ...beforeItem, ...newItem, id: beforeItem.id },
+                    currentDetail.adjustmentReason.trim() || 'Updated budget item metadata.'
+                );
+            }
             setEditingDetailIndex(null);
         } else {
             updatedDetailItems = [...detailItems, newItem];
+            if (newItem.isRealignment || newItem.isSavings) {
+                await persistBudgetAdjustmentHistory(
+                    'create_adjustment_item',
+                    null,
+                    newItem,
+                    newItem.adjustmentReason?.trim() || 'Created budget adjustment item.'
+                );
+            }
         }
 
         // Rule: Automatically update Estimated Completion Date to the farthest delivery date of budget items
@@ -596,10 +713,22 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             estimatedCompletionDate: newEstimatedCompletionDate
         }));
 
-        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
+        resetCurrentDetail();
     };
 
-    const handleRemoveDetail = (indexToRemove: number) => {
+    const handleRemoveDetail = async (indexToRemove: number) => {
+        const item = detailItems[indexToRemove];
+        const isSavedLine = !!(item.id && (subproject.details || []).some(detail => detail.id === item.id));
+        const hasActuals = ((item.obligations?.length || 0) > 0) || ((item.disbursements?.length || 0) > 0) || Number(item.actualObligationAmount) > 0 || Number(item.actualDisbursementAmount) > 0;
+        if (isSavedLine || hasActuals) {
+            const reason = requestAdjustmentReason('cancelling this budget item');
+            if (!reason) return;
+            const afterItem = { ...item, isCancelled: true, isRealignment: false, isSavings: false, adjustmentReason: reason };
+            setDetailItems(prev => prev.map((detail, index) => index === indexToRemove ? afterItem : detail));
+            await persistBudgetAdjustmentHistory('cancel', item, afterItem, reason);
+            return;
+        }
+
         setDetailItems(prev => prev.filter((_, index) => index !== indexToRemove));
         if (editingDetailIndex === indexToRemove) {
             handleCancelDetailEdit();
@@ -609,18 +738,46 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     };
     
     const handleEditParticular = (indexToEdit: number) => {
-        const itemToEdit = detailItems[indexToEdit];
+        const itemToEdit = normalizeBudgetLineStatus(detailItems[indexToEdit]);
         setCurrentDetail({
             ...itemToEdit,
             pricePerUnit: String(itemToEdit.pricePerUnit),
             numberOfUnits: String(itemToEdit.numberOfUnits),
+            isCancelled: !!itemToEdit.isCancelled,
+            isRealignment: !!itemToEdit.isRealignment,
+            isSavings: !!itemToEdit.isSavings,
+            adjustmentReason: itemToEdit.adjustmentReason || '',
         });
         setEditingDetailIndex(indexToEdit);
     };
 
     const handleCancelDetailEdit = () => {
         setEditingDetailIndex(null);
-        setCurrentDetail({ type: '', particulars: '', deliveryDate: '', unitOfMeasure: 'pcs', pricePerUnit: '', numberOfUnits: '', objectType: 'MOOE', expenseParticular: '', uacsCode: '', obligationMonth: '', disbursementMonth: '' });
+        resetCurrentDetail();
+    };
+
+    const handleBudgetLineTagChange = async (index: number, tag: 'Cancelled' | 'Realignment' | 'Savings' | null) => {
+        const item = detailItems[index];
+        const actionLabel = tag ? `marking this item as ${tag}` : 'clearing this budget item tag';
+        const reason = requestAdjustmentReason(actionLabel);
+        if (!reason) return;
+
+        const afterItem = {
+            ...item,
+            isCancelled: tag === 'Cancelled',
+            isRealignment: tag === 'Realignment',
+            isSavings: tag === 'Savings',
+            adjustmentReason: reason,
+        };
+        const action: BudgetItemAdjustmentHistory['action'] =
+            tag === 'Cancelled' ? 'cancel'
+                : tag === 'Realignment' ? 'tag_realignment'
+                    : tag === 'Savings' ? 'tag_savings'
+                        : item.isCancelled ? 'restore'
+                            : 'clear_tag';
+
+        setDetailItems(prev => prev.map((detail, itemIndex) => itemIndex === index ? afterItem : detail));
+        await persistBudgetAdjustmentHistory(action, item, afterItem, reason);
     };
 
     const handleDetailAccomplishmentChange = (index: number, field: keyof SubprojectDetailInput, value: any) => {
@@ -794,9 +951,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
 
         // Add 'id' back to details if missing (from new adds)
         const cleanDetails = detailItems.map((d, i) => {
+            const detailWithSnapshot = ensureOriginalBudgetSnapshot(d);
             const cleanD = { 
-                ...d, 
-                id: d.id || (Date.now() + i) // Ensure ID
+                ...detailWithSnapshot,
+                id: detailWithSnapshot.id || (Date.now() + i) // Ensure ID
             };
             if (cleanD.deliveryDate === '') (cleanD as any).deliveryDate = null;
             if (cleanD.actualDeliveryDate === '') (cleanD as any).actualDeliveryDate = null;
@@ -1271,17 +1429,27 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         <legend>Budget Items</legend>
                                         <div className="budget-item-list">
                                             {detailItems.map((d, index) => (
-                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''}`}>
+                                                <div key={index} className={`budget-item-card ${editingDetailIndex === index ? 'budget-item-card--editing' : ''} ${isBudgetLineExcludedFromTargets(d) ? 'budget-item-card--excluded' : ''} ${d.isCancelled ? 'budget-item-card--cancelled' : ''} ${d.isRealignment ? 'budget-item-card--realignment' : ''} ${d.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                     <div className="budget-item-card__summary">
-                                                        <span className="budget-item-card__title">{d.particulars}</span>
+                                                        <span className="budget-item-card__title">
+                                                            {d.particulars}
+                                                            {getBudgetLineTag(d) && (
+                                                                <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(d)?.toLowerCase()}`}>
+                                                                    {getBudgetLineTag(d)}
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                         <div className="budget-item-card__meta">
                                                             <div>{d.uacsCode} {availableUacsCodes.find(c => c.code === d.uacsCode)?.desc ? `- ${availableUacsCodes.find(c => c.code === d.uacsCode)?.desc}` : ''}</div>
                                                             <div>{d.numberOfUnits} {d.unitOfMeasure} @ {formatCurrency(Number(d.pricePerUnit))}</div>
                                                             <span className="block mt-1">Obligation: {formatMonthYear(d.obligationMonth)} | Disbursement: {formatMonthYear(d.disbursementMonth)}</span>
+                                                            {isBudgetLineExcludedFromTargets(d) && (
+                                                                <span className="budget-line-exclusion-note">{d.adjustmentReason || 'No adjustment justification recorded.'}</span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div className="budget-item-card__actions">
-                                                        <span className="budget-item-card__total">{formatCurrency(Number(d.numberOfUnits) * Number(d.pricePerUnit))}</span>
+                                                        <span className="budget-item-card__total">{formatCurrency(getBudgetLineAmount(d))}</span>
                                                         <div className="budget-item-card__buttons">
                                                             <button type="button" onClick={() => handleEditParticular(index)} className="table-action table-action--primary" title="Edit item">
                                                                 <Pencil className="btn-symbol" aria-hidden="true" />
@@ -1372,6 +1540,62 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                             <div><label className="form-label">Price/Unit</label><input type="number" name="pricePerUnit" value={currentDetail.pricePerUnit} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
                                             <div><label className="form-label">Number of Units</label><input type="number" name="numberOfUnits" value={currentDetail.numberOfUnits} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`} /></div>
                                             <div><label className="form-label">Unit of Measure</label><select name="unitOfMeasure" value={currentDetail.unitOfMeasure} onChange={handleDetailChange} className={`${commonInputClasses} form-control--compact`}><option value="pcs">pcs</option><option value="grams">grams</option><option value="kg">kg</option><option value="liters">liters</option><option value="boxes">boxes</option><option value="cans">cans</option><option value="sets">sets</option><option value="pax">pax</option><option value="heads">heads</option><option value="months">months</option><option value="days">days</option><option value="ha">ha</option><option value="bags">bags</option><option value="bottles">bottles</option><option value="sachets">sachets</option><option value="rolls">rolls</option><option value="meters">meters</option><option value="units">units</option><option value="packs">packs</option><option value="lots">lots</option></select></div>
+                                            <div className="budget-item-form-grid__full budget-line-adjustment-options">
+                                                {editingDetailIndex !== null && (
+                                                    <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={currentDetail.isCancelled}
+                                                            onChange={(e) => setCurrentDetail(prev => ({
+                                                                ...prev,
+                                                                isCancelled: e.target.checked,
+                                                                isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                                isSavings: e.target.checked ? false : prev.isSavings,
+                                                            }))}
+                                                            className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                                        />
+                                                        Cancelled
+                                                    </label>
+                                                )}
+                                                <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={currentDetail.isRealignment}
+                                                        onChange={(e) => setCurrentDetail(prev => ({
+                                                            ...prev,
+                                                            isRealignment: e.target.checked,
+                                                            isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                            isSavings: e.target.checked ? false : prev.isSavings,
+                                                        }))}
+                                                        className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                                    />
+                                                    Realignment
+                                                </label>
+                                                <label className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={currentDetail.isSavings}
+                                                        onChange={(e) => setCurrentDetail(prev => ({
+                                                            ...prev,
+                                                            isSavings: e.target.checked,
+                                                            isCancelled: e.target.checked ? false : prev.isCancelled,
+                                                            isRealignment: e.target.checked ? false : prev.isRealignment,
+                                                        }))}
+                                                        className="form-checkbox h-4 w-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                                                    />
+                                                    Savings
+                                                </label>
+                                                {(currentDetail.isCancelled || currentDetail.isRealignment || currentDetail.isSavings) && (
+                                                    <input
+                                                        type="text"
+                                                        name="adjustmentReason"
+                                                        value={currentDetail.adjustmentReason}
+                                                        onChange={handleDetailChange}
+                                                        placeholder="Reason for this adjustment"
+                                                        className={`${commonInputClasses} form-control--compact budget-line-adjustment-options__reason`}
+                                                    />
+                                                )}
+                                            </div>
                                             
                                             {editingDetailIndex !== null ? (
                                                 <div className="budget-item-form-grid__actions">
@@ -1386,6 +1610,30 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                     </button>
                                                 </div>
                                             )}
+                                        </div>
+                                        <div className="budget-adjustment-summary">
+                                            <div className="budget-adjustment-summary__header">
+                                                <h4>Expense Calculator</h4>
+                                            </div>
+                                            <div className="budget-adjustment-summary__grid">
+                                                <div><span>Allocation</span><strong>{formatCurrency(budgetAdjustmentSummary.originalPlannedBudget)}</strong></div>
+                                                <div><span>Active Target</span><strong>{formatCurrency(budgetAdjustmentSummary.activeTargetBudget)}</strong></div>
+                                                <div><span>Cancelled</span><strong>{formatCurrency(budgetAdjustmentSummary.cancelledAmount)}</strong></div>
+                                                <div><span>Realigned</span><strong>{formatCurrency(budgetAdjustmentSummary.realignedAmount)}</strong></div>
+                                                <div><span>Savings</span><strong>{formatCurrency(budgetAdjustmentSummary.savingsAmount)}</strong></div>
+                                                <div><span>Actual Obligated</span><strong>{formatCurrency(budgetAdjustmentSummary.actualObligated)}</strong></div>
+                                                <div><span>Actual Disbursed</span><strong>{formatCurrency(budgetAdjustmentSummary.actualDisbursed)}</strong></div>
+                                            </div>
+                                            <div className="budget-adjustment-history">
+                                                {budgetAdjustmentHistory.slice(0, 6).map(entry => (
+                                                    <div key={entry.id || `${entry.item_id}-${entry.created_at}`} className="budget-adjustment-history__row">
+                                                        <strong>{entry.action.replace(/_/g, ' ')}</strong>
+                                                        <span>{entry.reason}</span>
+                                                        <small>{entry.created_by_name || entry.created_by || 'System'} · {formatDate(entry.created_at)}</small>
+                                                    </div>
+                                                ))}
+                                                {budgetAdjustmentHistory.length === 0 && <p className="detail-empty detail-empty--compact">No budget adjustment history recorded yet.</p>}
+                                            </div>
                                         </div>
                                      </fieldset>
                                 </div>
@@ -1807,6 +2055,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 <thead>
                                     <tr>
                                         <th className="px-4 py-2 text-left">Particulars</th>
+                                        <th className="px-4 py-2 text-left">Status</th>
                                         <th className="px-4 py-2 text-left">Delivery Date</th>
                                         <th className="px-4 py-2 text-left">UACS Code</th>
                                         <th className="px-4 py-2 text-left">Obligation</th>
@@ -1823,8 +2072,17 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                         const completionPct = (actualUnits / targetUnits) * 100;
                                         
                                         return (
-                                            <tr key={detail.id} className="border-b border-gray-200 dark:border-gray-700">
+                                            <tr key={detail.id} className={`border-b border-gray-200 dark:border-gray-700 ${isBudgetLineExcludedFromTargets(detail) ? 'budget-item-card--excluded' : ''} ${detail.isCancelled ? 'budget-item-card--cancelled' : ''} ${detail.isRealignment ? 'budget-item-card--realignment' : ''} ${detail.isSavings ? 'budget-item-card--savings' : ''}`}>
                                                 <td className="px-4 py-2 font-medium">{detail.particulars}</td>
+                                                <td className="px-4 py-2">
+                                                    {getBudgetLineTag(detail) ? (
+                                                        <span className={`budget-line-badge budget-line-badge--${getBudgetLineTag(detail)?.toLowerCase()}`}>
+                                                            {getBudgetLineTag(detail)}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400">-</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-2">{formatMonthYear(detail.deliveryDate)}</td>
                                                 <td className="px-4 py-2">{detail.uacsCode}</td>
                                                 <td className="px-4 py-2">{formatMonthYear(detail.obligationMonth)}</td>
@@ -1842,7 +2100,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                 </tbody>
                                 <tfoot className="font-bold bg-gray-50 dark:bg-gray-700/50">
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-2 text-right">Total Budget</td>
+                                        <td colSpan={7} className="px-4 py-2 text-right">Total Budget</td>
                                         <td className="px-4 py-2 text-right">{formatCurrency(calculateTotalBudget(subproject.details))}</td>
                                         <td></td>
                                     </tr>

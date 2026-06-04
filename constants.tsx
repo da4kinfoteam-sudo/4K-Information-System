@@ -185,6 +185,15 @@ export interface SubprojectDetail {
     obligations?: ObligationRecord[];
     disbursements?: DisbursementRecord[];
     isCompleted?: boolean;
+    isCancelled?: boolean;
+    isRealignment?: boolean;
+    isSavings?: boolean;
+    originalPlannedAmount?: number;
+    originalPricePerUnit?: number;
+    originalNumberOfUnits?: number;
+    originalCapturedAt?: string;
+    sourceItemId?: number | string | null;
+    adjustmentReason?: string | null;
 }
 
 export interface SubprojectCommodity {
@@ -286,6 +295,15 @@ export interface ActivityExpense {
     actualDisbursementAmount?: number;
     obligations?: ObligationRecord[];
     disbursements?: DisbursementRecord[];
+    isCancelled?: boolean;
+    isRealignment?: boolean;
+    isSavings?: boolean;
+    originalPlannedAmount?: number;
+    originalPricePerUnit?: number;
+    originalNumberOfUnits?: number;
+    originalCapturedAt?: string;
+    sourceItemId?: number | string | null;
+    adjustmentReason?: string | null;
 }
 
 export interface Activity extends BaseEntity {
@@ -413,6 +431,15 @@ export interface StaffingExpense {
     actualDisbursementOct?: number;
     actualDisbursementNov?: number;
     actualDisbursementDec?: number;
+    isCancelled?: boolean;
+    isRealignment?: boolean;
+    isSavings?: boolean;
+    originalPlannedAmount?: number;
+    originalPricePerUnit?: number;
+    originalNumberOfUnits?: number;
+    originalCapturedAt?: string;
+    sourceItemId?: number | string | null;
+    adjustmentReason?: string | null;
 }
 
 export interface StaffingRequirement extends BaseProgramManagementItem {

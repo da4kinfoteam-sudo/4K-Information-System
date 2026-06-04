@@ -5,6 +5,7 @@ import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
 import { XLSX } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
+import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface MonthlyReportMatrixProps {
     data: {
@@ -129,7 +130,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             packages[pkg].push(sp);
             
             // Cost Aggregation
-            const cost = sp.details.reduce((sum, d) => sum + (d.pricePerUnit * d.numberOfUnits), 0);
+            const cost = sp.details.reduce((sum, d) => sum + (isBudgetLineExcludedFromTargets(d) ? 0 : getBudgetLineAmount(d)), 0);
             structure['Production and Livelihood'].cost += cost;
         });
 
@@ -200,7 +201,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const item = createRow(act.name, 'Number', tMonth, aMonth, tCum, aCum);
             
             // Cost Aggregation
-            const cost = act.expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
+            const cost = act.expenses.reduce((sum: number, e: any) => sum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0);
 
             if (act.component === 'Production and Livelihood') {
                 if (!structure['Production and Livelihood'].packages['Trainings']) structure['Production and Livelihood'].packages['Trainings'] = [];
@@ -220,9 +221,10 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         // --- 3. PM Items ---
         const processPM = (items: any[], typeKey: string, isStaff = false) => {
             items.forEach(pm => {
+                const isExcluded = pm.status === 'Cancelled' || pm.isRealignment || pm.isSavings;
                 const targetQty = isStaff ? 1 : (pm.numberOfUnits || 1);
-                const tMonth = isTargetDueMonthly(pm.obligationDate) ? targetQty : 0;
-                const tCum = isTargetDueCumulative(pm.obligationDate) ? targetQty : 0;
+                const tMonth = !isExcluded && isTargetDueMonthly(pm.obligationDate) ? targetQty : 0;
+                const tCum = !isExcluded && isTargetDueCumulative(pm.obligationDate) ? targetQty : 0;
                 
                 const actDate = pm.actualDate || pm.actualObligationDate;
                 const aMonth = (actDate && isTargetDueMonthly(actDate)) ? targetQty : 0;
@@ -235,7 +237,13 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                 addItem(structure['Program Management'].packages[typeKey], item);
 
                 // Cost
-                const cost = isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
+                const cost = isExcluded
+                    ? 0
+                    : isStaff && pm.expenses && pm.expenses.length > 0
+                        ? pm.expenses.reduce((sum: number, expense: any) => sum + (isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense)), 0)
+                        : isStaff
+                            ? pm.annualSalary
+                            : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits));
                 structure['Program Management'].cost += cost;
             });
         };
@@ -243,7 +251,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         processPM(data.officeReqs, 'Office');
         // Other Expenses - Add to cost but maybe not physical count unless defined
         data.otherProgramExpenses.forEach(ope => {
-             structure['Program Management'].cost += ope.amount;
+             const isExcluded = ope.status === 'Cancelled' || ope.isRealignment || ope.isSavings;
+             structure['Program Management'].cost += isExcluded ? 0 : ope.amount;
         });
 
         return structure;

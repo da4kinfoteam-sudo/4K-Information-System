@@ -30,6 +30,7 @@ export const SCOPED_CACHE_TABLES = [
   'elcacAreas',
   'activityMonitoringReports',
   'activityMonitoringActions',
+  'budgetItemAdjustmentHistory',
 ] as const;
 
 export type ScopedCacheTable = typeof SCOPED_CACHE_TABLES[number];
@@ -136,6 +137,7 @@ const emptyScopedData = (): ScopedAppData => ({
   elcacAreas: [],
   activityMonitoringReports: [],
   activityMonitoringActions: [],
+  budgetItemAdjustmentHistory: [],
 });
 
 export const getScopeCacheMeta = async (scope: DataScope): Promise<CacheMeta | null> => {
