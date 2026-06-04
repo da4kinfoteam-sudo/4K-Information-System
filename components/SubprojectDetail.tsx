@@ -188,6 +188,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [deletingDriveFileId, setDeletingDriveFileId] = useState<number | null>(null);
     const [driveMessage, setDriveMessage] = useState<string | null>(null);
     const [previewDriveFile, setPreviewDriveFile] = useState<SubprojectDriveFile | null>(null);
+    const [driveFilePendingDelete, setDriveFilePendingDelete] = useState<SubprojectDriveFile | null>(null);
     const [expandedSections, setExpandedSections] = useState<Record<SubprojectDetailSectionKey, boolean>>({
         commodities: false,
         budget: false,
@@ -354,16 +355,21 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         }
     };
 
-    const handleDriveFileDelete = async (file: SubprojectDriveFile) => {
+    const requestDriveFileDelete = (file: SubprojectDriveFile) => {
         if (!canDeleteDriveFiles) return;
-        if (!confirm(`Delete "${file.file_name}" from Google Drive storage?`)) return;
+        setDriveFilePendingDelete(file);
+    };
 
+    const handleDriveFileDelete = async () => {
+        const file = driveFilePendingDelete;
+        if (!canDeleteDriveFiles || !file) return;
         setDeletingDriveFileId(file.id);
         setDriveMessage(null);
         try {
             await deleteSubprojectDriveFile(currentUser, file.id);
             setDriveFiles(prev => prev.filter(item => item.id !== file.id));
             setDriveMessage(`${file.file_name} deleted.`);
+            setDriveFilePendingDelete(null);
         } catch (error: any) {
             setDriveMessage(error.message || 'Unable to delete Subproject file.');
         } finally {
@@ -1902,6 +1908,35 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                     </div>
                 </div>
             )}
+            {driveFilePendingDelete && (
+                <div className="dashboard-modal-backdrop" onClick={() => !deletingDriveFileId && setDriveFilePendingDelete(null)}>
+                    <div className="dashboard-modal dashboard-modal--compact" onClick={e => e.stopPropagation()}>
+                        <div className="dashboard-modal__header">
+                            <div>
+                                <h3>Delete Drive File</h3>
+                                <p className="dashboard-modal__metric-subtext">This removes the file from the 4KIS file list and attempts to delete it from Google Drive.</p>
+                            </div>
+                            <button type="button" onClick={() => setDriveFilePendingDelete(null)} className="dashboard-modal__close" aria-label="Close delete confirmation" disabled={!!deletingDriveFileId}>
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="dashboard-modal__body">
+                            <div className="dashboard-modal__event">
+                                <p className="dashboard-modal__metric-label">File</p>
+                                <p className="dashboard-modal__metric-value">{driveFilePendingDelete.file_name}</p>
+                                <p className="dashboard-modal__metric-subtext">{formatFileSize(driveFilePendingDelete.file_size)} - Uploaded by {driveFilePendingDelete.uploaded_by_name || 'Unknown user'}</p>
+                            </div>
+                        </div>
+                        <div className="dashboard-modal__actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setDriveFilePendingDelete(null)} disabled={!!deletingDriveFileId}>Cancel</button>
+                            <button type="button" className="btn btn-danger" onClick={handleDriveFileDelete} disabled={!!deletingDriveFileId}>
+                                {deletingDriveFileId ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+                                Delete File
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {selectedGalleryFile && (
                 <div className="dashboard-modal-backdrop" onClick={() => setGalleryIndex(null)}>
                     <div className="dashboard-modal dashboard-modal--wide ipo-gallery-modal" onClick={e => e.stopPropagation()}>
@@ -2362,7 +2397,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 <button
                                                     type="button"
                                                     className="table-action table-action--danger"
-                                                    onClick={() => handleDriveFileDelete(file)}
+                                                    onClick={() => requestDriveFileDelete(file)}
                                                     disabled={deletingDriveFileId === file.id}
                                                 >
                                                     {deletingDriveFileId === file.id ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}

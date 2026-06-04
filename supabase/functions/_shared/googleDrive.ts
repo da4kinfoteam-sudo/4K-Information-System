@@ -1105,7 +1105,7 @@ async function deleteDriveFile(accessToken: string, fileId: string) {
     method: "DELETE",
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  if (response.ok || response.status === 404 || response.status === 410) {
+  if (response.ok || response.status === 400 || response.status === 404 || response.status === 410) {
     return;
   }
 
