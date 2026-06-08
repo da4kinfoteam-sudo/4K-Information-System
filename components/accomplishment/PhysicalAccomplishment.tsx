@@ -57,12 +57,17 @@ interface PhysicalItem {
     isParent: boolean;
     isLocked: boolean; 
     status: string;
+    recordTag?: PhysicalTag;
     lineTag?: string | null;
+    targetExcluded?: boolean;
     catchUpPlanRemarks?: string;
     dueStatus?: 'Completed' | 'Overdue' | 'On Track' | 'Not Started';
     isOverdue?: boolean;
     children?: PhysicalItem[];
 }
+
+type PhysicalTag = 'Cancelled' | 'Realignment' | 'Savings' | null;
+type PhysicalSortMode = 'default' | 'target-date-asc' | 'target-date-desc' | 'due-status';
 
 const commonInputClasses = "mt-1 block w-full px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-xs text-gray-900 dark:text-white";
 const physicalNumberFormatter = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 });
@@ -96,6 +101,48 @@ const getPhysicalDueStatus = (targetDate: string | undefined, completed: boolean
     return { dueStatus: isOverdue ? 'Overdue' as const : 'On Track' as const, isOverdue };
 };
 
+const getPhysicalRecordTag = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null): PhysicalTag => {
+    if (!record) return null;
+    if (record.status === 'Cancelled') return 'Cancelled';
+    if (record.isRealignment) return 'Realignment';
+    if (record.isSavings) return 'Savings';
+    return null;
+};
+
+const isPhysicalRecordExcludedFromTargets = (record?: { status?: string; isRealignment?: boolean; isSavings?: boolean } | null) =>
+    !!getPhysicalRecordTag(record);
+
+const getSortableTargetDate = (item: PhysicalItem) => {
+    const date = getDateOnly(item.targetDateStart);
+    return date ? date.getTime() : Number.MAX_SAFE_INTEGER;
+};
+
+const dueStatusSortOrder: Record<NonNullable<PhysicalItem['dueStatus']>, number> = {
+    'Overdue': 0,
+    'On Track': 1,
+    'Not Started': 2,
+    'Completed': 3,
+};
+
+const sortPhysicalItems = (items: PhysicalItem[], sortMode: PhysicalSortMode) => {
+    const sorted = [...items];
+    if (sortMode === 'default') return sorted;
+
+    sorted.sort((a, b) => {
+        if (sortMode === 'target-date-asc') {
+            return getSortableTargetDate(a) - getSortableTargetDate(b) || a.name.localeCompare(b.name);
+        }
+        if (sortMode === 'target-date-desc') {
+            return getSortableTargetDate(b) - getSortableTargetDate(a) || a.name.localeCompare(b.name);
+        }
+        const aStatus = dueStatusSortOrder[a.dueStatus || 'Not Started'];
+        const bStatus = dueStatusSortOrder[b.dueStatus || 'Not Started'];
+        return aStatus - bStatus || getSortableTargetDate(a) - getSortableTargetDate(b) || a.name.localeCompare(b.name);
+    });
+
+    return sorted;
+};
+
 const PhysicalAccomplishment: React.FC<Props> = ({
     subprojects, setSubprojects,
     activities, setActivities,
@@ -117,6 +164,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [focusedNumberInputs, setFocusedNumberInputs] = useState<Set<string>>(new Set());
+    const [sortMode, setSortMode] = useLocalStorageState<PhysicalSortMode>('phys_sortMode', 'default');
 
     // Local Data State
     const [items, setItems] = useState<PhysicalItem[]>([]);
@@ -130,6 +178,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     
     // Expansion State
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
+    const [expandedSubgroups, setExpandedSubgroups] = useLocalStorageState<string[]>('phys_expandedSubgroups', ['Staffing Requirements', 'Office Requirements']);
     const [expandedParents, setExpandedParents] = useLocalStorageState<string[]>('phys_expandedParents', []);
 
     // Init defaults and OU lock
@@ -185,10 +234,10 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             };
         };
 
-        const scopedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
-        const scopedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
-        const scopedStaffing = (staffingReqs || []).filter(matchesSelectedFilters);
-        const scopedOffice = (officeReqs || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
+        const scopedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
+        const scopedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
+        const scopedStaffing = (staffingReqs || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
+        const scopedOffice = (officeReqs || []).filter(item => matchesSelectedFilters(item) && !isPhysicalRecordExcludedFromTargets(item));
 
         return [
             buildCard('Subprojects', scopedSubprojects.length, scopedSubprojects.filter(item => !!item.actualCompletionDate || item.status === 'Completed').length),
@@ -209,6 +258,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             // A. Subprojects (Parent + Children)
             (subprojects || []).filter(matchesSelectedFilters).forEach(sp => {
                 const parentId = `sp-${sp.id}`;
+                const parentRecordTag = getPhysicalRecordTag(sp);
+                const parentTargetExcluded = isPhysicalRecordExcludedFromTargets(sp);
                 const parentDue = getPhysicalDueStatus(sp.estimatedCompletionDate, !!sp.actualCompletionDate || sp.status === 'Completed');
                 const children: PhysicalItem[] = (sp.details || []).map(d => ({
                     uniqueId: `${parentId}-d-${d.id}`,
@@ -218,14 +269,17 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     detailId: d.id,
                     name: d.particulars,
                     targetDateStart: d.deliveryDate,
-                    targetQty: isBudgetLineExcludedFromTargets(d) ? 0 : d.numberOfUnits,
+                    targetQty: d.numberOfUnits,
                     unitOfMeasure: d.unitOfMeasure,
                     actualDateStart: d.actualDeliveryDate || '',
                     actualQty: d.actualNumberOfUnits || 0,
                     isParent: false,
                     isLocked: false, // Individual items editable
                     status: sp.status,
-                    lineTag: getBudgetLineTag(d)
+                    recordTag: parentRecordTag,
+                    lineTag: getBudgetLineTag(d),
+                    targetExcluded: parentTargetExcluded || isBudgetLineExcludedFromTargets(d),
+                    ...getPhysicalDueStatus(d.deliveryDate, !!d.actualDeliveryDate || (d.numberOfUnits > 0 && (d.actualNumberOfUnits || 0) >= d.numberOfUnits))
                 }));
 
                 loadedItems.push({
@@ -242,6 +296,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: true,
                     isLocked: false,
                     status: sp.status,
+                    recordTag: parentRecordTag,
+                    targetExcluded: parentTargetExcluded,
                     catchUpPlanRemarks: sp.catchUpPlanRemarks || '',
                     dueStatus: parentDue.dueStatus,
                     isOverdue: parentDue.isOverdue,
@@ -251,6 +307,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
             // B. Activities (Flat)
             (activities || []).filter(matchesSelectedFilters).forEach(act => {
+                const recordTag = getPhysicalRecordTag(act);
+                const targetExcluded = isPhysicalRecordExcludedFromTargets(act);
                 const activityDue = getPhysicalDueStatus(act.endDate || act.date, !!act.actualDate || act.status === 'Completed');
                 loadedItems.push({
                     uniqueId: `act-${act.id}`,
@@ -271,6 +329,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: false,
                     isLocked: false,
                     status: act.status,
+                    recordTag,
+                    targetExcluded,
                     catchUpPlanRemarks: act.catchUpPlanRemarks || '',
                     dueStatus: activityDue.dueStatus,
                     isOverdue: activityDue.isOverdue
@@ -300,6 +360,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: false,
                     isLocked: false,
                     status: s.status,
+                    recordTag: getPhysicalRecordTag(s),
+                    targetExcluded: isPhysicalRecordExcludedFromTargets(s),
                     dueStatus: s.actualObligationDate || s.hiringStatus === 'Filled' ? 'Completed' : 'On Track'
                 }));
 
@@ -309,7 +371,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     sourceId: 0, // Virtual ID
                     name: position,
                     targetDateStart: '',
-                    targetQty: groupItems.length,
+                    targetQty: children.filter(child => !child.targetExcluded).length,
                     unitOfMeasure: 'Personnel',
                     actualDateStart: '',
                     actualQty: children.filter(c => c.actualDateStart).length,
@@ -323,6 +385,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
             // D. Office Requirements (Flat)
             (officeReqs || []).filter(matchesSelectedFilters).forEach(off => {
+                const recordTag = getPhysicalRecordTag(off);
+                const targetExcluded = isPhysicalRecordExcludedFromTargets(off);
                 loadedItems.push({
                     uniqueId: `office-${off.id}`,
                     sourceType: 'Office',
@@ -336,6 +400,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: false,
                     isLocked: false,
                     status: off.status,
+                    recordTag,
+                    targetExcluded,
                     dueStatus: off.actualObligationDate || off.status === 'Completed' ? 'Completed' : 'On Track'
                 });
             });
@@ -352,19 +418,25 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     // --- 2. Grouping for Display ---
     const groupedDisplay = useMemo(() => {
         return {
-            'Subprojects': items.filter(i => i.sourceType === 'Subproject'),
-            'Activities': items.filter(i => i.sourceType === 'Activity'),
-            'Program Management': [
+            'Subprojects': sortPhysicalItems(items.filter(i => i.sourceType === 'Subproject'), sortMode),
+            'Activities': sortPhysicalItems(items.filter(i => i.sourceType === 'Activity'), sortMode),
+            'Staffing Requirements': sortPhysicalItems(items.filter(i => i.sourceType === 'Staffing'), sortMode),
+            'Office Requirements': sortPhysicalItems(items.filter(i => i.sourceType === 'Office'), sortMode),
+            'Program Management': sortPhysicalItems([
                 ...items.filter(i => i.sourceType === 'Staffing'),
                 ...items.filter(i => i.sourceType === 'Office')
-            ]
+            ], sortMode)
         };
-    }, [items]);
+    }, [items, sortMode]);
 
     // --- 3. Handlers ---
 
     const toggleGroup = (group: string) => {
         setExpandedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
+    };
+
+    const toggleSubgroup = (group: string) => {
+        setExpandedSubgroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
     };
 
     const toggleParent = (id: string) => {
@@ -759,7 +831,18 @@ const PhysicalAccomplishment: React.FC<Props> = ({
             : <span className="physical-accomplishment-empty-cell">-</span>;
     };
 
+    const renderPhysicalTagBadge = (tag?: string | null) => {
+        if (!tag) return null;
+        return <span className={`budget-line-badge budget-line-badge--${tag.toLowerCase()} ml-2`}>{tag}</span>;
+    };
+
+    const getPhysicalTagClass = (item: PhysicalItem) => {
+        const tag = item.recordTag || item.lineTag;
+        return tag ? `physical-accomplishment-row--${tag.toLowerCase()}` : '';
+    };
+
     const getCompletionRate = (item: PhysicalItem) => {
+        if (item.targetExcluded) return 0;
         if (item.sourceType === 'Activity') {
             return item.actualDateStart ? 100 : 0;
         }
@@ -773,6 +856,135 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         if (currentUser?.role === 'User' && item.status === 'Proposed') return true;
         return false;
     };
+
+    const renderTargetUnits = (item: PhysicalItem, isTargetEditable: boolean) => {
+        const targetClass = item.targetExcluded ? 'physical-accomplishment-target-excluded' : '';
+        const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
+        if (item.sourceType === 'Activity') {
+            return canEditVisibleTarget ? (
+                <div className="flex gap-1 justify-center">
+                    <input type="number" placeholder="M" value={item.targetMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetMale: parseFloat(e.target.value) || 0, targetQty: (parseFloat(e.target.value) || 0) + (item.targetFemale || 0) })} className={`${commonInputClasses} w-12`} />
+                    <input type="number" placeholder="F" value={item.targetFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetFemale: parseFloat(e.target.value) || 0, targetQty: (item.targetMale || 0) + (parseFloat(e.target.value) || 0) })} className={`${commonInputClasses} w-12`} />
+                </div>
+            ) : (
+                <div className={`flex flex-col ${targetClass}`}>
+                    <span>{item.targetQty} Pax</span>
+                    <span className="text-[10px] text-gray-400">M:{item.targetMale} F:{item.targetFemale}</span>
+                </div>
+            );
+        }
+
+        if (item.isParent && item.sourceType === 'Subproject') {
+            return <span className="physical-accomplishment-empty-cell">-</span>;
+        }
+
+        return canEditVisibleTarget && !item.isParent ? (
+            renderNumberInput(item.targetQty, (val) => updateLocalItem(item.uniqueId, { targetQty: val }), false)
+        ) : (
+            <span className={targetClass}>{item.targetQty} {item.unitOfMeasure}</span>
+        );
+    };
+
+    const renderPhysicalItemRows = (groupItems: PhysicalItem[]) => sortPhysicalItems(groupItems, sortMode).map(item => {
+        const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
+        const completionRate = getCompletionRate(item);
+        const isLocked = !canEdit;
+        const isTargetEditable = canEditTarget(item);
+        const canEditVisibleTarget = isTargetEditable && !item.targetExcluded;
+        const isChanged = changedItems.has(item.uniqueId);
+        const itemRowClass = [
+            'physical-accomplishment-row',
+            item.isParent ? 'physical-accomplishment-row--parent' : '',
+            item.isOverdue ? 'physical-accomplishment-row--overdue' : '',
+            item.targetExcluded ? 'physical-accomplishment-row--target-excluded' : '',
+            getPhysicalTagClass(item),
+            isChanged ? 'physical-accomplishment-row--changed' : ''
+        ].filter(Boolean).join(' ');
+
+        return (
+            <React.Fragment key={item.uniqueId}>
+                <tr className={itemRowClass}>
+                    <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-2">
+                        <div className="physical-accomplishment-title-cell">
+                            {item.isParent && (
+                                <button onClick={() => toggleParent(item.uniqueId)} className="fac-expand-toggle fac-expand-toggle--small" aria-label={isParentExpanded ? 'Collapse row' : 'Expand row'}>
+                                    {isParentExpanded ? '-' : '+'}
+                                </button>
+                            )}
+                            <div className="min-w-0">
+                                <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
+                                    {item.name}
+                                </button>
+                                {renderPhysicalTagBadge(item.recordTag)}
+                                {renderPhysicalTagBadge(item.lineTag)}
+                                {item.subName && <div className="text-xs text-gray-500">{item.subName}</div>}
+                            </div>
+                        </div>
+                    </td>
+                    <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
+                        {canEditVisibleTarget && !(item.sourceType === 'Staffing' && item.isParent) ? (
+                            <div className="space-y-1">
+                                {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false)}
+                                {item.sourceType === 'Activity' && (
+                                    renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false)
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                {item.targetDateStart || '-'}
+                                {item.targetDateEnd ? ` to ${item.targetDateEnd}` : ''}
+                            </>
+                        )}
+                    </td>
+                    <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
+                        {renderTargetUnits(item, isTargetEditable)}
+                    </td>
+                    <td className="pac-col-actual px-4 py-2 border-l border-emerald-100 dark:border-emerald-800">
+                        {!(item.sourceType === 'Staffing' && item.isParent) && (
+                            <div className="space-y-1">
+                                {renderDateInput(item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateStart: val }), isLocked)}
+                                {item.sourceType === 'Activity' && item.targetDateEnd && (
+                                    renderDateInput(item.actualDateEnd || item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateEnd: val }), isLocked)
+                                )}
+                            </div>
+                        )}
+                    </td>
+                    <td className="pac-col-actual px-4 py-2 text-center">
+                        {item.sourceType === 'Activity' ? (
+                            <div className="flex gap-1 justify-center">
+                                {renderActualNumberInput(`${item.uniqueId}-actual-male`, item.actualMale || 0, (val) => updateLocalItem(item.uniqueId, { actualMale: val, actualQty: val + (item.actualFemale || 0) }), isLocked)}
+                                {renderActualNumberInput(`${item.uniqueId}-actual-female`, item.actualFemale || 0, (val) => updateLocalItem(item.uniqueId, { actualFemale: val, actualQty: (item.actualMale || 0) + val }), isLocked)}
+                            </div>
+                        ) : (
+                            item.isParent && item.sourceType === 'Subproject' ? '-'
+                            : (item.sourceType === 'Staffing' && item.isParent ? <span className="text-xs font-bold">{item.actualQty} / {item.targetQty}</span>
+                                : renderActualNumberInput(`${item.uniqueId}-actual-qty`, item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
+                        )}
+                    </td>
+                    <td className="px-4 py-2 text-center text-xs font-bold text-emerald-600">
+                        {item.isParent ? '-' : item.targetExcluded ? <span className="physical-accomplishment-empty-cell">Excluded</span> : `${completionRate}%`}
+                    </td>
+                    <td className="px-4 py-2 text-center text-xs">
+                        {renderDueBadge(item)}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                        {renderCatchUpPlan(item, isLocked)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                        {isChanged && (
+                            <button onClick={() => undoLocalItem(item.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                </svg>
+                            </button>
+                        )}
+                    </td>
+                </tr>
+
+                {item.isParent && isParentExpanded && item.children && renderPhysicalItemRows(item.children)}
+            </React.Fragment>
+        );
+    });
 
     return (
         <div className="data-list-page">
@@ -881,6 +1093,20 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         </div>
                     ))}
                 </section>
+                <div className="physical-accomplishment-table-toolbar">
+                    <label htmlFor="physical-table-sort" className="physical-accomplishment-table-toolbar__label">Sort rows</label>
+                    <select
+                        id="physical-table-sort"
+                        value={sortMode}
+                        onChange={(event) => setSortMode(event.target.value as PhysicalSortMode)}
+                        className="form-control physical-accomplishment-sort-select"
+                    >
+                        <option value="default">Default</option>
+                        <option value="target-date-asc">Target Date: Earliest</option>
+                        <option value="target-date-desc">Target Date: Latest</option>
+                        <option value="due-status">Due Status</option>
+                    </select>
+                </div>
                 <div className="data-table-scroll financial-accomplishment-table-scroll physical-accomplishment-table-scroll custom-scrollbar">
                     <table className="data-table physical-accomplishment-table min-w-[1320px] divide-y divide-gray-200 dark:divide-gray-700">
                         <colgroup>
@@ -908,16 +1134,15 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
-                            {/* Group Render Logic */}
-                            {['Subprojects', 'Activities', 'Program Management'].map(groupKey => {
-                                // @ts-ignore
+                            {(['Subprojects', 'Activities', 'Program Management'] as const).map(groupKey => {
                                 const groupItems: PhysicalItem[] = groupedDisplay[groupKey] || [];
                                 if (groupItems.length === 0) return null;
                                 const isGroupExpanded = expandedGroups.includes(groupKey);
+                                const isProgramManagement = groupKey === 'Program Management';
+                                const programSubgroups = ['Staffing Requirements', 'Office Requirements'] as const;
 
                                 return (
                                     <React.Fragment key={groupKey}>
-                                        {/* Level 1 Group Header */}
                                         <tr className="physical-accomplishment-row physical-accomplishment-row--group">
                                             <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-3">
                                                 <button onClick={() => toggleGroup(groupKey)} className="physical-accomplishment-drill-button">
@@ -934,188 +1159,32 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                             <td className="px-4 py-3 text-center text-xs">-</td>
                                             <td className="px-4 py-3 text-right text-xs">-</td>
                                         </tr>
-                                        
-                                        {isGroupExpanded && groupItems.map(item => {
-                                            const isParentExpanded = item.isParent && expandedParents.includes(item.uniqueId);
-                                            // Specific render logic based on type
-                                            
-                                            const completionRate = getCompletionRate(item);
-                                            const isLocked = !canEdit;
-                                            const isTargetEditable = canEditTarget(item);
-                                            const isChanged = changedItems.has(item.uniqueId);
+
+                                        {isGroupExpanded && !isProgramManagement && renderPhysicalItemRows(groupItems)}
+                                        {isGroupExpanded && isProgramManagement && programSubgroups.map(subgroupKey => {
+                                            const subgroupItems = groupedDisplay[subgroupKey] || [];
+                                            if (subgroupItems.length === 0) return null;
+                                            const isSubgroupExpanded = expandedSubgroups.includes(subgroupKey);
 
                                             return (
-                                                <React.Fragment key={item.uniqueId}>
-                                                    {/* Parent / Main Item Row */}
-                                                    <tr className={`physical-accomplishment-row ${item.isParent ? 'physical-accomplishment-row--parent' : ''} ${item.isOverdue ? 'physical-accomplishment-row--overdue' : ''} ${isChanged ? 'physical-accomplishment-row--changed' : ''}`}>
-                                                        <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-2">
-                                                            <div className="physical-accomplishment-title-cell">
-                                                                {item.isParent && (
-                                                                    <button onClick={() => toggleParent(item.uniqueId)} className="fac-expand-toggle fac-expand-toggle--small" aria-label={isParentExpanded ? 'Collapse row' : 'Expand row'}>
-                                                                        {isParentExpanded ? '-' : '+'}
-                                                                    </button>
-                                                                )}
-                                                                <div className="min-w-0">
-                                                                    <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
-                                                                        {item.name}
-                                                                    </button>
-                                                                    {item.lineTag && <span className={`budget-line-badge budget-line-badge--${item.lineTag.toLowerCase()} ml-2`}>{item.lineTag}</span>}
-                                                                    {item.subName && <div className="text-xs text-gray-500">{item.subName}</div>}
-                                                                </div>
-                                                            </div>
+                                                <React.Fragment key={subgroupKey}>
+                                                    <tr className="physical-accomplishment-row physical-accomplishment-row--subgroup">
+                                                        <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-3">
+                                                            <button onClick={() => toggleSubgroup(subgroupKey)} className="physical-accomplishment-drill-button">
+                                                                <span className="fac-expand-toggle" aria-hidden="true">{isSubgroupExpanded ? '-' : '+'}</span>
+                                                                <span>{subgroupKey}</span>
+                                                            </button>
                                                         </td>
-                                                        
-                                                        {/* Target Date */}
-                                                        <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
-                                                            {isTargetEditable && !(item.sourceType === 'Staffing' && item.isParent) ? (
-                                                                <div className="space-y-1">
-                                                                    {renderDateInput(item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateStart: val }), false)}
-                                                                    {item.sourceType === 'Activity' && (
-                                                                        renderDateInput(item.targetDateEnd || item.targetDateStart || '', (val) => updateLocalItem(item.uniqueId, { targetDateEnd: val }), false)
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <>
-                                                                    {item.targetDateStart || '-'} 
-                                                                    {item.targetDateEnd ? ` to ${item.targetDateEnd}` : ''}
-                                                                </>
-                                                            )}
-                                                        </td>
-
-                                                        {/* Target Units */}
-                                                        <td className="px-4 py-2 text-center text-xs text-gray-600 dark:text-gray-400">
-                                                            {item.sourceType === 'Activity' ? (
-                                                                isTargetEditable ? (
-                                                                    <div className="flex gap-1 justify-center">
-                                                                        <input type="number" placeholder="M" value={item.targetMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetMale: parseFloat(e.target.value) || 0, targetQty: (parseFloat(e.target.value) || 0) + (item.targetFemale || 0) })} className={`${commonInputClasses} w-12`} />
-                                                                        <input type="number" placeholder="F" value={item.targetFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { targetFemale: parseFloat(e.target.value) || 0, targetQty: (item.targetMale || 0) + (parseFloat(e.target.value) || 0) })} className={`${commonInputClasses} w-12`} />
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="flex flex-col">
-                                                                        <span>{item.targetQty} Pax</span>
-                                                                        <span className="text-[10px] text-gray-400">M:{item.targetMale} F:{item.targetFemale}</span>
-                                                                    </div>
-                                                                )
-                                                            ) : (
-                                                                 item.isParent && item.sourceType === 'Subproject' ? '-' : (
-                                                                     isTargetEditable && !item.isParent ? (
-                                                                         renderNumberInput(item.targetQty, (val) => updateLocalItem(item.uniqueId, { targetQty: val }), false)
-                                                                     ) : (
-                                                                         `${item.targetQty} ${item.unitOfMeasure}`
-                                                                     )
-                                                                 )
-                                                            )}
-                                                        </td>
-
-                                                        {/* Actual Date */}
-                                                        <td className="pac-col-actual px-4 py-2 border-l border-emerald-100 dark:border-emerald-800">
-                                                            {/* For Staffing Groups, no date on parent */}
-                                                            {!(item.sourceType === 'Staffing' && item.isParent) && (
-                                                                <div className="space-y-1">
-                                                                    {renderDateInput(item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateStart: val }), isLocked)}
-                                                                    {item.sourceType === 'Activity' && item.targetDateEnd && (
-                                                                         renderDateInput(item.actualDateEnd || item.actualDateStart, (val) => updateLocalItem(item.uniqueId, { actualDateEnd: val }), isLocked)
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </td>
-
-                                                        {/* Actual Units */}
-                                                        <td className="pac-col-actual px-4 py-2 text-center">
-                                                            {item.sourceType === 'Activity' ? (
-                                                                <div className="flex gap-1 justify-center">
-                                                                    {renderActualNumberInput(`${item.uniqueId}-actual-male`, item.actualMale || 0, (val) => updateLocalItem(item.uniqueId, { actualMale: val, actualQty: val + (item.actualFemale || 0) }), isLocked)}
-                                                                    {renderActualNumberInput(`${item.uniqueId}-actual-female`, item.actualFemale || 0, (val) => updateLocalItem(item.uniqueId, { actualFemale: val, actualQty: (item.actualMale || 0) + val }), isLocked)}
-                                                                </div>
-                                                            ) : (
-                                                                item.isParent && item.sourceType === 'Subproject' ? '-' 
-                                                                : (item.sourceType === 'Staffing' && item.isParent ? <span className="text-xs font-bold">{item.actualQty} / {item.targetQty}</span>
-                                                                    : renderActualNumberInput(`${item.uniqueId}-actual-qty`, item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
-                                                            )}
-                                                        </td>
-                                                        
-                                                        {/* % Comp */}
-                                                        <td className="px-4 py-2 text-center text-xs font-bold text-emerald-600">
-                                                            {/* Hide for SP Parents and Staffing Parents */}
-                                                            {item.isParent ? '-' : `${completionRate}%`}
-                                                        </td>
-
-                                                        <td className="px-4 py-2 text-center text-xs">
-                                                            {renderDueBadge(item)}
-                                                        </td>
-
-                                                        <td className="px-4 py-2 text-xs">
-                                                            {renderCatchUpPlan(item, isLocked)}
-                                                        </td>
-
-                                                        {/* Action */}
-                                                        <td className="px-4 py-2 text-right">
-                                                            {isChanged && (
-                                                                <button onClick={() => undoLocalItem(item.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                                                                    </svg>
-                                                                </button>
-                                                            )}
-                                                        </td>
+                                                        <td className="px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                                        <td className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300">{subgroupItems.length} record{subgroupItems.length === 1 ? '' : 's'}</td>
+                                                        <td className="pac-col-actual px-4 py-3 text-center text-xs border-l border-emerald-100 dark:border-emerald-800">-</td>
+                                                        <td className="pac-col-actual px-4 py-3 text-center text-xs">-</td>
+                                                        <td className="px-4 py-3 text-center text-xs">-</td>
+                                                        <td className="px-4 py-3 text-center text-xs">-</td>
+                                                        <td className="px-4 py-3 text-center text-xs">-</td>
+                                                        <td className="px-4 py-3 text-right text-xs">-</td>
                                                     </tr>
-
-                                                    {/* Child Rows (Subproject Details or Individual Staff) */}
-                                                    {item.isParent && isParentExpanded && item.children?.map(child => {
-                                                         const childRate = getCompletionRate(child);
-                                                         const childLocked = !canEdit;
-                                                         const isChildTargetEditable = canEditTarget(child);
-                                                         const isChildChanged = changedItems.has(child.uniqueId);
-                                                         
-                                                         return (
-                                                            <tr key={child.uniqueId} className={`physical-accomplishment-row physical-accomplishment-row--child ${child.lineTag ? 'physical-accomplishment-row--excluded' : ''} ${isChildChanged ? 'physical-accomplishment-row--changed' : ''}`}>
-                                                                <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-2">
-                                                                    <div className="physical-accomplishment-child-title">
-                                                                        <span className="physical-accomplishment-child-dot"></span>
-                                                                        <span>{child.name}</span>
-                                                                        {child.lineTag && <span className={`budget-line-badge budget-line-badge--${child.lineTag.toLowerCase()} ml-2`}>{child.lineTag}</span>}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-2 text-center text-xs text-gray-500">
-                                                                    {isChildTargetEditable ? (
-                                                                        renderDateInput(child.targetDateStart || '', (val) => updateLocalItem(child.uniqueId, { targetDateStart: val }), false)
-                                                                    ) : (
-                                                                        child.targetDateStart
-                                                                    )}
-                                                                </td>
-                                                                <td className="px-4 py-2 text-center text-xs text-gray-500">
-                                                                    {isChildTargetEditable ? (
-                                                                        renderNumberInput(child.targetQty, (val) => updateLocalItem(child.uniqueId, { targetQty: val }), false)
-                                                                    ) : (
-                                                                        `${child.targetQty} ${child.unitOfMeasure}`
-                                                                    )}
-                                                                </td>
-                                                                
-                                                                <td className="px-4 py-2 border-l border-gray-100 dark:border-gray-700">
-                                                                     {renderDateInput(child.actualDateStart, (val) => updateLocalItem(child.uniqueId, { actualDateStart: val }), childLocked)}
-                                                                </td>
-                                                                <td className="px-4 py-2">
-                                                                    {/* Staffing Children are Binary (Hired or Not, essentially count 1) */}
-                                                                    {child.sourceType === 'Staffing' 
-                                                                        ? (child.actualDateStart ? <span className="text-xs text-green-600 font-bold block text-center">Hired</span> : <span className="text-xs text-gray-400 block text-center">Vacant</span>)
-                                                                        : renderActualNumberInput(`${child.uniqueId}-actual-qty`, child.actualQty, (val) => updateLocalItem(child.uniqueId, { actualQty: val }), childLocked)
-                                                                    }
-                                                                </td>
-                                                                <td className="px-4 py-2 text-center text-xs text-emerald-600 font-medium">{childRate}%</td>
-                                                                <td className="px-4 py-2 text-center text-xs">-</td>
-                                                                <td className="px-4 py-2 text-xs"><span className="physical-accomplishment-empty-cell">-</span></td>
-                                                                <td className="px-4 py-2 text-right">
-                                                                    {isChildChanged && (
-                                                                        <button onClick={() => undoLocalItem(child.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
-                                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                                                                            </svg>
-                                                                        </button>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                         )
-                                                    })}
+                                                    {isSubgroupExpanded && renderPhysicalItemRows(subgroupItems)}
                                                 </React.Fragment>
                                             );
                                         })}
