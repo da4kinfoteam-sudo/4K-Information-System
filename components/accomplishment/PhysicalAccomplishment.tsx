@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { ChevronDown, Loader2, SlidersHorizontal } from 'lucide-react';
 import { Subproject, Activity, OfficeRequirement, StaffingRequirement, operatingUnits, tiers, fundTypes } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
@@ -58,11 +58,43 @@ interface PhysicalItem {
     isLocked: boolean; 
     status: string;
     lineTag?: string | null;
+    catchUpPlanRemarks?: string;
+    dueStatus?: 'Completed' | 'Overdue' | 'On Track' | 'Not Started';
+    isOverdue?: boolean;
     children?: PhysicalItem[];
 }
 
 const commonInputClasses = "mt-1 block w-full px-2 py-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-xs text-gray-900 dark:text-white";
-const modalInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+const physicalNumberFormatter = new Intl.NumberFormat('en-PH', { maximumFractionDigits: 2 });
+
+const formatPhysicalNumber = (value: number) => {
+    if (!Number.isFinite(value) || value === 0) return '';
+    return physicalNumberFormatter.format(value);
+};
+
+const parsePhysicalNumberInput = (value: string) => {
+    const normalized = value.replace(/,/g, '').replace(/[^\d.-]/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getDateOnly = (dateString?: string) => {
+    if (!dateString) return null;
+    const date = new Date(dateString.includes('T') ? dateString : `${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+};
+
+const getPhysicalDueStatus = (targetDate: string | undefined, completed: boolean) => {
+    if (completed) return { dueStatus: 'Completed' as const, isOverdue: false };
+    const dueDate = getDateOnly(targetDate);
+    if (!dueDate) return { dueStatus: 'Not Started' as const, isOverdue: false };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isOverdue = dueDate < today;
+    return { dueStatus: isOverdue ? 'Overdue' as const : 'On Track' as const, isOverdue };
+};
 
 const PhysicalAccomplishment: React.FC<Props> = ({
     subprojects, setSubprojects,
@@ -75,20 +107,16 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Physical');
+    const defaultYear = new Date().getFullYear();
 
     // Filters (Persistent)
-    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('phys_selectedYear', null);
+    const [selectedYear, setSelectedYear] = useLocalStorageState<number | null>('phys_selectedYear', defaultYear);
     const [selectedOu, setSelectedOu] = useLocalStorageState<string>('phys_selectedOu', 'All');
     const [selectedTier, setSelectedTier] = useLocalStorageState<string>('phys_selectedTier', 'Tier 1');
     const [selectedFundType, setSelectedFundType] = useLocalStorageState<string>('phys_selectedFundType', 'Current');
-    
-    // Modal Form State for Filters
-    const [formYear, setFormYear] = useState<string>(selectedYear ? selectedYear.toString() : new Date().getFullYear().toString());
-    const [formOu, setFormOu] = useState<string>(selectedOu);
-    const [formTier, setFormTier] = useState<string>(selectedTier);
-    const [formFundType, setFormFundType] = useState<string>(selectedFundType);
-    const [isYearModalOpen, setIsYearModalOpen] = useState(!selectedYear);
+    const [filtersOpen, setFiltersOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [focusedNumberInputs, setFocusedNumberInputs] = useState<Set<string>>(new Set());
 
     // Local Data State
     const [items, setItems] = useState<PhysicalItem[]>([]);
@@ -104,24 +132,71 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     const [expandedGroups, setExpandedGroups] = useLocalStorageState<string[]>('phys_expandedGroups', ['Subprojects', 'Activities', 'Program Management']);
     const [expandedParents, setExpandedParents] = useLocalStorageState<string[]>('phys_expandedParents', []);
 
-    // Init OU Lock
+    // Init defaults and OU lock
     useEffect(() => {
-        if (!canViewAll && currentUser) {
-            setFormOu(currentUser.operatingUnit);
+        if (!selectedYear) {
+            setSelectedYear(defaultYear);
+        }
+        if (!canViewAll && currentUser?.operatingUnit) {
             setSelectedOu(currentUser.operatingUnit);
         }
-    }, [currentUser, canViewAll]);
+    }, [currentUser, canViewAll, defaultYear, selectedYear, setSelectedOu, setSelectedYear]);
 
     useEffect(() => {
         onDataScopeChange?.({
-            year: selectedYear || new Date().getFullYear(),
+            year: selectedYear || defaultYear,
             operatingUnit: selectedOu,
             tier: selectedTier,
             fundType: selectedFundType,
             canViewAllOus: canViewAll,
             requestedBy: currentUser?.id ?? null
         });
-    }, [canViewAll, currentUser?.id, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
+    }, [canViewAll, currentUser?.id, defaultYear, onDataScopeChange, selectedFundType, selectedOu, selectedTier, selectedYear]);
+
+    const availableYears = useMemo(() => {
+        const years = new Set<number>([defaultYear]);
+        (subprojects || []).forEach(item => item.fundingYear && years.add(item.fundingYear));
+        (activities || []).forEach(item => item.fundingYear && years.add(item.fundingYear));
+        (staffingReqs || []).forEach(item => item.fundYear && years.add(item.fundYear));
+        (officeReqs || []).forEach(item => item.fundYear && years.add(item.fundYear));
+        return Array.from(years).sort((a, b) => b - a);
+    }, [activities, defaultYear, officeReqs, staffingReqs, subprojects]);
+
+    const matchesSelectedFilters = (item: any) => {
+        const y = item.fundingYear || item.fundYear;
+        if (y !== (selectedYear || defaultYear)) return false;
+        if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
+        if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+        if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+        return true;
+    };
+
+    const physicalSummaryCards = useMemo(() => {
+        const getPercent = (accomplished: number, target: number) => target > 0 ? Math.round((accomplished / target) * 100) : 0;
+        const buildCard = (label: string, target: number, accomplished: number) => {
+            const percent = getPercent(accomplished, target);
+            return {
+                label,
+                target,
+                accomplished,
+                percent,
+                status: target === 0 ? 'No target records' : percent >= 100 ? 'Completed' : percent >= 60 ? 'In progress' : 'Needs update',
+                tone: target === 0 ? 'neutral' : percent >= 100 ? 'success' : percent >= 60 ? 'warning' : 'danger'
+            };
+        };
+
+        const scopedSubprojects = (subprojects || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
+        const scopedActivities = (activities || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
+        const scopedStaffing = (staffingReqs || []).filter(matchesSelectedFilters);
+        const scopedOffice = (officeReqs || []).filter(item => matchesSelectedFilters(item) && item.status !== 'Cancelled');
+
+        return [
+            buildCard('Subprojects', scopedSubprojects.length, scopedSubprojects.filter(item => !!item.actualCompletionDate || item.status === 'Completed').length),
+            buildCard('Activities', scopedActivities.length, scopedActivities.filter(item => !!item.actualDate || item.status === 'Completed').length),
+            buildCard('Staffing Requirement', scopedStaffing.length, scopedStaffing.filter(item => !!item.actualObligationDate || item.hiringStatus === 'Filled').length),
+            buildCard('Office Requirement', scopedOffice.length, scopedOffice.filter(item => !!item.actualObligationDate || item.status === 'Completed').length)
+        ];
+    }, [activities, defaultYear, officeReqs, selectedFundType, selectedOu, selectedTier, selectedYear, staffingReqs, subprojects]);
 
     // --- 1. Load Data ---
     useEffect(() => {
@@ -130,18 +205,11 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
         const timer = setTimeout(() => {
             const loadedItems: PhysicalItem[] = [];
-            const matchesFilters = (item: any) => {
-                const y = item.fundingYear || item.fundYear;
-                if (y !== selectedYear) return false;
-                if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
-                if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-                if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
-                return true;
-            };
 
             // A. Subprojects (Parent + Children)
-            (subprojects || []).filter(matchesFilters).forEach(sp => {
+            (subprojects || []).filter(matchesSelectedFilters).forEach(sp => {
                 const parentId = `sp-${sp.id}`;
+                const parentDue = getPhysicalDueStatus(sp.estimatedCompletionDate, !!sp.actualCompletionDate || sp.status === 'Completed');
                 const children: PhysicalItem[] = (sp.details || []).map(d => ({
                     uniqueId: `${parentId}-d-${d.id}`,
                     sourceType: 'Subproject',
@@ -174,12 +242,16 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: true,
                     isLocked: false,
                     status: sp.status,
+                    catchUpPlanRemarks: sp.catchUpPlanRemarks || '',
+                    dueStatus: parentDue.dueStatus,
+                    isOverdue: parentDue.isOverdue,
                     children: children
                 });
             });
 
             // B. Activities (Flat)
-            (activities || []).filter(matchesFilters).forEach(act => {
+            (activities || []).filter(matchesSelectedFilters).forEach(act => {
+                const activityDue = getPhysicalDueStatus(act.endDate || act.date, !!act.actualDate || act.status === 'Completed');
                 loadedItems.push({
                     uniqueId: `act-${act.id}`,
                     sourceType: 'Activity',
@@ -198,13 +270,16 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     actualFemale: act.actualParticipantsFemale || 0,
                     isParent: false,
                     isLocked: false,
-                    status: act.status
+                    status: act.status,
+                    catchUpPlanRemarks: act.catchUpPlanRemarks || '',
+                    dueStatus: activityDue.dueStatus,
+                    isOverdue: activityDue.isOverdue
                 });
             });
 
             // C. Staffing (Grouped by Position)
             const staffingGroups: { [key: string]: StaffingRequirement[] } = {};
-            (staffingReqs || []).filter(matchesFilters).forEach(s => {
+            (staffingReqs || []).filter(matchesSelectedFilters).forEach(s => {
                 if (!staffingGroups[s.personnelPosition]) staffingGroups[s.personnelPosition] = [];
                 staffingGroups[s.personnelPosition].push(s);
             });
@@ -224,7 +299,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     actualQty: s.actualObligationDate ? 1 : 0,
                     isParent: false,
                     isLocked: false,
-                    status: s.status
+                    status: s.status,
+                    dueStatus: s.actualObligationDate || s.hiringStatus === 'Filled' ? 'Completed' : 'On Track'
                 }));
 
                 loadedItems.push({
@@ -240,12 +316,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     isParent: true,
                     isLocked: true, 
                     status: groupItems[0]?.status || 'Proposed', // Assuming same status for group
+                    dueStatus: children.every(child => child.actualDateStart) ? 'Completed' : 'On Track',
                     children: children
                 });
             });
 
             // D. Office Requirements (Flat)
-            (officeReqs || []).filter(matchesFilters).forEach(off => {
+            (officeReqs || []).filter(matchesSelectedFilters).forEach(off => {
                 loadedItems.push({
                     uniqueId: `office-${off.id}`,
                     sourceType: 'Office',
@@ -258,7 +335,8 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     actualQty: off.actualObligationDate ? off.numberOfUnits : 0, 
                     isParent: false,
                     isLocked: false,
-                    status: off.status
+                    status: off.status,
+                    dueStatus: off.actualObligationDate || off.status === 'Completed' ? 'Completed' : 'On Track'
                 });
             });
 
@@ -284,19 +362,6 @@ const PhysicalAccomplishment: React.FC<Props> = ({
     }, [items]);
 
     // --- 3. Handlers ---
-
-    const handleLoadData = () => {
-        const y = parseInt(formYear);
-        if (!isNaN(y) && y > 2000 && y < 2100) {
-            setSelectedYear(y);
-            setSelectedOu(formOu);
-            setSelectedTier(formTier);
-            setSelectedFundType(formFundType);
-            setIsYearModalOpen(false);
-        } else {
-            alert("Please enter a valid year.");
-        }
-    };
 
     const toggleGroup = (group: string) => {
         setExpandedGroups(prev => prev.includes(group) ? prev.filter(g => g !== group) : [...prev, group]);
@@ -414,7 +479,9 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     const originalItem = findOriginalItem(item.uniqueId);
                     const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
                         hasPhysicalAccomplishment: !!item.actualDateStart,
-                        hasChanged: valuesDiffer(originalItem?.actualDateStart, item.actualDateStart) || hasSubprojectDetailActualChange(sp.details, updatedDetails),
+                        hasChanged: valuesDiffer(originalItem?.actualDateStart, item.actualDateStart)
+                            || valuesDiffer(originalItem?.catchUpPlanRemarks, item.catchUpPlanRemarks)
+                            || hasSubprojectDetailActualChange(sp.details, updatedDetails),
                         previousSubmittedAt: sp.physical_accomplishment_submitted_at,
                         submittedAt
                     });
@@ -423,6 +490,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                         await supabase.from('subprojects').update({
                             actualCompletionDate: item.actualDateStart || null,
                             estimatedCompletionDate: item.targetDateStart || null,
+                            catchUpPlanRemarks: item.catchUpPlanRemarks || null,
                             status: newStatus,
                             details: updatedDetails,
                             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
@@ -431,7 +499,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                     }
 
                     // Update Context
-                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, status: newStatus, details: updatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
+                    setSubprojects(prev => prev.map(s => s.id === sp.id ? { ...s, actualCompletionDate: item.actualDateStart, estimatedCompletionDate: item.targetDateStart, catchUpPlanRemarks: item.catchUpPlanRemarks || '', status: newStatus, details: updatedDetails, physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt, updated_at: submittedAt } : s));
 
                 } else {
                     // Save Individual Child Row
@@ -473,15 +541,19 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
                     hasPhysicalAccomplishment: !!item.actualDateStart,
                     hasChanged: valuesDiffer(act.actualDate, item.actualDateStart)
+                        || valuesDiffer(act.actualEndDate, item.actualDateEnd)
                         || valuesDiffer(act.actualParticipantsMale, item.actualMale)
-                        || valuesDiffer(act.actualParticipantsFemale, item.actualFemale),
+                        || valuesDiffer(act.actualParticipantsFemale, item.actualFemale)
+                        || valuesDiffer(act.catchUpPlanRemarks, item.catchUpPlanRemarks),
                     previousSubmittedAt: act.physical_accomplishment_submitted_at,
                     submittedAt
                 });
                 const payload = {
                     actualDate: item.actualDateStart,
+                    actualEndDate: item.actualDateEnd || item.actualDateStart || null,
                     actualParticipantsMale: item.actualMale,
                     actualParticipantsFemale: item.actualFemale,
+                    catchUpPlanRemarks: item.catchUpPlanRemarks || null,
                     date: item.targetDateStart,
                     endDate: item.targetDateEnd || item.targetDateStart,
                     participantsMale: item.targetMale,
@@ -637,6 +709,56 @@ const PhysicalAccomplishment: React.FC<Props> = ({
         />
     );
 
+    const renderActualNumberInput = (inputId: string, value: number, onChange: (val: number) => void, disabled: boolean) => {
+        const isFocused = focusedNumberInputs.has(inputId);
+        return (
+            <input
+                type="text"
+                inputMode="decimal"
+                value={isFocused ? (value || '').toString() : formatPhysicalNumber(value)}
+                onFocus={() => setFocusedNumberInputs(prev => new Set(prev).add(inputId))}
+                onBlur={() => setFocusedNumberInputs(prev => {
+                    const next = new Set(prev);
+                    next.delete(inputId);
+                    return next;
+                })}
+                onChange={(e) => onChange(parsePhysicalNumberInput(e.target.value))}
+                disabled={disabled}
+                className={`${commonInputClasses} text-right tabular-nums disabled:bg-gray-100 disabled:dark:bg-gray-600 disabled:cursor-not-allowed`}
+            />
+        );
+    };
+
+    const renderDueBadge = (item: PhysicalItem) => {
+        const status = item.dueStatus || 'On Track';
+        return (
+            <span className={`physical-accomplishment-due-badge physical-accomplishment-due-badge--${status.toLowerCase().replace(/\s+/g, '-')}`}>
+                {status}
+            </span>
+        );
+    };
+
+    const renderCatchUpPlan = (item: PhysicalItem, disabled: boolean) => {
+        if (!item.isOverdue && !item.catchUpPlanRemarks) {
+            return <span className="physical-accomplishment-empty-cell">-</span>;
+        }
+        if ((item.sourceType === 'Subproject' && item.isParent) || item.sourceType === 'Activity') {
+            return (
+                <textarea
+                    value={item.catchUpPlanRemarks || ''}
+                    onChange={(e) => updateLocalItem(item.uniqueId, { catchUpPlanRemarks: e.target.value })}
+                    disabled={disabled}
+                    rows={2}
+                    className="physical-accomplishment-catchup-input"
+                    placeholder={item.isOverdue ? 'Enter justification or catch-up plan...' : 'No catch-up plan recorded.'}
+                />
+            );
+        }
+        return item.catchUpPlanRemarks
+            ? <span className="physical-accomplishment-catchup-text">{item.catchUpPlanRemarks}</span>
+            : <span className="physical-accomplishment-empty-cell">-</span>;
+    };
+
     const getCompletionRate = (item: PhysicalItem) => {
         if (item.sourceType === 'Activity') {
             return item.actualDateStart ? 100 : 0;
@@ -654,69 +776,91 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 
     return (
         <div className="data-list-page">
-             {/* Filter Modal */}
-             {isYearModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fadeIn">
-                    <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl max-w-md w-full relative">
-                        {/* Close Button for navigating away without loading */}
-                        <button 
-                            onClick={() => setIsYearModalOpen(false)}
-                            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-
-                        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-6 border-b pb-2 dark:border-gray-700">Filter Physical Data</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Year</label>
-                                <input type="number" value={formYear} onChange={(e) => setFormYear(e.target.value)} className={modalInputClasses} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Operating Unit</label>
-                                <select value={formOu} onChange={(e) => setFormOu(e.target.value)} disabled={!canViewAll} className={`${modalInputClasses} disabled:opacity-70 disabled:cursor-not-allowed`}>
-                                    <option value="All">All OUs</option>
-                                    {operatingUnits.map(ou => <option key={ou} value={ou}>{ou}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tier</label>
-                                <select value={formTier} onChange={(e) => setFormTier(e.target.value)} className={modalInputClasses}>
-                                    <option value="All">All Tiers</option>
-                                    {tiers.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fund Type</label>
-                                <select value={formFundType} onChange={(e) => setFormFundType(e.target.value)} className={modalInputClasses}>
-                                    <option value="All">All Fund Types</option>
-                                    {fundTypes.map(f => <option key={f} value={f}>{f}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="mt-8 flex justify-end">
-                            <button onClick={handleLoadData} className="w-full bg-emerald-600 text-white py-2 rounded-md font-semibold hover:bg-emerald-700">Load Data</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="data-list-header">
                 <div>
                     <h2 className="data-list-title">Physical Accomplishment Collection Form</h2>
-                    <div className="detail-meta flex gap-2">
-                        <span className="font-medium text-emerald-600 dark:text-emerald-400">Year: {selectedYear || 'None'}</span>
-                        <span>|</span>
-                        <span>OU: {selectedOu}</span>
-                        <span>|</span>
-                        <span>Tier: {selectedTier}</span>
-                        <span>|</span>
-                        <span>Fund: {selectedFundType}</span>
+                </div>
+                <div className="page-filter-toggle">
+                    <span className="page-filter-summary">
+                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear || defaultYear].join(' / ')}
+                    </span>
+                    <button
+                        type="button"
+                        className={`btn btn-secondary page-filter-button ${filtersOpen ? 'is-open' : ''}`}
+                        onClick={() => setFiltersOpen(prev => !prev)}
+                        aria-expanded={filtersOpen}
+                        aria-controls="physical-accomplishment-filter-panel"
+                    >
+                        <SlidersHorizontal aria-hidden="true" />
+                        <span>Filters</span>
+                        <ChevronDown aria-hidden="true" className="page-filter-button__chevron" />
+                    </button>
+                </div>
+            </div>
+
+            <div
+                id="physical-accomplishment-filter-panel"
+                className={`report-filter-panel dashboard-filter-panel page-filter-panel ${filtersOpen ? 'is-open' : ''}`}
+                hidden={!filtersOpen}
+            >
+                <div className="report-filter-grid">
+                    <div className="report-filter">
+                        <label htmlFor="physical-ou-filter" className="form-label">OU</label>
+                        <select
+                            id="physical-ou-filter"
+                            value={selectedOu}
+                            onChange={(event) => setSelectedOu(event.target.value)}
+                            disabled={!canViewAll}
+                            className="form-control"
+                        >
+                            <option value="All">All OUs</option>
+                            {operatingUnits.map(ou => (
+                                <option key={ou} value={ou}>{ou}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="physical-tier-filter" className="form-label">Tier</label>
+                        <select
+                            id="physical-tier-filter"
+                            value={selectedTier}
+                            onChange={(event) => setSelectedTier(event.target.value)}
+                            className="form-control"
+                        >
+                            <option value="All">All Tiers</option>
+                            {tiers.map(tier => (
+                                <option key={tier} value={tier}>{tier}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="physical-fund-type-filter" className="form-label">Fund Type</label>
+                        <select
+                            id="physical-fund-type-filter"
+                            value={selectedFundType}
+                            onChange={(event) => setSelectedFundType(event.target.value)}
+                            className="form-control"
+                        >
+                            <option value="All">All Fund Types</option>
+                            {fundTypes.map(fundType => (
+                                <option key={fundType} value={fundType}>{fundType}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="physical-year-filter" className="form-label">Year</label>
+                        <select
+                            id="physical-year-filter"
+                            value={(selectedYear || defaultYear).toString()}
+                            onChange={(event) => setSelectedYear(Number(event.target.value))}
+                            className="form-control"
+                        >
+                            {availableYears.map(year => (
+                                <option key={year} value={year}>{year}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
-                <button onClick={() => setIsYearModalOpen(true)} className="btn btn-secondary">Change Filter</button>
             </div>
 
             {isLoading ? (
@@ -726,17 +870,41 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                 </div>
             ) : (
                 <div className="data-table-card">
-                <div className="data-table-scroll">
-                    <table className="data-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <section className="financial-accomplishment-summary-grid physical-accomplishment-summary-grid" aria-label="Physical accomplishment summary">
+                    {physicalSummaryCards.map(card => (
+                        <div key={card.label} className={`financial-accomplishment-summary-card physical-accomplishment-summary-card physical-accomplishment-summary-card--${card.tone}`}>
+                            <div className="financial-accomplishment-summary-card__header">
+                                <span>{card.label}</span>
+                            </div>
+                            <strong>{card.accomplished} / {card.target}</strong>
+                            <small>{card.percent}% accomplished - {card.status}</small>
+                        </div>
+                    ))}
+                </section>
+                <div className="data-table-scroll financial-accomplishment-table-scroll physical-accomplishment-table-scroll custom-scrollbar">
+                    <table className="data-table physical-accomplishment-table min-w-[1320px] divide-y divide-gray-200 dark:divide-gray-700">
+                        <colgroup>
+                            <col className="pac-width-particulars" />
+                            <col className="pac-width-date" />
+                            <col className="pac-width-units" />
+                            <col className="pac-width-date" />
+                            <col className="pac-width-units" />
+                            <col className="pac-width-completion" />
+                            <col className="pac-width-status" />
+                            <col className="pac-width-catchup" />
+                            <col className="pac-width-action" />
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th className="px-4 py-2 text-left text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase w-1/3">Particulars / Activity</th>
-                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Date</th>
-                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Target Units</th>
-                                <th className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30 border-l border-emerald-200">Actual Date</th>
-                                <th className="px-4 py-2 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase bg-emerald-100/50 dark:bg-emerald-800/30">Actual Units</th>
-                                <th className="px-4 py-2 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">% Comp</th>
-                                <th className="px-4 py-2 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Action</th>
+                                <th className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars physical-accomplishment-sticky-head px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider align-middle">Particulars / Activity</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target Date</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Target Units</th>
+                                <th className="pac-col-actual px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider border-l border-emerald-200 dark:border-emerald-800">Actual Date</th>
+                                <th className="pac-col-actual px-4 py-3 text-center text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Actual Units</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">% Completion</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Due Status</th>
+                                <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Justification / Catch-up Plan</th>
+                                <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -750,13 +918,21 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                 return (
                                     <React.Fragment key={groupKey}>
                                         {/* Level 1 Group Header */}
-                                        <tr className="bg-emerald-200/50 dark:bg-gray-700 border-y border-emerald-300 dark:border-gray-600">
-                                            <td colSpan={7} className="px-4 py-2">
-                                                <button onClick={() => toggleGroup(groupKey)} className="flex items-center gap-2 font-bold text-emerald-900 dark:text-white w-full text-left focus:outline-none">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isGroupExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                                    {groupKey}
+                                        <tr className="physical-accomplishment-row physical-accomplishment-row--group">
+                                            <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-3">
+                                                <button onClick={() => toggleGroup(groupKey)} className="physical-accomplishment-drill-button">
+                                                    <span className="fac-expand-toggle" aria-hidden="true">{isGroupExpanded ? '-' : '+'}</span>
+                                                    <span>{groupKey}</span>
                                                 </button>
                                             </td>
+                                            <td className="px-4 py-3 text-center text-xs text-gray-400">-</td>
+                                            <td className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300">{groupItems.length} record{groupItems.length === 1 ? '' : 's'}</td>
+                                            <td className="pac-col-actual px-4 py-3 text-center text-xs border-l border-emerald-100 dark:border-emerald-800">-</td>
+                                            <td className="pac-col-actual px-4 py-3 text-center text-xs">-</td>
+                                            <td className="px-4 py-3 text-center text-xs">-</td>
+                                            <td className="px-4 py-3 text-center text-xs">-</td>
+                                            <td className="px-4 py-3 text-center text-xs">-</td>
+                                            <td className="px-4 py-3 text-right text-xs">-</td>
                                         </tr>
                                         
                                         {isGroupExpanded && groupItems.map(item => {
@@ -771,15 +947,15 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                             return (
                                                 <React.Fragment key={item.uniqueId}>
                                                     {/* Parent / Main Item Row */}
-                                                    <tr className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 ${item.isParent ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : ''} ${isChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
-                                                        <td className="px-4 py-2 pl-8">
-                                                            <div className="flex items-center gap-2">
+                                                    <tr className={`physical-accomplishment-row ${item.isParent ? 'physical-accomplishment-row--parent' : ''} ${item.isOverdue ? 'physical-accomplishment-row--overdue' : ''} ${isChanged ? 'physical-accomplishment-row--changed' : ''}`}>
+                                                        <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-2">
+                                                            <div className="physical-accomplishment-title-cell">
                                                                 {item.isParent && (
-                                                                    <button onClick={() => toggleParent(item.uniqueId)} className="text-gray-500 focus:outline-none">
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isParentExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                                                    <button onClick={() => toggleParent(item.uniqueId)} className="fac-expand-toggle fac-expand-toggle--small" aria-label={isParentExpanded ? 'Collapse row' : 'Expand row'}>
+                                                                        {isParentExpanded ? '-' : '+'}
                                                                     </button>
                                                                 )}
-                                                                <div>
+                                                                <div className="min-w-0">
                                                                     <button onClick={() => handleTitleClick(item)} className="text-left font-medium text-gray-800 dark:text-white hover:text-emerald-600 hover:underline">
                                                                         {item.name}
                                                                     </button>
@@ -832,7 +1008,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                         </td>
 
                                                         {/* Actual Date */}
-                                                        <td className="px-4 py-2 bg-emerald-50/20 dark:bg-emerald-900/10 border-l border-emerald-100 dark:border-emerald-800">
+                                                        <td className="pac-col-actual px-4 py-2 border-l border-emerald-100 dark:border-emerald-800">
                                                             {/* For Staffing Groups, no date on parent */}
                                                             {!(item.sourceType === 'Staffing' && item.isParent) && (
                                                                 <div className="space-y-1">
@@ -845,16 +1021,16 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                         </td>
 
                                                         {/* Actual Units */}
-                                                        <td className="px-4 py-2 bg-emerald-50/20 dark:bg-emerald-900/10 text-center">
+                                                        <td className="pac-col-actual px-4 py-2 text-center">
                                                             {item.sourceType === 'Activity' ? (
                                                                 <div className="flex gap-1 justify-center">
-                                                                    <input type="number" placeholder="M" value={item.actualMale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualMale: parseFloat(e.target.value) || 0, actualQty: (parseFloat(e.target.value) || 0) + (item.actualFemale || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
-                                                                    <input type="number" placeholder="F" value={item.actualFemale || ''} onChange={(e) => updateLocalItem(item.uniqueId, { actualFemale: parseFloat(e.target.value) || 0, actualQty: (item.actualMale || 0) + (parseFloat(e.target.value) || 0) })} disabled={isLocked} className={`${commonInputClasses} w-12`} />
+                                                                    {renderActualNumberInput(`${item.uniqueId}-actual-male`, item.actualMale || 0, (val) => updateLocalItem(item.uniqueId, { actualMale: val, actualQty: val + (item.actualFemale || 0) }), isLocked)}
+                                                                    {renderActualNumberInput(`${item.uniqueId}-actual-female`, item.actualFemale || 0, (val) => updateLocalItem(item.uniqueId, { actualFemale: val, actualQty: (item.actualMale || 0) + val }), isLocked)}
                                                                 </div>
                                                             ) : (
                                                                 item.isParent && item.sourceType === 'Subproject' ? '-' 
                                                                 : (item.sourceType === 'Staffing' && item.isParent ? <span className="text-xs font-bold">{item.actualQty} / {item.targetQty}</span>
-                                                                    : renderNumberInput(item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
+                                                                    : renderActualNumberInput(`${item.uniqueId}-actual-qty`, item.actualQty, (val) => updateLocalItem(item.uniqueId, { actualQty: val }), isLocked))
                                                             )}
                                                         </td>
                                                         
@@ -862,6 +1038,14 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                         <td className="px-4 py-2 text-center text-xs font-bold text-emerald-600">
                                                             {/* Hide for SP Parents and Staffing Parents */}
                                                             {item.isParent ? '-' : `${completionRate}%`}
+                                                        </td>
+
+                                                        <td className="px-4 py-2 text-center text-xs">
+                                                            {renderDueBadge(item)}
+                                                        </td>
+
+                                                        <td className="px-4 py-2 text-xs">
+                                                            {renderCatchUpPlan(item, isLocked)}
                                                         </td>
 
                                                         {/* Action */}
@@ -884,11 +1068,13 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                          const isChildChanged = changedItems.has(child.uniqueId);
                                                          
                                                          return (
-                                                            <tr key={child.uniqueId} className={`border-b border-gray-100 dark:border-gray-800 ${child.lineTag ? 'budget-item-card--excluded' : ''} ${isChildChanged ? 'bg-yellow-50 dark:bg-yellow-900/10' : 'bg-white dark:bg-gray-800'}`}>
-                                                                <td className="px-4 py-2 pl-16 text-xs text-gray-600 dark:text-gray-300 flex items-center">
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 mr-2"></span>
-                                                                    {child.name}
-                                                                    {child.lineTag && <span className={`budget-line-badge budget-line-badge--${child.lineTag.toLowerCase()} ml-2`}>{child.lineTag}</span>}
+                                                            <tr key={child.uniqueId} className={`physical-accomplishment-row physical-accomplishment-row--child ${child.lineTag ? 'physical-accomplishment-row--excluded' : ''} ${isChildChanged ? 'physical-accomplishment-row--changed' : ''}`}>
+                                                                <td className="physical-accomplishment-sticky-col physical-accomplishment-sticky-particulars px-4 py-2">
+                                                                    <div className="physical-accomplishment-child-title">
+                                                                        <span className="physical-accomplishment-child-dot"></span>
+                                                                        <span>{child.name}</span>
+                                                                        {child.lineTag && <span className={`budget-line-badge budget-line-badge--${child.lineTag.toLowerCase()} ml-2`}>{child.lineTag}</span>}
+                                                                    </div>
                                                                 </td>
                                                                 <td className="px-4 py-2 text-center text-xs text-gray-500">
                                                                     {isChildTargetEditable ? (
@@ -912,10 +1098,12 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                                                     {/* Staffing Children are Binary (Hired or Not, essentially count 1) */}
                                                                     {child.sourceType === 'Staffing' 
                                                                         ? (child.actualDateStart ? <span className="text-xs text-green-600 font-bold block text-center">Hired</span> : <span className="text-xs text-gray-400 block text-center">Vacant</span>)
-                                                                        : renderNumberInput(child.actualQty, (val) => updateLocalItem(child.uniqueId, { actualQty: val }), childLocked)
+                                                                        : renderActualNumberInput(`${child.uniqueId}-actual-qty`, child.actualQty, (val) => updateLocalItem(child.uniqueId, { actualQty: val }), childLocked)
                                                                     }
                                                                 </td>
                                                                 <td className="px-4 py-2 text-center text-xs text-emerald-600 font-medium">{childRate}%</td>
+                                                                <td className="px-4 py-2 text-center text-xs">-</td>
+                                                                <td className="px-4 py-2 text-xs"><span className="physical-accomplishment-empty-cell">-</span></td>
                                                                 <td className="px-4 py-2 text-right">
                                                                     {isChildChanged && (
                                                                         <button onClick={() => undoLocalItem(child.uniqueId)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Undo Changes">
@@ -934,7 +1122,7 @@ const PhysicalAccomplishment: React.FC<Props> = ({
                                     </React.Fragment>
                                 );
                             })}
-                            {items.length === 0 && <tr><td colSpan={7} className="text-center py-6 text-gray-500">No data available for the selected filters.</td></tr>}
+                            {items.length === 0 && <tr><td colSpan={9} className="text-center py-6 text-gray-500">No data available for the selected filters.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -1006,3 +1194,4 @@ const PhysicalAccomplishment: React.FC<Props> = ({
 };
 
 export default PhysicalAccomplishment;
+
