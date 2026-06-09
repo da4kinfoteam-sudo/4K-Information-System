@@ -17,15 +17,17 @@ const AGREEMENT_TYPES = ['Verbal', 'Contract', 'Warehouse Delivery Receipt'];
 const TIMEFRAMES = ['Per Week', 'Monthly', 'One-time Transaction'];
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
+const getCommodityLabel = (name?: string, type?: string) => name ? `${name}${type ? ` (${type})` : ''}` : 'Unassigned';
 
 const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, onBack, onUpdatePartner }) => {
     const { currentUser } = useAuth();
     const [formData, setFormData] = useState<MarketingPartner>(partner);
+    const commodityNeeds = formData.commodityNeeds || [];
     
     // Linkage Entry State
     const [editingLinkageIdx, setEditingLinkageIdx] = useState<number | null>(null);
     const [tempLinkage, setTempLinkage] = useState<MarketLinkage>({
-        id: '', region: '', ipoName: '', negotiationStatus: 'Agreed',
+        id: '', region: '', ipoName: '', commodityNeedId: null, commodityName: '', commodityType: '', negotiationStatus: 'Agreed',
         agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
         agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
         testBuyConducted: false
@@ -37,7 +39,9 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
     }, [tempLinkage.region, ipos]);
 
     const handleSaveLinkage = () => {
+        if (commodityNeeds.length === 0) return alert("Add at least one company commodity need before creating a market linkage.");
         if (!tempLinkage.ipoName || !tempLinkage.region) return alert("Region and IPO are required.");
+        if (!tempLinkage.commodityNeedId || !tempLinkage.commodityName) return alert("Commodity Sold is required.");
         setFormData(prev => {
             const newList = [...(prev.marketingLinkages || [])];
             if (editingLinkageIdx !== null) newList[editingLinkageIdx] = tempLinkage;
@@ -49,7 +53,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
 
     const resetTempLinkage = () => {
         setTempLinkage({
-            id: '', region: '', ipoName: '', negotiationStatus: 'Agreed',
+            id: '', region: '', ipoName: '', commodityNeedId: null, commodityName: '', commodityType: '', negotiationStatus: 'Agreed',
             agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
             agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
             testBuyConducted: false
@@ -58,8 +62,18 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
     };
 
     const handleEditLinkage = (link: MarketLinkage, idx: number) => {
-        setTempLinkage({ ...link });
+        setTempLinkage({ commodityNeedId: null, commodityName: '', commodityType: '', ...link });
         setEditingLinkageIdx(idx);
+    };
+
+    const handleCommoditySoldChange = (commodityNeedId: string) => {
+        const selectedNeed = commodityNeeds.find(need => String(need.id) === commodityNeedId);
+        setTempLinkage(prev => ({
+            ...prev,
+            commodityNeedId: selectedNeed?.id ?? null,
+            commodityName: selectedNeed?.name || '',
+            commodityType: selectedNeed?.type || '',
+        }));
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -106,6 +120,11 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
             <form onSubmit={handleSave} className="space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                 <div className="bg-gray-50 dark:bg-gray-900/40 p-6 rounded-lg border border-emerald-200 dark:border-emerald-800 space-y-4">
                     <h3 className="font-bold text-emerald-600 mb-4">{editingLinkageIdx !== null ? 'Update Linkage' : 'Establish New Linkage'}</h3>
+                    {commodityNeeds.length === 0 && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                            Add company commodity needs first before creating market linkages.
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold uppercase text-gray-500">Region</label>
@@ -132,6 +151,16 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                             <select value={tempLinkage.agreementType} onChange={e => setTempLinkage({...tempLinkage, agreementType: e.target.value as any})} className={commonInputClasses}>
                                 {AGREEMENT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-bold uppercase text-gray-500">Commodity Sold</label>
+                            <select value={tempLinkage.commodityNeedId ? String(tempLinkage.commodityNeedId) : ''} onChange={e => handleCommoditySoldChange(e.target.value)} disabled={commodityNeeds.length === 0} className={commonInputClasses}>
+                                <option value="">{commodityNeeds.length === 0 ? 'No company commodity needs encoded' : 'Select commodity'}</option>
+                                {commodityNeeds.map(need => <option key={need.id} value={String(need.id)}>{getCommodityLabel(need.name, need.type)}</option>)}
+                            </select>
+                            {editingLinkageIdx !== null && !tempLinkage.commodityName && (
+                                <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">This existing linkage is unassigned. Select a commodity before updating it.</p>
+                            )}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
@@ -184,7 +213,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
 
                     <div className="flex justify-end gap-2">
                         {editingLinkageIdx !== null && <button type="button" onClick={resetTempLinkage} className="px-4 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded">Cancel</button>}
-                        <button type="button" onClick={handleSaveLinkage} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm shadow-md hover:bg-emerald-700 transition-all">
+                        <button type="button" onClick={handleSaveLinkage} disabled={commodityNeeds.length === 0} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm shadow-md hover:bg-emerald-700 transition-all disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500">
                             {editingLinkageIdx !== null ? 'Update Item' : 'Add Linkage to List'}
                         </button>
                     </div>
@@ -196,6 +225,9 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                         <div key={idx} className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex justify-between items-center shadow-sm">
                             <div>
                                 <p className="font-bold text-gray-800 dark:text-white">{link.ipoName}</p>
+                                <p className={`text-xs font-semibold ${link.commodityName ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'}`}>
+                                    Commodity: {getCommodityLabel(link.commodityName, link.commodityType)}
+                                </p>
                                 <p className="text-xs text-gray-500">{link.negotiationStatus} • {link.agreedQuantityValue}Kg {link.agreedQuantityTimeframe} • {link.region}</p>
                             </div>
                             <div className="flex gap-4">

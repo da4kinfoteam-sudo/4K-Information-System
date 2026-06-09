@@ -45,6 +45,10 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
         return new Intl.NumberFormat('en-US').format(amount);
     };
 
+    const getLinkageCommodityLabel = (link: { commodityName?: string; commodityType?: string }) => (
+        link.commodityName ? `${link.commodityName}${link.commodityType ? ` (${link.commodityType})` : ''}` : 'Unassigned'
+    );
+
     const DetailBlock = ({ label, value }: { label: string, value: any }) => (
         <div>
             <dt className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</dt>
@@ -181,6 +185,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                                 </span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Commodity Sold</p><p className={`font-medium ${link.commodityName ? 'text-gray-700 dark:text-gray-200' : 'text-amber-600 dark:text-amber-300'}`}>{getLinkageCommodityLabel(link)}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatNumber(linkSales.quantityKg)} Kg ({link.agreedQuantityTimeframe})</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.pricePerKg)}/Kg</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Sales Value</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.salesValue)}</p></div>

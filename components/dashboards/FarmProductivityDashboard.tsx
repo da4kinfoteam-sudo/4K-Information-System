@@ -61,6 +61,7 @@ interface MarketingSaleRow {
     key: string;
     commodityName: string;
     commodityType: string;
+    isCommodityAssigned: boolean;
     ipoName: string;
     marketName: string;
     operatingUnit: string;
@@ -490,6 +491,28 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                 if (sales.salesValue <= 0 && sales.quantityKg <= 0) return;
 
                 const ipo = ipoByName.get(getIpoKey(link.ipoName));
+                const assignedCommodityName = normalizeText(link.commodityName);
+                if (assignedCommodityName) {
+                    marketingRows.push({
+                        key: `${partner.id}-${index}-assigned`,
+                        commodityName: assignedCommodityName,
+                        commodityType: normalizeText(link.commodityType) || 'Unspecified',
+                        isCommodityAssigned: true,
+                        ipoName: link.ipoName || 'Unspecified IPO',
+                        marketName: partner.companyName || 'Unspecified Market',
+                        operatingUnit: 'Unspecified OU',
+                        quantityKg: sales.quantityKg,
+                        salesValue: sales.salesValue,
+                        agreementDate: link.agreementDate,
+                        partner,
+                        ipo,
+                    });
+
+                    const month = getMonthIndex(link.agreementDate);
+                    if (month >= 0) monthlyIncome[month] += sales.salesValue;
+                    return;
+                }
+
                 const partnerNeeds = new Set((partner.commodityNeeds || []).map(need => normalizeKey(need.name)));
                 const matchedCommodities = (ipo?.commodities || [])
                     .filter(commodity => partnerNeeds.size === 0 || partnerNeeds.has(normalizeKey(commodity.particular)));
@@ -503,6 +526,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                         key: `${partner.id}-${index}-${targetIndex}`,
                         commodityName: normalizeText((commodity as any).particular) || 'Unspecified Commodity',
                         commodityType: normalizeText((commodity as any).type) || 'Unspecified',
+                        isCommodityAssigned: false,
                         ipoName: link.ipoName || 'Unspecified IPO',
                         marketName: partner.companyName || 'Unspecified Market',
                         operatingUnit: 'Unspecified OU',
@@ -802,6 +826,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
             Market: row.marketName,
             IPO: row.ipoName,
             Commodity: row.commodityName,
+            'Commodity Status': row.isCommodityAssigned ? 'Assigned' : 'Unassigned / legacy fallback',
             'Quantity Kg': row.quantityKg,
             Sales: row.salesValue,
             'Agreement Date': row.agreementDate || '',

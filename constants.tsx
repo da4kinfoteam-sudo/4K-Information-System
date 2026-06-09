@@ -537,6 +537,9 @@ export interface MarketLinkage {
     id: number | string;
     region: string;
     ipoName: string;
+    commodityNeedId: string | number | null;
+    commodityName: string;
+    commodityType: string;
     negotiationStatus: 'Agreed' | 'Contract Signed' | 'Pending Test Buy';
     agreedQuantityValue: number;
     agreedQuantityTimeframe: 'Per Week' | 'Monthly' | 'One-time Transaction';

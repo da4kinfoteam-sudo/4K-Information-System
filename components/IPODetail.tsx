@@ -2,7 +2,7 @@
 // Author: 4K 
 import React, { useState, useEffect, FormEvent, useMemo, useCallback } from 'react';
 import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
-import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, LodAssessment } from '../constants';
+import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
 import { getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
@@ -150,6 +150,10 @@ const getMatchedBuyerCommodityNeeds = (partner: MarketingPartner, ipo: IPO) => {
     const ipoCommodityNames = new Set((ipo.commodities || []).map(commodity => commodity.particular.toLowerCase()));
     return (partner.commodityNeeds || []).filter(need => ipoCommodityNames.has(need.name.toLowerCase()));
 };
+
+const getMarketLinkageCommodityLabel = (link: MarketLinkage) => (
+    link.commodityName ? `${link.commodityName}${link.commodityType ? ` (${link.commodityType})` : ''}` : 'Unassigned'
+);
 
 // Helper for Region Normalization
 const normalizeRegionName = (inputRegion: string) => {
@@ -1548,6 +1552,11 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                 <div className="grid grid-cols-1 gap-4">
                                     {mlPagination.paginatedData.map((item, idx) => {
                                         const matchedBuyerNeeds = getMatchedBuyerCommodityNeeds(item.partner, ipo);
+                                        const selectedCommodityNeed = (item.partner.commodityNeeds || []).find(need =>
+                                            String(need.id) === String(item.link.commodityNeedId)
+                                        ) || (item.partner.commodityNeeds || []).find(need =>
+                                            need.name === item.link.commodityName && need.type === item.link.commodityType
+                                        );
                                         const linkageKey = item.link.id || `${item.partner.id}-${idx}`;
                                         const isExpanded = expandedMarketLinkageId === linkageKey;
                                         return (
@@ -1581,6 +1590,12 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                     <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                                                         <span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantityKg)} Kg ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerKg)}/Kg
                                                     </p>
+                                                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                                                        <span className="font-semibold">Commodity Sold:</span>{' '}
+                                                        <span className={item.link.commodityName ? '' : 'font-semibold text-amber-600 dark:text-amber-300'}>
+                                                            {getMarketLinkageCommodityLabel(item.link)}
+                                                        </span>
+                                                    </p>
                                                 </div>
                                                 <div className="flex flex-shrink-0 flex-wrap items-center gap-2 sm:justify-end">
                                                     <span className={`status-badge status-badge--compact ${item.link.negotiationStatus === 'Contract Signed' ? 'status-badge--completed' : 'status-badge--pending'}`}>
@@ -1596,12 +1611,35 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                 <div className="mt-3 space-y-3 border-t border-gray-100 pt-3 dark:border-gray-700">
                                                     <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
                                                         <p><span className="font-semibold">Sales Value:</span> {formatCurrency(item.salesValue)}</p>
+                                                        <p><span className="font-semibold">Commodity Sold:</span> <span className={item.link.commodityName ? '' : 'font-semibold text-amber-600 dark:text-amber-300'}>{getMarketLinkageCommodityLabel(item.link)}</span></p>
                                                         <p><span className="font-semibold">Type:</span> {item.link.agreementType}</p>
                                                         <p><span className="font-semibold">Date:</span> {item.link.agreementDate ? new Date(item.link.agreementDate).toLocaleDateString() : 'N/A'}</p>
                                                     </div>
                                                     <div>
                                                         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Commodity Bought by Buyer</p>
-                                                        {matchedBuyerNeeds.length > 0 ? (
+                                                        {item.link.commodityName ? (
+                                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                {selectedCommodityNeed ? (
+                                                                    <div className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs dark:border-teal-800 dark:bg-teal-900/20">
+                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                            <span className="font-bold text-teal-700 dark:text-teal-300">{selectedCommodityNeed.name}</span>
+                                                                            <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-300">{selectedCommodityNeed.type}</span>
+                                                                        </div>
+                                                                        <p className="mt-1 text-gray-600 dark:text-gray-300"><span className="font-semibold">Source:</span> {selectedCommodityNeed.sourceProvince || 'Any Province'}, {selectedCommodityNeed.sourceRegion || 'Any Region'}</p>
+                                                                        <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Annual Need:</span> {formatFullNumber(getCommodityNeedAnnualVolume(selectedCommodityNeed))} Kg/Yr</p>
+                                                                        <p className="text-gray-600 dark:text-gray-300"><span className="font-semibold">Quality:</span> {selectedCommodityNeed.qualityStandard || 'Not specified'}</p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="rounded-lg border border-teal-100 bg-teal-50/60 p-3 text-xs dark:border-teal-800 dark:bg-teal-900/20">
+                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                            <span className="font-bold text-teal-700 dark:text-teal-300">{item.link.commodityName}</span>
+                                                                            <span className="rounded bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500 dark:bg-gray-800 dark:text-gray-300">{item.link.commodityType || 'Unspecified'}</span>
+                                                                        </div>
+                                                                        <p className="mt-1 text-gray-600 dark:text-gray-300">Saved from linkage commodity snapshot.</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : matchedBuyerNeeds.length > 0 ? (
                                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                                 {matchedBuyerNeeds.map(need => {
                                                                     const annualVolume = getCommodityNeedAnnualVolume(need);
