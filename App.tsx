@@ -29,6 +29,7 @@ import MarketingDatabase from './components/resources/MarketingDatabase';
 import MarketProfileDetail from './components/resources/MarketProfileDetail';
 import MarketProfileEdit from './components/resources/MarketProfileEdit';
 import MarketLinkageEdit from './components/resources/MarketLinkageEdit';
+import MarketLinkageDetail from './components/resources/MarketLinkageDetail';
 import CommodityMappingPage from './components/resources/CommodityMappingPage';
 import LODPage from './components/LOD/LODPage';
 import LODDetails from './components/LOD/LODDetails';
@@ -469,6 +470,7 @@ const AppContent: React.FC = () => {
     const [selectedStaffingReq, setSelectedStaffingReq] = useState<StaffingRequirement | null>(null);
     const [selectedOtherExpense, setSelectedOtherExpense] = useState<OtherProgramExpense | null>(null);
     const [selectedMarketingPartner, setSelectedMarketingPartner] = useState<MarketingPartner | null>(null);
+    const [selectedMarketingLinkageKey, setSelectedMarketingLinkageKey] = useState<string | number | null>(null);
     const [selectedLodYear, setSelectedLodYear] = useState<number | null>(null);
     
     // Activity Edit Mode State
@@ -510,7 +512,14 @@ const AppContent: React.FC = () => {
             if (leavingPage === '/program-management/office-detail') setSelectedOfficeReq(null);
             if (leavingPage === '/program-management/staffing-detail') setSelectedStaffingReq(null);
             if (leavingPage === '/program-management/other-expense-detail') setSelectedOtherExpense(null);
-            if (leavingPage === '/marketing-profile-detail') setSelectedMarketingPartner(null);
+            if (leavingPage === '/marketing-profile-detail') {
+                const nextPage = event.state?.page || window.location.hash.replace('#', '') || '/';
+                if (!['/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(nextPage)) {
+                    setSelectedMarketingPartner(null);
+                    setSelectedMarketingLinkageKey(null);
+                }
+            }
+            if (leavingPage === '/marketing-linkage-detail') setSelectedMarketingLinkageKey(null);
             if (leavingPage === '/lod-details') {
                 setSelectedIpo(null);
                 setSelectedLodYear(null);
@@ -760,7 +769,7 @@ const AppContent: React.FC = () => {
         if (['/ipo', '/ipo-detail'].includes(currentPage)) {
             if (!checkAccess('IPO Management')) return denied;
         }
-        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit'].includes(currentPage)) {
+        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(currentPage)) {
             if (!checkAccess('Marketing Database')) return denied;
         }
         if (['/level-of-development', '/lod-details'].includes(currentPage)) {
@@ -1215,8 +1224,12 @@ const AppContent: React.FC = () => {
                             onEditDetails={() => {
                                 navigateTo('/marketing-profile-edit');
                             }}
-                            onEditLinkages={() => {
+                            onAddLinkage={() => {
                                 navigateTo('/marketing-linkage-edit');
+                            }}
+                            onSelectLinkage={(linkageKey) => {
+                                setSelectedMarketingLinkageKey(linkageKey);
+                                navigateTo('/marketing-linkage-detail');
                             }}
                             commodityCategories={derivedCommodityCategories}
                         />;
@@ -1235,6 +1248,18 @@ const AppContent: React.FC = () => {
                 if (!selectedMarketingPartner) return <div>Select a partner</div>;
                 return <MarketLinkageEdit 
                             partner={selectedMarketingPartner}
+                            ipos={ipos}
+                            onBack={handleBack}
+                            onUpdatePartner={(updated) => {
+                                setMarketingPartners(prev => prev.map(p => p.id === updated.id ? updated : p));
+                                setSelectedMarketingPartner(updated);
+                            }}
+                        />;
+            case '/marketing-linkage-detail':
+                if (!selectedMarketingPartner || selectedMarketingLinkageKey === null) return <div>Select a market linkage</div>;
+                return <MarketLinkageDetail
+                            partner={selectedMarketingPartner}
+                            linkageKey={selectedMarketingLinkageKey}
                             ipos={ipos}
                             onBack={handleBack}
                             onUpdatePartner={(updated) => {

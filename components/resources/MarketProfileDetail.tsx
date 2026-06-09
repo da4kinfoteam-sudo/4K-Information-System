@@ -10,13 +10,14 @@ interface MarketProfileDetailProps {
     ipos: IPO[];
     onBack: () => void;
     onEditDetails: () => void;
-    onEditLinkages: () => void;
+    onAddLinkage: () => void;
+    onSelectLinkage: (linkageKey: string | number) => void;
     commodityCategories: { [key: string]: string[] };
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onEditDetails, onEditLinkages, commodityCategories }) => {
+const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos, onBack, onEditDetails, onAddLinkage, onSelectLinkage, commodityCategories }) => {
     const { canEdit } = useUserAccess('Marketing Database');
     
     // Filter and Sort IPOs by Region Proximity (Potential)
@@ -150,9 +151,9 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-bold text-gray-800 dark:text-white">Marketing Linkages</h3>
                             {canEdit && (
-                                <button onClick={onEditLinkages} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                    Edit Market Linkage
+                                <button onClick={onAddLinkage} className="text-sm text-emerald-600 hover:underline flex items-center gap-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                    Add Market Linkage
                                 </button>
                             )}
                         </div>
@@ -177,7 +178,13 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                     {partner.marketingLinkages?.map((link, idx) => {
                                         const linkSales = calculateMarketLinkageSales(link);
                                         return (
-                                        <div key={idx} className="p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3">
+                                        <button
+                                            type="button"
+                                            key={link.id ?? idx}
+                                            onClick={() => onSelectLinkage(link.id ?? idx)}
+                                            className="w-full p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3 text-left transition-all hover:border-emerald-300 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                            title={`Open market linkage details for ${link.ipoName}`}
+                                        >
                                             <div className="flex justify-between items-start">
                                                 <h4 className="font-bold text-emerald-600 dark:text-emerald-400">{link.ipoName}</h4>
                                                 <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${link.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
@@ -198,7 +205,8 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                                     <p className="text-xs text-gray-500 italic">"{link.testBuyFeedback || 'No feedback provided.'}"</p>
                                                 </div>
                                             )}
-                                        </div>
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">Open details</p>
+                                        </button>
                                         );
                                     })}
                                 </div>

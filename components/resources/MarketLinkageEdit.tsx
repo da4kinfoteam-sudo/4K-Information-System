@@ -1,7 +1,6 @@
-
-// Author: 4K 
-import React, { useState, useMemo } from 'react';
-import { MarketingPartner, IPO, MarketLinkage, philippineRegions } from '../../constants';
+// Author: 4K
+import React, { useMemo, useState } from 'react';
+import { IPO, MarketLinkage, MarketingPartner, philippineRegions } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 
@@ -12,59 +11,46 @@ interface MarketLinkageEditProps {
     onUpdatePartner: (partner: MarketingPartner) => void;
 }
 
-const NEGOTIATION_STATUSES = ['Agreed', 'Contract Signed', 'Pending Test Buy'];
-const AGREEMENT_TYPES = ['Verbal', 'Contract', 'Warehouse Delivery Receipt'];
-const TIMEFRAMES = ['Per Week', 'Monthly', 'One-time Transaction'];
+const NEGOTIATION_STATUSES = ['Agreed', 'Contract Signed', 'Pending Test Buy'] as const;
+const AGREEMENT_TYPES = ['Verbal', 'Contract', 'Warehouse Delivery Receipt'] as const;
+const TIMEFRAMES = ['Per Week', 'Monthly', 'One-time Transaction'] as const;
 
 const commonInputClasses = "mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm text-gray-900 dark:text-white";
-const getCommodityLabel = (name?: string, type?: string) => name ? `${name}${type ? ` (${type})` : ''}` : 'Unassigned';
+
+const createBlankLinkage = (): MarketLinkage => ({
+    id: '',
+    region: '',
+    ipoName: '',
+    commodityNeedId: null,
+    commodityName: '',
+    commodityType: '',
+    negotiationStatus: 'Agreed',
+    agreedQuantityValue: 0,
+    agreedQuantityTimeframe: 'Monthly',
+    agreedPricePerKg: 0,
+    agreementType: 'Verbal',
+    agreementDate: '',
+    testBuyConducted: false,
+});
+
+const getCommodityLabel = (name?: string, type?: string) => (
+    name ? `${name}${type ? ` (${type})` : ''}` : 'Unassigned'
+);
+
+const getLinkedIpoNames = (linkages: MarketLinkage[]) => (
+    Array.from(new Set(linkages.map(link => link.ipoName).filter(Boolean)))
+);
 
 const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, onBack, onUpdatePartner }) => {
     const { currentUser } = useAuth();
-    const [formData, setFormData] = useState<MarketingPartner>(partner);
-    const commodityNeeds = formData.commodityNeeds || [];
-    
-    // Linkage Entry State
-    const [editingLinkageIdx, setEditingLinkageIdx] = useState<number | null>(null);
-    const [tempLinkage, setTempLinkage] = useState<MarketLinkage>({
-        id: '', region: '', ipoName: '', commodityNeedId: null, commodityName: '', commodityType: '', negotiationStatus: 'Agreed',
-        agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
-        agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
-        testBuyConducted: false
-    });
+    const [tempLinkage, setTempLinkage] = useState<MarketLinkage>(createBlankLinkage);
+    const [isSaving, setIsSaving] = useState(false);
+    const commodityNeeds = partner.commodityNeeds || [];
 
     const iposInLinkageRegion = useMemo(() => {
         if (!tempLinkage.region) return [];
         return ipos.filter(i => i.region === tempLinkage.region).sort((a, b) => a.name.localeCompare(b.name));
     }, [tempLinkage.region, ipos]);
-
-    const handleSaveLinkage = () => {
-        if (commodityNeeds.length === 0) return alert("Add at least one company commodity need before creating a market linkage.");
-        if (!tempLinkage.ipoName || !tempLinkage.region) return alert("Region and IPO are required.");
-        if (!tempLinkage.commodityNeedId || !tempLinkage.commodityName) return alert("Commodity Sold is required.");
-        setFormData(prev => {
-            const newList = [...(prev.marketingLinkages || [])];
-            if (editingLinkageIdx !== null) newList[editingLinkageIdx] = tempLinkage;
-            else newList.push({ ...tempLinkage, id: Date.now() });
-            return { ...prev, marketingLinkages: newList };
-        });
-        resetTempLinkage();
-    };
-
-    const resetTempLinkage = () => {
-        setTempLinkage({
-            id: '', region: '', ipoName: '', commodityNeedId: null, commodityName: '', commodityType: '', negotiationStatus: 'Agreed',
-            agreedQuantityValue: 0, agreedQuantityTimeframe: 'Monthly',
-            agreedPricePerKg: 0, agreementType: 'Verbal', agreementDate: '',
-            testBuyConducted: false
-        });
-        setEditingLinkageIdx(null);
-    };
-
-    const handleEditLinkage = (link: MarketLinkage, idx: number) => {
-        setTempLinkage({ commodityNeedId: null, commodityName: '', commodityType: '', ...link });
-        setEditingLinkageIdx(idx);
-    };
 
     const handleCommoditySoldChange = (commodityNeedId: string) => {
         const selectedNeed = commodityNeeds.find(need => String(need.id) === commodityNeedId);
@@ -76,50 +62,72 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
         }));
     };
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        const historyEntry = {
-            date: new Date().toISOString(),
-            event: 'Market Linkages Updated',
-            user: currentUser?.fullName || 'System'
+    const handleSave = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (commodityNeeds.length === 0) {
+            alert('Add at least one company commodity need before creating a market linkage.');
+            return;
+        }
+        if (!tempLinkage.region || !tempLinkage.ipoName) {
+            alert('Region and IPO are required.');
+            return;
+        }
+        if (!tempLinkage.commodityNeedId || !tempLinkage.commodityName) {
+            alert('Commodity Sold is required.');
+            return;
+        }
+
+        const newLinkage: MarketLinkage = {
+            ...tempLinkage,
+            id: tempLinkage.id || Date.now(),
+        };
+        const marketingLinkages = [...(partner.marketingLinkages || []), newLinkage];
+        const updatedPartner: MarketingPartner = {
+            ...partner,
+            marketingLinkages,
+            linkedIpoNames: getLinkedIpoNames(marketingLinkages),
+            history: [
+                ...(partner.history || []),
+                {
+                    date: new Date().toISOString(),
+                    event: `Market Linkage Added: ${newLinkage.ipoName}`,
+                    user: currentUser?.fullName || 'System',
+                },
+            ],
+            updated_at: new Date().toISOString(),
         };
 
-        const updatedPartner = { 
-            ...formData, 
-            linkedIpoNames: formData.marketingLinkages?.map(l => l.ipoName) || [],
-            history: [...(partner.history || []), historyEntry],
-            updated_at: new Date().toISOString() 
-        };
-        
+        setIsSaving(true);
         if (supabase) {
             try {
                 const { id, ...payload } = updatedPartner;
                 const { error } = await supabase.from('marketing_partners').update(payload).eq('id', partner.id);
                 if (error) throw error;
             } catch (err: any) {
-                alert("Failed to update database: " + err.message);
+                alert(`Failed to update database: ${err.message}`);
+                setIsSaving(false);
                 return;
             }
         }
 
         onUpdatePartner(updatedPartner);
+        setIsSaving(false);
         onBack();
     };
 
     return (
         <div className="space-y-6 animate-fadeIn pb-20">
-            <header className="flex justify-between items-center">
+            <header className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Manage Linkages</h1>
-                    <p className="text-sm text-gray-500">{partner.companyName} | {partner.uid}</p>
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Add Market Linkage</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{partner.companyName} | {partner.uid}</p>
                 </div>
-                <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm font-bold">Back to Profile</button>
+                <button onClick={onBack} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm font-bold dark:bg-gray-700 dark:text-gray-100">Back to Profile</button>
             </header>
 
-            <form onSubmit={handleSave} className="space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+            <form onSubmit={handleSave} className="space-y-6 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
                 <div className="bg-gray-50 dark:bg-gray-900/40 p-6 rounded-lg border border-emerald-200 dark:border-emerald-800 space-y-4">
-                    <h3 className="font-bold text-emerald-600 mb-4">{editingLinkageIdx !== null ? 'Update Linkage' : 'Establish New Linkage'}</h3>
+                    <h3 className="font-bold text-emerald-600 dark:text-emerald-400">Establish New Linkage</h3>
                     {commodityNeeds.length === 0 && (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
                             Add company commodity needs first before creating market linkages.
@@ -128,28 +136,28 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold uppercase text-gray-500">Region</label>
-                            <select value={tempLinkage.region} onChange={e => setTempLinkage({...tempLinkage, region: e.target.value, ipoName: ''})} className={commonInputClasses}>
+                            <select value={tempLinkage.region} onChange={e => setTempLinkage({ ...tempLinkage, region: e.target.value, ipoName: '' })} className={commonInputClasses}>
                                 <option value="">Select Region</option>
-                                {philippineRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                                {philippineRegions.map(region => <option key={region} value={region}>{region}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold uppercase text-gray-500">IPO</label>
-                            <select value={tempLinkage.ipoName} onChange={e => setTempLinkage({...tempLinkage, ipoName: e.target.value})} disabled={!tempLinkage.region} className={commonInputClasses}>
+                            <select value={tempLinkage.ipoName} onChange={e => setTempLinkage({ ...tempLinkage, ipoName: e.target.value })} disabled={!tempLinkage.region} className={commonInputClasses}>
                                 <option value="">Select IPO</option>
-                                {iposInLinkageRegion.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+                                {iposInLinkageRegion.map(ipo => <option key={ipo.id} value={ipo.name}>{ipo.name}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold uppercase text-gray-500">Negotiation Status</label>
-                            <select value={tempLinkage.negotiationStatus} onChange={e => setTempLinkage({...tempLinkage, negotiationStatus: e.target.value as any})} className={commonInputClasses}>
-                                {NEGOTIATION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            <select value={tempLinkage.negotiationStatus} onChange={e => setTempLinkage({ ...tempLinkage, negotiationStatus: e.target.value as MarketLinkage['negotiationStatus'] })} className={commonInputClasses}>
+                                {NEGOTIATION_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="block text-xs font-bold uppercase text-gray-500">Agreement Type</label>
-                            <select value={tempLinkage.agreementType} onChange={e => setTempLinkage({...tempLinkage, agreementType: e.target.value as any})} className={commonInputClasses}>
-                                {AGREEMENT_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
+                            <select value={tempLinkage.agreementType} onChange={e => setTempLinkage({ ...tempLinkage, agreementType: e.target.value as MarketLinkage['agreementType'] })} className={commonInputClasses}>
+                                {AGREEMENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                             </select>
                         </div>
                         <div className="md:col-span-2">
@@ -158,91 +166,60 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                                 <option value="">{commodityNeeds.length === 0 ? 'No company commodity needs encoded' : 'Select commodity'}</option>
                                 {commodityNeeds.map(need => <option key={need.id} value={String(need.id)}>{getCommodityLabel(need.name, need.type)}</option>)}
                             </select>
-                            {editingLinkageIdx !== null && !tempLinkage.commodityName && (
-                                <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-300">This existing linkage is unassigned. Select a commodity before updating it.</p>
-                            )}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty (Kg)</label>
-                                <input type="number" value={tempLinkage.agreedQuantityValue || ''} onChange={e => setTempLinkage({...tempLinkage, agreedQuantityValue: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                <input type="number" value={tempLinkage.agreedQuantityValue || ''} onChange={e => setTempLinkage({ ...tempLinkage, agreedQuantityValue: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold uppercase text-gray-500">Timeframe</label>
-                                <select value={tempLinkage.agreedQuantityTimeframe} onChange={e => setTempLinkage({...tempLinkage, agreedQuantityTimeframe: e.target.value as any})} className={commonInputClasses}>
-                                    {TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
+                                <select value={tempLinkage.agreedQuantityTimeframe} onChange={e => setTempLinkage({ ...tempLinkage, agreedQuantityTimeframe: e.target.value as MarketLinkage['agreedQuantityTimeframe'] })} className={commonInputClasses}>
+                                    {TIMEFRAMES.map(timeframe => <option key={timeframe} value={timeframe}>{timeframe}</option>)}
                                 </select>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (₱/Kg)</label>
-                                <input type="number" value={tempLinkage.agreedPricePerKg || ''} onChange={e => setTempLinkage({...tempLinkage, agreedPricePerKg: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (PHP/Kg)</label>
+                                <input type="number" value={tempLinkage.agreedPricePerKg || ''} onChange={e => setTempLinkage({ ...tempLinkage, agreedPricePerKg: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                             </div>
                             <div>
                                 <label className="block text-xs font-bold uppercase text-gray-500">Agreement Date</label>
-                                <input type="date" value={tempLinkage.agreementDate} onChange={e => setTempLinkage({...tempLinkage, agreementDate: e.target.value})} className={commonInputClasses} />
+                                <input type="date" value={tempLinkage.agreementDate} onChange={e => setTempLinkage({ ...tempLinkage, agreementDate: e.target.value })} className={commonInputClasses} />
                             </div>
                         </div>
                     </div>
 
-                    {/* Test Buy Information */}
                     <div className="pt-4 border-t dark:border-gray-700">
                         <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={tempLinkage.testBuyConducted} onChange={e => setTempLinkage({...tempLinkage, testBuyConducted: e.target.checked})} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
+                            <input type="checkbox" checked={tempLinkage.testBuyConducted} onChange={e => setTempLinkage({ ...tempLinkage, testBuyConducted: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-300">Test Buy Information</span>
                         </label>
-                        
                         {tempLinkage.testBuyConducted && (
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Date</label>
-                                    <input type="date" value={tempLinkage.testBuyDate || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyDate: e.target.value})} className={commonInputClasses} />
+                                    <input type="date" value={tempLinkage.testBuyDate || ''} onChange={e => setTempLinkage({ ...tempLinkage, testBuyDate: e.target.value })} className={commonInputClasses} />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty (Kg)</label>
-                                    <input type="number" value={tempLinkage.testBuyQuantity || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyQuantity: parseFloat(e.target.value) || 0})} className={commonInputClasses} />
+                                    <input type="number" value={tempLinkage.testBuyQuantity || ''} onChange={e => setTempLinkage({ ...tempLinkage, testBuyQuantity: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Feedback</label>
-                                    <textarea value={tempLinkage.testBuyFeedback || ''} onChange={e => setTempLinkage({...tempLinkage, testBuyFeedback: e.target.value})} rows={3} className={commonInputClasses} />
+                                    <textarea value={tempLinkage.testBuyFeedback || ''} onChange={e => setTempLinkage({ ...tempLinkage, testBuyFeedback: e.target.value })} rows={3} className={commonInputClasses} />
                                 </div>
                             </div>
                         )}
                     </div>
-
-                    <div className="flex justify-end gap-2">
-                        {editingLinkageIdx !== null && <button type="button" onClick={resetTempLinkage} className="px-4 py-1 text-xs font-bold bg-gray-200 text-gray-700 rounded">Cancel</button>}
-                        <button type="button" onClick={handleSaveLinkage} disabled={commodityNeeds.length === 0} className="px-6 py-2 bg-emerald-600 text-white rounded font-bold text-sm shadow-md hover:bg-emerald-700 transition-all disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500">
-                            {editingLinkageIdx !== null ? 'Update Item' : 'Add Linkage to List'}
-                        </button>
-                    </div>
                 </div>
 
-                <div className="space-y-3">
-                    <h3 className="font-bold text-gray-700 dark:text-gray-200">Established Linkages List</h3>
-                    {(formData.marketingLinkages || []).map((link, idx) => (
-                        <div key={idx} className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 flex justify-between items-center shadow-sm">
-                            <div>
-                                <p className="font-bold text-gray-800 dark:text-white">{link.ipoName}</p>
-                                <p className={`text-xs font-semibold ${link.commodityName ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'}`}>
-                                    Commodity: {getCommodityLabel(link.commodityName, link.commodityType)}
-                                </p>
-                                <p className="text-xs text-gray-500">{link.negotiationStatus} • {link.agreedQuantityValue}Kg {link.agreedQuantityTimeframe} • {link.region}</p>
-                            </div>
-                            <div className="flex gap-4">
-                                <button type="button" onClick={() => handleEditLinkage(link, idx)} className="text-emerald-600 font-bold text-xs">Edit</button>
-                                <button type="button" onClick={() => setFormData(prev => ({...prev, marketingLinkages: prev.marketingLinkages?.filter((_, i) => i !== idx)}))} className="text-red-600 font-bold text-xs">Remove</button>
-                            </div>
-                        </div>
-                    ))}
-                    {(formData.marketingLinkages || []).length === 0 && (
-                        <p className="text-sm text-gray-400 italic text-center py-6">No linkages in the list.</p>
-                    )}
-                </div>
-
-                <div className="pt-6 flex justify-end border-t">
-                    <button type="submit" className="px-10 py-3 bg-emerald-600 text-white rounded-md font-bold hover:bg-emerald-700 shadow-lg transition-all">Save All Linkages</button>
+                <div className="pt-6 flex justify-end gap-3 border-t dark:border-gray-700">
+                    <button type="button" onClick={onBack} className="px-5 py-2 bg-gray-100 text-gray-700 rounded-md font-bold text-sm hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Cancel</button>
+                    <button type="submit" disabled={isSaving || commodityNeeds.length === 0} className="px-8 py-2 bg-emerald-600 text-white rounded-md font-bold text-sm shadow-md hover:bg-emerald-700 transition-all disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500">
+                        {isSaving ? 'Saving...' : 'Save Linkage'}
+                    </button>
                 </div>
             </form>
         </div>

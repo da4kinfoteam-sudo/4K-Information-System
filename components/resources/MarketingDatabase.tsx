@@ -55,13 +55,13 @@ interface MarketingDatabaseProps {
 
 const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPartners, onSelectPartner, commodityCategories }) => {
     const { currentUser } = useAuth();
-    const { canEdit } = useUserAccess('Marketing Database');
-    const isAdmin = canEdit;
+    const { canEdit, canDelete } = useUserAccess('Marketing Database');
     
     const [view, setView] = useState<'list' | 'add'>('list');
     const [searchTerm, setSearchTerm] = useLocalStorageState('market_search', '');
     const [regionFilter, setRegionFilter] = useLocalStorageState('market_region', 'All');
     const [isUploading, setIsUploading] = useState(false);
+    const [deletePartner, setDeletePartner] = useState<MarketingPartner | null>(null);
 
     // Multi-Delete State using Shared Hook (adapted for MarketingPartner)
     const { 
@@ -213,7 +213,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
     };
 
     const handleMultiDelete = async () => {
-        if (!window.confirm(`Delete ${selectedIds.length} partners?`)) return;
+        if (!canDelete || selectedIds.length === 0) return;
         if (supabase) {
             const { error } = await supabase.from('marketing_partners').delete().in('id', selectedIds);
             if (error) return alert(error.message);
@@ -221,6 +221,16 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
         setPartners(prev => prev.filter(p => !selectedIds.includes(p.id)));
         resetSelection();
         setIsMultiDeleteModalOpen(false);
+    };
+
+    const handleDeletePartner = async () => {
+        if (!canDelete || !deletePartner) return;
+        if (supabase) {
+            const { error } = await supabase.from('marketing_partners').delete().eq('id', deletePartner.id);
+            if (error) return alert(error.message);
+        }
+        setPartners(prev => prev.filter(p => p.id !== deletePartner.id));
+        setDeletePartner(null);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -491,10 +501,28 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                 </div>
             )}
 
+            {deletePartner && canDelete && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl max-w-sm w-full">
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-4">Delete Market Partner</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-300 mb-2">
+                            Delete <span className="font-bold text-gray-800 dark:text-white">{deletePartner.companyName}</span>?
+                        </p>
+                        <p className="text-xs text-gray-400 mb-6">
+                            This will remove the partner profile, commodity needs, and market linkage records stored under this partner.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setDeletePartner(null)} className="px-4 py-2 text-sm bg-gray-100 dark:bg-gray-700 rounded">Cancel</button>
+                            <button onClick={handleDeletePartner} className="px-4 py-2 text-sm bg-red-600 text-white rounded">Delete Partner</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="data-list-header">
                 <h2 className="data-list-title">Marketing Database</h2>
                 <div className="data-list-actions">
-                    {isAdmin && (
+                    {canEdit && (
                         <button onClick={() => setView('add')} className="btn btn-primary btn-responsive" title="Add Market Partner">
                             <Plus className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Add Market Partner</span>
@@ -529,12 +557,12 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                     </div>
                     
                     <div className="data-toolbar-group data-toolbar-group--actions">
-                        {isSelectionMode && selectedIds.length > 0 && (
+                        {canDelete && isSelectionMode && selectedIds.length > 0 && (
                             <button onClick={() => setIsMultiDeleteModalOpen(true)} className="btn btn-danger">
                                 Delete Selected ({selectedIds.length})
                             </button>
                         )}
-                        {isAdmin && (
+                        {canEdit && (
                             <>
                                 <button onClick={handleDownloadTemplate} className="btn btn-secondary btn-responsive" title="Download Template">
                                     <FileSpreadsheet className="btn-symbol" aria-hidden="true" />
@@ -545,14 +573,16 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                     <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload XLSX'}</span>
                                     <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleFileUpload} disabled={isUploading} />
                                 </label>
-                                <button 
-                                    onClick={toggleSelectionMode} 
-                                    className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
-                                    title="Toggle Multi-Delete Mode"
-                                >
-                                    <TrashIcon />
-                                </button>
                             </>
+                        )}
+                        {canDelete && (
+                            <button 
+                                onClick={toggleSelectionMode} 
+                                className={`btn btn-secondary btn-icon ${isSelectionMode ? 'is-active-danger' : ''}`}
+                                title="Toggle Multi-Delete Mode"
+                            >
+                                <TrashIcon />
+                            </button>
                         )}
                     </div>
                 </div>
@@ -570,6 +600,7 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Owner / Contact</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Sales from Market Linkage</th>
                                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Workflow Status</th>
+                                {canDelete && <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-gray-300 uppercase tracking-wider">Action</th>}
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -618,6 +649,20 @@ const MarketingDatabase: React.FC<MarketingDatabaseProps> = ({ partners, setPart
                                             )}
                                         </div>
                                     </td>
+                                    {canDelete && (
+                                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    setDeletePartner(partner);
+                                                }}
+                                                className="table-action table-action--danger"
+                                            >
+                                                Delete
+                                            </button>
+                                        </td>
+                                    )}
                                 </tr>
                                 );
                             })}
