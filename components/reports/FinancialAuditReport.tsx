@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Download, Search } from 'lucide-react';
+import { AlertTriangle, Download, Printer, Search } from 'lucide-react';
 import { Activity, OfficeRequirement, OtherProgramExpense, StaffingRequirement, Subproject } from '../../constants';
 import { buildFinancialAudit, FinancialAuditIssue, FinancialAuditSeverity } from '../../lib/financialAudit';
 import { FinancialAggregationFilters } from '../../lib/financialAggregation';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 
 interface FinancialAuditReportProps {
     data: {
@@ -24,6 +24,8 @@ interface FinancialAuditReportProps {
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const MONTHS = [
@@ -78,6 +80,8 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
+    onPrintReport,
+    onExportReport,
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [severityFilter, setSeverityFilter] = useState('All');
@@ -121,39 +125,57 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     }, [audit.issues, searchTerm, severityFilter, reportFilter, sourceFilter, issueTypeFilter]);
 
     const handleDownload = () => {
-        const rows = filteredIssues.map(issue => ({
-            Severity: issue.severity,
-            Source: issue.source,
-            'Record Name': issue.recordName,
-            'Budget Item': issue.lineItem,
-            OU: issue.operatingUnit,
-            Year: issue.year,
-            'Fund Type': issue.fundType,
-            Tier: issue.tier,
-            'Target Allocation': Math.ceil(issue.targetAllocation),
-            'Target Obligation Due': Math.ceil(issue.targetObligationDue),
-            'Target Disbursement Due': Math.ceil(issue.targetDisbursementDue),
-            'Actual Obligation': Math.ceil(issue.actualObligation),
-            'Actual Disbursement': Math.ceil(issue.actualDisbursement),
-            'Budget Ceiling': Math.ceil(issue.budgetCeiling),
-            'Ceiling Variance': Math.ceil(issue.ceilingVariance),
-            'Excluded Tagged Amount': Math.ceil(issue.excludedTaggedAmount),
-            Issue: issue.issueType,
-            'Affected Amount': Math.ceil(issue.affectedAmount),
-            'Affected Reports': issue.affectedReports.join('; '),
-            'Suggested Action': issue.suggestedAction,
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [
-            { wch: 12 }, { wch: 18 }, { wch: 32 }, { wch: 28 }, { wch: 14 },
-            { wch: 10 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 20 },
-            { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
-            { wch: 22 }, { wch: 34 }, { wch: 16 }, { wch: 34 }, { wch: 48 },
+        const headers = [
+            'Severity', 'Source', 'Record Name', 'Budget Item', 'OU', 'Year', 'Fund Type', 'Tier',
+            'Target Allocation', 'Target Obligation Due', 'Target Disbursement Due', 'Actual Obligation',
+            'Actual Disbursement', 'Budget Ceiling', 'Ceiling Variance', 'Excluded Tagged Amount',
+            'Issue', 'Affected Amount', 'Affected Reports', 'Suggested Action',
         ];
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Financial Audit');
-        XLSX.writeFile(wb, `Financial_Audit_${selectedYear}_${selectedOu}.xlsx`);
+        const rows = filteredIssues.map(issue => ([
+            issue.severity,
+            issue.source,
+            issue.recordName,
+            issue.lineItem,
+            issue.operatingUnit,
+            issue.year,
+            issue.fundType,
+            issue.tier,
+            Math.ceil(issue.targetAllocation),
+            Math.ceil(issue.targetObligationDue),
+            Math.ceil(issue.targetDisbursementDue),
+            Math.ceil(issue.actualObligation),
+            Math.ceil(issue.actualDisbursement),
+            Math.ceil(issue.budgetCeiling),
+            Math.ceil(issue.ceilingVariance),
+            Math.ceil(issue.excludedTaggedAmount),
+            issue.issueType,
+            Math.ceil(issue.affectedAmount),
+            issue.affectedReports.join('; '),
+            issue.suggestedAction,
+        ]));
+
+        onExportReport({
+            reportName: 'Financial Audit',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `Financial_Audit_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'Financial Audit',
+                rows: [headers, ...rows],
+                headerRowCount: 1,
+                columnWidths: [12, 18, 32, 28, 14, 10, 14, 10, 18, 20, 22, 18, 18, 18, 18, 22, 34, 16, 34, 48],
+                columnFormats: {
+                    8: 'money',
+                    9: 'money',
+                    10: 'money',
+                    11: 'money',
+                    12: 'money',
+                    13: 'money',
+                    14: 'money',
+                    15: 'money',
+                    17: 'money',
+                },
+            }],
+        });
     };
 
     const topIssueAmounts = (Object.entries(audit.summary.affectedAmountByIssue) as Array<[string, number]>)
@@ -198,6 +220,18 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">Financial Audit</h3>
                 <div className="report-card__actions">
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-responsive"
+                        onClick={() => onPrintReport({
+                            reportName: 'Financial Audit',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'financial-audit-report-table',
+                        })}
+                    >
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
                     <button type="button" className="btn btn-primary btn-responsive" onClick={handleDownload}>
                         <Download className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Export XLSX</span>
@@ -306,7 +340,7 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
                 </section>
             )}
 
-            <div className="report-table-scroll financial-audit-table-scroll">
+            <div id="financial-audit-report-table" className="report-table-scroll financial-audit-table-scroll">
                 <table className="report-table financial-audit-table">
                     <thead>
                         <tr>

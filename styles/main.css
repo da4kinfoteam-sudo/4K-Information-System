@@ -10909,58 +10909,289 @@
   }
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.modal-card {
+  width: min(100%, 32rem);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.dark .modal-card {
+  background: #111827;
+  border-color: rgba(75, 85, 99, 0.7);
+}
+
+.modal-card__header,
+.modal-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+.modal-card__header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dark .modal-card__header {
+  border-bottom-color: #374151;
+}
+
+.modal-card__header h3 {
+  margin: 0;
+  color: #101828;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.modal-card__header p {
+  margin: 0.25rem 0 0;
+  color: #667085;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.dark .modal-card__header h3 {
+  color: #f9fafb;
+}
+
+.dark .modal-card__header p {
+  color: #9ca3af;
+}
+
+.modal-card__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  color: #475467;
+  background: #fff;
+}
+
+.dark .modal-card__close {
+  background: #1f2937;
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+.modal-card__body {
+  padding: 1.25rem;
+}
+
+.modal-card__footer {
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.dark .modal-card__footer {
+  border-top-color: #374151;
+  background: #0f172a;
+}
+
+.report-print-modal__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.form-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.report-print-shell {
+  display: none;
+}
+
 @media print {
-  body > div#root > div > aside, /* Sidebar */
-  body > div#root > div > div > header, /* Header */
-  body > div#root > div > div > footer, /* Footer */
+  @page {
+    size: landscape;
+    margin: 0.7cm;
+  }
+
+  html.dark,
+  html.dark body,
+  body.report-print-active {
+    background: #fff !important;
+    color: #000 !important;
+    color-scheme: light !important;
+  }
+
   .print-hidden {
     display: none !important;
   }
-  
-  body > div#root > div > div > main {
-    padding: 0;
-    margin: 0;
-    overflow: visible;
+
+  body.report-print-active .app-shell > aside,
+  body.report-print-active .app-workspace > header,
+  body.report-print-active .reports-page > :not(.report-print-shell),
+  body.report-print-active .app-workspace > .chatbot-container,
+  body.report-print-active .app-workspace > .ai-chatbot {
+    display: none !important;
   }
-  
-  #wfp-container-for-print {
+
+  body.report-print-active .app-main,
+  body.report-print-active .reports-page {
+    display: block !important;
+    margin: 0 !important;
     padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body.report-print-active .report-print-shell {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: Inter, Arial, sans-serif !important;
+  }
+
+  .report-print-header {
+    display: flex;
+    align-items: center;
+    gap: 0.35cm;
+    margin-bottom: 0.45cm;
+    padding-bottom: 0.25cm;
+    border-bottom: 1px solid #111827;
+    break-after: avoid;
+  }
+
+  .report-print-header img {
+    width: 1.25cm;
+    height: 1.25cm;
+    object-fit: contain;
+  }
+
+  .report-print-header p {
+    margin: 0;
+    color: #111827 !important;
+    font-size: 9pt;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .report-print-header p:last-child {
+    margin-top: 0.08cm;
+    font-size: 10pt;
+    font-weight: 900;
+  }
+
+  .report-print-body,
+  .report-print-body * {
+    color: #000 !important;
     box-shadow: none !important;
-    border: none !important;
+    text-shadow: none !important;
   }
 
-  #wfp-report, #wfp-report table {
-      width: 100%;
-      overflow: visible;
+  .report-print-body .report-table-scroll,
+  .report-print-body [class*="report-scroll"],
+  .report-print-body [class*="matrix-scroll"] {
+    width: 100% !important;
+    max-width: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
   }
 
-  /* Make dark mode print light */
-  @page {
-      size: landscape;
-      margin: 20px;
+  .report-print-body table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: auto !important;
+    font-size: 6.5pt !important;
+    background: #fff !important;
   }
-  html.dark {
-    color-scheme: light;
+
+  .report-print-body thead {
+    display: table-header-group;
   }
-  .dark body {
-    background-color: white !important;
+
+  .report-print-body tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
-  .dark #wfp-container-for-print,
-  .dark #wfp-report table,
-  .dark #wfp-report table tr,
-  .dark #wfp-report table thead,
-  .dark #wfp-report table tbody,
-  .dark #wfp-report table tfoot {
-    background-color: white !important;
-    color: black !important;
+
+  .report-print-body th,
+  .report-print-body td {
+    border: 0.5pt solid #111827 !important;
+    padding: 2.5pt 3pt !important;
+    background: #fff !important;
+    vertical-align: middle !important;
+    white-space: normal !important;
   }
-  .dark #wfp-report table * {
-    border-color: #ccc !important;
+
+  .report-print-body th {
+    background: #eef2f7 !important;
+    font-weight: 900 !important;
+    text-align: center !important;
   }
-  .dark .dark\:bg-gray-700, 
-  .dark .dark\:bg-gray-800\/60, 
-  .dark .dark\:bg-gray-700\/50,
-  .dark .dark\:bg-gray-200 {
-    background-color: #f3f4f6 !important; /* light gray */
+
+  .report-print-body .sticky,
+  .report-print-body [class*="sticky"] {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: auto !important;
+  }
+
+  .report-print-body button,
+  .report-print-body svg,
+  .report-print-body .print-hidden {
+    display: none !important;
+  }
+
+  .report-print-signatures {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5cm;
+    margin-top: 1.15cm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .report-print-signatures div {
+    text-align: center;
+  }
+
+  .report-print-signature-line {
+    display: block;
+    border-top: 1px solid #111827;
+    margin-bottom: 0.15cm;
+  }
+
+  .report-print-signatures strong {
+    display: block;
+    color: #111827 !important;
+    font-size: 9pt;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .report-print-signatures small {
+    display: block;
+    margin-top: 0.08cm;
+    color: #374151 !important;
+    font-size: 8pt;
+    font-weight: 700;
   }
 }

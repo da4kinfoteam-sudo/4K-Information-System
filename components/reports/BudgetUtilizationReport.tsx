@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { getObjectTypeByCode, XLSX } from './ReportUtils';
+import { deriveExcelHeaderMerges, ExcelColumnFormat, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
 
 interface BudgetUtilizationReportProps {
@@ -19,6 +19,8 @@ interface BudgetUtilizationReportProps {
     selectedOu: string;
     selectedTier?: string;
     selectedFundType?: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -263,7 +265,7 @@ const SummaryRow: React.FC<{
     );
 };
 
-const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier = 'All', selectedFundType = 'All' }) => {
+const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier = 'All', selectedFundType = 'All', onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const processedData = useMemo(() => {
@@ -384,11 +386,133 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
         return summary;
     }, [rows]);
 
-    const handlePrint = () => window.print();
-
     const handleDownloadXlsx = () => {
-        // TODO: Implement XLSX download for this complex table if needed
-        alert("XLSX Download for Budget Utilization Report is not yet implemented.");
+        const metricHeader = ['MOOE', 'CO', 'Total'];
+        const obligationHeader = ['MOOE', 'CO', 'Total', '% of Obli/Allot'];
+        const disbursementHeader = ['MOOE', 'CO', 'Total', '% of Disb/Obli', '% of Disb/Allot'];
+        const unpaidHeader = ['MOOE', 'CO', 'Total', '% of Unpaid/Obli'];
+
+        const headerRow1: Array<string | number | null> = ['Program/Activity/Project', 'Allotment', '', '', 'Adjustment (+/-)', '', '', 'Adjusted Allotment', '', ''];
+        const headerRow2: Array<string | number | null> = ['', ...metricHeader, ...metricHeader, ...metricHeader];
+        const headerRow3: Array<string | number | null> = ['', ...metricHeader, ...metricHeader, ...metricHeader];
+
+        const addPeriodHeader = (label: string) => {
+            headerRow1.push(label, '', '', '', '', '', '', '', '');
+            headerRow2.push('Obligation', '', '', '', 'Disbursement', '', '', '', '');
+            headerRow3.push(...obligationHeader, ...disbursementHeader);
+        };
+
+        QUARTERS.forEach(q => {
+            q.months.forEach(monthIndex => addPeriodHeader(SHORT_MONTHS[monthIndex]));
+            addPeriodHeader(`${q.name} Total`);
+        });
+        addPeriodHeader('Grand Total');
+        headerRow1.push('Unpaid Obligation', '', '', '');
+        headerRow2.push('', '', '', '');
+        headerRow3.push(...unpaidHeader);
+
+        const metricValues = (metrics: any) => [metrics.mooe || 0, metrics.co || 0, metrics.total || 0];
+        const obligationValues = (metrics: any, allotmentTotal: number) => [
+            metrics.mooe || 0,
+            metrics.co || 0,
+            metrics.total || 0,
+            allotmentTotal ? metrics.total / allotmentTotal : 0,
+        ];
+        const disbursementValues = (metrics: any, allotmentTotal: number, obligationTotal: number) => [
+            metrics.mooe || 0,
+            metrics.co || 0,
+            metrics.total || 0,
+            obligationTotal ? metrics.total / obligationTotal : 0,
+            allotmentTotal ? metrics.total / allotmentTotal : 0,
+        ];
+        const monthValues = (monthData: any, allotmentTotal: number) => [
+            ...obligationValues(monthData.obligation, allotmentTotal),
+            ...disbursementValues(monthData.disbursement, allotmentTotal, monthData.obligation.total),
+        ];
+
+        const activityRow = (activity: any, label: string, indentLevel: number): Array<string | number | null> => {
+            const quarters = QUARTERS.map(q => {
+                const qData = createMonthData();
+                q.months.forEach(monthIndex => addMonthData(qData, activity.months[monthIndex]));
+                return qData;
+            });
+
+            const grandTotal = createMonthData();
+            quarters.forEach(qData => addMonthData(grandTotal, qData));
+
+            const unpaidObligation = createMetrics();
+            unpaidObligation.mooe = grandTotal.obligation.mooe - grandTotal.disbursement.mooe;
+            unpaidObligation.co = grandTotal.obligation.co - grandTotal.disbursement.co;
+            unpaidObligation.total = grandTotal.obligation.total - grandTotal.disbursement.total;
+
+            const row: Array<string | number | null> = [
+                `${'  '.repeat(indentLevel)}${label}`,
+                ...metricValues(activity.allotment),
+                null, null, null,
+                null, null, null,
+            ];
+
+            QUARTERS.forEach((quarter, quarterIndex) => {
+                quarter.months.forEach(monthIndex => row.push(...monthValues(activity.months[monthIndex], activity.allotment.total)));
+                row.push(...monthValues(quarters[quarterIndex], activity.allotment.total));
+            });
+            row.push(...monthValues(grandTotal, activity.allotment.total));
+            row.push(...metricValues(unpaidObligation), grandTotal.obligation.total ? unpaidObligation.total / grandTotal.obligation.total : 0);
+            return row;
+        };
+
+        const summaryRow = (items: any[], label: string, indentLevel: number) => {
+            const summary = createActivityData(label);
+            items.forEach(item => addActivityData(summary, item));
+            return activityRow(summary, label, indentLevel);
+        };
+
+        const dataRows: Array<Array<string | number | null>> = [];
+        Object.entries(rows).forEach(([componentName, componentData]) => {
+            if (Array.isArray(componentData)) {
+                dataRows.push(summaryRow(componentData, componentName, 0));
+                if (expandedRows.has(componentName)) {
+                    componentData.forEach(activity => dataRows.push(activityRow(activity, activity.name, 1)));
+                }
+                return;
+            }
+
+            if ((componentData as any).isNestedExpandable) {
+                const allPackageItems = Object.values((componentData as any).packages).flatMap((pkg: any) => pkg.items);
+                dataRows.push(summaryRow(allPackageItems, componentName, 0));
+                if (expandedRows.has(componentName)) {
+                    Object.entries((componentData as any).packages).forEach(([pkgName, pkgData]: [string, any]) => {
+                        dataRows.push(summaryRow(pkgData.items, pkgName, 1));
+                        if (expandedRows.has(pkgName)) {
+                            pkgData.items.forEach((activity: any) => dataRows.push(activityRow(activity, activity.name, 2)));
+                        }
+                    });
+                }
+            }
+        });
+        dataRows.push(summaryRow([grandTotals], 'GRAND TOTAL', 0));
+
+        const exportRows = [headerRow1, headerRow2, headerRow3, ...dataRows];
+        const columnFormats = headerRow3.reduce<Record<number, ExcelColumnFormat>>((acc, heading, index) => {
+            if (index === 0) return acc;
+            const label = String(heading || '');
+            acc[index] = label.includes('%') ? 'percent' : 'money';
+            return acc;
+        }, {});
+
+        onExportReport({
+            reportName: 'Budget Utilization Report',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `Budget_Utilization_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'Budget Utilization',
+                rows: exportRows,
+                headerRowCount: 3,
+                merges: deriveExcelHeaderMerges(exportRows, 3),
+                columnWidths: [34, ...Array.from({ length: Math.max(0, exportRows[0].length - 1) }, () => 13)],
+                columnFormats,
+            }],
+        });
     };
 
     const indentClasses = ['pl-2', 'pl-6', 'pl-10'];
@@ -421,29 +545,18 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
 
     return (
         <div id="bur-container" className="report-card bur-report-card">
-            <style>{`
-                @media print {
-                    @page { size: landscape; }
-                    #bur-table {
-                        overflow: visible !important;
-                        display: block !important;
-                    }
-                    #bur-table table {
-                        width: 100% !important;
-                        table-layout: auto !important;
-                    }
-                    body, #root, #bur-container {
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        overflow: visible !important;
-                    }
-                }
-            `}</style>
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">Budget Utilization Report</h3>
                 <div className="report-card__actions">
-                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Budget Utilization Report',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'bur-table',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
                         <Printer className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Print Report</span>
                     </button>

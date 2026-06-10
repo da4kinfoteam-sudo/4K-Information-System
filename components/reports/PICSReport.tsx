@@ -1,9 +1,9 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 
 interface PICSReportProps {
     data: {
@@ -14,9 +14,11 @@ interface PICSReportProps {
     };
     selectedYear: string;
     selectedOu: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
-const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu }) => {
+const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
     const toggle = (id: string) => {
@@ -188,22 +190,23 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
     const handleDownloadPicsXlsx = () => {
         const aoa: (string | number | null)[][] = [
             [
-                "Region", "Province", "Performance Indicator", "Unit of Measure", 
-                "Total Target", "Total Group", "Total Male Target", "Total Female Target", 
-                "Total Unidentified Target", "Total Participants",
-                "Tier 1 Total Target", "Tier 1 Total Group", "Tier 1 Total Male", "Tier 1 Total Female",
-                "Tier 1 Total Unidentified", "Tier 1 Total Participants",
-                "Tier 2 Total Target", "Tier 2 Total Group", "Tier 2 Total Male", "Tier 2 Total Female",
-                "Tier 2 Total Unidentified", "Tier 2 Total Participants"
+                "Location / Performance Indicator", "Unit of Measure",
+                "TOTAL", null, null, null, null, null,
+                "TIER 1", null, null, null, null, null,
+                "TIER 2", null, null, null, null, null
+            ],
+            [
+                null, null,
+                "Target", "Group (IPOs)", "Male", "Female", "Unidentified", "Participants",
+                "Target", "Group", "Male", "Female", "Unidentified", "Participants",
+                "Target", "Group", "Male", "Female", "Unidentified", "Participants"
             ]
         ];
 
         picsData.forEach(row => {
             aoa.push([
-                row.region, 
-                row.province, 
-                row.indicator, 
-                "number", 
+                `${row.region} / ${row.province} / ${row.indicator}`,
+                "number",
                 row.totalTarget, 
                 row.ipoNames.size, 
                 row.maleTarget, 
@@ -225,10 +228,25 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
             ]);
         });
 
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "PICS Report");
-        XLSX.writeFile(wb, `PICS_Report_${selectedYear}_${selectedOu}.xlsx`);
+        onExportReport({
+            reportName: 'PICS Report',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `PICS_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'PICS Report',
+                rows: aoa,
+                headerRowCount: 2,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+                    { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+                    { s: { r: 0, c: 2 }, e: { r: 0, c: 7 } },
+                    { s: { r: 0, c: 8 }, e: { r: 0, c: 13 } },
+                    { s: { r: 0, c: 14 }, e: { r: 0, c: 19 } },
+                ],
+                columnWidths: [42, 14, ...Array(18).fill(14)],
+                columnFormats: Object.fromEntries(Array.from({ length: 18 }, (_, index) => [index + 2, 'physical'])),
+            }],
+        });
     };
 
     return (
@@ -236,13 +254,25 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu 
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">PICS Report</h3>
                 <div className="report-card__actions">
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'PICS Report',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'pics-report-table',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
                     <button onClick={handleDownloadPicsXlsx} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
                         <Download className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Download XLSX</span>
                     </button>
                 </div>
             </div>
-            <div className="report-table-scroll pics-report-scroll">
+            <div id="pics-report-table" className="report-table-scroll pics-report-scroll">
                 <table className="pics-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                     <thead className="sticky top-0 z-10">
                         <tr>

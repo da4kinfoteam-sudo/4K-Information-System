@@ -12,8 +12,10 @@ import MonthlyReportMatrix from './reports/MonthlyReportMatrix'; // Import
 import DetailedAccomplishmentDataReport from './reports/DetailedAccomplishmentDataReport';
 import FinancialAuditReport from './reports/FinancialAuditReport';
 import { useAuth } from '../contexts/AuthContext';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Printer, SlidersHorizontal, X } from 'lucide-react';
 import type { DataScope } from '../lib/scopedDataFetch';
+import { exportReportWorkbook } from '../lib/reportExcelExport';
+import type { ReportExcelRequest, ReportPrintRequest } from './reports/ReportUtils';
 
 interface ReportsProps {
     ipos: IPO[];
@@ -35,6 +37,14 @@ interface ReportsProps {
 }
 
 type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
+
+interface PreparedPrintJob extends ReportPrintRequest {
+    tableHtml: string;
+    preparedBy: string;
+    approvedBy: string;
+}
+
+const REPORT_PRINT_NAMES_KEY = '4kis-report-print-signatories';
 
 const Reports: React.FC<ReportsProps> = ({
     ipos,
@@ -66,7 +76,26 @@ const Reports: React.FC<ReportsProps> = ({
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [pendingPrintRequest, setPendingPrintRequest] = useState<ReportPrintRequest | null>(null);
+    const [pendingExcelRequest, setPendingExcelRequest] = useState<ReportExcelRequest | null>(null);
+    const [preparedBy, setPreparedBy] = useState('');
+    const [approvedBy, setApprovedBy] = useState('');
+    const [preparedPrintJob, setPreparedPrintJob] = useState<PreparedPrintJob | null>(null);
+    const [printError, setPrintError] = useState('');
+    const [isExportingExcel, setIsExportingExcel] = useState(false);
     const requiresFinancialHistoryScope = activeTab === 'Monthly Matrix' || activeTab === 'Financial Audit';
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(REPORT_PRINT_NAMES_KEY);
+            if (!saved) return;
+            const parsed = JSON.parse(saved);
+            setPreparedBy(parsed.preparedBy || '');
+            setApprovedBy(parsed.approvedBy || '');
+        } catch {
+            // Ignore malformed local preference data.
+        }
+    }, []);
 
     useEffect(() => {
         if (requiresFinancialHistoryScope) return;
@@ -110,6 +139,15 @@ const Reports: React.FC<ReportsProps> = ({
             setActiveTab('WFP');
         }
     }, [activeTab, isSuperAdmin]);
+
+    useEffect(() => {
+        const handleAfterPrint = () => {
+            document.body.classList.remove('report-print-active');
+            setPreparedPrintJob(null);
+        };
+        window.addEventListener('afterprint', handleAfterPrint);
+        return () => window.removeEventListener('afterprint', handleAfterPrint);
+    }, []);
 
     const availableYears = useMemo(() => {
         return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
@@ -231,12 +269,108 @@ const Reports: React.FC<ReportsProps> = ({
         );
     }
 
+    const cloneReportTable = (tableElementId: string) => {
+        const source = document.getElementById(tableElementId);
+        if (!source) return '';
+        const clone = source.cloneNode(true) as HTMLElement;
+        clone.removeAttribute('id');
+        clone.querySelectorAll('.print-hidden, button, [aria-hidden="true"].btn-symbol').forEach(element => element.remove());
+        clone.querySelectorAll('[style]').forEach(element => {
+            const htmlElement = element as HTMLElement;
+            htmlElement.style.position = '';
+            htmlElement.style.left = '';
+            htmlElement.style.top = '';
+            htmlElement.style.transform = '';
+            htmlElement.style.maxHeight = '';
+            htmlElement.style.overflow = '';
+        });
+        return clone.outerHTML;
+    };
+
+    const handleRequestPrint = (request: ReportPrintRequest) => {
+        setPrintError('');
+        setPendingPrintRequest({
+            ...request,
+            ouName: request.ouName || (selectedOu === 'All' ? 'All OUs' : selectedOu),
+        });
+    };
+
+    const handleRequestExport = (request: ReportExcelRequest) => {
+        setPrintError('');
+        setPendingExcelRequest({
+            ...request,
+            ouName: request.ouName || (selectedOu === 'All' ? 'All OUs' : selectedOu),
+        });
+    };
+
+    const closeOutputModal = () => {
+        setPendingPrintRequest(null);
+        setPendingExcelRequest(null);
+        setPrintError('');
+    };
+
+    const handleConfirmOutput = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!pendingPrintRequest && !pendingExcelRequest) return;
+        const nextPreparedBy = preparedBy.trim();
+        const nextApprovedBy = approvedBy.trim();
+        if (!nextPreparedBy || !nextApprovedBy) {
+            setPrintError('Prepared By and Approved By are required before printing.');
+            return;
+        }
+
+        try {
+            localStorage.setItem(REPORT_PRINT_NAMES_KEY, JSON.stringify({
+                preparedBy: nextPreparedBy,
+                approvedBy: nextApprovedBy,
+            }));
+        } catch {
+            // Printing should still continue if local preference storage is unavailable.
+        }
+
+        if (pendingExcelRequest) {
+            setIsExportingExcel(true);
+            try {
+                await exportReportWorkbook(pendingExcelRequest, {
+                    preparedBy: nextPreparedBy,
+                    approvedBy: nextApprovedBy,
+                });
+                closeOutputModal();
+            } catch (error) {
+                console.error('Failed to export report workbook:', error);
+                setPrintError('Unable to generate the Excel report. Please try again.');
+            } finally {
+                setIsExportingExcel(false);
+            }
+            return;
+        }
+
+        if (pendingPrintRequest) {
+            const tableHtml = cloneReportTable(pendingPrintRequest.tableElementId);
+            if (!tableHtml) {
+                setPrintError('Unable to find the selected report table for printing.');
+                return;
+            }
+
+            const printJob: PreparedPrintJob = {
+                ...pendingPrintRequest,
+                tableHtml,
+                preparedBy: nextPreparedBy,
+                approvedBy: nextApprovedBy,
+            };
+            setPendingPrintRequest(null);
+            setPreparedPrintJob(printJob);
+            document.body.classList.add('report-print-active');
+            window.setTimeout(() => window.print(), 100);
+        }
+    };
+
     const renderTabContent = () => {
         switch (activeTab) {
             case 'WFP':
-                return <WFPReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                return <WFPReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BP Forms':
-                return <BPFormsReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                return <BPFormsReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BEDS':
                 return (
                     <BEDSReport
@@ -250,19 +384,21 @@ const Reports: React.FC<ReportsProps> = ({
                         onSelectOfficeReq={onSelectOfficeReq}
                         onSelectStaffingReq={onSelectStaffingReq}
                         onSelectOtherExpense={onSelectOtherExpense}
+                        onPrintReport={handleRequestPrint}
+                        onExportReport={handleRequestExport}
                     />
                 );
             case 'PICS':
-                return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BAR1':
-                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} />;
+                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Budget Utilization Report':
-                return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
+                return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Monthly Matrix':
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
-                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} />;
+                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Detailed Accomplishment Data':
-                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} />;
+                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Financial Audit':
                 if (!isSuperAdmin) return null;
                 return (
@@ -278,6 +414,8 @@ const Reports: React.FC<ReportsProps> = ({
                         onSelectOfficeReq={onSelectOfficeReq}
                         onSelectStaffingReq={onSelectStaffingReq}
                         onSelectOtherExpense={onSelectOtherExpense}
+                        onPrintReport={handleRequestPrint}
+                        onExportReport={handleRequestExport}
                     />
                 );
             default:
@@ -378,6 +516,86 @@ const Reports: React.FC<ReportsProps> = ({
             <div className="report-output">
                 {renderTabContent()}
             </div>
+
+            {(pendingPrintRequest || pendingExcelRequest) && (
+                <div className="modal-backdrop print-hidden" role="presentation">
+                    <form className="modal-card report-print-modal" onSubmit={handleConfirmOutput}>
+                        <div className="modal-card__header">
+                            <div>
+                                <h3>{pendingExcelRequest ? 'Export Report' : 'Print Report'}</h3>
+                                <p>{pendingPrintRequest?.sectionName || pendingPrintRequest?.reportName || pendingExcelRequest?.reportName}</p>
+                            </div>
+                            <button
+                                type="button"
+                                className="modal-card__close"
+                                onClick={closeOutputModal}
+                                aria-label="Close report output dialog"
+                            >
+                                <X aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="modal-card__body report-print-modal__body">
+                            <label className="form-field">
+                                <span className="form-label">Prepared By</span>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    value={preparedBy}
+                                    onChange={(event) => setPreparedBy(event.target.value)}
+                                    placeholder="Enter prepared by name"
+                                    autoFocus
+                                />
+                            </label>
+                            <label className="form-field">
+                                <span className="form-label">Approved By</span>
+                                <input
+                                    type="text"
+                                    className="form-control"
+                                    value={approvedBy}
+                                    onChange={(event) => setApprovedBy(event.target.value)}
+                                    placeholder="Enter approved by name"
+                                />
+                            </label>
+                            {printError && <p className="form-error">{printError}</p>}
+                        </div>
+                        <div className="modal-card__footer">
+                            <button type="button" className="btn btn-secondary" onClick={closeOutputModal} disabled={isExportingExcel}>
+                                Cancel
+                            </button>
+                            <button type="submit" className="btn btn-primary" disabled={isExportingExcel}>
+                                <Printer aria-hidden="true" />
+                                <span>{pendingExcelRequest ? (isExportingExcel ? 'Exporting...' : 'Export XLSX') : 'Print'}</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {preparedPrintJob && (
+                <section className="report-print-shell" aria-hidden={!preparedPrintJob}>
+                    <header className="report-print-header">
+                        <img src="/assets/4klogo.png" alt="4K Program logo" />
+                        <div>
+                            <p>Department of Agriculture.</p>
+                            <p>Kabuhayan at Kaunlaran ng Kababayang Katutubo</p>
+                            <p>{preparedPrintJob.reportName} - {preparedPrintJob.ouName}</p>
+                        </div>
+                    </header>
+                    <main className="report-print-body" dangerouslySetInnerHTML={{ __html: preparedPrintJob.tableHtml }} />
+                    <footer className="report-print-signatures">
+                        <div>
+                            <span className="report-print-signature-line" />
+                            <strong>{preparedPrintJob.preparedBy}</strong>
+                            <small>Prepared By</small>
+                        </div>
+                        <div>
+                            <span className="report-print-signature-line" />
+                            <strong>{preparedPrintJob.approvedBy}</strong>
+                            <small>Approved By</small>
+                        </div>
+                    </footer>
+                </section>
+            )}
         </div>
     );
 };

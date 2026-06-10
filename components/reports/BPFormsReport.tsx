@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { formatCurrency, getObjectTypeByCode, XLSX } from './ReportUtils';
+import { formatCurrency, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 
 interface BPFormsReportProps {
@@ -17,6 +17,8 @@ interface BPFormsReportProps {
     uacsCodes: any;
     selectedYear: string;
     selectedOu: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const formatCurrencyWhole = (amount: number) => {
@@ -165,7 +167,7 @@ const SummaryRow: React.FC<{
     );
 };
 
-const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selectedYear, selectedOu }) => {
+const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const bpFormsProcessedData = useMemo(() => {
@@ -453,10 +455,6 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         return '';
     };
 
-    const handlePrint = () => {
-        window.print();
-    };
-
     const handleDownloadBpFormsXlsx = () => {
         // Construct grouped headers for XLSX
         const mooeCodesSorted = [...mooeCodes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -622,18 +620,15 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         // Combine all
         const aoa = [row1, row2, row3, row4, ...flatDataRows];
-        const ws: any = XLSX.utils.aoa_to_sheet(aoa);
-
-        // Setup Merges
-        if(!ws['!merges']) ws['!merges'] = [];
+        const merges = [];
         
         // PAP Vertical Merge (Rows 0 to 3)
-        ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
+        merges.push({ s: { r: 0, c: 0 }, e: { r: 3, c: 0 } });
 
         let colIdx = 1; 
         // MOOE Group Merge
         if(mooeSpan > 0) {
-            ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + mooeSpan - 1 } });
+            merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + mooeSpan - 1 } });
             
             // MOOE Particulars Merges (Group consecutive same particulars)
             let startCol = colIdx;
@@ -644,7 +639,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     endCol++;
                 }
                 if (endCol > startCol) {
-                    ws['!merges'].push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
+                    merges.push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
                 }
                 i += (endCol - startCol);
                 startCol = endCol + 1;
@@ -653,12 +648,12 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         }
         
         // Total MOOE Vertical Merge
-        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
+        merges.push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
         colIdx++;
 
         // CO Group Merge
         if(coSpan > 0) {
-            ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + coSpan - 1 } });
+            merges.push({ s: { r: 0, c: colIdx }, e: { r: 0, c: colIdx + coSpan - 1 } });
             
             // CO Particulars Merges (Group consecutive same particulars)
             let startCol = colIdx;
@@ -669,7 +664,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                     endCol++;
                 }
                 if (endCol > startCol) {
-                    ws['!merges'].push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
+                    merges.push({ s: { r: 1, c: startCol }, e: { r: 1, c: endCol } });
                 }
                 i += (endCol - startCol);
                 startCol = endCol + 1;
@@ -678,52 +673,32 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         }
         
         // Total CO Vertical Merge
-        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
+        merges.push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
         colIdx++;
         
         // Grand Total Vertical Merge
-        ws['!merges'].push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
+        merges.push({ s: { r: 0, c: colIdx }, e: { r: 3, c: colIdx } });
 
         // Set column widths and alignment
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        const colWidths = [];
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            if (C === 0) {
-                colWidths.push({ wch: 50 }); // PAP column width
-            } else {
-                colWidths.push({ wch: 15 }); // Data columns width
-            }
-        }
-        ws['!cols'] = colWidths;
+        const columnWidths = aoa[0].map((_, index) => index === 0 ? 50 : 15);
+        const columnFormats = aoa[0].reduce<Record<number, 'money'>>((acc, _, index) => {
+            if (index > 0) acc[index] = 'money';
+            return acc;
+        }, {});
 
-        // Apply alignment and wrapping
-        for (let R = range.s.r; R <= range.e.r; ++R) {
-            for (let C = range.s.c; C <= range.e.c; ++C) {
-                const cell_address = { c: C, r: R };
-                const cell_ref = XLSX.utils.encode_cell(cell_address);
-                if (!ws[cell_ref]) continue;
-                if (!ws[cell_ref].s) ws[cell_ref].s = {};
-                
-                // Header alignment
-                if (R <= 3) {
-                    ws[cell_ref].s.alignment = { horizontal: "center", vertical: "center", wrapText: true };
-                } else {
-                    // Data alignment
-                    if (C === 0) {
-                        ws[cell_ref].s.alignment = { horizontal: "left", vertical: "center", wrapText: true };
-                    } else {
-                        ws[cell_ref].s.alignment = { horizontal: "right", vertical: "center" };
-                        if (typeof ws[cell_ref].v === 'number') {
-                            ws[cell_ref].z = '#,##0';
-                        }
-                    }
-                }
-            }
-        }
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "BP Forms");
-        XLSX.writeFile(wb, `BP_Forms_Report_${selectedYear}_${selectedOu}.xlsx`);
+        onExportReport({
+            reportName: 'Budget Proposal (BP) Forms',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `BP_Forms_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'BP Forms',
+                rows: aoa,
+                headerRowCount: 4,
+                merges,
+                columnWidths,
+                columnFormats,
+            }],
+        });
     };
 
     const mooeParticulars = Object.keys(headers.MOOE).sort();
@@ -740,30 +715,18 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
     return (
         <div id="bp-forms-container" className="report-card bp-report-card">
-            <style>{`
-                @media print {
-                    @page { size: landscape; }
-                    #bp-forms-table {
-                        overflow: visible !important;
-                        display: block !important;
-                    }
-                    #bp-forms-table table {
-                        width: 100% !important;
-                        table-layout: auto !important;
-                    }
-                    /* Ensure full width and no clipping */
-                    body, #root, #bp-forms-container {
-                        width: 100% !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        overflow: visible !important;
-                    }
-                }
-            `}</style>
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">Budget Proposal (BP) Forms</h3>
                 <div className="report-card__actions">
-                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Budget Proposal (BP) Forms',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'bp-forms-table',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
                         <Printer className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Print Report</span>
                     </button>

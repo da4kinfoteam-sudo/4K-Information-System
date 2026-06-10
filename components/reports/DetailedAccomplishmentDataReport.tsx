@@ -1,11 +1,11 @@
 // Author: 4K
 import React, { useEffect, useMemo, useState } from 'react';
-import { Download, RotateCcw, Save, Search, SlidersHorizontal, X } from 'lucide-react';
+import { Download, Printer, RotateCcw, Save, Search, SlidersHorizontal, X } from 'lucide-react';
 import { ActivityComponentType, IPO, OtherActivity, Subproject, Training } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 
 interface DetailedAccomplishmentDataReportProps {
     data: {
@@ -18,6 +18,8 @@ interface DetailedAccomplishmentDataReportProps {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 interface DetailedAccomplishmentRow {
@@ -347,6 +349,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     selectedOu,
     selectedTier,
     selectedFundType,
+    onPrintReport,
+    onExportReport,
 }) => {
     const { currentUser } = useAuth();
     const isReportAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
@@ -666,26 +670,30 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     }, [controllerSearch, level3Options]);
 
     const handleDownload = () => {
-        if (!XLSX) {
-            alert('XLSX library is not available.');
-            return;
-        }
-
         const aoa = [
             ['PERFORMANCE INDICATOR', ...Array(13).fill(''), 'BENEFICIARY INFORMATION', ...Array(12).fill('')],
             columns.map(column => column.label),
             ...displayRows.map(row => columns.map(column => row[column.key] ?? '')),
         ];
-        const ws: any = XLSX.utils.aoa_to_sheet(aoa);
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
-            { s: { r: 0, c: 14 }, e: { r: 0, c: 26 } },
-        ];
-        ws['!cols'] = columns.map(column => ({ wch: Math.max(12, column.label.length + 2) }));
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Detailed Accomp Data');
-        XLSX.writeFile(wb, `Detailed_Accomplishment_Data_${selectedYear}_${selectedOu}.xlsx`);
+        onExportReport({
+            reportName: 'Detailed Accomplishment Data',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `Detailed_Accomplishment_Data_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'Detailed Accomp Data',
+                rows: aoa,
+                headerRowCount: 2,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+                    { s: { r: 0, c: 14 }, e: { r: 0, c: 26 } },
+                ],
+                columnWidths: columns.map(column => Math.max(12, Math.ceil(column.width / 8))),
+                columnFormats: columns.reduce<Record<number, 'physical'>>((acc, column, index) => {
+                    if (column.numeric) acc[index] = 'physical';
+                    return acc;
+                }, {}),
+            }],
+        });
     };
 
     return (
@@ -731,6 +739,18 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                             <span className="btn-text">Display Controller</span>
                         </button>
                     )}
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Detailed Accomplishment Data',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'detailed-accomplishment-report-table',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
+                        <Printer className="btn-symbol" aria-hidden="true" />
+                        <span className="btn-text">Print Report</span>
+                    </button>
                     <button onClick={handleDownload} className="btn btn-primary btn-responsive" aria-label="Download XLSX">
                         <Download className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Download XLSX</span>
@@ -871,7 +891,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                 </section>
             )}
 
-            <div className="report-table-scroll">
+            <div id="detailed-accomplishment-report-table" className="report-table-scroll">
                 <table className="report-table detailed-accomplishment-table min-w-full">
                     <colgroup>
                         {columns.map(column => (

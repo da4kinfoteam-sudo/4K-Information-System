@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { getObjectTypeByCode, XLSX } from './ReportUtils';
+import { getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface WFPReportProps {
@@ -18,6 +18,8 @@ interface WFPReportProps {
     uacsCodes: any;
     selectedYear: string;
     selectedOu: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const formatCurrencyWhole = (amount: number) => {
@@ -29,7 +31,7 @@ const formatNumber = (num: number) => {
     return Math.ceil(num).toLocaleString('en-US');
 };
 
-const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, selectedOu }) => {
+const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const toggleRow = (key: string) => {
@@ -388,56 +390,39 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
         addTotalsRow(grandTotals, "GRAND TOTAL");
         
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-        // Merges
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // Program/Activity/Project
-            { s: { r: 0, c: 1 }, e: { r: 0, c: 4 } }, // Total Target
-            { s: { r: 0, c: 5 }, e: { r: 0, c: 9 } }, // Quarterly Physical Target
-            { s: { r: 0, c: 10 }, e: { r: 0, c: 14 } } // Quarterly Financial Target
-        ];
-
-        // Column Widths
-        ws['!cols'] = [
-            { wch: 40 }, // Indicator
-            { wch: 10 }, // Physical
-            { wch: 15 }, // MOOE
-            { wch: 15 }, // CO
-            { wch: 15 }, // Total
-            { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 10 }, // Q Physical
-            { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 } // Q Financial
-        ];
-
-        // Hide Gridlines
-        if (!ws['!views']) ws['!views'] = [];
-        ws['!views'].push({ showGridLines: false });
-
-        // Apply formatting (Note: Basic XLSX utils might not support cell styles fully without pro version, 
-        // but we can try setting number format 'z' if the library supports it)
-        // Iterate all cells to set number format for financial columns
-        const range = XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
-        for (let R = 2; R <= range.e.r; ++R) { // Skip headers
-            for (let C = 1; C <= range.e.c; ++C) {
-                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-                if (!ws[cellRef]) continue;
-                
-                // Financial Columns: 2, 3, 4, 10, 11, 12, 13, 14
-                if ([2, 3, 4, 10, 11, 12, 13, 14].includes(C)) {
-                    ws[cellRef].z = '#,##0.00'; // Decimal format
-                } else if ([1, 5, 6, 7, 8, 9].includes(C)) {
-                    ws[cellRef].z = '#,##0'; // Integer format for physical
-                }
-            }
-        }
-
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "WFP Report");
-        XLSX.writeFile(wb, `WFP_Report_${selectedYear}_${selectedOu}.xlsx`);
-    };
-
-    const handlePrint = () => {
-        window.print();
+        onExportReport({
+            reportName: 'Work and Financial Plan (WFP)',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `WFP_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'WFP Report',
+                rows: aoa,
+                headerRowCount: 2,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+                    { s: { r: 0, c: 1 }, e: { r: 0, c: 4 } },
+                    { s: { r: 0, c: 5 }, e: { r: 0, c: 9 } },
+                    { s: { r: 0, c: 10 }, e: { r: 0, c: 14 } },
+                ],
+                columnWidths: [40, 10, 15, 15, 15, 8, 8, 8, 8, 10, 15, 15, 15, 15, 15],
+                columnFormats: {
+                    1: 'physical',
+                    2: 'money',
+                    3: 'money',
+                    4: 'money',
+                    5: 'physical',
+                    6: 'physical',
+                    7: 'physical',
+                    8: 'physical',
+                    9: 'physical',
+                    10: 'money',
+                    11: 'money',
+                    12: 'money',
+                    13: 'money',
+                    14: 'money',
+                },
+            }],
+        });
     };
 
     const renderTotalsRow = (items: any[], label: string) => {
@@ -558,110 +543,18 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
     return (
         <div id="wfp-container-for-print" className="report-card">
-            <style>
-                {`
-                    @media print {
-                        @page { 
-                            size: landscape; 
-                            margin: 1.5cm; 
-                        }
-                        
-                        /* Reset body and container for print */
-                        html, body {
-                            height: auto !important;
-                            overflow: visible !important;
-                            background: white !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                        }
-
-                        /* Hide everything by default */
-                        body * {
-                            visibility: hidden;
-                            height: 0 !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            overflow: hidden !important;
-                            border: none !important;
-                        }
-
-                        /* Show only the report container and its children */
-                        #wfp-container-for-print, 
-                        #wfp-container-for-print * {
-                            visibility: visible;
-                            height: auto !important;
-                            overflow: visible !important;
-                        }
-
-                        #wfp-container-for-print {
-                            display: block !important;
-                            position: absolute;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            padding: 0 !important;
-                            margin: 0 !important;
-                            box-shadow: none !important;
-                            background: white !important;
-                        }
-
-                        /* Logo space at the top */
-                        .print-logo-space {
-                            display: block !important;
-                            height: 2.5cm; /* Space for logo */
-                            width: 100%;
-                        }
-
-                        .print-hidden {
-                            display: none !important;
-                        }
-
-                        /* Table styling for print */
-                        table {
-                            width: 100% !important;
-                            border-collapse: collapse !important;
-                            font-size: 7.5pt !important;
-                            table-layout: auto !important;
-                            margin-top: 0.5cm !important;
-                        }
-
-                        th, td {
-                            border: 0.5pt solid #000 !important;
-                            padding: 3pt !important;
-                            word-wrap: break-word;
-                            color: black !important;
-                        }
-
-                        thead {
-                            display: table-header-group;
-                        }
-
-                        tr {
-                            page-break-inside: avoid;
-                        }
-
-                        /* Force background colors for print */
-                        .bg-gray-200 { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; }
-                        .bg-gray-100 { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; }
-                        
-                        /* Ensure text is black */
-                        .text-gray-900, .text-gray-800, .text-gray-500 {
-                            color: black !important;
-                        }
-
-                        /* Remove dark mode overrides */
-                        .dark {
-                            background-color: white !important;
-                            color: black !important;
-                        }
-                    }
-                `}
-            </style>
-            <div className="print-logo-space hidden"></div>
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">Work and Financial Plan (WFP)</h3>
                 <div className="report-card__actions">
-                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Work and Financial Plan (WFP)',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'wfp-report',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
                         <Printer className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Print Report</span>
                     </button>

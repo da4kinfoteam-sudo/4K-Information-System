@@ -9,7 +9,7 @@ import {
     getFinancialMonthIndex,
 } from '../../lib/financialAggregation';
 import { buildFinancialAudit, FinancialAuditNavigationTarget } from '../../lib/financialAudit';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 
 interface BEDSReportProps {
     data: {
@@ -29,6 +29,8 @@ interface BEDSReportProps {
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 type MonthlyRow = {
@@ -263,9 +265,10 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
+    onPrintReport,
+    onExportReport,
 }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
-    const [printTarget, setPrintTarget] = useState<string | null>(null);
 
     const dataCellClass = 'beds-report__cell';
     const indentClasses: Record<number, string> = { 0: '', 1: 'pl-6', 2: 'pl-10', 3: 'pl-14' };
@@ -592,19 +595,8 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
         });
     };
 
-    const handlePrintSpecificTable = (id: string) => {
-        setPrintTarget(id);
-        setTimeout(() => window.print(), 100);
-    };
-
-    React.useEffect(() => {
-        const handleAfterPrint = () => setPrintTarget(null);
-        window.addEventListener('afterprint', handleAfterPrint);
-        return () => window.removeEventListener('afterprint', handleAfterPrint);
-    }, []);
-
     const handleDownloadBEDSXlsx = () => {
-        const wb = XLSX.utils.book_new();
+        const sheets: ReportExcelRequest['sheets'] = [];
 
         const addBed1Sheet = () => {
             const rows: any[][] = [
@@ -643,15 +635,20 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             });
             pushSummary('GRAND TOTAL', getGrandTotals(bed1Data));
 
-            const ws = XLSX.utils.aoa_to_sheet(rows);
-            ws['!merges'] = [
-                { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
-                { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-                { s: { r: 0, c: 2 }, e: { r: 0, c: 4 } },
-                { s: { r: 0, c: 5 }, e: { r: 0, c: 9 } },
-                { s: { r: 0, c: 10 }, e: { r: 0, c: 14 } },
-            ];
-            XLSX.utils.book_append_sheet(wb, ws, 'BED 1');
+            sheets.push({
+                sheetName: 'BED 1',
+                rows,
+                headerRowCount: 2,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+                    { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
+                    { s: { r: 0, c: 2 }, e: { r: 0, c: 4 } },
+                    { s: { r: 0, c: 5 }, e: { r: 0, c: 9 } },
+                    { s: { r: 0, c: 10 }, e: { r: 0, c: 14 } },
+                ],
+                columnWidths: [34, 24, ...Array(13).fill(14)],
+                columnFormats: Object.fromEntries(Array.from({ length: 13 }, (_, index) => [index + 2, 'money'])),
+            });
         };
 
         const addMonthlySheet = (dataMap: BedsSectionMap<MonthlyRow>, sheetName: string) => {
@@ -696,22 +693,32 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             });
             pushSummary('GRAND TOTAL', getGrandTotals(dataMap));
 
-            const ws = XLSX.utils.aoa_to_sheet(rows);
-            ws['!merges'] = [
-                { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
-                { s: { r: 0, c: 1 }, e: { r: 0, c: 4 } },
-                { s: { r: 0, c: 5 }, e: { r: 0, c: 8 } },
-                { s: { r: 0, c: 9 }, e: { r: 0, c: 12 } },
-                { s: { r: 0, c: 13 }, e: { r: 0, c: 16 } },
-                { s: { r: 0, c: 17 }, e: { r: 1, c: 17 } },
-            ];
-            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            sheets.push({
+                sheetName,
+                rows,
+                headerRowCount: 2,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+                    { s: { r: 0, c: 1 }, e: { r: 0, c: 4 } },
+                    { s: { r: 0, c: 5 }, e: { r: 0, c: 8 } },
+                    { s: { r: 0, c: 9 }, e: { r: 0, c: 12 } },
+                    { s: { r: 0, c: 13 }, e: { r: 0, c: 16 } },
+                    { s: { r: 0, c: 17 }, e: { r: 1, c: 17 } },
+                ],
+                columnWidths: [34, ...Array(17).fill(12)],
+                columnFormats: Object.fromEntries(Array.from({ length: 17 }, (_, index) => [index + 1, 'money'])),
+            });
         };
 
         addBed1Sheet();
         addMonthlySheet(bed2Data, 'BED 2');
         addMonthlySheet(bed3Data, 'BED 3');
-        XLSX.writeFile(wb, `BEDS_Report_${selectedYear}_${selectedOu}.xlsx`);
+        onExportReport({
+            reportName: 'Budget Execution Documents (BEDS)',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `BEDS_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets,
+        });
     };
 
     const renderMonthlyHeader = () => (
@@ -734,19 +741,6 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
 
     return (
         <div className="report-card beds-report-card">
-            {printTarget && (
-                <style>{`
-                    @media print {
-                        body * { visibility: hidden; }
-                        #${printTarget}, #${printTarget} * { visibility: visible; }
-                        #${printTarget} { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; }
-                        @page { size: landscape; margin: 0.5cm; }
-                        button { display: none !important; }
-                        .text-gray-500, .text-gray-400, .dark .text-gray-400 { color: #333 !important; }
-                    }
-                `}</style>
-            )}
-
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">Budget Execution Documents (BEDS)</h3>
                 <div className="report-card__actions">
@@ -767,12 +761,21 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                 <div id="bed1-table-container" className="beds-report-section">
                     <div className="beds-report-section__header">
                         <h4 className="beds-report-section__title">BED 1: Financial Plan (Obligation)</h4>
-                        <button type="button" onClick={() => handlePrintSpecificTable('bed1-table-container')} className="btn btn-secondary btn-responsive">
+                        <button
+                            type="button"
+                            onClick={() => onPrintReport({
+                                reportName: 'BEDS 1: Financial Plan (Obligation)',
+                                ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                                tableElementId: 'bed1-report-table',
+                                sectionName: 'BED 1: Financial Plan (Obligation)',
+                            })}
+                            className="btn btn-secondary btn-responsive"
+                        >
                             <Printer className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Print Table</span>
                         </button>
                     </div>
-                    <div className="report-table-scroll beds-report-scroll">
+                    <div id="bed1-report-table" className="report-table-scroll beds-report-scroll">
                         <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">
                                 <tr>
@@ -798,12 +801,21 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                 <div id="bed2-table-container" className="beds-report-section">
                     <div className="beds-report-section__header">
                         <h4 className="beds-report-section__title">BED 2: Physical Plan</h4>
-                        <button type="button" onClick={() => handlePrintSpecificTable('bed2-table-container')} className="btn btn-secondary btn-responsive">
+                        <button
+                            type="button"
+                            onClick={() => onPrintReport({
+                                reportName: 'BEDS 2: Physical Plan',
+                                ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                                tableElementId: 'bed2-report-table',
+                                sectionName: 'BED 2: Physical Plan',
+                            })}
+                            className="btn btn-secondary btn-responsive"
+                        >
                             <Printer className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Print Table</span>
                         </button>
                     </div>
-                    <div className="report-table-scroll beds-report-scroll">
+                    <div id="bed2-report-table" className="report-table-scroll beds-report-scroll">
                         <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">{renderMonthlyHeader()}</thead>
                             <tbody>{renderData(bed2Data, 'BED2')}</tbody>
@@ -815,7 +827,16 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                 <div id="bed3-table-container" className="beds-report-section">
                     <div className="beds-report-section__header">
                         <h4 className="beds-report-section__title">BED 3: Monthly Disbursement Program</h4>
-                        <button type="button" onClick={() => handlePrintSpecificTable('bed3-table-container')} className="btn btn-secondary btn-responsive">
+                        <button
+                            type="button"
+                            onClick={() => onPrintReport({
+                                reportName: 'BEDS 3: Monthly Disbursement Program',
+                                ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                                tableElementId: 'bed3-report-table',
+                                sectionName: 'BED 3: Monthly Disbursement Program',
+                            })}
+                            className="btn btn-secondary btn-responsive"
+                        >
                             <Printer className="btn-symbol" aria-hidden="true" />
                             <span className="btn-text">Print Table</span>
                         </button>
@@ -829,7 +850,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                             </span>
                         </div>
                     )}
-                    <div className="report-table-scroll beds-report-scroll">
+                    <div id="bed3-report-table" className="report-table-scroll beds-report-scroll">
                         <table className="beds-report-table min-w-full border-collapse text-xs whitespace-nowrap">
                             <thead className="bg-teal-200 dark:bg-teal-900 sticky top-0 z-10">{renderMonthlyHeader()}</thead>
                             <tbody>{renderData(bed3Data, 'BED3')}</tbody>

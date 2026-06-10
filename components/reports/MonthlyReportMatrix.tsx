@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
@@ -28,6 +28,8 @@ interface MonthlyReportMatrixProps {
     };
     selectedYear: string;
     selectedOu: string;
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const MONTHS = [
@@ -45,7 +47,7 @@ const formatCurrencyWhole = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
 };
 
-const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedOu }) => {
+const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
     const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
@@ -404,103 +406,53 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }), { alloc: 0, obli: 0, disb: 0, unutilized: 0, unpaid: 0 });
     }, [financialHistoryData]);
 
-    const handlePrint = () => window.print();
-
     const handleDownload = () => {
-        const wb = XLSX.utils.book_new();
-
-        // 1. Physical Sheet
-        const physRows: any[][] = [
+        const physRows: Array<Array<string | number | null>> = [
             [`Monthly Report - Physical Accomplishment (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
             [],
-            ["Component / Indicator", "Cost", "Unit", 
-             "For the Month", "", "", "", 
+            ["Component / Indicator", "Cost", "Unit",
+             "For the Month", "", "", "",
              "Cumulative (Year-to-Date)", "", "", ""],
             ["", "", "", "Target", "Actual", "Var", "%", "Target", "Actual", "Var", "%"]
         ];
-        
+
         const processPhysItems = (items: any[], indent: string) => {
             items.forEach(item => {
                 physRows.push([
-                    indent + item.indicator, 
-                    null, // No cost for items, only components
-                    item.unit, 
-                    item.targetMonth, item.actualMonth, item.varianceMonth, item.percentageMonth/100,
-                    item.targetCum, item.actualCum, item.varianceCum, item.percentageCum/100
+                    indent + item.indicator,
+                    null,
+                    item.unit,
+                    item.targetMonth, item.actualMonth, item.varianceMonth, item.percentageMonth / 100,
+                    item.targetCum, item.actualCum, item.varianceCum, item.percentageCum / 100
                 ]);
             });
         };
 
         Object.entries(physicalData).forEach(([key, val]: [string, any]) => {
-            // Add Component Row with Cost
             physRows.push([key, val.cost, null, null, null, null, null, null, null, null, null]);
-            
+
             if (Array.isArray(val)) {
-                 // Should be array of items if not nested
-                 processPhysItems(val, "  ");
+                processPhysItems(val, "  " );
             } else if (val.isNested) {
                 Object.entries(val.packages).forEach(([pkg, items]: [string, any]) => {
                     if (items.length > 0) {
                         physRows.push([`  ${pkg}`, null, null, null, null, null, null, null, null, null, null]);
-                        processPhysItems(items, "    ");
+                        processPhysItems(items, "    " );
                     }
                 });
             } else if (val.items) {
-                 processPhysItems(val.items, "  ");
+                processPhysItems(val.items, "  " );
             }
         });
-        
-        const wsPhys = XLSX.utils.aoa_to_sheet(physRows);
 
-        // Merges for Physical Sheet
-        wsPhys['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, // Title
-            { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }, // Component / Indicator
-            { s: { r: 2, c: 1 }, e: { r: 3, c: 1 } }, // Cost
-            { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } }, // Unit
-            { s: { r: 2, c: 3 }, e: { r: 2, c: 6 } }, // For the Month
-            { s: { r: 2, c: 7 }, e: { r: 2, c: 10 } }, // Cumulative
-        ];
-
-        // Column Widths
-        wsPhys['!cols'] = [
-            { wch: 40 }, // Component / Indicator
-            { wch: 15 }, // Cost
-            { wch: 10 }, // Unit
-            { wch: 10 }, // Target
-            { wch: 10 }, // Actual
-            { wch: 10 }, // Var
-            { wch: 10 }, // %
-            { wch: 10 }, // Target
-            { wch: 10 }, // Actual
-            { wch: 10 }, // Var
-            { wch: 10 }  // %
-        ];
-
-        // Format Cells
-        const rangePhys = XLSX.utils.decode_range(wsPhys['!ref'] || "A1:K1");
-        for (let R = 4; R <= rangePhys.e.r; ++R) {
-            const costCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 1 })];
-            if (costCell && typeof costCell.v === 'number') costCell.z = '"₱"#,##0.00';
-
-            const pctMonthCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 6 })];
-            if (pctMonthCell && typeof pctMonthCell.v === 'number') pctMonthCell.z = '0%';
-
-            const pctCumCell = wsPhys[XLSX.utils.encode_cell({ r: R, c: 10 })];
-            if (pctCumCell && typeof pctCumCell.v === 'number') pctCumCell.z = '0%';
-        }
-
-        XLSX.utils.book_append_sheet(wb, wsPhys, "Physical");
-
-        // 2. Financial Sheet
-        const finRows: any[][] = [
+        const finRows: Array<Array<string | number | null>> = [
             [`Monthly Report - Financial Accomplishment (Absolute Value) (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
             [],
             ["Fund Source", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]
         ];
         financialHistoryData.forEach(row => {
             finRows.push([
-                row.label, row.alloc, row.obli, row.disb, row.obliRate/100, row.disbRate/100, row.unutilized, row.unpaid
+                row.label, row.alloc, row.obli, row.disb, row.obliRate / 100, row.disbRate / 100, row.unutilized, row.unpaid
             ]);
         });
 
@@ -508,46 +460,59 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const obliRateTotal = financialGrandTotal.alloc > 0 ? (financialGrandTotal.obli / financialGrandTotal.alloc) : 0;
             const disbRateTotal = financialGrandTotal.obli > 0 ? (financialGrandTotal.disb / financialGrandTotal.obli) : 0;
             finRows.push([
-                "Grand Total", financialGrandTotal.alloc, financialGrandTotal.obli, financialGrandTotal.disb, 
+                "Grand Total", financialGrandTotal.alloc, financialGrandTotal.obli, financialGrandTotal.disb,
                 obliRateTotal, disbRateTotal, financialGrandTotal.unutilized, financialGrandTotal.unpaid
             ]);
         }
 
-        const wsFin = XLSX.utils.aoa_to_sheet(finRows);
-
-        // Merges for Financial Sheet
-        wsFin['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } } // Title
-        ];
-
-        // Column Widths
-        wsFin['!cols'] = [
-            { wch: 30 }, // Fund Source
-            { wch: 15 }, // Allocation
-            { wch: 15 }, // Obligation
-            { wch: 15 }, // Disbursement
-            { wch: 15 }, // Obligation Rate
-            { wch: 15 }, // Disbursement Rate
-            { wch: 15 }, // Unutilized
-            { wch: 15 }  // Unpaid
-        ];
-
-        // Format Cells
-        const rangeFin = XLSX.utils.decode_range(wsFin['!ref'] || "A1:H1");
-        for (let R = 3; R <= rangeFin.e.r; ++R) {
-            for (let C of [1, 2, 3, 6, 7]) { // Currency columns
-                const cell = wsFin[XLSX.utils.encode_cell({ r: R, c: C })];
-                if (cell && typeof cell.v === 'number') cell.z = '"₱"#,##0.00';
-            }
-            for (let C of [4, 5]) { // Percentage columns
-                const cell = wsFin[XLSX.utils.encode_cell({ r: R, c: C })];
-                if (cell && typeof cell.v === 'number') cell.z = '0.0%';
-            }
-        }
-
-        XLSX.utils.book_append_sheet(wb, wsFin, "Financial");
-
-        XLSX.writeFile(wb, `Monthly_Report_${selectedYear}_${MONTHS[selectedMonth].label}.xlsx`);
+        onExportReport({
+            reportName: 'Monthly Report Matrix',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `Monthly_Report_${selectedYear}_${MONTHS[selectedMonth].label}.xlsx`,
+            sheets: [
+                {
+                    sheetName: 'Physical',
+                    rows: physRows,
+                    headerRowCount: 4,
+                    merges: [
+                        { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+                        { s: { r: 2, c: 0 }, e: { r: 3, c: 0 } },
+                        { s: { r: 2, c: 1 }, e: { r: 3, c: 1 } },
+                        { s: { r: 2, c: 2 }, e: { r: 3, c: 2 } },
+                        { s: { r: 2, c: 3 }, e: { r: 2, c: 6 } },
+                        { s: { r: 2, c: 7 }, e: { r: 2, c: 10 } },
+                    ],
+                    columnWidths: [40, 15, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+                    columnFormats: {
+                        1: 'money',
+                        3: 'physical',
+                        4: 'physical',
+                        5: 'physical',
+                        6: 'percent',
+                        7: 'physical',
+                        8: 'physical',
+                        9: 'physical',
+                        10: 'percent',
+                    },
+                },
+                {
+                    sheetName: 'Financial',
+                    rows: finRows,
+                    headerRowCount: 3,
+                    merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }],
+                    columnWidths: [30, 15, 15, 15, 15, 15, 15, 15],
+                    columnFormats: {
+                        1: 'money',
+                        2: 'money',
+                        3: 'money',
+                        4: 'percent',
+                        5: 'percent',
+                        6: 'money',
+                        7: 'money',
+                    },
+                },
+            ],
+        });
     };
 
     const renderPhysRow = (item: any, idx: string, level: number) => {
@@ -591,7 +556,15 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                         </select>
                     </div>
-                    <button onClick={handlePrint} className="btn btn-secondary btn-responsive" aria-label="Print report">
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Monthly Report Matrix',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'monthly-matrix-printable',
+                        })}
+                        className="btn btn-secondary btn-responsive"
+                        aria-label="Print report"
+                    >
                         <Printer className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Print</span>
                     </button>
@@ -602,6 +575,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                 </div>
             </div>
 
+            <div id="monthly-matrix-printable" className="monthly-matrix-printable">
             {/* Table 1: Physical */}
             <div>
                 <h4 className="monthly-matrix__section-title monthly-matrix__section-title--physical">
@@ -720,6 +694,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                         </tbody>
                     </table>
                 </div>
+            </div>
             </div>
             
              <div className="monthly-matrix__note">

@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
-import { XLSX } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
 import { calculateBAR1ReportData } from './BAR1Calculation';
 
 interface DetailPopup {
@@ -29,9 +29,11 @@ interface BAR1ReportProps {
     selectedTier: string;
     selectedFundType: string;
     deadlines: Deadline[];
+    onPrintReport: (request: ReportPrintRequest) => void;
+    onExportReport: (request: ReportExcelRequest) => void;
 }
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType, deadlines }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType, deadlines, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
 
@@ -279,7 +281,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     });
 
     const handleDownloadBar1Xlsx = () => {
-        const header1 = ["Program/Activity/Project"];
+        const header1 = [null];
         const header2 = [null]; 
 
         const sectionHeaders1 = [
@@ -330,7 +332,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         header2.push(...sectionHeadersTarget, null, ...sectionHeadersActual);
 
         const aoa: (string | number | null)[][] = [
-            [null, "Physical Targets", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Physical Accomplishments", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+            ["Program/Activity/Project", "Physical Targets", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Physical Accomplishments", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
             header1,
             header2
         ];
@@ -346,10 +348,10 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                const t = getVals(item.target);
                const a = getVals(item.actual);
 
-               const getPct = (act: number, tgt: number) => {
-                   if (!tgt) return null;
-                   return Math.round((act / tgt) * 100) + '%';
-               };
+                const getPct = (act: number, tgt: number) => {
+                    if (!tgt) return null;
+                    return act / tgt;
+                };
 
                 aoa.push([
                     prefix + item.indicator,
@@ -399,14 +401,45 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         // However, if components are different and can't be summed, Grand Total is also meaningless.
         // I will remove Grand Total as well to be safe and consistent.
         
-        const ws = XLSX.utils.aoa_to_sheet(aoa);
-        if(!ws['!merges']) ws['!merges'] = [];
-        ws['!merges'].push({ s: { r: 0, c: 1 }, e: { r: 0, c: 20 } }); 
-        ws['!merges'].push({ s: { r: 0, c: 22 }, e: { r: 0, c: 53 } }); 
+        const columnFormats = aoa[0].reduce<Record<number, 'physical' | 'percent'>>((acc, _, index) => {
+            if (index === 0 || index === 21) return acc;
+            acc[index] = typeof aoa[2]?.[index] === 'string' && String(aoa[2][index]).includes('%') ? 'percent' : 'physical';
+            return acc;
+        }, {});
 
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "BAR1 Report");
-        XLSX.writeFile(wb, `BAR1_Report_${selectedYear}_${selectedOu}.xlsx`);
+        onExportReport({
+            reportName: 'Physical Report of Operations (BAR No. 1)',
+            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+            fileName: `BAR1_Report_${selectedYear}_${selectedOu}.xlsx`,
+            sheets: [{
+                sheetName: 'BAR1 Report',
+                rows: aoa,
+                headerRowCount: 3,
+                merges: [
+                    { s: { r: 0, c: 0 }, e: { r: 2, c: 0 } },
+                    { s: { r: 0, c: 1 }, e: { r: 0, c: 20 } },
+                    { s: { r: 0, c: 22 }, e: { r: 0, c: 49 } },
+                    { s: { r: 1, c: 1 }, e: { r: 1, c: 4 } },
+                    { s: { r: 1, c: 5 }, e: { r: 1, c: 8 } },
+                    { s: { r: 1, c: 9 }, e: { r: 2, c: 9 } },
+                    { s: { r: 1, c: 10 }, e: { r: 1, c: 13 } },
+                    { s: { r: 1, c: 14 }, e: { r: 2, c: 14 } },
+                    { s: { r: 1, c: 15 }, e: { r: 1, c: 18 } },
+                    { s: { r: 1, c: 19 }, e: { r: 2, c: 19 } },
+                    { s: { r: 1, c: 20 }, e: { r: 2, c: 20 } },
+                    { s: { r: 1, c: 22 }, e: { r: 1, c: 26 } },
+                    { s: { r: 1, c: 27 }, e: { r: 1, c: 31 } },
+                    { s: { r: 1, c: 32 }, e: { r: 1, c: 33 } },
+                    { s: { r: 1, c: 34 }, e: { r: 1, c: 38 } },
+                    { s: { r: 1, c: 39 }, e: { r: 1, c: 40 } },
+                    { s: { r: 1, c: 41 }, e: { r: 1, c: 45 } },
+                    { s: { r: 1, c: 46 }, e: { r: 1, c: 47 } },
+                    { s: { r: 1, c: 48 }, e: { r: 1, c: 49 } },
+                ],
+                columnWidths: [34, ...Array(49).fill(10)],
+                columnFormats,
+            }],
+        });
     };
 
     const SectionHeaderTarget = ({ bgColor }: { bgColor: string }) => (
@@ -571,8 +604,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                         <Download className="btn-symbol" aria-hidden="true" />
                         <span className="btn-text">Download Excel</span>
                     </button>
-                    <button 
-                        onClick={() => window.print()}
+                    <button
+                        onClick={() => onPrintReport({
+                            reportName: 'Physical Report of Operations (BAR No. 1)',
+                            ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
+                            tableElementId: 'bar1-report',
+                        })}
                         className="btn btn-secondary btn-responsive"
                     >
                         <Printer className="btn-symbol" aria-hidden="true" />
