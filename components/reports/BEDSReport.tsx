@@ -9,7 +9,7 @@ import {
     getFinancialMonthIndex,
 } from '../../lib/financialAggregation';
 import { buildFinancialAudit, FinancialAuditNavigationTarget } from '../../lib/financialAudit';
-import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
 
 interface BEDSReportProps {
     data: {
@@ -335,7 +335,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
         };
 
         data.subprojects
-            .filter(item => !item.isRealignment && !item.isSavings && item.status !== 'Cancelled')
+            .filter(item => !isParentRealignmentOrSavings(item) && item.status !== 'Cancelled')
             .forEach(item => addPhysicalItem(
                 'Production and Livelihood',
                 item.packageType || 'Other',
@@ -347,7 +347,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             ));
 
         [...data.trainings, ...data.otherActivities]
-            .filter(item => !item.isRealignment && !item.isSavings && item.status !== 'Cancelled')
+            .filter(item => !isParentRealignmentOrSavings(item) && item.status !== 'Cancelled')
             .forEach(item => addPhysicalItem(
                 item.component,
                 item.component === 'Production and Livelihood' && item.type === 'Training' ? 'Trainings' : item.component === 'Program Management' ? 'Activities' : undefined,
@@ -359,7 +359,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             ));
 
         data.officeReqs
-            .filter(item => !item.isRealignment && !item.isSavings && item.status !== 'Cancelled')
+            .filter(item => !isParentRealignmentOrSavings(item) && item.status !== 'Cancelled')
             .forEach(item => addPhysicalItem(
                 'Program Management',
                 'Office Requirements',
@@ -371,7 +371,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             ));
 
         data.staffingReqs
-            .filter(item => !item.isRealignment && !item.isSavings)
+            .filter(item => !isParentRealignmentOrSavings(item))
             .forEach(item => addPhysicalItem(
                 item.component || 'Program Management',
                 'Staff Requirements',

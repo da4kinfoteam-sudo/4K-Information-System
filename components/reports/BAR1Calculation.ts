@@ -1,4 +1,5 @@
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, HistoryEntry } from '../../constants';
+import { countPhysicalActual, countPhysicalTarget, isParentRealignmentOrSavings } from './ReportUtils';
 
 export interface BAR1DataGroup {
     indicator: string;
@@ -159,7 +160,7 @@ export const calculateBAR1ReportData = (data: {
     });
 
     // Production and Livelihood - Subproject Reach
-    const allTargetADs = data.subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
+    const allTargetADs = data.subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
         id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         date: sp.estimatedCompletionDate
@@ -170,7 +171,7 @@ export const calculateBAR1ReportData = (data: {
         date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
     })).filter(x => x.id);
 
-    const allTargetIPOs = data.subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
+    const allTargetIPOs = data.subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
         id: sp.indigenousPeopleOrganization,
         label: sp.indigenousPeopleOrganization,
         date: sp.estimatedCompletionDate
@@ -209,7 +210,7 @@ export const calculateBAR1ReportData = (data: {
         }
         const pkgItems = finalData['Production and Livelihood'].packages[pkgName].items;
 
-        const targetADs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
+        const targetADs = subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             date: sp.estimatedCompletionDate 
@@ -226,7 +227,7 @@ export const calculateBAR1ReportData = (data: {
             actual: calculateFirstEncounter(actualADs)
         });
 
-        const targetIPOs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({
+        const targetIPOs = subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
             id: sp.indigenousPeopleOrganization,
             label: sp.indigenousPeopleOrganization,
             date: sp.estimatedCompletionDate
@@ -243,8 +244,10 @@ export const calculateBAR1ReportData = (data: {
             actual: calculateFirstEncounter(actualIPOs)
         });
 
-        const targetSPs = subprojects.filter(sp => !sp.isRealignment && !sp.isSavings).map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
-        const actualSPs = subprojects.map(sp => ({ val: 1, date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name }));
+        const targetSPs = subprojects
+            .filter(sp => !isParentRealignmentOrSavings(sp))
+            .map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
+        const actualSPs = subprojects.map(sp => ({ val: countPhysicalActual(sp, 1), date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name }));
         pkgItems.push({
             indicator: "Number of Subprojects",
             target: calculateSumOverTime(targetSPs),
@@ -254,13 +257,15 @@ export const calculateBAR1ReportData = (data: {
 
     // Trainings
     const processTrainings = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-        const relevantTrainings = data.trainings.filter(t => t.component === componentName && !t.isRealignment && !t.isSavings);
+        const relevantTrainings = data.trainings.filter(t => t.component === componentName);
         if (relevantTrainings.length === 0 && !isPackage) return; // Skip empty groups? Original didn't skip, but it keeps it clean. Wait, original didn't skip.
 
         const getTargetDate = (t: Training) => t.endDate || t.date;
         const getActualDate = (t: Training) => actualDateIfSubmitted(t, t.actualDate);
-        const targetTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
-        const actualTrainings = relevantTrainings.map(t => ({ val: 1, label: t.name, date: getActualDate(t) }));
+        const targetTrainings = relevantTrainings
+            .filter(t => !isParentRealignmentOrSavings(t))
+            .map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
+        const actualTrainings = relevantTrainings.map(t => ({ val: countPhysicalActual(t, 1), label: t.name, date: getActualDate(t) }));
         const targetIPOs: { id: string, label: string, date?: string }[] = [];
         const actualIPOs: { id: string, label: string, date?: string }[] = [];
         
@@ -268,12 +273,12 @@ export const calculateBAR1ReportData = (data: {
             const tDate = getTargetDate(t);
             const aDate = getActualDate(t);
             (t.participatingIpos || []).forEach(ipo => {
-                targetIPOs.push({ id: ipo, label: ipo, date: tDate });
+                if (!isParentRealignmentOrSavings(t)) targetIPOs.push({ id: ipo, label: ipo, date: tDate });
                 if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate });
             });
         });
 
-        const targetPax = relevantTrainings.map(t => ({ 
+        const targetPax = relevantTrainings.filter(t => !isParentRealignmentOrSavings(t)).map(t => ({
             val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
             label: t.name,
             date: getTargetDate(t) 
@@ -317,7 +322,7 @@ export const calculateBAR1ReportData = (data: {
     };
 
     const processOtherActivities = (componentName: string, targetContainer: any[], isPackage: boolean = false) => {
-        const relevantActivities = data.otherActivities.filter(a => a.component === componentName && !a.isRealignment && !a.isSavings);
+        const relevantActivities = data.otherActivities.filter(a => a.component === componentName);
         
         // Group by name
         const groups: { [name: string]: OtherActivity[] } = {};
@@ -327,8 +332,10 @@ export const calculateBAR1ReportData = (data: {
         });
 
         Object.entries(groups).forEach(([name, activities]) => {
-            const targetConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
-            const actualConducted = activities.map(a => ({ val: 1, label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate) }));
+            const targetConducted = activities
+                .filter(a => !isParentRealignmentOrSavings(a))
+                .map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
+            const actualConducted = activities.map(a => ({ val: countPhysicalActual(a, 1), label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate) }));
 
             const targetIPOs: { id: string, label: string, date?: string }[] = [];
             const actualIPOs: { id: string, label: string, date?: string }[] = [];
@@ -336,7 +343,7 @@ export const calculateBAR1ReportData = (data: {
             activities.forEach(a => {
                 if (a.participatingIpos) {
                     a.participatingIpos.forEach(ipo => {
-                        targetIPOs.push({ id: ipo, label: ipo, date: a.date });
+                        if (!isParentRealignmentOrSavings(a)) targetIPOs.push({ id: ipo, label: ipo, date: a.date });
                         const actualDate = actualDateIfSubmitted(a, a.actualDate);
                         if (actualDate) actualIPOs.push({ id: ipo, label: ipo, date: actualDate });
                     });
@@ -388,14 +395,14 @@ export const calculateBAR1ReportData = (data: {
     processOtherActivities('Marketing and Enterprise', finalData['Marketing and Enterprise']);
     processOtherActivities('Program Management', [], true);
 
-    const createBar1Item = (indicator: string, physicalCount: number, targetDate?: string, actualDate?: string, itemName?: string) => {
+    const createBar1Item = (indicator: string, targetCount: number, targetDate?: string, actualDate?: string, itemName?: string, actualCount = targetCount) => {
         const item: any = {
             indicator,
             target: initializeCounter(),
             actual: initializeCounter()
         };
-        incrementCounter(item.target, targetDate, physicalCount, itemName);
-        incrementCounter(item.actual, actualDate, physicalCount, itemName);
+        incrementCounter(item.target, targetDate, targetCount, itemName);
+        incrementCounter(item.actual, actualDate, actualCount, itemName);
         return item;
     };
 
@@ -428,7 +435,14 @@ export const calculateBAR1ReportData = (data: {
             const count = isStaff ? 1 : (pm.numberOfUnits || 1);
             const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
             const actualDate = actualDateIfSubmitted(pm, pm.actualDate || pm.actualObligationDate);
-            const item = createBar1Item(indicator, count, pm.obligationDate, actualDate, itemName);
+            const item = createBar1Item(
+                indicator,
+                countPhysicalTarget(pm, count),
+                pm.obligationDate,
+                actualDate,
+                itemName,
+                countPhysicalActual(pm, count)
+            );
             addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
         });
     }

@@ -34,6 +34,19 @@ export interface ReportExcelRequest {
     sheets: ReportExcelSheet[];
 }
 
+type ParentPhysicalRecord = {
+    isRealignment?: boolean;
+    isSavings?: boolean;
+};
+
+export const isParentRealignmentOrSavings = (record?: ParentPhysicalRecord | null) =>
+    !!(record?.isRealignment || record?.isSavings);
+
+export const countPhysicalTarget = (record: ParentPhysicalRecord | null | undefined, value: number) =>
+    isParentRealignmentOrSavings(record) ? 0 : value;
+
+export const countPhysicalActual = (_record: ParentPhysicalRecord | null | undefined, value: number) => value;
+
 export const deriveExcelHeaderMerges = (
     rows: Array<Array<string | number | null>>,
     headerRowCount: number,

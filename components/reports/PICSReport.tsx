@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
-import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, countPhysicalTarget, isParentRealignmentOrSavings } from './ReportUtils';
 
 interface PICSReportProps {
     data: {
@@ -33,7 +33,6 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
         const adTracker = new Map();
         
         data.subprojects.forEach(sp => {
-            if (sp.isRealignment || sp.isSavings) return;
             const region = ouToRegionMap[sp.operatingUnit] || 'Unmapped Region'; 
             if (region === 'National Capital Region (NCR)') return;
             const { province } = parseLocation(sp.location); 
@@ -43,13 +42,16 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
             if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 });
             
             const entry = aggregator.get(key); 
-            entry.totalTarget += 1; 
-            entry.ipoNames.add(sp.indigenousPeopleOrganization);
-            if (sp.tier === 'Tier 1') { entry.tier1TotalTarget += 1; entry.tier1IpoNames.add(sp.indigenousPeopleOrganization); } 
-            else if (sp.tier === 'Tier 2') { entry.tier2TotalTarget += 1; entry.tier2IpoNames.add(sp.indigenousPeopleOrganization); }
+            const targetCount = countPhysicalTarget(sp, 1);
+            entry.totalTarget += targetCount;
+            if (targetCount > 0) {
+                entry.ipoNames.add(sp.indigenousPeopleOrganization);
+                if (sp.tier === 'Tier 1') { entry.tier1TotalTarget += 1; entry.tier1IpoNames.add(sp.indigenousPeopleOrganization); } 
+                else if (sp.tier === 'Tier 2') { entry.tier2TotalTarget += 1; entry.tier2IpoNames.add(sp.indigenousPeopleOrganization); }
+            }
             
             const ipo = ipoMap.get(sp.indigenousPeopleOrganization);
-            if (ipo && ipo.ancestralDomainNo) { 
+            if (targetCount > 0 && ipo && ipo.ancestralDomainNo) { 
                 const locKey = `${region}|${province || 'Unspecified'}`; 
                 if (!adTracker.has(locKey)) adTracker.set(locKey, { all: new Set(), t1: new Set(), t2: new Set() }); 
                 const tracker = adTracker.get(locKey); 
@@ -79,17 +81,17 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
             const key = getKey(region, province || 'Unspecified', indicator); 
             if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
             const entry = aggregator.get(key); 
-            if (!activity.isRealignment && !activity.isSavings) {
+            if (!isParentRealignmentOrSavings(activity)) {
                 entry.totalTarget += 1; 
                 activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
                 if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
                 else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); } 
+                entry.maleTarget += (activity.participantsMale || 0); 
+                entry.femaleTarget += (activity.participantsFemale || 0); 
+                entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
+                if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+                else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
             }
-            entry.maleTarget += (activity.participantsMale || 0); 
-            entry.femaleTarget += (activity.participantsFemale || 0); 
-            entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
-            if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
-            else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
         });
 
         data.otherActivities.forEach(activity => { 
@@ -101,17 +103,17 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
             const key = getKey(region, province || 'Unspecified', indicator); 
             if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
             const entry = aggregator.get(key); 
-            if (!activity.isRealignment && !activity.isSavings) {
+            if (!isParentRealignmentOrSavings(activity)) {
                 entry.totalTarget += 1; 
                 activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
                 if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
                 else if (activity.tier === 'Tier 2') { entry.tier2TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier2IpoNames.add(ipo)); } 
+                entry.maleTarget += (activity.participantsMale || 0); 
+                entry.femaleTarget += (activity.participantsFemale || 0); 
+                entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
+                if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
+                else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
             }
-            entry.maleTarget += (activity.participantsMale || 0); 
-            entry.femaleTarget += (activity.participantsFemale || 0); 
-            entry.totalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); 
-            if (activity.tier === 'Tier 1') { entry.tier1MaleTarget += (activity.participantsMale || 0); entry.tier1FemaleTarget += (activity.participantsFemale || 0); entry.tier1TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
-            else if (activity.tier === 'Tier 2') { entry.tier2MaleTarget += (activity.participantsMale || 0); entry.tier2FemaleTarget += (activity.participantsFemale || 0); entry.tier2TotalParticipants += (activity.participantsMale || 0) + (activity.participantsFemale || 0); } 
         });
 
         return Array.from(aggregator.values()).sort((a:any, b:any) => { if (a.region !== b.region) return a.region.localeCompare(b.region); if (a.province !== b.province) return a.province.localeCompare(b.province); return a.indicator.localeCompare(b.indicator); });

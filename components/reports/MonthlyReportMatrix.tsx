@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
-import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
@@ -126,13 +126,14 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         data.ipos.forEach(i => ipoAdMap.set(i.name, i.ancestralDomainNo));
 
         data.subprojects.forEach(sp => {
-            if (sp.isRealignment || sp.isSavings) return;
             const pkg = sp.packageType || 'Other';
             if (!packages[pkg]) packages[pkg] = [];
             packages[pkg].push(sp);
             
             // Cost Aggregation
-            const cost = sp.details.reduce((sum, d) => sum + (isBudgetLineExcludedFromTargets(d) ? 0 : getBudgetLineAmount(d)), 0);
+            const cost = isParentRealignmentOrSavings(sp)
+                ? 0
+                : sp.details.reduce((sum, d) => sum + (isBudgetLineExcludedFromTargets(d) ? 0 : getBudgetLineAmount(d)), 0);
             structure['Production and Livelihood'].cost += cost;
         });
 
@@ -155,8 +156,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const subList = packages[pkg];
             
             // Counts
-            const targetCountMonth = subList.filter(sp => isTargetDueMonthly(sp.estimatedCompletionDate)).length;
-            const targetCountCum = subList.filter(sp => isTargetDueCumulative(sp.estimatedCompletionDate)).length;
+            const targetCountMonth = subList.filter(sp => !isParentRealignmentOrSavings(sp) && isTargetDueMonthly(sp.estimatedCompletionDate)).length;
+            const targetCountCum = subList.filter(sp => !isParentRealignmentOrSavings(sp) && isTargetDueCumulative(sp.estimatedCompletionDate)).length;
             
             const actualCountMonth = subList.filter(sp => sp.status === 'Completed' && isTargetDueMonthly(sp.actualCompletionDate)).length;
             const actualCountCum = subList.filter(sp => sp.status === 'Completed' && isTargetDueCumulative(sp.actualCompletionDate)).length;
@@ -165,7 +166,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                 const ad = ipoAdMap.get(sp.indigenousPeopleOrganization);
                 
                 // Cumulative Sets
-                if (isTargetDueCumulative(sp.estimatedCompletionDate)) {
+                if (!isParentRealignmentOrSavings(sp) && isTargetDueCumulative(sp.estimatedCompletionDate)) {
                     targetIpoSetCum.add(sp.indigenousPeopleOrganization);
                     if (ad) targetAdSetCum.add(ad);
                 }
@@ -175,7 +176,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                 }
 
                 // Monthly Sets
-                if (isTargetDueMonthly(sp.estimatedCompletionDate)) {
+                if (!isParentRealignmentOrSavings(sp) && isTargetDueMonthly(sp.estimatedCompletionDate)) {
                     targetIpoSetMonth.add(sp.indigenousPeopleOrganization);
                     if (ad) targetAdSetMonth.add(ad);
                 }
@@ -194,7 +195,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
         // --- 2. Trainings/Activities ---
         const processActivity = (act: any) => {
-            const isExcluded = act.isRealignment || act.isSavings;
+            const isExcluded = isParentRealignmentOrSavings(act);
             const tMonth = (!isExcluded && isTargetDueMonthly(act.date)) ? 1 : 0;
             const tCum = (!isExcluded && isTargetDueCumulative(act.date)) ? 1 : 0;
             const aMonth = (act.actualDate && isTargetDueMonthly(act.actualDate)) ? 1 : 0;
@@ -203,7 +204,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             const item = createRow(act.name, 'Number', tMonth, aMonth, tCum, aCum);
             
             // Cost Aggregation
-            const cost = act.expenses.reduce((sum: number, e: any) => sum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0);
+            const cost = isExcluded ? 0 : act.expenses.reduce((sum: number, e: any) => sum + (isBudgetLineExcludedFromTargets(e) ? 0 : getBudgetLineAmount(e)), 0);
 
             if (act.component === 'Production and Livelihood') {
                 if (!structure['Production and Livelihood'].packages['Trainings']) structure['Production and Livelihood'].packages['Trainings'] = [];
@@ -223,7 +224,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         // --- 3. PM Items ---
         const processPM = (items: any[], typeKey: string, isStaff = false) => {
             items.forEach(pm => {
-                const isExcluded = pm.status === 'Cancelled' || pm.isRealignment || pm.isSavings;
+                const isExcluded = pm.status === 'Cancelled' || isParentRealignmentOrSavings(pm);
                 const targetQty = isStaff ? 1 : (pm.numberOfUnits || 1);
                 const tMonth = !isExcluded && isTargetDueMonthly(pm.obligationDate) ? targetQty : 0;
                 const tCum = !isExcluded && isTargetDueCumulative(pm.obligationDate) ? targetQty : 0;
@@ -253,7 +254,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         processPM(data.officeReqs, 'Office');
         // Other Expenses - Add to cost but maybe not physical count unless defined
         data.otherProgramExpenses.forEach(ope => {
-             const isExcluded = ope.status === 'Cancelled' || ope.isRealignment || ope.isSavings;
+             const isExcluded = ope.status === 'Cancelled' || isParentRealignmentOrSavings(ope);
              structure['Program Management'].cost += isExcluded ? 0 : ope.amount;
         });
 

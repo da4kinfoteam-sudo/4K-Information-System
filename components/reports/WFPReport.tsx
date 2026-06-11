@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface WFPReportProps {
@@ -94,7 +94,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         };
         
         data.subprojects.forEach(sp => {
-            const isExcluded = sp.isRealignment || sp.isSavings;
+            const isExcluded = isParentRealignmentOrSavings(sp);
             const mooeCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(d)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
             const coCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'CO' && !isBudgetLineExcludedFromTargets(d)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
@@ -125,7 +125,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         });
 
         data.trainings.forEach(t => {
-            const isExcluded = t.isRealignment || t.isSavings;
+            const isExcluded = isParentRealignmentOrSavings(t);
             const mooeCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const coCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
@@ -161,7 +161,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         });
 
         data.otherActivities.forEach(oa => {
-            const isExcluded = oa.isRealignment || oa.isSavings;
+            const isExcluded = isParentRealignmentOrSavings(oa);
             const mooeCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const coCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
@@ -192,7 +192,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
         const processPmItem = (items: any[], packageKey: string, isStaff = false, isOtherExpense = false) => {
             items.forEach(pm => {
-                const isExcluded = pm.isRealignment || pm.isSavings;
+                const isExcluded = isParentRealignmentOrSavings(pm);
                 if (isStaff && pm.expenses && pm.expenses.length > 0) {
                     const component = pm.component || 'Program Management';
                     const physicalQuarter = getQuarter(pm.obligationDate);
