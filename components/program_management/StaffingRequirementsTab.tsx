@@ -27,6 +27,7 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const commonInputClasses = "form-control";
+const DCF_SCOPE_COLUMN_KEYS = new Set(['fundYear', 'operatingUnit', 'fundType', 'tier']);
 
 const getHiringStatusBadge = (status: StaffingRequirement['hiringStatus']) => {
     switch (status) {
@@ -213,6 +214,16 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
 
     // Filters - Persistent
     const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_staffing_columnFilters', {});
+
+    useEffect(() => {
+        const cleanedFilters = Object.fromEntries(
+            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
+        );
+
+        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+            setColumnFilters(cleanedFilters);
+        }
+    }, [columnFilters, setColumnFilters]);
 
     // Search and Column Filtering/Sorting
     const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_staffing_searchTerm', '');

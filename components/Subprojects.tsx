@@ -9,6 +9,8 @@ import { usePagination, useSelection, useUserAccess } from './mainfunctions/Tabl
 import { downloadSubprojectsReport, downloadSubprojectsTemplate, handleSubprojectsUpload } from './mainfunctions/ImportExportService';
 import useLocalStorageState from '../hooks/useLocalStorageState';
 import { supabase } from '../supabaseClient';
+import type { DataScope } from '../lib/scopedDataFetch';
+import { DcfScopeFilterPanel, DcfScopeFilterToggle, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -26,6 +28,7 @@ interface SubprojectsProps {
     commodityCategories: { [key: string]: string[] };
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
     onClearExternalFilters?: () => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -51,6 +54,7 @@ const calculateTotalBudget = (details: SubprojectDetail[]) => {
 };
 
 const commonInputClasses = "form-control";
+const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
 
 // --- COLUMN HEADER COMPONENT WITH FILTER ---
 interface SubprojectColumnHeaderProps {
@@ -185,7 +189,8 @@ const SubprojectColumnHeader: React.FC<SubprojectColumnHeaderProps> = ({
 
 const Subprojects: React.FC<SubprojectsProps> = ({ 
     ipos, subprojects, setSubprojects, setIpos, onSelectIpo, onSelectSubproject, 
-    onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters, onClearExternalFilters
+    onCreateSubproject, uacsCodes, particularTypes, commodityCategories, externalFilters, onClearExternalFilters,
+    onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
@@ -217,6 +222,21 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     const [sortConfig, setSortConfig] = useLocalStorageState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>('subprojects_sortConfig', { key: 'startDate', direction: 'descending' });
     
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const dcfFilters = useDcfScopeFilters({
+        storageKey: 'subprojects_dcf_scope',
+        moduleName: 'Subprojects',
+        onDataScopeChange
+    });
+
+    useEffect(() => {
+        const cleanedFilters = Object.fromEntries(
+            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
+        );
+        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+            setColumnFilters(cleanedFilters);
+            setSavedColumnFilters(cleanedFilters);
+        }
+    }, [columnFilters, setSavedColumnFilters]);
 
     // Listen to External Filters (Chatbot)
     useEffect(() => {
@@ -260,7 +280,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     }, [externalFilters, onClearExternalFilters]);
 
     const initiallyFilteredSubprojects = useMemo(() => {
-        let filtered = [...subprojects];
+        let filtered = subprojects.filter(s => matchesDcfScope(s as any, dcfFilters.value, 'fundingYear'));
 
         if (!canViewAll && currentUser) {
             filtered = filtered.filter(s => s.operatingUnit === currentUser.operatingUnit);
@@ -281,7 +301,7 @@ const Subprojects: React.FC<SubprojectsProps> = ({
             );
         }
         return filtered;
-    }, [subprojects, searchTerm, currentUser]);
+    }, [subprojects, searchTerm, currentUser, canViewAll, dcfFilters.value]);
 
     // 2. Extract Unique Values
     const uniqueValues = useMemo(() => {
@@ -379,6 +399,23 @@ const Subprojects: React.FC<SubprojectsProps> = ({
     };
 
     const handleColumnFilterChange = (columnKey: string, values: string[]) => {
+        const nextScopeValue = values.length === 1 ? values[0] : 'All';
+        if (columnKey === 'fundingYear') {
+            dcfFilters.setSelectedYear(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'operatingUnit') {
+            dcfFilters.setSelectedOu(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'fundType') {
+            dcfFilters.setSelectedFundType(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'tier') {
+            dcfFilters.setSelectedTier(nextScopeValue);
+            return;
+        }
         const newFilters = {
             ...columnFilters,
             [columnKey]: values
@@ -391,6 +428,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({
         setColumnFilters({});
         setSavedColumnFilters({});
     }
+
+    const getScopeColumnFilter = (key: 'fundingYear' | 'operatingUnit' | 'fundType' | 'tier') => {
+        const value = key === 'fundingYear'
+            ? dcfFilters.selectedYear
+            : key === 'operatingUnit'
+                ? dcfFilters.selectedOu
+                : key === 'fundType'
+                    ? dcfFilters.selectedFundType
+                    : dcfFilters.selectedTier;
+        return value === 'All' ? [] : [value];
+    };
 
     const handleToggleRow = (id: number) => {
         setExpandedRowId(prev => (prev === id ? null : id));
@@ -663,13 +711,17 @@ const Subprojects: React.FC<SubprojectsProps> = ({
 
             <div className="data-list-header">
                 <h2 className="data-list-title">Subprojects Management</h2>
-                {canEdit && (
-                    <button onClick={onCreateSubproject} className="btn btn-primary btn-responsive" title="Add New Subproject">
-                        <Plus className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Add New Subproject</span>
-                    </button>
-                )}
+                <div className="data-list-actions">
+                    <DcfScopeFilterToggle idPrefix="subprojects-dcf" filters={dcfFilters} />
+                    {canEdit && (
+                        <button onClick={onCreateSubproject} className="btn btn-primary btn-responsive" title="Add New Subproject">
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add New Subproject</span>
+                        </button>
+                    )}
+                </div>
             </div>
+            <DcfScopeFilterPanel idPrefix="subprojects-dcf" filters={dcfFilters} />
             <div className="data-table-card">
                 <div className="data-table-toolbar">
                     <div className="data-toolbar-row">
@@ -740,11 +792,11 @@ const Subprojects: React.FC<SubprojectsProps> = ({
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
                                 <SubprojectColumnHeader label="Name" columnKey="name" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['name'] || []} onFilterChange={(v) => handleColumnFilterChange('name', v)} uniqueValues={uniqueValues.name} />
-                                <SubprojectColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['operatingUnit'] || []} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues.operatingUnit} />
+                                <SubprojectColumnHeader label="OU" columnKey="operatingUnit" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('operatingUnit')} onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} uniqueValues={uniqueValues.operatingUnit} />
                                 <SubprojectColumnHeader label="IPO" columnKey="indigenousPeopleOrganization" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['indigenousPeopleOrganization'] || []} onFilterChange={(v) => handleColumnFilterChange('indigenousPeopleOrganization', v)} uniqueValues={uniqueValues.indigenousPeopleOrganization} />
-                                <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundingYear'] || []} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
-                                <SubprojectColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['fundType'] || []} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues.fundType} />
-                                <SubprojectColumnHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['tier'] || []} onFilterChange={(v) => handleColumnFilterChange('tier', v)} uniqueValues={uniqueValues.tier} />
+                                <SubprojectColumnHeader label="Fund Year" columnKey="fundingYear" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('fundingYear')} onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} uniqueValues={uniqueValues.fundingYear} />
+                                <SubprojectColumnHeader label="Fund Type" columnKey="fundType" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('fundType')} onFilterChange={(v) => handleColumnFilterChange('fundType', v)} uniqueValues={uniqueValues.fundType} />
+                                <SubprojectColumnHeader label="Tier" columnKey="tier" sortConfig={sortConfig} onSort={handleSort} filters={getScopeColumnFilter('tier')} onFilterChange={(v) => handleColumnFilterChange('tier', v)} uniqueValues={uniqueValues.tier} />
                                 <SubprojectColumnHeader label="Project Status" columnKey="status" sortConfig={sortConfig} onSort={handleSort} filters={columnFilters['status'] || []} onFilterChange={(v) => handleColumnFilterChange('status', v)} uniqueValues={uniqueValues.status} />
                                 <SubprojectColumnHeader label="Commodity target" columnKey="commodityTarget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />
                                 <SubprojectColumnHeader label="Budget" columnKey="totalBudget" sortConfig={sortConfig} onSort={handleSort} filters={[]} onFilterChange={() => {}} uniqueValues={[]} isNumeric={true} />

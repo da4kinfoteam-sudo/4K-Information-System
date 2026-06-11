@@ -832,6 +832,7 @@ const AppContent: React.FC = () => {
                             commodityCategories={derivedCommodityCategories}
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/trainings':
                 return <ActivitiesComponent 
@@ -846,6 +847,7 @@ const AppContent: React.FC = () => {
                             forcedType="Training"
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/other-activities':
                 return <ActivitiesComponent 
@@ -860,6 +862,7 @@ const AppContent: React.FC = () => {
                             forcedType="Activity"
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/activities': 
                 return <ActivitiesComponent 
@@ -873,6 +876,7 @@ const AppContent: React.FC = () => {
                             referenceActivities={referenceActivities}
                             externalFilters={externalFilters}
                             onClearExternalFilters={clearExternalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             case '/activity-edit':
                 return <ActivityEdit 
@@ -955,6 +959,7 @@ const AppContent: React.FC = () => {
                             onSelectOtherExpense={handleSelectOtherExpense}
                             // @ts-ignore
                             externalFilters={externalFilters}
+                            onDataScopeChange={ensureDataScope}
                         />;
             // NEW ACCOMPLISHMENT ROUTES
             case '/accomplishment/financial':

@@ -1,5 +1,5 @@
 
-// Author: 4K 
+// Author: 4K
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Check, Download, FileSpreadsheet, Plus, Upload, X } from 'lucide-react';
 import { Activity, ActivityExpense, IPO, objectTypes, ObjectType, fundTypes, FundType, tiers, Tier, otherActivityComponents, ReferenceActivity, philippineRegions, operatingUnits, ouToRegionMap, filterYears } from '../constants';
@@ -11,6 +11,8 @@ import { downloadActivitiesReport, downloadActivitiesTemplate, handleActivitiesU
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { fetchAll } from '../hooks/useSupabaseTable';
 import useLocalStorageState from '../hooks/useLocalStorageState';
+import type { DataScope } from '../lib/scopedDataFetch';
+import { DcfScopeFilterPanel, DcfScopeFilterToggle, matchesDcfScope, useDcfScopeFilters } from './ui/DcfScopeFilters';
 
 // Declare XLSX to inform TypeScript about the global variable from the script tag
 declare const XLSX: any;
@@ -20,13 +22,14 @@ interface ActivitiesProps {
     activities: Activity[];
     setActivities: React.Dispatch<React.SetStateAction<Activity[]>>;
     onSelectIpo: (ipo: IPO) => void;
-    onSelectActivity: (activity: Activity) => void; 
+    onSelectActivity: (activity: Activity) => void;
     onCreateActivity: () => void;
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
-    referenceActivities?: ReferenceActivity[]; 
+    referenceActivities?: ReferenceActivity[];
     forcedType?: 'Training' | 'Activity';
     externalFilters?: { region?: string; year?: string; search?: string; status?: string } | null;
     onClearExternalFilters?: () => void;
+    onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -48,6 +51,7 @@ const FilterIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const commonInputClasses = "form-control";
+const DCF_SCOPE_COLUMN_KEYS = new Set(['fundingYear', 'operatingUnit', 'fundType', 'tier']);
 
 const getStatusBadge = (status: Activity['status']) => {
     switch (status) {
@@ -71,8 +75,8 @@ interface ActivityColumnHeaderProps {
     isNumeric?: boolean;
 }
 
-const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({ 
-    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric 
+const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
+    label, columnKey, sortConfig, onSort, filters, onFilterChange, uniqueValues, isNumeric
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -119,13 +123,13 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
             {isOpen && (
                 <div ref={menuRef} className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-md shadow-xl border border-gray-200 dark:border-gray-700 z-50 text-sm normal-case font-normal text-gray-700 dark:text-gray-200">
                     <div className="p-2 border-b border-gray-200 dark:border-gray-700 flex flex-col gap-1">
-                        <button 
+                        <button
                             onClick={() => { onSort(columnKey, 'ascending'); setIsOpen(false); }}
                             className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
                         >
                             <span>▲</span> Sort Ascending
                         </button>
-                        <button 
+                        <button
                             onClick={() => { onSort(columnKey, 'descending'); setIsOpen(false); }}
                             className="w-full text-left px-2 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded flex items-center gap-2"
                         >
@@ -136,8 +140,8 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
                     {!isNumeric && (
                         <>
                             <div className="p-2">
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     placeholder={`Search ${label}...`}
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -147,19 +151,19 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
                             </div>
                             <div className="max-h-48 overflow-y-auto px-2 pb-2 custom-scrollbar">
                                 <label className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filters.length === 0} 
-                                        onChange={() => onFilterChange([])} 
+                                    <input
+                                        type="checkbox"
+                                        checked={filters.length === 0}
+                                        onChange={() => onFilterChange([])}
                                         className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                     />
                                     <span className="truncate italic text-gray-500">(Select All)</span>
                                 </label>
                                 {filteredValues.map(val => (
                                     <label key={val} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={filters.includes(val)} 
+                                        <input
+                                            type="checkbox"
+                                            checked={filters.includes(val)}
                                             onChange={() => toggleFilter(val)}
                                             className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                         />
@@ -168,13 +172,13 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
                                 ))}
                             </div>
                             <div className="p-2 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-                                <button 
+                                <button
                                     onClick={() => onFilterChange([])}
                                     className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline"
                                 >
                                     Clear
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => setIsOpen(false)}
                                     className="text-xs px-3 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
                                 >
@@ -190,15 +194,16 @@ const ActivityColumnHeader: React.FC<ActivityColumnHeaderProps> = ({
 };
 
 
-export const ActivitiesComponent: React.FC<ActivitiesProps> = ({ 
-    ipos, activities, setActivities, onSelectIpo, onSelectActivity, 
+export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
+    ipos, activities, setActivities, onSelectIpo, onSelectActivity,
     onCreateActivity, uacsCodes, referenceActivities = [], forcedType,
-    externalFilters, onClearExternalFilters 
+    externalFilters, onClearExternalFilters,
+    onDataScopeChange
 }) => {
     const { currentUser } = useAuth();
     const { logAction } = useLogAction();
     const { addIpoHistory } = useIpoHistory();
-    
+
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Activity | null>(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -206,9 +211,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // Shared Hooks
     const { canEdit, canViewAll } = useUserAccess('Activities');
-    const { 
-        isSelectionMode, selectedIds, isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode, 
-        handleSelectAll, handleSelectRow, resetSelection 
+    const {
+        isSelectionMode, selectedIds, isMultiDeleteModalOpen, setIsMultiDeleteModalOpen, toggleSelectionMode,
+        handleSelectAll, handleSelectRow, resetSelection
     } = useSelection<Activity>();
 
     // Global Filters (Only Search retained in UI)
@@ -222,14 +227,33 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     // Sorting
     type SortKeys = keyof Activity | 'totalParticipants' | 'budget';
     const [sortConfig, setSortConfig] = useState<{ key: SortKeys; direction: 'ascending' | 'descending' } | null>({ key: 'date', direction: 'descending' });
-    
+
     const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
+    const dcfFilters = useDcfScopeFilters({
+        storageKey: forcedType === 'Training'
+            ? 'trainings_dcf_scope'
+            : forcedType === 'Activity'
+                ? 'other_activities_dcf_scope'
+                : 'activities_dcf_scope',
+        moduleName: 'Activities',
+        onDataScopeChange
+    });
+
+    useEffect(() => {
+        const cleanedFilters = Object.fromEntries(
+            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
+        );
+        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+            setColumnFilters(cleanedFilters);
+            setSavedColumnFilters(cleanedFilters);
+        }
+    }, [columnFilters, setSavedColumnFilters]);
 
     // Listen to External Filters (Chatbot)
     useEffect(() => {
         if (externalFilters) {
             const newFilters: Record<string, string[]> = {};
-            
+
             if (externalFilters.year) {
                 newFilters['fundingYear'] = [externalFilters.year];
             }
@@ -242,7 +266,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     if (!mappedRegion) return false;
                     return mappedRegion.toLowerCase().includes(filterRegionLower);
                 });
-                
+
                 if (targetOUs.length > 0) {
                     newFilters['operatingUnit'] = targetOUs;
                 }
@@ -253,11 +277,11 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             if (externalFilters.search) {
                 setSearchTerm(externalFilters.search);
             }
-            
+
             if (Object.keys(newFilters).length > 0) {
                 setColumnFilters(prev => ({ ...prev, ...newFilters }));
             }
-            
+
             // Clear the external filters so they don't re-apply on remount or navigation
             if (onClearExternalFilters) {
                 onClearExternalFilters();
@@ -267,13 +291,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // 1. Initial Filtering (Search + Permissions + ForcedType)
     const initiallyFilteredActivities = useMemo(() => {
-        let filtered = [...activities];
+        let filtered = activities.filter(activity => matchesDcfScope(activity as any, dcfFilters.value, 'fundingYear'));
 
         // Permission-based OU Filtering
         if (!canViewAll && currentUser) {
             filtered = filtered.filter(a => a.operatingUnit === currentUser.operatingUnit);
         }
-        
+
         // Forced Type (e.g. Trainings Page vs Activities Page)
         if (forcedType) {
             filtered = filtered.filter(activity => activity.type === forcedType);
@@ -291,7 +315,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             );
         }
         return filtered;
-    }, [activities, searchTerm, forcedType, currentUser, canViewAll]);
+    }, [activities, searchTerm, forcedType, currentUser, canViewAll, dcfFilters.value]);
 
     // 2. Extract Unique Values for Column Filters based on Initially Filtered Data
     const uniqueValues = useMemo(() => {
@@ -299,7 +323,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         return {
             name: getUnique('name'),
             status: getUnique('status'),
-            date: getUnique('date'), 
+            date: getUnique('date'),
             description: getUnique('description'),
             budget: [], // Budget is numeric
             operatingUnit: getUnique('operatingUnit'),
@@ -351,8 +375,8 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     }, [initiallyFilteredActivities, columnFilters, sortConfig]);
 
     // Use Shared Pagination Hook
-    const { 
-        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedActivities 
+    const {
+        currentPage, setCurrentPage, itemsPerPage, setItemsPerPage, totalPages, paginatedData: paginatedActivities
     } = usePagination(processedActivities, [searchTerm, forcedType, sortConfig, columnFilters]);
 
     // Sorting Handler
@@ -362,6 +386,23 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
     // Filter Change Handler
     const handleColumnFilterChange = (columnKey: string, values: string[]) => {
+        const nextScopeValue = values.length === 1 ? values[0] : 'All';
+        if (columnKey === 'fundingYear') {
+            dcfFilters.setSelectedYear(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'operatingUnit') {
+            dcfFilters.setSelectedOu(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'fundType') {
+            dcfFilters.setSelectedFundType(nextScopeValue);
+            return;
+        }
+        if (columnKey === 'tier') {
+            dcfFilters.setSelectedTier(nextScopeValue);
+            return;
+        }
         const newFilters = {
             ...columnFilters,
             [columnKey]: values
@@ -369,12 +410,23 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         setColumnFilters(newFilters);
         setSavedColumnFilters(newFilters);
     };
-    
+
     // Clear Column Filters
     const clearColumnFilters = () => {
         setColumnFilters({});
         setSavedColumnFilters({});
     }
+
+    const getScopeColumnFilter = (key: 'fundingYear' | 'operatingUnit' | 'fundType' | 'tier') => {
+        const value = key === 'fundingYear'
+            ? dcfFilters.selectedYear
+            : key === 'operatingUnit'
+                ? dcfFilters.selectedOu
+                : key === 'fundType'
+                    ? dcfFilters.selectedFundType
+                    : dcfFilters.selectedTier;
+        return value === 'All' ? [] : [value];
+    };
 
     const handleToggleRow = (activityId: number) => {
         setExpandedRowId(prevId => (prevId === activityId ? null : activityId));
@@ -427,7 +479,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
         const newActivitiesPayload = itemsToClone.map((item, index) => {
             const { id, uid, created_at, updated_at, history, participating_ipo_ids, physical_accomplishment_submitted_at, ...rest } = item;
-            
+
             const prefix = item.type === 'Training' ? 'TRN' : 'ACT';
             const sequence = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
             const newUid = `${prefix}-${currentYear}-${sequence}${index}`;
@@ -535,7 +587,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
             setItemToDelete(null);
         }
     };
-    
+
     const formatDate = (dateString?: string) => {
         if (!dateString) return 'N/A';
         return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -559,7 +611,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
     const handleApprove = async (id: number, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!window.confirm('Are you sure you want to approve this activity?')) return;
-        
+
         if (supabase) {
             const { error } = await supabase.from('activities').update({ workflow_status: 'APPROVED' }).eq('id', id);
             if (error) {
@@ -578,7 +630,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
         if (reason === null) return;
 
         if (supabase) {
-            const { error } = await supabase.from('activities').update({ 
+            const { error } = await supabase.from('activities').update({
                 workflow_status: 'REJECTED',
                 remarks: reason ? `REJECTED: ${reason}` : undefined
             }).eq('id', id);
@@ -606,13 +658,13 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                     </div>
                 </div>
             )}
-            
+
             {isMultiDeleteModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl">
                         <h3 className="text-lg font-bold text-red-600 dark:text-red-400">Confirm Bulk Deletion</h3>
                         <p className="my-4 text-gray-700 dark:text-gray-300">
-                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected activities? 
+                            Are you sure you want to delete the <strong>{selectedIds.length}</strong> selected activities?
                             This action cannot be undone.
                         </p>
                         <div className="flex justify-end gap-4">
@@ -625,39 +677,43 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
 
             <div className="data-list-header">
                 <h2 className="data-list-title">Activities Management</h2>
-                {canEdit && (
-                    <button onClick={onCreateActivity} className="btn btn-primary btn-responsive" title="Add New Activity">
-                        <Plus className="btn-symbol" aria-hidden="true" />
-                        <span className="btn-text">Add New Activity</span>
-                    </button>
-                )}
+                <div className="data-list-actions">
+                    <DcfScopeFilterToggle idPrefix="activities-dcf" filters={dcfFilters} />
+                    {canEdit && (
+                        <button onClick={onCreateActivity} className="btn btn-primary btn-responsive" title="Add New Activity">
+                            <Plus className="btn-symbol" aria-hidden="true" />
+                            <span className="btn-text">Add New Activity</span>
+                        </button>
+                    )}
+                </div>
             </div>
+            <DcfScopeFilterPanel idPrefix="activities-dcf" filters={dcfFilters} />
             <div className="data-table-card">
                  <div className="data-table-toolbar">
                     <div className="data-toolbar-row">
                         <div className="data-toolbar-group">
-                            <input 
-                                type="text" 
-                                placeholder="Search Activity..." 
-                                value={searchTerm} 
+                            <input
+                                type="text"
+                                placeholder="Search Activity..."
+                                value={searchTerm}
                                 onChange={(e) => {
                                     setSearchTerm(e.target.value);
                                     setSavedSearchTerm(e.target.value);
-                                }} 
-                                className={`data-table-search w-full md:w-64 ${commonInputClasses} mt-0`} 
+                                }}
+                                className={`data-table-search w-full md:w-64 ${commonInputClasses} mt-0`}
                             />
-                            
+
                             {Object.keys(columnFilters).length > 0 && (
                                 <button onClick={clearColumnFilters} className="text-sm text-red-500 hover:text-red-700 underline">
                                     Reset Filters
                                 </button>
                             )}
                         </div>
-                        
+
                         <div className="data-toolbar-group data-toolbar-group--actions">
                             {isSelectionMode && selectedIds.length > 0 && (
-                                <button 
-                                    onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()} 
+                                <button
+                                    onClick={() => selectionIntent === 'delete' ? setIsMultiDeleteModalOpen(true) : handleClone()}
                                     className={`btn ${selectionIntent === 'delete' ? 'btn-danger' : 'btn-info'}`}
                                 >
                                     {selectionIntent === 'delete' ? `Delete Selected (${selectedIds.length})` : `Clone Selected (${selectedIds.length})`}
@@ -678,9 +734,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                         <span className="btn-text">{isUploading ? 'Uploading...' : 'Upload'}</span>
                                     </label>
                                     <input id="activity-upload" type="file" className="hidden" onChange={(e) => handleActivitiesUpload(e, activities, setActivities, ipos, logAction, setIsUploading, uacsCodes, currentUser)} accept=".xlsx, .xls" disabled={isUploading} />
-                                    <button 
-                                        onClick={() => handleToggleMode('clone')} 
-                                        className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`} 
+                                    <button
+                                        onClick={() => handleToggleMode('clone')}
+                                        className={`btn btn-secondary btn-icon ${isSelectionMode && selectionIntent === 'clone' ? 'is-active-clone' : ''}`}
                                         title="Toggle Clone Mode"
                                     >
                                         <DuplicateIcon />
@@ -703,94 +759,94 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                         <thead className="bg-gray-50 dark:bg-gray-700">
                             <tr>
                                 <th scope="col" className="w-12 px-4 py-3 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10"></th>
-                                <ActivityColumnHeader 
-                                    label="Name" 
-                                    columnKey="name" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['name'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('name', v)} 
-                                    uniqueValues={uniqueValues.name} 
+                                <ActivityColumnHeader
+                                    label="Name"
+                                    columnKey="name"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={columnFilters['name'] || []}
+                                    onFilterChange={(v) => handleColumnFilterChange('name', v)}
+                                    uniqueValues={uniqueValues.name}
                                 />
-                                <ActivityColumnHeader 
-                                    label="OU" 
-                                    columnKey="operatingUnit" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['operatingUnit'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)} 
-                                    uniqueValues={uniqueValues.operatingUnit} 
+                                <ActivityColumnHeader
+                                    label="OU"
+                                    columnKey="operatingUnit"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={getScopeColumnFilter('operatingUnit')}
+                                    onFilterChange={(v) => handleColumnFilterChange('operatingUnit', v)}
+                                    uniqueValues={uniqueValues.operatingUnit}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Component" 
-                                    columnKey="component" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['component'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('component', v)} 
-                                    uniqueValues={uniqueValues.component} 
+                                <ActivityColumnHeader
+                                    label="Component"
+                                    columnKey="component"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={columnFilters['component'] || []}
+                                    onFilterChange={(v) => handleColumnFilterChange('component', v)}
+                                    uniqueValues={uniqueValues.component}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Fund Year" 
-                                    columnKey="fundingYear" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['fundingYear'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)} 
-                                    uniqueValues={uniqueValues.fundingYear} 
+                                <ActivityColumnHeader
+                                    label="Fund Year"
+                                    columnKey="fundingYear"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={getScopeColumnFilter('fundingYear')}
+                                    onFilterChange={(v) => handleColumnFilterChange('fundingYear', v)}
+                                    uniqueValues={uniqueValues.fundingYear}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Fund Type" 
-                                    columnKey="fundType" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['fundType'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('fundType', v)} 
-                                    uniqueValues={uniqueValues.fundType} 
+                                <ActivityColumnHeader
+                                    label="Fund Type"
+                                    columnKey="fundType"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={getScopeColumnFilter('fundType')}
+                                    onFilterChange={(v) => handleColumnFilterChange('fundType', v)}
+                                    uniqueValues={uniqueValues.fundType}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Tier" 
-                                    columnKey="tier" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['tier'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('tier', v)} 
-                                    uniqueValues={uniqueValues.tier} 
+                                <ActivityColumnHeader
+                                    label="Tier"
+                                    columnKey="tier"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={getScopeColumnFilter('tier')}
+                                    onFilterChange={(v) => handleColumnFilterChange('tier', v)}
+                                    uniqueValues={uniqueValues.tier}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Project Status" 
-                                    columnKey="status" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['status'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('status', v)} 
-                                    uniqueValues={uniqueValues.status} 
+                                <ActivityColumnHeader
+                                    label="Project Status"
+                                    columnKey="status"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={columnFilters['status'] || []}
+                                    onFilterChange={(v) => handleColumnFilterChange('status', v)}
+                                    uniqueValues={uniqueValues.status}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Date" 
-                                    columnKey="date" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['date'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('date', v)} 
-                                    uniqueValues={uniqueValues.date} 
+                                <ActivityColumnHeader
+                                    label="Date"
+                                    columnKey="date"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={columnFilters['date'] || []}
+                                    onFilterChange={(v) => handleColumnFilterChange('date', v)}
+                                    uniqueValues={uniqueValues.date}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Description" 
-                                    columnKey="description" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={columnFilters['description'] || []} 
-                                    onFilterChange={(v) => handleColumnFilterChange('description', v)} 
-                                    uniqueValues={uniqueValues.description} 
+                                <ActivityColumnHeader
+                                    label="Description"
+                                    columnKey="description"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={columnFilters['description'] || []}
+                                    onFilterChange={(v) => handleColumnFilterChange('description', v)}
+                                    uniqueValues={uniqueValues.description}
                                 />
-                                <ActivityColumnHeader 
-                                    label="Budget" 
-                                    columnKey="budget" 
-                                    sortConfig={sortConfig} 
-                                    onSort={handleSort} 
-                                    filters={[]} 
-                                    onFilterChange={() => {}} 
+                                <ActivityColumnHeader
+                                    label="Budget"
+                                    columnKey="budget"
+                                    sortConfig={sortConfig}
+                                    onSort={handleSort}
+                                    filters={[]}
+                                    onFilterChange={() => {}}
                                     uniqueValues={[]}
                                     isNumeric={true}
                                 />
@@ -799,9 +855,9 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                     {isSelectionMode ? (
                                         <div className="flex items-center justify-end gap-2">
                                             <span className="text-xs">Select All</span>
-                                            <input 
-                                                type="checkbox" 
-                                                onChange={(e) => handleSelectAll(e, paginatedActivities)} 
+                                            <input
+                                                type="checkbox"
+                                                onChange={(e) => handleSelectAll(e, paginatedActivities)}
                                                 checked={paginatedActivities.length > 0 && paginatedActivities.every(a => selectedIds.includes(a.id))}
                                                 className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                             />
@@ -816,7 +872,7 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                             {paginatedActivities.map((activity) => {
                                 const totalActivityBudget = activity.expenses.reduce((sum, e) => sum + e.amount, 0);
                                 const totalParticipants = activity.participantsMale + activity.participantsFemale;
-                                
+
                                 return (
                                 <React.Fragment key={activity.id}>
                                     <tr onClick={() => handleToggleRow(activity.id)} className="cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10">
@@ -844,15 +900,15 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                                 {getWorkflowStatusBadge(activity.workflow_status)}
                                                 {activity.workflow_status === 'PENDING' && canApprove(currentUser?.role) && (
                                                     <div className="flex gap-1 mt-1">
-                                                        <button 
-                                                            onClick={(e) => handleApprove(activity.id, e)} 
+                                                        <button
+                                                            onClick={(e) => handleApprove(activity.id, e)}
                                                             className="action-mini action-mini--approve"
                                                             title="Approve"
                                                         >
                                                             <Check className="h-3 w-3" />
                                                         </button>
-                                                        <button 
-                                                            onClick={(e) => handleReject(activity.id, e)} 
+                                                        <button
+                                                            onClick={(e) => handleReject(activity.id, e)}
                                                             className="action-mini action-mini--reject"
                                                             title="Reject"
                                                         >
@@ -866,10 +922,10 @@ export const ActivitiesComponent: React.FC<ActivitiesProps> = ({
                                             {canEdit ? (
                                                 <div className="flex items-center justify-end gap-3">
                                                     {isSelectionMode && (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.includes(activity.id)} 
-                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(activity.id); }} 
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedIds.includes(activity.id)}
+                                                            onChange={(e) => { e.stopPropagation(); handleSelectRow(activity.id); }}
                                                             onClick={(e) => e.stopPropagation()}
                                                             className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                                         />

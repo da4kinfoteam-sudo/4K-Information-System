@@ -147,6 +147,7 @@ const DuplicateIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 const commonInputClasses = "form-control";
+const DCF_SCOPE_COLUMN_KEYS = new Set(['fundYear', 'operatingUnit', 'fundType', 'tier']);
 
 export const parseOtherExpenseRow = (row: any, commonData: any): OtherProgramExpense => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -207,6 +208,16 @@ export const OtherExpensesTab: React.FC<OtherExpensesTabProps> = ({ items, setIt
     const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_other_searchTerm', '');
     const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_other_sortConfig', { key: 'id', direction: 'descending' });
     const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_other_columnFilters', {});
+
+    useEffect(() => {
+        const cleanedFilters = Object.fromEntries(
+            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
+        );
+
+        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+            setColumnFilters(cleanedFilters);
+        }
+    }, [columnFilters, setColumnFilters]);
 
     const { 
         isSelectionMode, selectedIds, setSelectedIds, 

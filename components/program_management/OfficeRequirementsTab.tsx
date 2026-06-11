@@ -39,6 +39,7 @@ const FilterIcon = () => (
 );
 
 const commonInputClasses = "form-control";
+const DCF_SCOPE_COLUMN_KEYS = new Set(['fundYear', 'operatingUnit', 'fundType', 'tier']);
 
 // --- COLUMN HEADER COMPONENT ---
 interface OfficeRequirementColumnHeaderProps {
@@ -205,6 +206,16 @@ export const OfficeRequirementsTab: React.FC<OfficeRequirementsTabProps> = ({ it
     const [searchTerm, setSearchTerm] = useLocalStorageState('programManagement_office_searchTerm', '');
     const [sortConfig, setSortConfig] = useLocalStorageState<{ key: string; direction: 'ascending' | 'descending' }>('programManagement_office_sortConfig', { key: 'id', direction: 'descending' });
     const [columnFilters, setColumnFilters] = useLocalStorageState<{ [key: string]: string[] }>('programManagement_office_columnFilters', {});
+
+    useEffect(() => {
+        const cleanedFilters = Object.fromEntries(
+            Object.entries(columnFilters).filter(([key]) => !DCF_SCOPE_COLUMN_KEYS.has(key))
+        );
+
+        if (Object.keys(cleanedFilters).length !== Object.keys(columnFilters).length) {
+            setColumnFilters(cleanedFilters);
+        }
+    }, [columnFilters, setColumnFilters]);
 
     // Selection Hook
     const { 

@@ -11,6 +11,7 @@ import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
+import { resolveSubprojectCompletionRollup } from '../lib/subprojectCompletion';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -400,45 +401,23 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setGalleryIndex(current => current === null ? 0 : (current + 1) % galleryFiles.length);
     };
 
-    // Calculate Project Completion Rate
     const projectCompletionStats = useMemo(() => {
-        const totalItems = subproject.details.length;
-        if (totalItems === 0) return { percent: 0, text: '0%' };
-        
-        // Count items that have an actual delivery date
-        const completedItems = subproject.details.filter(d => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '').length;
-        const percent = (completedItems / totalItems) * 100;
+        const rollup = resolveSubprojectCompletionRollup(subproject.details);
+        if (rollup.activeCount === 0) return { percent: 0, text: '0%' };
+        const percent = (rollup.completedCount / rollup.activeCount) * 100;
         return { percent, text: `${percent.toFixed(0)}%` };
     }, [subproject.details]);
 
-    // Check completion status automation
     useEffect(() => {
-        if (editMode !== 'none' && detailItems.length > 0) {
-            const allItemsDelivered = detailItems.every((d: any) => d.actualDeliveryDate && d.actualDeliveryDate.trim() !== '');
-            
-            if (allItemsDelivered) {
-                const latestDate = detailItems.reduce((latest: Date, current: any) => {
-                    const d = new Date(current.actualDeliveryDate!);
-                    return d > latest ? d : latest;
-                }, new Date(0));
-
-                if (editedSubproject.status !== 'Completed') {
-                    setEditedSubproject(prev => ({
-                        ...prev,
-                        status: 'Completed',
-                        actualCompletionDate: latestDate.toISOString().split('T')[0]
-                    }));
-                }
-            } else {
-                if (editedSubproject.status === 'Completed') {
-                    setEditedSubproject(prev => ({
-                        ...prev,
-                        status: 'Ongoing',
-                        actualCompletionDate: undefined
-                    }));
-                }
-            }
-        }
+        if (editMode !== 'accomplishment' || detailItems.length === 0) return;
+        const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[]);
+        setEditedSubproject(prev => {
+            if (prev.status === 'Cancelled') return prev;
+            const nextStatus = rollup.isComplete ? 'Completed' : 'Ongoing';
+            const nextCompletionDate = rollup.actualCompletionDate || '';
+            if (prev.status === nextStatus && (prev.actualCompletionDate || '') === nextCompletionDate) return prev;
+            return { ...prev, status: nextStatus, actualCompletionDate: nextCompletionDate };
+        });
     }, [detailItems, editMode]);
 
     const totalBudget = useMemo(() => {
@@ -537,13 +516,15 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         
         if (name === 'status') {
             const newStatus = value as Subproject['status'];
-            if (newStatus === 'Completed' && !editedSubproject.actualCompletionDate) {
-                 const currentDate = new Date().toISOString().split('T')[0];
-                 setEditedSubproject(prev => ({ ...prev, status: newStatus, actualCompletionDate: currentDate }));
-            } else if (newStatus !== 'Completed') {
-                setEditedSubproject(prev => ({ ...prev, status: newStatus, actualCompletionDate: '' }));
+            if (newStatus === 'Completed') {
+                const rollup = resolveSubprojectCompletionRollup(detailItems as SubprojectDetailType[]);
+                if (!rollup.isComplete) {
+                    alert('A subproject can only be marked Completed after all non-cancelled delivery items have an actual delivery date and are marked completed.');
+                    return;
+                }
+                setEditedSubproject(prev => ({ ...prev, status: newStatus, actualCompletionDate: rollup.actualCompletionDate || '' }));
             } else {
-                 setEditedSubproject(prev => ({ ...prev, status: newStatus }));
+                setEditedSubproject(prev => ({ ...prev, status: newStatus, actualCompletionDate: '' }));
             }
         } else if (name === 'indigenousPeopleOrganization') {
              const selectedIpo = ipos.find(ipo => ipo.name === value);
@@ -985,16 +966,29 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
             return cleanD;
         });
 
-        const detailActualsChanged = cleanDetails.some(detail => {
+        const completionRollup = resolveSubprojectCompletionRollup(cleanDetails as SubprojectDetailType[]);
+        const normalizedCleanDetails = completionRollup.details;
+        const nextStatus = editedSubproject.status === 'Cancelled'
+            ? 'Cancelled'
+            : completionRollup.isComplete
+                ? 'Completed'
+                : (editedSubproject.status === 'Completed' || editMode === 'accomplishment')
+                    ? 'Ongoing'
+                    : editedSubproject.status;
+        const nextActualCompletionDate = nextStatus === 'Completed' ? completionRollup.actualCompletionDate : null;
+
+        const detailActualsChanged = normalizedCleanDetails.some(detail => {
             const original = (subproject.details || []).find(item => item.id === detail.id);
             if (!original) return !!detail.actualDeliveryDate || !!detail.actualNumberOfUnits;
             return valuesDiffer(original.actualDeliveryDate, detail.actualDeliveryDate)
-                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits);
+                || valuesDiffer(original.actualNumberOfUnits, detail.actualNumberOfUnits)
+                || valuesDiffer(original.isCompleted, detail.isCompleted);
         });
         const submittedAt = historyEntry.date;
         const physicalAccomplishmentSubmittedAt = resolvePhysicalAccomplishmentSubmittedAt({
-            hasPhysicalAccomplishment: !!editedSubproject.actualCompletionDate,
-            hasChanged: valuesDiffer(subproject.actualCompletionDate, editedSubproject.actualCompletionDate)
+            hasPhysicalAccomplishment: !!nextActualCompletionDate,
+            hasChanged: valuesDiffer(subproject.actualCompletionDate, nextActualCompletionDate)
+                || valuesDiffer(subproject.status, nextStatus)
                 || (editMode === 'accomplishment' && detailActualsChanged),
             previousSubmittedAt: subproject.physical_accomplishment_submitted_at,
             submittedAt
@@ -1003,8 +997,10 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         const updatedSubprojectWithDetails = {
             ...editedSubproject,
             ipo_id: resolvedIpoId,
+            status: nextStatus,
+            actualCompletionDate: nextActualCompletionDate,
             physical_accomplishment_submitted_at: physicalAccomplishmentSubmittedAt,
-            details: cleanDetails as SubprojectDetailType[],
+            details: normalizedCleanDetails as SubprojectDetailType[],
             history: [...(subproject.history || []), historyEntry]
         };
         
@@ -1019,8 +1015,8 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         
         // Sync obligations to central table if supabase is available
         if (supabase) {
-             syncSubprojectObligations(subproject.id, cleanDetails);
-             syncSubprojectDisbursements(subproject.id, cleanDetails);
+             syncSubprojectObligations(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
+             syncSubprojectDisbursements(subproject.id, normalizedCleanDetails as SubprojectDetailType[]);
         }
         
         setEditMode('none');
