@@ -33,6 +33,8 @@ interface BAR1ReportProps {
     onExportReport: (request: ReportExcelRequest) => void;
 }
 
+const BAR1_COLUMN_COUNT = 50;
+
 const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType, deadlines, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
@@ -281,6 +283,12 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     });
 
     const handleDownloadBar1Xlsx = () => {
+        const normalizeExcelRow = (row: (string | number | null)[]) => {
+            const normalized = row.slice(0, BAR1_COLUMN_COUNT);
+            while (normalized.length < BAR1_COLUMN_COUNT) normalized.push(null);
+            return normalized;
+        };
+
         const header1 = [null];
         const header2 = [null]; 
 
@@ -332,9 +340,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         header2.push(...sectionHeadersTarget, null, ...sectionHeadersActual);
 
         const aoa: (string | number | null)[][] = [
-            ["Program/Activity/Project", "Physical Targets", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Physical Accomplishments", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
-            header1,
-            header2
+            normalizeExcelRow(["Program/Activity/Project", "Physical Targets", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, "Physical Accomplishments", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null]),
+            normalizeExcelRow(header1),
+            normalizeExcelRow(header2)
         ];
 
         const processItems = (items: any[], prefix = "") => {
@@ -353,7 +361,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     return act / tgt;
                 };
 
-                aoa.push([
+                aoa.push(normalizeExcelRow([
                     prefix + item.indicator,
                     t.m1, t.m2, t.m3, t.q1,
                     t.m4, t.m5, t.m6, t.q2,
@@ -372,7 +380,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     a.m10, a.m11, a.m12, a.q4, getPct(a.q4, t.q4),
                     a.yearEndNov, getPct(a.yearEndNov, t.yearEndNov),
                     a.total, getPct(a.total, t.total)
-                ]);
+                ]));
 
                 if (item.isExpandable && item.items && item.items.length > 0) {
                      processItems(item.items, prefix + "    ");
@@ -382,7 +390,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         Object.entries(bar1Data).forEach(([component, items]) => {
             // Component Header - No Totals
-            aoa.push([component, ...Array(52).fill(null)]);
+            aoa.push(normalizeExcelRow([component, ...Array(BAR1_COLUMN_COUNT - 1).fill(null)]));
             
             if (Array.isArray(items)) {
                 if (items.length > 0) processItems(items, "  ");
@@ -390,7 +398,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 if ((items as any).items.length > 0) processItems((items as any).items, "  ");
             } else if ((items as any).isNestedExpandable) {
                 Object.entries((items as any).packages).forEach(([packageName, packageData]: [string, any]) => {
-                    aoa.push([`  ${packageName}`, ...Array(52).fill(null)]);
+                    aoa.push(normalizeExcelRow([`  ${packageName}`, ...Array(BAR1_COLUMN_COUNT - 1).fill(null)]));
                     if ((packageData as any).items.length > 0) processItems((packageData as any).items, "    ");
                 });
             }
@@ -401,9 +409,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         // However, if components are different and can't be summed, Grand Total is also meaningless.
         // I will remove Grand Total as well to be safe and consistent.
         
-        const columnFormats = aoa[0].reduce<Record<number, 'physical' | 'percent'>>((acc, _, index) => {
+        const rows = aoa.map(normalizeExcelRow);
+
+        const columnFormats = rows[0].reduce<Record<number, 'physical' | 'percent'>>((acc, _, index) => {
             if (index === 0 || index === 21) return acc;
-            acc[index] = typeof aoa[2]?.[index] === 'string' && String(aoa[2][index]).includes('%') ? 'percent' : 'physical';
+            acc[index] = typeof rows[2]?.[index] === 'string' && String(rows[2][index]).includes('%') ? 'percent' : 'physical';
             return acc;
         }, {});
 
@@ -413,7 +423,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             fileName: `BAR1_Report_${selectedYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'BAR1 Report',
-                rows: aoa,
+                rows,
                 headerRowCount: 3,
                 merges: [
                     { s: { r: 0, c: 0 }, e: { r: 2, c: 0 } },

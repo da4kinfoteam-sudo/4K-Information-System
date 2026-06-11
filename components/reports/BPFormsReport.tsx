@@ -541,6 +541,22 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         // Flatten Data
         const flatDataRows: any[][] = [];
         const allCodesOrdered = [...mooeCodesSorted, ...coCodesSorted];
+        const appendBpValueCells = (
+            row: (string | number | null)[],
+            values: Record<string, number>,
+            totalMOOE: number,
+            totalCO: number,
+        ) => {
+            mooeCodesSorted.forEach(code => {
+                row.push(values[code] > 0 ? Math.ceil(values[code]) : null);
+            });
+            row.push(totalMOOE > 0 ? Math.ceil(totalMOOE) : null);
+            coCodesSorted.forEach(code => {
+                row.push(values[code] > 0 ? Math.ceil(values[code]) : null);
+            });
+            row.push(totalCO > 0 ? Math.ceil(totalCO) : null);
+            row.push((totalMOOE + totalCO) > 0 ? Math.ceil(totalMOOE + totalCO) : null);
+        };
 
         const calculateSummary = (items: any[]) => {
             return items.reduce((acc, item) => {
@@ -556,12 +572,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         const addSummaryRow = (label: string, items: any[], prefix: string) => {
             const summary = calculateSummary(items);
             const row: (string | number | null)[] = [`${prefix}${label}`];
-            allCodesOrdered.forEach(code => {
-                row.push(summary.uacsValues[code] > 0 ? Math.ceil(summary.uacsValues[code]) : null);
-            });
-            row.push(summary.totalMOOE > 0 ? Math.ceil(summary.totalMOOE) : null);
-            row.push(summary.totalCO > 0 ? Math.ceil(summary.totalCO) : null);
-            row.push((summary.totalMOOE + summary.totalCO) > 0 ? Math.ceil(summary.totalMOOE + summary.totalCO) : null);
+            appendBpValueCells(row, summary.uacsValues, summary.totalMOOE, summary.totalCO);
             flatDataRows.push(row);
         };
 
@@ -571,23 +582,22 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 const isActExpanded = expandedRows.has(actKey);
                 
                 const row: (string | number | null)[] = [`${prefix}${activity.name}`];
-                allCodesOrdered.forEach(code => {
-                    row.push(activity.uacsValues[code] > 0 ? Math.ceil(activity.uacsValues[code]) : null);
-                });
-                row.push(activity.totalMOOE > 0 ? Math.ceil(activity.totalMOOE) : null);
-                row.push(activity.totalCO > 0 ? Math.ceil(activity.totalCO) : null);
-                row.push((activity.totalMOOE + activity.totalCO) > 0 ? Math.ceil(activity.totalMOOE + activity.totalCO) : null);
+                appendBpValueCells(row, activity.uacsValues, activity.totalMOOE, activity.totalCO);
                 flatDataRows.push(row);
 
                 if (isActExpanded && activity.particulars) {
                     activity.particulars.forEach((part: any) => {
                         const pRow: (string | number | null)[] = [`${prefix}  ${part.name}`];
-                        allCodesOrdered.forEach(code => {
-                            pRow.push(part.uacsCode === code && part.amount > 0 ? Math.ceil(part.amount) : null);
-                        });
-                        pRow.push(part.objectType !== 'CO' ? Math.ceil(part.amount) : null);
-                        pRow.push(part.objectType === 'CO' ? Math.ceil(part.amount) : null);
-                        pRow.push(Math.ceil(part.amount));
+                        const pValues = allCodesOrdered.reduce<Record<string, number>>((acc, code) => {
+                            acc[code] = part.uacsCode === code && part.amount > 0 ? part.amount : 0;
+                            return acc;
+                        }, {});
+                        appendBpValueCells(
+                            pRow,
+                            pValues,
+                            part.objectType !== 'CO' ? part.amount : 0,
+                            part.objectType === 'CO' ? part.amount : 0,
+                        );
                         flatDataRows.push(pRow);
                     });
                 }
@@ -614,8 +624,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
 
         // Add Grand Total Row
         const totalRow: (string | number | null)[] = ["GRAND TOTAL"];
-        allCodesOrdered.forEach(code => totalRow.push(grandTotals.uacsValues[code] > 0 ? Math.ceil(grandTotals.uacsValues[code]) : null));
-        totalRow.push(Math.ceil(grandTotals.totalMOOE), Math.ceil(grandTotals.totalCO), Math.ceil(grandTotals.totalMOOE + grandTotals.totalCO));
+        appendBpValueCells(totalRow, grandTotals.uacsValues, grandTotals.totalMOOE, grandTotals.totalCO);
         flatDataRows.push(totalRow);
 
         // Combine all
