@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
+import { getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, getReportingQuarter, isDateInReportingYear, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
 interface WFPReportProps {
@@ -17,6 +17,7 @@ interface WFPReportProps {
     };
     uacsCodes: any;
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
@@ -31,7 +32,7 @@ const formatNumber = (num: number) => {
     return Math.ceil(num).toLocaleString('en-US');
 };
 
-const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
+const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const toggleRow = (key: string) => {
@@ -46,11 +47,10 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
     const dataCellClass = "report-table__cell";
 
     const wfpData = useMemo(() => {
-        const getQuarter = (dateStr?: string): number => {
-            if (!dateStr) return 0;
-            const month = new Date(dateStr + 'T00:00:00Z').getUTCMonth();
-            return Math.floor(month / 3) + 1;
-        };
+        const getQuarter = (dateStr?: string, fallbackYear?: string | number): number =>
+            getReportingQuarter(dateStr, selectedReportingYear, fallbackYear);
+        const matchesReportYear = (dateStr?: string, fallbackYear?: string | number) =>
+            isDateInReportingYear(dateStr, selectedReportingYear, fallbackYear);
         const getActivityTargetDate = (activity: Training | OtherActivity) => activity.endDate || activity.date;
 
         const finalData: { [key: string]: any } = {
@@ -95,14 +95,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         
         data.subprojects.forEach(sp => {
             const isExcluded = isParentRealignmentOrSavings(sp);
-            const mooeCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(d)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
-            const coCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'CO' && !isBudgetLineExcludedFromTargets(d)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
+            const mooeCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(d) && matchesReportYear(d.obligationMonth, sp.fundingYear)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
+            const coCost = isExcluded ? 0 : sp.details.filter(d => d.objectType === 'CO' && !isBudgetLineExcludedFromTargets(d) && matchesReportYear(d.obligationMonth, sp.fundingYear)).reduce((sum, d) => sum + getBudgetLineAmount(d), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
-            const physicalTargetQuarter = getQuarter(sp.estimatedCompletionDate);
+            const physicalTargetQuarter = getQuarter(sp.estimatedCompletionDate, sp.fundingYear);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             sp.details.forEach(detail => {
-                const financialQuarter = getQuarter(detail.obligationMonth);
+                const financialQuarter = getQuarter(detail.obligationMonth, sp.fundingYear);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
                     if (!isExcluded && !isBudgetLineExcludedFromTargets(detail)) {
                         quarterlyFinancial[`q${financialQuarter}`] += getBudgetLineAmount(detail);
@@ -111,7 +111,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             });
 
             const item = {
-                indicator: sp.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                indicator: sp.name, totalPhysicalTarget: !isExcluded && physicalTargetQuarter ? 1 : 0, mooeCost, coCost, totalCost,
                 q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
@@ -126,14 +126,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
         data.trainings.forEach(t => {
             const isExcluded = isParentRealignmentOrSavings(t);
-            const mooeCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
-            const coCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
+            const mooeCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e) && matchesReportYear(e.obligationMonth, t.fundingYear)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
+            const coCost = isExcluded ? 0 : t.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e) && matchesReportYear(e.obligationMonth, t.fundingYear)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
-            const physicalTargetQuarter = getQuarter(getActivityTargetDate(t));
+            const physicalTargetQuarter = getQuarter(getActivityTargetDate(t), t.fundingYear);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             t.expenses.forEach(expense => {
-                const financialQuarter = getQuarter(expense.obligationMonth);
+                const financialQuarter = getQuarter(expense.obligationMonth, t.fundingYear);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
                     if (!isExcluded && !isBudgetLineExcludedFromTargets(expense))
                         quarterlyFinancial[`q${financialQuarter}`] += getBudgetLineAmount(expense);
@@ -141,7 +141,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             });
 
             const item = {
-                indicator: t.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                indicator: t.name, totalPhysicalTarget: !isExcluded && physicalTargetQuarter ? 1 : 0, mooeCost, coCost, totalCost,
                 q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
@@ -162,14 +162,14 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
 
         data.otherActivities.forEach(oa => {
             const isExcluded = isParentRealignmentOrSavings(oa);
-            const mooeCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
-            const coCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
+            const mooeCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'MOOE' && !isBudgetLineExcludedFromTargets(e) && matchesReportYear(e.obligationMonth, oa.fundingYear)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
+            const coCost = isExcluded ? 0 : oa.expenses.filter(e => e.objectType === 'CO' && !isBudgetLineExcludedFromTargets(e) && matchesReportYear(e.obligationMonth, oa.fundingYear)).reduce((sum, e) => sum + getBudgetLineAmount(e), 0);
             const totalCost = isExcluded ? 0 : mooeCost + coCost;
-            const physicalTargetQuarter = getQuarter(getActivityTargetDate(oa));
+            const physicalTargetQuarter = getQuarter(getActivityTargetDate(oa), oa.fundingYear);
 
             const quarterlyFinancial = { q1: 0, q2: 0, q3: 0, q4: 0 };
             oa.expenses.forEach(expense => {
-                const financialQuarter = getQuarter(expense.obligationMonth);
+                const financialQuarter = getQuarter(expense.obligationMonth, oa.fundingYear);
                 if (financialQuarter >= 1 && financialQuarter <= 4) {
                     if (!isExcluded && !isBudgetLineExcludedFromTargets(expense))
                         quarterlyFinancial[`q${financialQuarter}`] += getBudgetLineAmount(expense);
@@ -177,7 +177,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
             });
 
             const item = {
-                indicator: oa.name, totalPhysicalTarget: isExcluded ? 0 : 1, mooeCost, coCost, totalCost,
+                indicator: oa.name, totalPhysicalTarget: !isExcluded && physicalTargetQuarter ? 1 : 0, mooeCost, coCost, totalCost,
                 q1Physical: !isExcluded && physicalTargetQuarter === 1 ? 1 : 0, q2Physical: !isExcluded && physicalTargetQuarter === 2 ? 1 : 0, q3Physical: !isExcluded && physicalTargetQuarter === 3 ? 1 : 0, q4Physical: !isExcluded && physicalTargetQuarter === 4 ? 1 : 0,
                 q1Financial: quarterlyFinancial.q1, q2Financial: quarterlyFinancial.q2,
                 q3Financial: quarterlyFinancial.q3, q4Financial: quarterlyFinancial.q4,
@@ -195,8 +195,8 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                 const isExcluded = isParentRealignmentOrSavings(pm);
                 if (isStaff && pm.expenses && pm.expenses.length > 0) {
                     const component = pm.component || 'Program Management';
-                    const physicalQuarter = getQuarter(pm.obligationDate);
-                    const physicalCount = isExcluded ? 0 : 1;
+                    const physicalQuarter = getQuarter(pm.obligationDate, pm.fundYear);
+                    const physicalCount = !isExcluded && physicalQuarter ? 1 : 0;
                     const item = {
                         indicator: pm.personnelPosition,
                         totalPhysicalTarget: physicalCount,
@@ -216,7 +216,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                     pm.expenses.forEach((expense: any) => {
                         const objType = expense.objectType || getObjectTypeByCode(expense.uacsCode, uacsCodes);
                         const amount = isExcluded || isBudgetLineExcludedFromTargets(expense) ? 0 : getBudgetLineAmount(expense);
-                        const financialQuarter = getQuarter(expense.obligationDate);
+                        const financialQuarter = getQuarter(expense.obligationDate, pm.fundYear);
 
                         if (objType === 'CO') item.coCost += amount;
                         else item.mooeCost += amount;
@@ -242,10 +242,10 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
                     const objType = getObjectTypeByCode(pm.uacsCode, uacsCodes);
                     const amount = isExcluded ? 0 : (isStaff ? pm.annualSalary : (pm.amount || (pm.pricePerUnit * pm.numberOfUnits)));
                     
-                    const financialQuarter = getQuarter(pm.obligationDate);
-                    const physicalQuarter = getQuarter(pm.obligationDate);
+                    const financialQuarter = getQuarter(pm.obligationDate, pm.fundYear);
+                    const physicalQuarter = getQuarter(pm.obligationDate, pm.fundYear);
 
-                    const physicalCount = isExcluded || isOtherExpense ? 0 : (isStaff ? 1 : (pm.numberOfUnits || 1));
+                    const physicalCount = isExcluded || isOtherExpense || !physicalQuarter ? 0 : (isStaff ? 1 : (pm.numberOfUnits || 1));
 
                     const item = {
                         indicator: isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars),
@@ -293,7 +293,7 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         finalData['Production and Livelihood'].packages = sortedPLPackageData;
 
         return finalData;
-    }, [data, uacsCodes]);
+    }, [data, selectedReportingYear, uacsCodes]);
 
     const handleDownloadXLSX = () => {
         const aoa: (string | number | null)[][] = [
@@ -391,9 +391,9 @@ const WFPReport: React.FC<WFPReportProps> = ({ data, uacsCodes, selectedYear, se
         addTotalsRow(grandTotals, "GRAND TOTAL");
         
         onExportReport({
-            reportName: 'Work and Financial Plan (WFP)',
+            reportName: withReportYearLabel('Work and Financial Plan (WFP)', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `WFP_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `WFP_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'WFP Report',
                 rows: aoa,

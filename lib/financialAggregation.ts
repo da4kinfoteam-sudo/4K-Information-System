@@ -5,6 +5,7 @@ type YearFilter = string | 'All';
 
 export interface FinancialAggregationFilters {
     year: YearFilter;
+    actualYear?: YearFilter;
     operatingUnit?: string | 'All';
     tier?: string | 'All';
     fundType?: string | 'All';
@@ -342,12 +343,13 @@ const addLineItem = (
     const rawTargetAllocation = isTarget ? getFinancialAllocation(line) : 0;
     const excludedTargetAllocation = isTarget && isTaggedExclusion ? rawTargetAllocation : 0;
     const alloc = includeTarget ? rawTargetAllocation : 0;
-    const obli = includeActual ? getActualObligationTotal(line, { year: filters.year, fallbackYear }) : 0;
-    const disb = includeActual ? getActualDisbursementTotal(line, { year: filters.year, fallbackYear }) : 0;
+    const actualYear = filters.actualYear ?? filters.year;
+    const obli = includeActual ? getActualObligationTotal(line, { year: actualYear, fallbackYear }) : 0;
+    const disb = includeActual ? getActualDisbursementTotal(line, { year: actualYear, fallbackYear }) : 0;
     const targetDate = metadata.targetDate || line.obligationMonth || line.obligationDate;
     const disbursementTargetDate = line.disbursementMonth || line.disbursementDate || targetDate;
-    const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: targetDate }) : createMonthlyArray();
-    const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: filters.year, fallbackYear, fallbackDate: disbursementTargetDate }) : createMonthlyArray();
+    const obligationByMonth = includeActual ? getActualObligationsByMonth(line, { year: actualYear, fallbackYear, fallbackDate: targetDate }) : createMonthlyArray();
+    const disbursementByMonth = includeActual ? getActualDisbursementsByMonth(line, { year: actualYear, fallbackYear, fallbackDate: disbursementTargetDate }) : createMonthlyArray();
 
     if (alloc === 0 && obli === 0 && disb === 0 && (!filters.includeTaggedExclusions || excludedTargetAllocation === 0)) return;
 

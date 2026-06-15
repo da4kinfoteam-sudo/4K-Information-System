@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { deriveExcelHeaderMerges, ExcelColumnFormat, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { deriveExcelHeaderMerges, ExcelColumnFormat, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
 
 interface BudgetUtilizationReportProps {
@@ -16,6 +16,7 @@ interface BudgetUtilizationReportProps {
     };
     uacsCodes: any;
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     selectedTier?: string;
     selectedFundType?: string;
@@ -265,12 +266,13 @@ const SummaryRow: React.FC<{
     );
 };
 
-const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier = 'All', selectedFundType = 'All', onPrintReport, onExportReport }) => {
+const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier = 'All', selectedFundType = 'All', onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const processedData = useMemo(() => {
         const filters: FinancialAggregationFilters = {
             year: selectedYear,
+            actualYear: selectedReportingYear,
             operatingUnit: selectedOu,
             tier: selectedTier,
             fundType: selectedFundType,
@@ -356,7 +358,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
         groupedData['Production and Livelihood'].packages = plSortedPackages;
 
         return { rows: groupedData };
-    }, [data, selectedYear, selectedOu, selectedTier, selectedFundType, uacsCodes]);
+    }, [data, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, uacsCodes]);
 
     const { rows } = processedData;
 
@@ -501,9 +503,9 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
         }, {});
 
         onExportReport({
-            reportName: 'Budget Utilization Report',
+            reportName: withReportYearLabel('Budget Utilization Report', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `Budget_Utilization_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `Budget_Utilization_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'Budget Utilization',
                 rows: exportRows,
@@ -550,7 +552,7 @@ const BudgetUtilizationReport: React.FC<BudgetUtilizationReportProps> = ({ data,
                 <div className="report-card__actions">
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'Budget Utilization Report',
+                            reportName: withReportYearLabel('Budget Utilization Report', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'bur-table',
                         })}

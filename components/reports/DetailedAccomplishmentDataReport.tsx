@@ -5,7 +5,7 @@ import { ActivityComponentType, IPO, OtherActivity, Subproject, Training } from 
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { parseLocation } from '../LocationPicker';
-import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, isDateInReportingYear, withReportYearLabel } from './ReportUtils';
 
 interface DetailedAccomplishmentDataReportProps {
     data: {
@@ -15,6 +15,7 @@ interface DetailedAccomplishmentDataReportProps {
         ipos: IPO[];
     };
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
@@ -346,6 +347,7 @@ const buildBeneficiaryFields = (ipos: IPO[]) => {
 const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataReportProps> = ({
     data,
     selectedYear,
+    selectedReportingYear,
     selectedOu,
     selectedTier,
     selectedFundType,
@@ -502,12 +504,14 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                 };
             });
 
-        return [...subprojectRows, ...activityRows].sort((a, b) => {
+        return [...subprojectRows, ...activityRows]
+        .filter(row => isDateInReportingYear(row.dateReceived, selectedReportingYear, row.fundingYear))
+        .sort((a, b) => {
             const dateCompare = a.dateReceived.localeCompare(b.dateReceived);
             if (dateCompare !== 0) return dateCompare;
             return a.performanceIndicatorLevel3.localeCompare(b.performanceIndicatorLevel3);
         });
-    }, [data.subprojects, data.trainings, data.otherActivities, ipoRegistry]);
+    }, [data.subprojects, data.trainings, data.otherActivities, ipoRegistry, selectedReportingYear]);
 
     const quarterFilteredRows = useMemo(() => {
         if (selectedQuarter === 'All') return rows;
@@ -676,9 +680,9 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
             ...displayRows.map(row => columns.map(column => row[column.key] ?? '')),
         ];
         onExportReport({
-            reportName: 'Detailed Accomplishment Data',
+            reportName: withReportYearLabel('Detailed Accomplishment Data', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `Detailed_Accomplishment_Data_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `Detailed_Accomplishment_Data_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'Detailed Accomp Data',
                 rows: aoa,
@@ -741,7 +745,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     )}
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'Detailed Accomplishment Data',
+                            reportName: withReportYearLabel('Detailed Accomplishment Data', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'detailed-accomplishment-report-table',
                         })}

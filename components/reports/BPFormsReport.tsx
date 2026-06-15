@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense } from '../../constants';
-import { formatCurrency, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { formatCurrency, getObjectTypeByCode, ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 
 interface BPFormsReportProps {
@@ -16,6 +16,7 @@ interface BPFormsReportProps {
     };
     uacsCodes: any;
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
@@ -167,7 +168,7 @@ const SummaryRow: React.FC<{
     );
 };
 
-const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
+const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const bpFormsProcessedData = useMemo(() => {
@@ -696,9 +697,9 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
         }, {});
 
         onExportReport({
-            reportName: 'Budget Proposal (BP) Forms',
+            reportName: withReportYearLabel('Budget Proposal (BP) Forms', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `BP_Forms_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `BP_Forms_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'BP Forms',
                 rows: aoa,
@@ -729,7 +730,7 @@ const BPFormsReport: React.FC<BPFormsReportProps> = ({ data, uacsCodes, selected
                 <div className="report-card__actions">
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'Budget Proposal (BP) Forms',
+                            reportName: withReportYearLabel('Budget Proposal (BP) Forms', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'bp-forms-table',
                         })}

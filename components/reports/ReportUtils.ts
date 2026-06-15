@@ -34,6 +34,8 @@ export interface ReportExcelRequest {
     sheets: ReportExcelSheet[];
 }
 
+export type YearFilter = string | 'All';
+
 type ParentPhysicalRecord = {
     isRealignment?: boolean;
     isSavings?: boolean;
@@ -46,6 +48,57 @@ export const countPhysicalTarget = (record: ParentPhysicalRecord | null | undefi
     isParentRealignmentOrSavings(record) ? 0 : value;
 
 export const countPhysicalActual = (_record: ParentPhysicalRecord | null | undefined, value: number) => value;
+
+export const getDateYear = (dateStr?: string | null) => {
+    if (!dateStr) return undefined;
+    const isoMatch = dateStr.match(/^(\d{4})[-/]/);
+    if (isoMatch) return isoMatch[1];
+    const parsed = new Date(dateStr);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.getFullYear().toString();
+};
+
+export const isDateInReportingYear = (
+    dateStr: string | undefined | null,
+    reportingYear: YearFilter,
+    fallbackYear?: string | number | null,
+) => {
+    if (reportingYear === 'All') return true;
+    const dateYear = getDateYear(dateStr);
+    if (dateYear) return dateYear === reportingYear;
+    return fallbackYear?.toString() === reportingYear;
+};
+
+export const getReportingMonthIndex = (
+    dateStr: string | undefined | null,
+    reportingYear: YearFilter,
+    fallbackYear?: string | number | null,
+) => {
+    if (!dateStr || !isDateInReportingYear(dateStr, reportingYear, fallbackYear)) return undefined;
+    const parts = dateStr.split('-');
+    if (parts.length >= 2) {
+        const month = parseInt(parts[1], 10);
+        if (!Number.isNaN(month) && month >= 1 && month <= 12) return month - 1;
+    }
+    const parsed = new Date(dateStr);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.getUTCMonth();
+};
+
+export const getReportingQuarter = (
+    dateStr: string | undefined | null,
+    reportingYear: YearFilter,
+    fallbackYear?: string | number | null,
+) => {
+    const monthIndex = getReportingMonthIndex(dateStr, reportingYear, fallbackYear);
+    return monthIndex === undefined ? 0 : Math.floor(monthIndex / 3) + 1;
+};
+
+export const formatReportYearLabel = (fundYear: YearFilter, reportingYear: YearFilter) => {
+    if (fundYear === reportingYear) return `FY ${fundYear}`;
+    return `FY ${fundYear} / RY ${reportingYear}`;
+};
+
+export const withReportYearLabel = (reportName: string, fundYear: YearFilter, reportingYear: YearFilter) =>
+    `${reportName} (${formatReportYearLabel(fundYear, reportingYear)})`;
 
 export const deriveExcelHeaderMerges = (
     rows: Array<Array<string | number | null>>,

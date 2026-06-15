@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO } from '../../constants';
-import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 import { collectFinancialLineItems, getActualDisbursementTotalAsOf, getActualObligationTotalInWindow } from '../../lib/financialAggregation';
 import { getBudgetLineAmount, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 
@@ -27,6 +27,7 @@ interface MonthlyReportMatrixProps {
         ipos: IPO[];
     };
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
@@ -47,7 +48,7 @@ const formatCurrencyWhole = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
 };
 
-const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
+const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
     const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
@@ -59,8 +60,8 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
     };
 
-    const targetYearInt = parseInt(selectedYear);
-    const isYearSelected = selectedYear !== 'All';
+    const targetYearInt = parseInt(selectedReportingYear);
+    const isYearSelected = selectedReportingYear !== 'All';
 
     // --- TABLE 1: Physical Accomplishment ---
     const physicalData = useMemo(() => {
@@ -259,7 +260,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
 
         return structure;
-    }, [data, selectedYear, selectedMonth]);
+    }, [data, selectedReportingYear, selectedMonth, targetYearInt, isYearSelected]);
 
 
     // --- TABLE 2: Financial History ---
@@ -395,7 +396,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
 
         return rows.sort((a, b) => a.sortOrder - b.sortOrder);
-    }, [financialData, selectedYear, selectedMonth, targetYearInt]);
+    }, [financialData, selectedReportingYear, selectedMonth, targetYearInt, isYearSelected]);
 
     const financialGrandTotal = useMemo(() => {
         return financialHistoryData.reduce((acc, row) => ({
@@ -409,7 +410,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
 
     const handleDownload = () => {
         const physRows: Array<Array<string | number | null>> = [
-            [`Monthly Report - Physical Accomplishment (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
+            [`Monthly Report - Physical Accomplishment (CY ${selectedReportingYear} - ${MONTHS[selectedMonth].label})`],
             [],
             ["Component / Indicator", "Cost", "Unit",
              "For the Month", "", "", "",
@@ -447,7 +448,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         });
 
         const finRows: Array<Array<string | number | null>> = [
-            [`Monthly Report - Financial Accomplishment (Absolute Value) (CY ${selectedYear} - ${MONTHS[selectedMonth].label})`],
+            [`Monthly Report - Financial Accomplishment (Absolute Value) (CY ${selectedReportingYear} - ${MONTHS[selectedMonth].label})`],
             [],
             ["Fund Source", "Allocation", "Obligation", "Disbursement", "Obligation Rate", "Disbursement Rate", "Unutilized", "Unpaid"]
         ];
@@ -467,9 +468,9 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
         }
 
         onExportReport({
-            reportName: 'Monthly Report Matrix',
+            reportName: withReportYearLabel('Monthly Report Matrix', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `Monthly_Report_${selectedYear}_${MONTHS[selectedMonth].label}.xlsx`,
+            fileName: `Monthly_Report_FY${selectedYear}_RY${selectedReportingYear}_${MONTHS[selectedMonth].label}.xlsx`,
             sheets: [
                 {
                     sheetName: 'Physical',
@@ -544,7 +545,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             <div className="report-card__header print-hidden">
                 <h3 className="report-card__title">
                     Monthly Report
-                    {selectedYear === 'All' && <span className="monthly-matrix__year-warning">Select a Year</span>}
+                    {selectedReportingYear === 'All' && <span className="monthly-matrix__year-warning">Select a Reporting Year</span>}
                 </h3>
                 <div className="report-card__actions monthly-matrix-toolbar">
                     <div className="monthly-matrix-month-control">
@@ -559,7 +560,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                     </div>
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'Monthly Report Matrix',
+                            reportName: withReportYearLabel('Monthly Report Matrix', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'monthly-matrix-printable',
                         })}
@@ -580,7 +581,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
             {/* Table 1: Physical */}
             <div>
                 <h4 className="monthly-matrix__section-title monthly-matrix__section-title--physical">
-                    Table 1: Physical Accomplishment (CY {selectedYear})
+                    Table 1: Physical Accomplishment (CY {selectedReportingYear})
                 </h4>
                 <div className="report-table-scroll monthly-matrix-scroll">
                     <table className="monthly-matrix-table min-w-full border-collapse">

@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Printer, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
-import { ReportExcelRequest, ReportPrintRequest } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
 import { calculateBAR1ReportData } from './BAR1Calculation';
 
 interface DetailPopup {
@@ -25,6 +25,7 @@ interface BAR1ReportProps {
     };
     uacsCodes: any;
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
@@ -35,7 +36,7 @@ interface BAR1ReportProps {
 
 const BAR1_COLUMN_COUNT = 50;
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedOu, selectedTier, selectedFundType, deadlines, onPrintReport, onExportReport }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, deadlines, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
 
@@ -56,8 +57,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     const dataCellClass = "bar1-report__cell";
 
     const bar1Data = useMemo(() => {
-        return calculateBAR1ReportData(data, selectedYear, selectedOu, { asOfDate: selectedAsOfDate || undefined });
-    }, [data, selectedYear, selectedOu, selectedAsOfDate]);
+        return calculateBAR1ReportData(data, selectedYear, selectedOu, { asOfDate: selectedAsOfDate || undefined, reportingYear: selectedReportingYear });
+    }, [data, selectedYear, selectedReportingYear, selectedOu, selectedAsOfDate]);
 
     const calculateTotals = (items: any[]) => {
         const initial = {
@@ -418,9 +419,9 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         }, {});
 
         onExportReport({
-            reportName: 'Physical Report of Operations (BAR No. 1)',
+            reportName: withReportYearLabel('Physical Report of Operations (BAR No. 1)', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `BAR1_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `BAR1_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'BAR1 Report',
                 rows,
@@ -616,7 +617,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     </button>
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'Physical Report of Operations (BAR No. 1)',
+                            reportName: withReportYearLabel('Physical Report of Operations (BAR No. 1)', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'bar1-report',
                         })}

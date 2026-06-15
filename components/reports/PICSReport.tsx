@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Download, Printer } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
-import { ReportExcelRequest, ReportPrintRequest, countPhysicalTarget, isParentRealignmentOrSavings } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, countPhysicalTarget, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 
 interface PICSReportProps {
     data: {
@@ -13,12 +13,13 @@ interface PICSReportProps {
         ipos: IPO[];
     };
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
 }
 
-const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu, onPrintReport, onExportReport }) => {
+const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
     const toggle = (id: string) => {
@@ -231,9 +232,9 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
         });
 
         onExportReport({
-            reportName: 'PICS Report',
+            reportName: withReportYearLabel('PICS Report', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `PICS_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `PICS_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets: [{
                 sheetName: 'PICS Report',
                 rows: aoa,
@@ -258,7 +259,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedOu,
                 <div className="report-card__actions">
                     <button
                         onClick={() => onPrintReport({
-                            reportName: 'PICS Report',
+                            reportName: withReportYearLabel('PICS Report', selectedYear, selectedReportingYear),
                             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                             tableElementId: 'pics-report-table',
                         })}

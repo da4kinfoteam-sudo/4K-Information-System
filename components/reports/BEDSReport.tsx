@@ -6,10 +6,9 @@ import {
     collectFinancialLineItems,
     FinancialAggregationFilters,
     FinancialLineItem,
-    getFinancialMonthIndex,
 } from '../../lib/financialAggregation';
 import { buildFinancialAudit, FinancialAuditNavigationTarget } from '../../lib/financialAudit';
-import { ReportExcelRequest, ReportPrintRequest, isParentRealignmentOrSavings } from './ReportUtils';
+import { ReportExcelRequest, ReportPrintRequest, getReportingMonthIndex, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
 
 interface BEDSReportProps {
     data: {
@@ -21,6 +20,7 @@ interface BEDSReportProps {
         otherProgramExpenses: OtherProgramExpense[];
     };
     selectedYear: string;
+    selectedReportingYear: string;
     selectedOu: string;
     selectedFundType: string;
     selectedTier: string;
@@ -222,19 +222,19 @@ const getTargetList = <T,>(sections: BedsSectionMap<T>, item: FinancialLineItem)
     return sections[item.component] as T[];
 };
 
-const getSingleTargetDisbursementMonth = (item: FinancialLineItem) =>
-    getFinancialMonthIndex(item.line.disbursementMonth || item.line.disbursementDate);
-
 const getMonthlyTargetDisbursementTotal = (item: FinancialLineItem) =>
     MONTH_KEYS.reduce((sum, month) => sum + (Number(item.line[`disbursement${month}`]) || 0), 0);
 
-const addTargetDisbursementSchedule = (row: MonthlyRow, item: FinancialLineItem) => {
+const addTargetDisbursementSchedule = (row: MonthlyRow, item: FinancialLineItem, reportingYear: string) => {
     const monthlyScheduleTotal = getMonthlyTargetDisbursementTotal(item);
     if (monthlyScheduleTotal > 0) {
-        MONTH_KEYS.forEach((month, index) => addToMonthlyRow(row, index, Number(item.line[`disbursement${month}`]) || 0));
+        const fallbackYear = item.recordYear?.toString();
+        if (reportingYear === 'All' || fallbackYear === reportingYear) {
+            MONTH_KEYS.forEach((month, index) => addToMonthlyRow(row, index, Number(item.line[`disbursement${month}`]) || 0));
+        }
         return;
     }
-    addToMonthlyRow(row, getSingleTargetDisbursementMonth(item), item.alloc);
+    addToMonthlyRow(row, getReportingMonthIndex(item.line.disbursementMonth || item.line.disbursementDate, reportingYear, item.recordYear), item.alloc);
 };
 
 const getGrandTotals = <T extends MonthlyRow>(dataSet: BedsSectionMap<T>) => Object.values(dataSet).flatMap(component => {
@@ -257,6 +257,7 @@ const getBed1Totals = (items: Bed1Row[]): Bed1Row => {
 const BEDSReport: React.FC<BEDSReportProps> = ({
     data,
     selectedYear,
+    selectedReportingYear,
     selectedOu,
     selectedFundType,
     selectedTier,
@@ -284,10 +285,11 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
 
     const financialFilters = useMemo<FinancialAggregationFilters>(() => ({
         year: selectedYear,
+        actualYear: selectedReportingYear,
         operatingUnit: selectedOu,
         tier: selectedTier,
         fundType: selectedFundType,
-    }), [selectedYear, selectedOu, selectedTier, selectedFundType]);
+    }), [selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType]);
 
     const financialLineItems = useMemo(
         () => collectFinancialLineItems(financialInput, financialFilters).filter(item => item.alloc > 0),
@@ -298,21 +300,21 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
         const sections = createSectionMap<Bed1Row>();
         financialLineItems.forEach(item => {
             const row = createBed1Row(item.activityName, rowKey(item), navigationTarget(item));
-            addToBed1Row(row, getFinancialMonthIndex(item.line.obligationMonth || item.line.obligationDate), item.alloc);
+            addToBed1Row(row, getReportingMonthIndex(item.line.obligationMonth || item.line.obligationDate, selectedReportingYear, item.recordYear), item.alloc);
             addOrMergeRow(getTargetList(sections, item), row, mergeBed1Rows);
         });
         return sections;
-    }, [financialLineItems]);
+    }, [financialLineItems, selectedReportingYear]);
 
     const bed3Data = useMemo(() => {
         const sections = createSectionMap<MonthlyRow>();
         financialLineItems.forEach(item => {
             const row = createMonthlyRow(item.activityName, rowKey(item), navigationTarget(item));
-            addTargetDisbursementSchedule(row, item);
+            addTargetDisbursementSchedule(row, item, selectedReportingYear);
             addOrMergeRow(getTargetList(sections, item), row, mergeMonthlyRows);
         });
         return sections;
-    }, [financialLineItems]);
+    }, [financialLineItems, selectedReportingYear]);
 
     const bed2Data = useMemo(() => {
         const sections = createSectionMap<MonthlyRow>();
@@ -330,7 +332,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                 disbursementByMonth: [],
             };
             const row = createMonthlyRow(indicator, key, nav);
-            addToMonthlyRow(row, getFinancialMonthIndex(date), amount);
+            addToMonthlyRow(row, getReportingMonthIndex(date, selectedReportingYear), amount);
             addOrMergeRow(getTargetList(sections, itemLike), row, mergeMonthlyRows);
         };
 
@@ -383,7 +385,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
             ));
 
         return sections;
-    }, [data]);
+    }, [data, selectedReportingYear]);
 
     const beds3Warnings = useMemo(() => {
         const audit = buildFinancialAudit(financialInput, financialFilters, {
@@ -714,9 +716,9 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
         addMonthlySheet(bed2Data, 'BED 2');
         addMonthlySheet(bed3Data, 'BED 3');
         onExportReport({
-            reportName: 'Budget Execution Documents (BEDS)',
+            reportName: withReportYearLabel('Budget Execution Documents (BEDS)', selectedYear, selectedReportingYear),
             ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
-            fileName: `BEDS_Report_${selectedYear}_${selectedOu}.xlsx`,
+            fileName: `BEDS_Report_FY${selectedYear}_RY${selectedReportingYear}_${selectedOu}.xlsx`,
             sheets,
         });
     };
@@ -764,7 +766,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                         <button
                             type="button"
                             onClick={() => onPrintReport({
-                                reportName: 'BEDS 1: Financial Plan (Obligation)',
+                                reportName: withReportYearLabel('BEDS 1: Financial Plan (Obligation)', selectedYear, selectedReportingYear),
                                 ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                                 tableElementId: 'bed1-report-table',
                                 sectionName: 'BED 1: Financial Plan (Obligation)',
@@ -804,7 +806,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                         <button
                             type="button"
                             onClick={() => onPrintReport({
-                                reportName: 'BEDS 2: Physical Plan',
+                                reportName: withReportYearLabel('BEDS 2: Physical Plan', selectedYear, selectedReportingYear),
                                 ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                                 tableElementId: 'bed2-report-table',
                                 sectionName: 'BED 2: Physical Plan',
@@ -830,7 +832,7 @@ const BEDSReport: React.FC<BEDSReportProps> = ({
                         <button
                             type="button"
                             onClick={() => onPrintReport({
-                                reportName: 'BEDS 3: Monthly Disbursement Program',
+                                reportName: withReportYearLabel('BEDS 3: Monthly Disbursement Program', selectedYear, selectedReportingYear),
                                 ouName: selectedOu === 'All' ? 'All OUs' : selectedOu,
                                 tableElementId: 'bed3-report-table',
                                 sectionName: 'BED 3: Monthly Disbursement Program',

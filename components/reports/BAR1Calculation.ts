@@ -1,5 +1,5 @@
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, HistoryEntry } from '../../constants';
-import { countPhysicalActual, countPhysicalTarget, isParentRealignmentOrSavings } from './ReportUtils';
+import { countPhysicalActual, countPhysicalTarget, getReportingMonthIndex, isParentRealignmentOrSavings } from './ReportUtils';
 
 export interface BAR1DataGroup {
     indicator: string;
@@ -21,6 +21,7 @@ export interface BAR1Counter {
 
 interface BAR1CalculationOptions {
     asOfDate?: string;
+    reportingYear?: string;
 }
 
 export const initializeCounter = (): BAR1Counter => ({
@@ -35,15 +36,9 @@ export const initializeCounter = (): BAR1Counter => ({
     m10_items: [], m11_items: [], m12_items: []
 });
 
-const getMonthIndex = (dateStr?: string): number => {
-    if (!dateStr) return -1;
-    const d = new Date(dateStr + 'T00:00:00Z');
-    return d.getUTCMonth(); // 0-11
-};
-
-const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number = 1, itemName?: string) => {
-    const monthIdx = getMonthIndex(dateStr);
-    if (monthIdx !== -1) {
+const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number = 1, itemName?: string, reportingYear: string = 'All') => {
+    const monthIdx = getReportingMonthIndex(dateStr, reportingYear);
+    if (monthIdx !== undefined) {
         const monthKey = `m${monthIdx + 1}` as keyof BAR1Counter;
         (counter[monthKey] as number) += count;
         
@@ -64,7 +59,7 @@ const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number 
     }
 };
 
-const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string }[]) => {
+const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string }[], reportingYear: string) => {
     const counter = initializeCounter();
     const validEntries = entries
         .filter(e => e.date)
@@ -76,17 +71,17 @@ const calculateFirstEncounter = (entries: { id: string; date?: string; label?: s
     validEntries.forEach(entry => {
         if (!seen.has(entry.id)) {
             seen.add(entry.id);
-            incrementCounter(counter, entry.date, 1, entry.label || entry.id);
+            incrementCounter(counter, entry.date, 1, entry.label || entry.id, reportingYear);
         }
     });
     return counter;
 };
 
-const calculateSumOverTime = (entries: { val: number; date?: string; label?: string }[]) => {
+const calculateSumOverTime = (entries: { val: number; date?: string; label?: string }[], reportingYear: string) => {
     const counter = initializeCounter();
     entries.forEach(e => {
         if (e.date) {
-            incrementCounter(counter, e.date, e.val, e.label);
+            incrementCounter(counter, e.date, e.val, e.label, reportingYear);
         }
     });
     return counter;
@@ -101,6 +96,7 @@ export const calculateBAR1ReportData = (data: {
     otherProgramExpenses: OtherProgramExpense[];
     ipos: IPO[];
 }, selectedYear: string, selectedOu: string, options: BAR1CalculationOptions = {}) => {
+    const reportingYear = options.reportingYear || selectedYear;
     const asOfCutoff = options.asOfDate ? new Date(`${options.asOfDate}T23:59:59.999`) : null;
     const getAccomplishmentHistoryDate = (history?: HistoryEntry[]) => {
         if (!Array.isArray(history)) return undefined;
@@ -186,13 +182,13 @@ export const calculateBAR1ReportData = (data: {
         items: [
             {
                 indicator: "Number of Ancestral Domains covered",
-                target: calculateFirstEncounter(allTargetADs),
-                actual: calculateFirstEncounter(allActualADs)
+                target: calculateFirstEncounter(allTargetADs, reportingYear),
+                actual: calculateFirstEncounter(allActualADs, reportingYear)
             },
             {
                 indicator: "Number of IPOs with subprojects",
-                target: calculateFirstEncounter(allTargetIPOs),
-                actual: calculateFirstEncounter(allActualIPOs)
+                target: calculateFirstEncounter(allTargetIPOs, reportingYear),
+                actual: calculateFirstEncounter(allActualIPOs, reportingYear)
             }
         ]
     };
@@ -223,8 +219,8 @@ export const calculateBAR1ReportData = (data: {
 
         pkgItems.push({
             indicator: "Number of Ancestral Domains covered",
-            target: calculateFirstEncounter(targetADs),
-            actual: calculateFirstEncounter(actualADs)
+            target: calculateFirstEncounter(targetADs, reportingYear),
+            actual: calculateFirstEncounter(actualADs, reportingYear)
         });
 
         const targetIPOs = subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
@@ -240,8 +236,8 @@ export const calculateBAR1ReportData = (data: {
 
         pkgItems.push({
             indicator: "Number of IPOs",
-            target: calculateFirstEncounter(targetIPOs),
-            actual: calculateFirstEncounter(actualIPOs)
+            target: calculateFirstEncounter(targetIPOs, reportingYear),
+            actual: calculateFirstEncounter(actualIPOs, reportingYear)
         });
 
         const targetSPs = subprojects
@@ -250,8 +246,8 @@ export const calculateBAR1ReportData = (data: {
         const actualSPs = subprojects.map(sp => ({ val: countPhysicalActual(sp, 1), date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name }));
         pkgItems.push({
             indicator: "Number of Subprojects",
-            target: calculateSumOverTime(targetSPs),
-            actual: calculateSumOverTime(actualSPs)
+            target: calculateSumOverTime(targetSPs, reportingYear),
+            actual: calculateSumOverTime(actualSPs, reportingYear)
         });
     });
 
@@ -295,18 +291,18 @@ export const calculateBAR1ReportData = (data: {
             items: [
                 {
                     indicator: "Number of Trainings conducted",
-                    target: calculateSumOverTime(targetTrainings),
-                    actual: calculateSumOverTime(actualTrainings)
+                    target: calculateSumOverTime(targetTrainings, reportingYear),
+                    actual: calculateSumOverTime(actualTrainings, reportingYear)
                 },
                 {
                     indicator: "Number of IPOs trained",
-                    target: calculateFirstEncounter(targetIPOs),
-                    actual: calculateFirstEncounter(actualIPOs)
+                    target: calculateFirstEncounter(targetIPOs, reportingYear),
+                    actual: calculateFirstEncounter(actualIPOs, reportingYear)
                 },
                 {
                     indicator: "Number of Participants",
-                    target: calculateSumOverTime(targetPax),
-                    actual: calculateSumOverTime(actualPax)
+                    target: calculateSumOverTime(targetPax, reportingYear),
+                    actual: calculateSumOverTime(actualPax, reportingYear)
                 }
             ]
         };
@@ -355,8 +351,8 @@ export const calculateBAR1ReportData = (data: {
             if (componentName === 'Program Management') {
                 activityGroup = {
                     indicator: name,
-                    target: calculateSumOverTime(targetConducted),
-                    actual: calculateSumOverTime(actualConducted)
+                        target: calculateSumOverTime(targetConducted, reportingYear),
+                        actual: calculateSumOverTime(actualConducted, reportingYear)
                 };
             } else {
                 activityGroup = {
@@ -365,13 +361,13 @@ export const calculateBAR1ReportData = (data: {
                     items: [
                         {
                             indicator: `Number of ${name} conducted`,
-                            target: calculateSumOverTime(targetConducted),
-                            actual: calculateSumOverTime(actualConducted)
+                            target: calculateSumOverTime(targetConducted, reportingYear),
+                            actual: calculateSumOverTime(actualConducted, reportingYear)
                         },
                         {
                             indicator: `Number of IPOs assisted in ${name}`,
-                            target: calculateFirstEncounter(targetIPOs),
-                            actual: calculateFirstEncounter(actualIPOs)
+                            target: calculateFirstEncounter(targetIPOs, reportingYear),
+                            actual: calculateFirstEncounter(actualIPOs, reportingYear)
                         }
                     ]
                 };
@@ -401,8 +397,8 @@ export const calculateBAR1ReportData = (data: {
             target: initializeCounter(),
             actual: initializeCounter()
         };
-        incrementCounter(item.target, targetDate, targetCount, itemName);
-        incrementCounter(item.actual, actualDate, actualCount, itemName);
+        incrementCounter(item.target, targetDate, targetCount, itemName, reportingYear);
+        incrementCounter(item.actual, actualDate, actualCount, itemName, reportingYear);
         return item;
     };
 

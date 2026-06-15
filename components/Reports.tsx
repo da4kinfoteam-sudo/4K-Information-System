@@ -72,6 +72,7 @@ const Reports: React.FC<ReportsProps> = ({
     const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
     // Default to current year
     const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+    const [selectedReportingYear, setSelectedReportingYear] = useState<string>(new Date().getFullYear().toString());
     const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
     const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
     const [selectedFundType, setSelectedFundType] = useState<string>('Current');
@@ -127,6 +128,10 @@ const Reports: React.FC<ReportsProps> = ({
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser, isLockedToOwnOu]);
+
+    useEffect(() => {
+        setSelectedReportingYear(selectedYear);
+    }, [selectedYear]);
     // Enforce User OU restriction on mount/change
     useEffect(() => {
         if (currentUser && currentUser.role === 'User') {
@@ -368,14 +373,15 @@ const Reports: React.FC<ReportsProps> = ({
     const renderTabContent = () => {
         switch (activeTab) {
             case 'WFP':
-                return <WFPReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <WFPReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BP Forms':
-                return <BPFormsReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <BPFormsReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BEDS':
                 return (
                     <BEDSReport
                         data={filteredData}
                         selectedYear={selectedYear}
+                        selectedReportingYear={selectedReportingYear}
                         selectedOu={selectedOu}
                         selectedFundType={selectedFundType}
                         selectedTier={selectedTier}
@@ -389,16 +395,16 @@ const Reports: React.FC<ReportsProps> = ({
                     />
                 );
             case 'PICS':
-                return <PICSReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <PICSReport data={filteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'BAR1':
-                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Budget Utilization Report':
-                return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Monthly Matrix':
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
-                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Detailed Accomplishment Data':
-                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Financial Audit':
                 if (!isSuperAdmin) return null;
                 return (
@@ -429,7 +435,7 @@ const Reports: React.FC<ReportsProps> = ({
                 <h2 className="data-list-title">Reports</h2>
                 <div className="page-filter-toggle">
                     <span className="page-filter-summary">
-                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, selectedYear].join(' / ')}
+                        {[selectedOu === 'All' ? 'All OUs' : selectedOu, selectedTier, selectedFundType, `FY ${selectedYear}`, `RY ${selectedReportingYear}`].join(' / ')}
                     </span>
                     <button
                         type="button"
@@ -491,7 +497,7 @@ const Reports: React.FC<ReportsProps> = ({
                         </select>
                     </div>
                     <div className="report-filter">
-                        <label htmlFor="year-filter" className="form-label">Year</label>
+                        <label htmlFor="year-filter" className="form-label">Fund Year</label>
                         <select 
                             id="year-filter"
                             value={selectedYear}
@@ -499,6 +505,18 @@ const Reports: React.FC<ReportsProps> = ({
                             className="form-control"
                         >
                             <option value="All">All Years</option>
+                            {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}
+                        </select>
+                    </div>
+                    <div className="report-filter">
+                        <label htmlFor="reporting-year-filter" className="form-label">Reporting Year</label>
+                        <select
+                            id="reporting-year-filter"
+                            value={selectedReportingYear}
+                            onChange={(e) => setSelectedReportingYear(e.target.value)}
+                            className="form-control"
+                        >
+                            <option value="All">All Reporting Years</option>
                             {availableYears.map(year => ( <option key={year} value={year}>{year}</option> ))}
                         </select>
                     </div>
