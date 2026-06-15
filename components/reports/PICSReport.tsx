@@ -328,13 +328,13 @@ const PICSReport: React.FC<PICSReportProps> = ({
     const handleDownloadPicsXlsx = () => {
         const aoa: (string | number | null)[][] = [
             [
-                "Location / Performance Indicator", "Unit of Measure",
+                "OU/Location", "Province", "Performance Indicator", "Unit of Measure",
                 "TOTAL", null, null, null, null, null,
                 "TIER 1", null, null, null, null, null,
                 "TIER 2", null, null, null, null, null
             ],
             [
-                null, null,
+                null, null, null, null,
                 "Target", "Group (IPOs)", "Male", "Female", "Unidentified", "Participants",
                 "Target", "Group", "Male", "Female", "Unidentified", "Participants",
                 "Target", "Group", "Male", "Female", "Unidentified", "Participants"
@@ -343,7 +343,9 @@ const PICSReport: React.FC<PICSReportProps> = ({
 
         picsData.forEach(row => {
             aoa.push([
-                `${row.region} / ${row.province} / ${row.indicator}`,
+                row.region,
+                row.province,
+                row.indicator,
                 "number",
                 row.totalTarget, 
                 row.ipoNames.size, 
@@ -377,12 +379,14 @@ const PICSReport: React.FC<PICSReportProps> = ({
                 merges: [
                     { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
                     { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-                    { s: { r: 0, c: 2 }, e: { r: 0, c: 7 } },
-                    { s: { r: 0, c: 8 }, e: { r: 0, c: 13 } },
-                    { s: { r: 0, c: 14 }, e: { r: 0, c: 19 } },
+                    { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
+                    { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+                    { s: { r: 0, c: 4 }, e: { r: 0, c: 9 } },
+                    { s: { r: 0, c: 10 }, e: { r: 0, c: 15 } },
+                    { s: { r: 0, c: 16 }, e: { r: 0, c: 21 } },
                 ],
-                columnWidths: [42, 14, ...Array(18).fill(14)],
-                columnFormats: Object.fromEntries(Array.from({ length: 18 }, (_, index) => [index + 2, 'physical'])),
+                columnWidths: [20, 22, 42, 14, ...Array(18).fill(14)],
+                columnFormats: Object.fromEntries(Array.from({ length: 18 }, (_, index) => [index + 4, 'physical'])),
             }],
         });
     };

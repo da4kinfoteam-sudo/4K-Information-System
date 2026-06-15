@@ -284,6 +284,35 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
     });
 
     const handleDownloadBar1Xlsx = () => {
+        const createEmptyCounter = () => ({
+            m1: 0, m2: 0, m3: 0, q1: 0,
+            m4: 0, m5: 0, m6: 0, q2: 0,
+            m7: 0, m8: 0, m9: 0, q3: 0,
+            m10: 0, m11: 0, m12: 0, q4: 0,
+            total: 0,
+            m1_items: [] as string[], m2_items: [] as string[], m3_items: [] as string[],
+            m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
+            m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
+            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[],
+        });
+
+        const safeCounter = (source: any) => ({ ...createEmptyCounter(), ...(source || {}) });
+
+        const isCounterLike = (source: any) => {
+            return Boolean(source && typeof source === 'object' && (
+                'q1' in source ||
+                'q2' in source ||
+                'q3' in source ||
+                'q4' in source ||
+                'total' in source ||
+                'm1' in source
+            ));
+        };
+
+        const isMetricRow = (item: any) => {
+            return Boolean(item?.indicator && (isCounterLike(item.target) || isCounterLike(item.actual)));
+        };
+
         const normalizeExcelRow = (row: (string | number | null)[]) => {
             const normalized = row.slice(0, BAR1_COLUMN_COUNT);
             while (normalized.length < BAR1_COLUMN_COUNT) normalized.push(null);
@@ -348,14 +377,31 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         const processItems = (items: any[], prefix = "") => {
             items.forEach(item => {
+                if (!item) return;
+
+                if (item.isExpandable && Array.isArray(item.items)) {
+                    aoa.push(normalizeExcelRow([prefix + (item.indicator || 'Group'), ...Array(BAR1_COLUMN_COUNT - 1).fill(null)]));
+                    if (item.items.length > 0) {
+                        processItems(item.items, prefix + "    ");
+                    }
+                    return;
+                }
+
+                if (!isMetricRow(item)) {
+                    if (item.indicator) {
+                        aoa.push(normalizeExcelRow([prefix + item.indicator, ...Array(BAR1_COLUMN_COUNT - 1).fill(null)]));
+                    }
+                    return;
+                }
+
                 const getVals = (source: any) => {
                     const semestralTotal = (source.q1 || 0) + (source.q2 || 0);
                     const asOfSept = semestralTotal + (source.q3 || 0);
                     const yearEndNov = (source.total || 0) - (source.m12 || 0);
                     return { ...source, semestralTotal, asOfSept, yearEndNov };
                }
-               const t = getVals(item.target);
-               const a = getVals(item.actual);
+               const t = getVals(safeCounter(item.target));
+               const a = getVals(safeCounter(item.actual));
 
                 const getPct = (act: number, tgt: number) => {
                     if (!tgt) return null;
@@ -383,9 +429,6 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                     a.total, getPct(a.total, t.total)
                 ]));
 
-                if (item.isExpandable && item.items && item.items.length > 0) {
-                     processItems(item.items, prefix + "    ");
-                }
             });
         };
 
