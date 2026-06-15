@@ -116,6 +116,7 @@ const AppContent: React.FC = () => {
         year?: string; 
         search?: string;
         status?: string;
+        ancestralDomainNo?: string;
     } | null>(null);
 
     // Callback to clear external filters after they are consumed by a component
@@ -660,6 +661,11 @@ const AppContent: React.FC = () => {
         navigateTo('/ipo-detail');
     };
 
+    const handleOpenIpoListForAncestralDomain = (adNo: string) => {
+        setExternalFilters({ ancestralDomainNo: adNo });
+        navigateTo('/ipo');
+    };
+
     const handleSelectActivity = (activity: Activity) => {
         setSelectedActivity(activity);
         navigateTo('/activity-detail');
@@ -716,7 +722,7 @@ const AppContent: React.FC = () => {
     };
     
     // Handler for Chatbot-driven filters
-    const handleApplyFilter = (filters: { region?: string; year?: string; search?: string; status?: string }) => {
+    const handleApplyFilter = (filters: { region?: string; year?: string; search?: string; status?: string; ancestralDomainNo?: string }) => {
         setExternalFilters(filters);
     };
 
@@ -981,6 +987,7 @@ const AppContent: React.FC = () => {
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
+                            onOpenIpoListForAncestralDomain={handleOpenIpoListForAncestralDomain}
                             onDataScopeChange={ensureDataScope}
                         />;
             case '/accomplishment/physical':

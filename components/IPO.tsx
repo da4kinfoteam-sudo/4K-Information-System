@@ -24,7 +24,7 @@ interface IPOsProps {
     onSelectSubproject: (subproject: Subproject) => void;
     particularTypes: { [key: string]: string[] };
     commodityCategories: { [key: string]: string[] };
-    externalFilters?: { region?: string; year?: string; search?: string } | null;
+    externalFilters?: { region?: string; year?: string; search?: string; ancestralDomainNo?: string } | null;
     onClearExternalFilters?: () => void;
     gidaAreas: GidaArea[];
     elcacAreas: ElcacArea[];
@@ -154,6 +154,9 @@ const IPOs: React.FC<IPOsProps> = ({ ipos, setIpos, subprojects, activities, onS
             }
             if (externalFilters.search) {
                 setSearchTerm(externalFilters.search);
+            }
+            if (externalFilters.ancestralDomainNo) {
+                setSearchTerm(externalFilters.ancestralDomainNo);
             }
             
             // Clear the external filters so they don't re-apply on remount

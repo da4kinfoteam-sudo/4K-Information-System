@@ -1,6 +1,6 @@
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
-import { Download, Printer } from 'lucide-react';
+import { Download, Printer, Search, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, IPO, ouToRegionMap } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { ReportExcelRequest, ReportPrintRequest, countPhysicalTarget, isParentRealignmentOrSavings, withReportYearLabel } from './ReportUtils';
@@ -17,35 +17,144 @@ interface PICSReportProps {
     selectedOu: string;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
+    onSelectSubproject: (subproject: Subproject) => void;
+    onSelectActivity: (activity: Training | OtherActivity) => void;
+    onOpenIpoListForAncestralDomain: (adNo: string) => void;
 }
 
-const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
+type PicsTierScope = 'total' | 'tier1' | 'tier2';
+type PicsDetailType = 'subprojects' | 'activities' | 'ads';
+
+interface PicsAdDetail {
+    adNo: string;
+    region: string;
+    province: string;
+    ipoNames: string[];
+    tier1IpoNames: string[];
+    tier2IpoNames: string[];
+}
+
+interface PicsRow {
+    region: string;
+    province: string;
+    indicator: string;
+    detailType: PicsDetailType;
+    totalTarget: number;
+    ipoNames: Set<string>;
+    maleTarget: number;
+    femaleTarget: number;
+    unidentifiedTarget: number;
+    totalParticipants: number;
+    tier1TotalTarget: number;
+    tier1IpoNames: Set<string>;
+    tier1MaleTarget: number;
+    tier1FemaleTarget: number;
+    tier1UnidentifiedTarget: number;
+    tier1TotalParticipants: number;
+    tier2TotalTarget: number;
+    tier2IpoNames: Set<string>;
+    tier2MaleTarget: number;
+    tier2FemaleTarget: number;
+    tier2UnidentifiedTarget: number;
+    tier2TotalParticipants: number;
+    subprojects: Subproject[];
+    activities: (Training | OtherActivity)[];
+    ads: PicsAdDetail[];
+}
+
+interface MutableAdTracker {
+    all: Set<string>;
+    t1: Set<string>;
+    t2: Set<string>;
+    details: Map<string, {
+        adNo: string;
+        region: string;
+        province: string;
+        ipoNames: Set<string>;
+        tier1IpoNames: Set<string>;
+        tier2IpoNames: Set<string>;
+    }>;
+}
+
+const createPicsRow = (region: string, province: string, indicator: string, detailType: PicsDetailType): PicsRow => ({
+    region,
+    province,
+    indicator,
+    detailType,
+    totalTarget: 0,
+    ipoNames: new Set<string>(),
+    maleTarget: 0,
+    femaleTarget: 0,
+    unidentifiedTarget: 0,
+    totalParticipants: 0,
+    tier1TotalTarget: 0,
+    tier1IpoNames: new Set<string>(),
+    tier1MaleTarget: 0,
+    tier1FemaleTarget: 0,
+    tier1UnidentifiedTarget: 0,
+    tier1TotalParticipants: 0,
+    tier2TotalTarget: 0,
+    tier2IpoNames: new Set<string>(),
+    tier2MaleTarget: 0,
+    tier2FemaleTarget: 0,
+    tier2UnidentifiedTarget: 0,
+    tier2TotalParticipants: 0,
+    subprojects: [],
+    activities: [],
+    ads: [],
+});
+
+const getScopeLabel = (scope: PicsTierScope) => scope === 'tier1' ? 'Tier 1' : scope === 'tier2' ? 'Tier 2' : 'Total';
+
+const getRecordBadge = (record: { status?: string; isRealignment?: boolean; isSavings?: boolean }) => {
+    if (record.status === 'Cancelled') return 'Cancelled';
+    if (record.isRealignment) return 'Realignment';
+    if (record.isSavings) return 'Savings';
+    return '';
+};
+
+const PICSReport: React.FC<PICSReportProps> = ({
+    data,
+    selectedYear,
+    selectedReportingYear,
+    selectedOu,
+    onPrintReport,
+    onExportReport,
+    onSelectSubproject,
+    onSelectActivity,
+    onOpenIpoListForAncestralDomain
+}) => {
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    const [drilldown, setDrilldown] = useState<{ row: PicsRow; scope: PicsTierScope } | null>(null);
+    const [drilldownSearch, setDrilldownSearch] = useState('');
 
     const toggle = (id: string) => {
         setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
     const picsData = useMemo(() => {
-        const aggregator = new Map<string, any>();
+        const aggregator = new Map<string, PicsRow>();
         const getKey = (r:string, p:string, i:string) => `${r}|${p}|${i}`;
-        const ipoMap = new Map(); 
+        const getOrCreateRow = (region: string, province: string, indicator: string, detailType: PicsDetailType) => {
+            const key = getKey(region, province, indicator);
+            if (!aggregator.has(key)) aggregator.set(key, createPicsRow(region, province, indicator, detailType));
+            return aggregator.get(key)!;
+        };
+        const ipoMap = new Map<string, IPO>();
         data.ipos.forEach(ipo => ipoMap.set(ipo.name, ipo));
-        const adTracker = new Map();
+        const adTracker = new Map<string, MutableAdTracker>();
         
         data.subprojects.forEach(sp => {
             const region = ouToRegionMap[sp.operatingUnit] || 'Unmapped Region'; 
             if (region === 'National Capital Region (NCR)') return;
             const { province } = parseLocation(sp.location); 
             const indicator = `${sp.packageType} Subprojects provided`; 
-            const key = getKey(region, province || 'Unspecified', indicator);
-            
-            if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 });
-            
-            const entry = aggregator.get(key); 
+            const provinceName = province || 'Unspecified';
+            const entry = getOrCreateRow(region, provinceName, indicator, 'subprojects');
             const targetCount = countPhysicalTarget(sp, 1);
             entry.totalTarget += targetCount;
             if (targetCount > 0) {
+                entry.subprojects.push(sp);
                 entry.ipoNames.add(sp.indigenousPeopleOrganization);
                 if (sp.tier === 'Tier 1') { entry.tier1TotalTarget += 1; entry.tier1IpoNames.add(sp.indigenousPeopleOrganization); } 
                 else if (sp.tier === 'Tier 2') { entry.tier2TotalTarget += 1; entry.tier2IpoNames.add(sp.indigenousPeopleOrganization); }
@@ -53,24 +162,52 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
             
             const ipo = ipoMap.get(sp.indigenousPeopleOrganization);
             if (targetCount > 0 && ipo && ipo.ancestralDomainNo) { 
-                const locKey = `${region}|${province || 'Unspecified'}`; 
-                if (!adTracker.has(locKey)) adTracker.set(locKey, { all: new Set(), t1: new Set(), t2: new Set() }); 
+                const locKey = `${region}|${provinceName}`;
+                if (!adTracker.has(locKey)) adTracker.set(locKey, { all: new Set(), t1: new Set(), t2: new Set(), details: new Map() });
                 const tracker = adTracker.get(locKey); 
-                tracker.all.add(ipo.ancestralDomainNo); 
-                if (sp.tier === 'Tier 1') tracker.t1.add(ipo.ancestralDomainNo); 
-                if (sp.tier === 'Tier 2') tracker.t2.add(ipo.ancestralDomainNo); 
+                if (!tracker) return;
+                const adNo = ipo.ancestralDomainNo;
+                tracker.all.add(adNo);
+                if (!tracker.details.has(adNo)) {
+                    tracker.details.set(adNo, {
+                        adNo,
+                        region,
+                        province: provinceName,
+                        ipoNames: new Set<string>(),
+                        tier1IpoNames: new Set<string>(),
+                        tier2IpoNames: new Set<string>(),
+                    });
+                }
+                const adDetail = tracker.details.get(adNo)!;
+                adDetail.ipoNames.add(ipo.name);
+                if (sp.tier === 'Tier 1') {
+                    tracker.t1.add(adNo);
+                    adDetail.tier1IpoNames.add(ipo.name);
+                }
+                if (sp.tier === 'Tier 2') {
+                    tracker.t2.add(adNo);
+                    adDetail.tier2IpoNames.add(ipo.name);
+                }
             }
         });
 
         adTracker.forEach((tracker, locKey) => { 
             const [region, province] = locKey.split('|'); 
             const indicator = "Ancestral Domains covered"; 
-            const key = getKey(region, province, indicator); 
-            if (!aggregator.has(key)) aggregator.set(key, { region, province, indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
-            const entry = aggregator.get(key); 
+            const entry = getOrCreateRow(region, province, indicator, 'ads');
             entry.totalTarget = tracker.all.size; 
             entry.tier1TotalTarget = tracker.t1.size; 
-            entry.tier2TotalTarget = tracker.t2.size; 
+            entry.tier2TotalTarget = tracker.t2.size;
+            entry.ads = Array.from(tracker.details.values())
+                .map(detail => ({
+                    adNo: detail.adNo,
+                    region: detail.region,
+                    province: detail.province,
+                    ipoNames: Array.from(detail.ipoNames).sort(),
+                    tier1IpoNames: Array.from(detail.tier1IpoNames).sort(),
+                    tier2IpoNames: Array.from(detail.tier2IpoNames).sort(),
+                }))
+                .sort((a, b) => a.adNo.localeCompare(b.adNo));
         });
 
         data.trainings.forEach(activity => { 
@@ -79,10 +216,9 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
             if (region === 'National Capital Region (NCR)') return; 
             const { province } = parseLocation(activity.location); 
             const indicator = `${activity.component} Trainings conducted`; 
-            const key = getKey(region, province || 'Unspecified', indicator); 
-            if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
-            const entry = aggregator.get(key); 
+            const entry = getOrCreateRow(region, province || 'Unspecified', indicator, 'activities');
             if (!isParentRealignmentOrSavings(activity)) {
+                entry.activities.push(activity);
                 entry.totalTarget += 1; 
                 activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
                 if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
@@ -101,10 +237,9 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
             if (region === 'National Capital Region (NCR)') return; 
             const { province } = parseLocation(activity.location); 
             const indicator = `${activity.name} conducted`; 
-            const key = getKey(region, province || 'Unspecified', indicator); 
-            if (!aggregator.has(key)) aggregator.set(key, { region, province: province || 'Unspecified', indicator, totalTarget: 0, ipoNames: new Set(), maleTarget: 0, femaleTarget: 0, unidentifiedTarget: 0, totalParticipants: 0, tier1TotalTarget: 0, tier1IpoNames: new Set(), tier1MaleTarget: 0, tier1FemaleTarget: 0, tier1UnidentifiedTarget: 0, tier1TotalParticipants: 0, tier2TotalTarget: 0, tier2IpoNames: new Set(), tier2MaleTarget: 0, tier2FemaleTarget: 0, tier2UnidentifiedTarget: 0, tier2TotalParticipants: 0 }); 
-            const entry = aggregator.get(key); 
+            const entry = getOrCreateRow(region, province || 'Unspecified', indicator, 'activities');
             if (!isParentRealignmentOrSavings(activity)) {
+                entry.activities.push(activity);
                 entry.totalTarget += 1; 
                 activity.participatingIpos.forEach((ipo:any) => entry.ipoNames.add(ipo)); 
                 if (activity.tier === 'Tier 1') { entry.tier1TotalTarget += 1; activity.participatingIpos.forEach((ipo:any) => entry.tier1IpoNames.add(ipo)); } 
@@ -118,7 +253,7 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
         });
 
         return Array.from(aggregator.values()).sort((a:any, b:any) => { if (a.region !== b.region) return a.region.localeCompare(b.region); if (a.province !== b.province) return a.province.localeCompare(b.province); return a.indicator.localeCompare(b.indicator); });
-    }, [data, data.ipos]);
+    }, [data]);
 
     const calculateSummary = (items: any[]) => {
         const summary = {
@@ -252,6 +387,99 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
         });
     };
 
+    const openDrilldown = (row: PicsRow, scope: PicsTierScope) => {
+        setDrilldown({ row, scope });
+        setDrilldownSearch('');
+    };
+
+    const getTargetForScope = (row: PicsRow, scope: PicsTierScope) => {
+        if (scope === 'tier1') return row.tier1TotalTarget;
+        if (scope === 'tier2') return row.tier2TotalTarget;
+        return row.totalTarget;
+    };
+
+    const getScopedSubprojects = (row: PicsRow, scope: PicsTierScope) => {
+        return row.subprojects.filter(sp => scope === 'total' || sp.tier === getScopeLabel(scope));
+    };
+
+    const getScopedActivities = (row: PicsRow, scope: PicsTierScope) => {
+        return row.activities.filter(activity => scope === 'total' || activity.tier === getScopeLabel(scope));
+    };
+
+    const getScopedAds = (row: PicsRow, scope: PicsTierScope) => {
+        return row.ads
+            .map(ad => ({
+                ...ad,
+                scopedIpoNames: scope === 'tier1' ? ad.tier1IpoNames : scope === 'tier2' ? ad.tier2IpoNames : ad.ipoNames,
+            }))
+            .filter(ad => ad.scopedIpoNames.length > 0);
+    };
+
+    const renderTargetButton = (row: PicsRow, scope: PicsTierScope) => {
+        const value = getTargetForScope(row, scope);
+        if (!value) return value;
+        return (
+            <button
+                type="button"
+                className="pics-report__target-button"
+                onClick={() => openDrilldown(row, scope)}
+                title={`View ${getScopeLabel(scope)} target records`}
+                aria-label={`View ${getScopeLabel(scope)} target records for ${row.indicator} in ${row.province}`}
+            >
+                {value}
+            </button>
+        );
+    };
+
+    const drilldownContent = useMemo(() => {
+        if (!drilldown) return null;
+        const term = drilldownSearch.trim().toLowerCase();
+        const row = drilldown.row;
+        if (row.detailType === 'subprojects') {
+            const records = getScopedSubprojects(row, drilldown.scope)
+                .filter(sp => {
+                    if (!term) return true;
+                    return [
+                        sp.name,
+                        sp.packageType,
+                        sp.indigenousPeopleOrganization,
+                        sp.remarks,
+                        sp.estimatedCompletionDate,
+                        sp.actualCompletionDate,
+                    ].filter(Boolean).join(' ').toLowerCase().includes(term);
+                });
+            return { type: 'subprojects' as const, records };
+        }
+        if (row.detailType === 'activities') {
+            const records = getScopedActivities(row, drilldown.scope)
+                .filter(activity => {
+                    if (!term) return true;
+                    return [
+                        activity.name,
+                        activity.component,
+                        activity.type,
+                        activity.description,
+                        ...(activity.participatingIpos || []),
+                    ].filter(Boolean).join(' ').toLowerCase().includes(term);
+                });
+            return { type: 'activities' as const, records };
+        }
+        const records = getScopedAds(row, drilldown.scope)
+            .filter(ad => {
+                if (!term) return true;
+                return [ad.adNo, ad.region, ad.province, ...ad.scopedIpoNames].join(' ').toLowerCase().includes(term);
+            });
+        return { type: 'ads' as const, records };
+    }, [drilldown, drilldownSearch]);
+
+    const drilldownCount = drilldown
+        ? (drilldown.row.detailType === 'subprojects'
+            ? getScopedSubprojects(drilldown.row, drilldown.scope).length
+            : drilldown.row.detailType === 'activities'
+                ? getScopedActivities(drilldown.row, drilldown.scope).length
+                : getScopedAds(drilldown.row, drilldown.scope).length)
+        : 0;
+
     return (
         <div className="report-card pics-report-card">
             <div className="report-card__header print-hidden">
@@ -382,19 +610,19 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
                                                     <tr key={`${provinceKey}-${idx}`} className="pics-report__row">
                                                         <td className={`${dataCellClass} text-left pl-10`}>{item.indicator}</td>
                                                         <td className={`${dataCellClass} text-center`}>number</td>
-                                                        <td className={`${dataCellClass} text-center`}>{item.totalTarget}</td>
+                                                        <td className={`${dataCellClass} text-center`}>{renderTargetButton(item, 'total')}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.ipoNames.size}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.maleTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.femaleTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.unidentifiedTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.totalParticipants}</td>
-                                                        <td className={`${dataCellClass} text-center`}>{item.tier1TotalTarget}</td>
+                                                        <td className={`${dataCellClass} text-center`}>{renderTargetButton(item, 'tier1')}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier1IpoNames.size}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier1MaleTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier1FemaleTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier1UnidentifiedTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier1TotalParticipants}</td>
-                                                        <td className={`${dataCellClass} text-center`}>{item.tier2TotalTarget}</td>
+                                                        <td className={`${dataCellClass} text-center`}>{renderTargetButton(item, 'tier2')}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier2IpoNames.size}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier2MaleTarget}</td>
                                                         <td className={`${dataCellClass} text-center`}>{item.tier2FemaleTarget}</td>
@@ -435,6 +663,132 @@ const PICSReport: React.FC<PICSReportProps> = ({ data, selectedYear, selectedRep
                     </tfoot>
                 </table>
             </div>
+            {drilldown && drilldownContent && (
+                <div className="pics-drilldown-overlay print-hidden" role="presentation" onMouseDown={() => setDrilldown(null)}>
+                    <section
+                        className="pics-drilldown-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="pics-drilldown-title"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <div className="pics-drilldown-modal__header">
+                            <div>
+                                <h4 id="pics-drilldown-title">
+                                    {drilldown.row.indicator} - {drilldown.row.province} ({getScopeLabel(drilldown.scope)})
+                                </h4>
+                                <p>
+                                    {drilldownCount} target {drilldown.row.detailType === 'ads' ? 'record' : 'record'}{drilldownCount === 1 ? '' : 's'}
+                                    {drilldown.row.detailType !== 'subprojects' && drilldown.row.detailType !== 'activities'
+                                        ? ''
+                                        : ` · ${drilldown.scope === 'tier1'
+                                            ? drilldown.row.tier1IpoNames.size
+                                            : drilldown.scope === 'tier2'
+                                                ? drilldown.row.tier2IpoNames.size
+                                                : drilldown.row.ipoNames.size} IPOs`}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="pics-drilldown-modal__close"
+                                onClick={() => setDrilldown(null)}
+                                aria-label="Close PICS target records"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {drilldownCount > 8 && (
+                            <label className="pics-drilldown-search">
+                                <Search size={16} />
+                                <input
+                                    type="search"
+                                    value={drilldownSearch}
+                                    onChange={(event) => setDrilldownSearch(event.target.value)}
+                                    placeholder="Search target records..."
+                                />
+                            </label>
+                        )}
+
+                        <div className="pics-drilldown-list">
+                            {drilldownContent.type === 'subprojects' && drilldownContent.records.map(sp => {
+                                const badge = getRecordBadge(sp);
+                                return (
+                                    <button
+                                        type="button"
+                                        key={`sp-${sp.id}`}
+                                        className="pics-drilldown-card"
+                                        onClick={() => onSelectSubproject(sp)}
+                                    >
+                                        <div className="pics-drilldown-card__title">
+                                            <strong>{sp.name}</strong>
+                                            {badge && <span className={`status-badge status-badge--compact ${badge === 'Cancelled' ? 'status-badge--cancelled' : badge === 'Realignment' ? 'status-badge--orange' : 'status-badge--purple'}`}>{badge}</span>}
+                                        </div>
+                                        <p>{sp.remarks || 'No description provided.'}</p>
+                                        <dl>
+                                            <div><dt>Package</dt><dd>{sp.packageType || '-'}</dd></div>
+                                            <div><dt>IPO</dt><dd>{sp.indigenousPeopleOrganization || '-'}</dd></div>
+                                            <div><dt>Target</dt><dd>{sp.estimatedCompletionDate || '-'}</dd></div>
+                                            <div><dt>Completed</dt><dd>{sp.actualCompletionDate || '-'}</dd></div>
+                                        </dl>
+                                    </button>
+                                );
+                            })}
+
+                            {drilldownContent.type === 'activities' && drilldownContent.records.map(activity => {
+                                const badge = getRecordBadge(activity);
+                                const participants = (Number(activity.participantsMale) || 0) + (Number(activity.participantsFemale) || 0);
+                                return (
+                                    <button
+                                        type="button"
+                                        key={`activity-${activity.id}`}
+                                        className="pics-drilldown-card"
+                                        onClick={() => onSelectActivity(activity)}
+                                    >
+                                        <div className="pics-drilldown-card__title">
+                                            <strong>{activity.name}</strong>
+                                            {badge && <span className={`status-badge status-badge--compact ${badge === 'Cancelled' ? 'status-badge--cancelled' : badge === 'Realignment' ? 'status-badge--orange' : 'status-badge--purple'}`}>{badge}</span>}
+                                        </div>
+                                        <p>{activity.description || 'No description provided.'}</p>
+                                        <dl>
+                                            <div><dt>Component</dt><dd>{activity.component || activity.type || '-'}</dd></div>
+                                            <div><dt>Target Date</dt><dd>{activity.date || '-'}</dd></div>
+                                            <div><dt>Target IPOs</dt><dd>{(activity.participatingIpos || []).join(', ') || '-'}</dd></div>
+                                            <div><dt>Participants</dt><dd>{participants || '-'}</dd></div>
+                                        </dl>
+                                    </button>
+                                );
+                            })}
+
+                            {drilldownContent.type === 'ads' && drilldownContent.records.map(ad => (
+                                <button
+                                    type="button"
+                                    key={`ad-${ad.adNo}`}
+                                    className="pics-drilldown-card"
+                                    onClick={() => onOpenIpoListForAncestralDomain(ad.adNo)}
+                                >
+                                    <div className="pics-drilldown-card__title">
+                                        <strong>{ad.adNo}</strong>
+                                        <span className="status-badge status-badge--compact status-badge--info">{ad.scopedIpoNames.length} IPO{ad.scopedIpoNames.length === 1 ? '' : 's'}</span>
+                                    </div>
+                                    <p>Linked Indigenous Peoples Organizations covered by this ancestral domain.</p>
+                                    <dl>
+                                        <div><dt>Region</dt><dd>{ad.region || '-'}</dd></div>
+                                        <div><dt>Province</dt><dd>{ad.province || '-'}</dd></div>
+                                        <div><dt>Linked IPOs</dt><dd>{ad.scopedIpoNames.join(', ') || '-'}</dd></div>
+                                    </dl>
+                                </button>
+                            ))}
+
+                            {((drilldownContent.type === 'subprojects' && drilldownContent.records.length === 0)
+                                || (drilldownContent.type === 'activities' && drilldownContent.records.length === 0)
+                                || (drilldownContent.type === 'ads' && drilldownContent.records.length === 0)) && (
+                                <div className="pics-drilldown-empty">No matching target records found.</div>
+                            )}
+                        </div>
+                    </section>
+                </div>
+            )}
         </div>
     );
 }

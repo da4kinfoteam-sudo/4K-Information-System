@@ -33,6 +33,7 @@ interface ReportsProps {
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
+    onOpenIpoListForAncestralDomain: (adNo: string) => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
@@ -62,6 +63,7 @@ const Reports: React.FC<ReportsProps> = ({
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
+    onOpenIpoListForAncestralDomain,
     onDataScopeChange,
 }) => {
     const { currentUser, getVisibilityScope } = useAuth();
@@ -395,7 +397,19 @@ const Reports: React.FC<ReportsProps> = ({
                     />
                 );
             case 'PICS':
-                return <PICSReport data={filteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return (
+                    <PICSReport
+                        data={filteredData}
+                        selectedYear={selectedYear}
+                        selectedReportingYear={selectedReportingYear}
+                        selectedOu={selectedOu}
+                        onSelectSubproject={onSelectSubproject}
+                        onSelectActivity={onSelectActivity}
+                        onOpenIpoListForAncestralDomain={onOpenIpoListForAncestralDomain}
+                        onPrintReport={handleRequestPrint}
+                        onExportReport={handleRequestExport}
+                    />
+                );
             case 'BAR1':
                 return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Budget Utilization Report':
