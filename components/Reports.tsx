@@ -30,6 +30,7 @@ interface ReportsProps {
     uacsCodes: { [key: string]: { [key: string]: { [key: string]: string } } };
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Training | OtherActivity) => void;
+    onSelectIpo: (ipo: IPO) => void;
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
@@ -60,6 +61,7 @@ const Reports: React.FC<ReportsProps> = ({
     uacsCodes,
     onSelectSubproject,
     onSelectActivity,
+    onSelectIpo,
     onSelectOfficeReq,
     onSelectStaffingReq,
     onSelectOtherExpense,
@@ -411,7 +413,26 @@ const Reports: React.FC<ReportsProps> = ({
                     />
                 );
             case 'BAR1':
-                return <BAR1Report data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} deadlines={deadlines} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return (
+                    <BAR1Report
+                        data={filteredData}
+                        uacsCodes={uacsCodes}
+                        selectedYear={selectedYear}
+                        selectedReportingYear={selectedReportingYear}
+                        selectedOu={selectedOu}
+                        selectedTier={selectedTier}
+                        selectedFundType={selectedFundType}
+                        deadlines={deadlines}
+                        onSelectSubproject={onSelectSubproject}
+                        onSelectActivity={onSelectActivity}
+                        onSelectIpo={onSelectIpo}
+                        onSelectOfficeReq={onSelectOfficeReq}
+                        onSelectStaffingReq={onSelectStaffingReq}
+                        onOpenIpoListForAncestralDomain={onOpenIpoListForAncestralDomain}
+                        onPrintReport={handleRequestPrint}
+                        onExportReport={handleRequestExport}
+                    />
+                );
             case 'Budget Utilization Report':
                 return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Monthly Matrix':

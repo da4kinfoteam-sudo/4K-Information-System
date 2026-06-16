@@ -1097,9 +1097,11 @@ const AppContent: React.FC = () => {
                             uacsCodes={derivedUacsCodes}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
+                            onSelectIpo={handleSelectIpo}
                             onSelectOfficeReq={handleSelectOfficeReq}
                             onSelectStaffingReq={handleSelectStaffingReq}
                             onSelectOtherExpense={handleSelectOtherExpense}
+                            onOpenIpoListForAncestralDomain={handleOpenIpoListForAncestralDomain}
                             onDataScopeChange={ensureDataScope}
                         />;
             case '/subproject-detail':

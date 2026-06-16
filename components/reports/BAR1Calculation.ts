@@ -7,6 +7,24 @@ export interface BAR1DataGroup {
     actual: BAR1Counter;
 }
 
+export type BAR1DrilldownRecordType = 'training' | 'activity' | 'ipo' | 'subproject' | 'ad' | 'staffing' | 'office' | 'participant';
+
+export interface BAR1DrilldownRecord {
+    id: string;
+    type: BAR1DrilldownRecordType;
+    label: string;
+    description?: string;
+    targetDate?: string;
+    actualDate?: string;
+    ipoName?: string;
+    ipoNames?: string[];
+    linkedNames?: string[];
+    adNo?: string;
+    packageName?: string;
+    component?: string;
+    source?: Subproject | Training | OtherActivity | OfficeRequirement | StaffingRequirement | IPO;
+}
+
 export interface BAR1Counter {
     m1: number; m2: number; m3: number; q1: number;
     m4: number; m5: number; m6: number; q2: number;
@@ -17,6 +35,10 @@ export interface BAR1Counter {
     m4_items: string[]; m5_items: string[]; m6_items: string[];
     m7_items: string[]; m8_items: string[]; m9_items: string[];
     m10_items: string[]; m11_items: string[]; m12_items: string[];
+    m1_records: BAR1DrilldownRecord[]; m2_records: BAR1DrilldownRecord[]; m3_records: BAR1DrilldownRecord[];
+    m4_records: BAR1DrilldownRecord[]; m5_records: BAR1DrilldownRecord[]; m6_records: BAR1DrilldownRecord[];
+    m7_records: BAR1DrilldownRecord[]; m8_records: BAR1DrilldownRecord[]; m9_records: BAR1DrilldownRecord[];
+    m10_records: BAR1DrilldownRecord[]; m11_records: BAR1DrilldownRecord[]; m12_records: BAR1DrilldownRecord[];
 }
 
 interface BAR1CalculationOptions {
@@ -33,10 +55,20 @@ export const initializeCounter = (): BAR1Counter => ({
     m1_items: [], m2_items: [], m3_items: [],
     m4_items: [], m5_items: [], m6_items: [],
     m7_items: [], m8_items: [], m9_items: [],
-    m10_items: [], m11_items: [], m12_items: []
+    m10_items: [], m11_items: [], m12_items: [],
+    m1_records: [], m2_records: [], m3_records: [],
+    m4_records: [], m5_records: [], m6_records: [],
+    m7_records: [], m8_records: [], m9_records: [],
+    m10_records: [], m11_records: [], m12_records: []
 });
 
-const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number = 1, itemName?: string, reportingYear: string = 'All') => {
+const appendRecord = (records: BAR1DrilldownRecord[], record: BAR1DrilldownRecord) => {
+    if (!records.some(existing => existing.id === record.id && existing.type === record.type)) {
+        records.push(record);
+    }
+};
+
+const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number = 1, itemName?: string, reportingYear: string = 'All', record?: BAR1DrilldownRecord) => {
     const monthIdx = getReportingMonthIndex(dateStr, reportingYear);
     if (monthIdx !== undefined) {
         const monthKey = `m${monthIdx + 1}` as keyof BAR1Counter;
@@ -49,6 +81,10 @@ const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number 
                 items.push(itemName);
             }
         }
+        if (record) {
+            const recordsKey = `${monthKey}_records` as keyof BAR1Counter;
+            appendRecord(counter[recordsKey] as BAR1DrilldownRecord[], record);
+        }
 
         if (monthIdx < 3) counter.q1 += count;
         else if (monthIdx < 6) counter.q2 += count;
@@ -59,7 +95,7 @@ const incrementCounter = (counter: BAR1Counter, dateStr?: string, count: number 
     }
 };
 
-const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string }[], reportingYear: string) => {
+const calculateFirstEncounter = (entries: { id: string; date?: string; label?: string; record?: BAR1DrilldownRecord }[], reportingYear: string) => {
     const counter = initializeCounter();
     const validEntries = entries
         .filter(e => e.date)
@@ -71,17 +107,17 @@ const calculateFirstEncounter = (entries: { id: string; date?: string; label?: s
     validEntries.forEach(entry => {
         if (!seen.has(entry.id)) {
             seen.add(entry.id);
-            incrementCounter(counter, entry.date, 1, entry.label || entry.id, reportingYear);
+            incrementCounter(counter, entry.date, 1, entry.label || entry.id, reportingYear, entry.record);
         }
     });
     return counter;
 };
 
-const calculateSumOverTime = (entries: { val: number; date?: string; label?: string }[], reportingYear: string) => {
+const calculateSumOverTime = (entries: { val: number; date?: string; label?: string; record?: BAR1DrilldownRecord }[], reportingYear: string) => {
     const counter = initializeCounter();
     entries.forEach(e => {
         if (e.date) {
-            incrementCounter(counter, e.date, e.val, e.label, reportingYear);
+            incrementCounter(counter, e.date, e.val, e.label, reportingYear, e.record);
         }
     });
     return counter;
@@ -151,31 +187,106 @@ export const calculateBAR1ReportData = (data: {
     };
 
     const ipoAdMap = new Map<string, string>();
+    const ipoMap = new Map<string, IPO>();
     data.ipos.forEach(ipo => {
+        ipoMap.set(ipo.name, ipo);
         if (ipo.ancestralDomainNo) ipoAdMap.set(ipo.name, ipo.ancestralDomainNo);
+    });
+    const makeSubprojectRecord = (sp: Subproject): BAR1DrilldownRecord => ({
+        id: `subproject-${sp.id}`,
+        type: 'subproject',
+        label: sp.name,
+        description: sp.remarks || '',
+        targetDate: sp.estimatedCompletionDate,
+        actualDate: sp.actualCompletionDate,
+        ipoName: sp.indigenousPeopleOrganization,
+        ipoNames: sp.indigenousPeopleOrganization ? [sp.indigenousPeopleOrganization] : [],
+        packageName: sp.packageType,
+        component: 'Production and Livelihood',
+        source: sp,
+    });
+    const makeSubprojectIpoRecord = (sp: Subproject): BAR1DrilldownRecord => ({
+        id: `ipo-${sp.indigenousPeopleOrganization}`,
+        type: 'ipo',
+        label: sp.indigenousPeopleOrganization,
+        targetDate: sp.estimatedCompletionDate,
+        actualDate: sp.actualCompletionDate,
+        linkedNames: [sp.name],
+        packageName: sp.packageType,
+        source: ipoMap.get(sp.indigenousPeopleOrganization),
+    });
+    const makeSubprojectAdRecord = (sp: Subproject): BAR1DrilldownRecord | undefined => {
+        const adNo = ipoAdMap.get(sp.indigenousPeopleOrganization);
+        if (!adNo) return undefined;
+        return {
+            id: `ad-${adNo}`,
+            type: 'ad',
+            label: adNo,
+            adNo,
+            targetDate: sp.estimatedCompletionDate,
+            actualDate: sp.actualCompletionDate,
+            ipoNames: sp.indigenousPeopleOrganization ? [sp.indigenousPeopleOrganization] : [],
+            linkedNames: [sp.name],
+            packageName: sp.packageType,
+        };
+    };
+    const makeActivityRecord = (activity: Training | OtherActivity, actualDate?: string): BAR1DrilldownRecord => ({
+        id: `activity-${activity.id}`,
+        type: activity.type === 'Training' ? 'training' : 'activity',
+        label: activity.name,
+        description: activity.description,
+        targetDate: activity.endDate || activity.date,
+        actualDate: actualDate || activity.actualDate,
+        ipoNames: activity.participatingIpos || [],
+        component: activity.component,
+        source: activity,
+    });
+    const makeActivityIpoRecord = (activity: Training | OtherActivity, ipoName: string, actualDate?: string): BAR1DrilldownRecord => ({
+        id: `ipo-${ipoName}`,
+        type: 'ipo',
+        label: ipoName,
+        targetDate: activity.endDate || activity.date,
+        actualDate: actualDate || activity.actualDate,
+        linkedNames: [activity.name],
+        component: activity.component,
+        source: ipoMap.get(ipoName),
+    });
+    const makeProgramRecord = (pm: OfficeRequirement | StaffingRequirement, type: 'office' | 'staffing', label: string, actualDate?: string): BAR1DrilldownRecord => ({
+        id: `${type}-${pm.id}`,
+        type,
+        label,
+        description: type === 'office' ? ((pm as OfficeRequirement).purpose || (pm as OfficeRequirement).specs || '') : ((pm as StaffingRequirement).component || ''),
+        targetDate: pm.physicalDeliveryDate || pm.obligationDate,
+        actualDate: actualDate || pm.actualDate || pm.actualObligationDate,
+        component: type === 'staffing' ? (pm as StaffingRequirement).component : 'Program Management',
+        source: pm,
     });
 
     // Production and Livelihood - Subproject Reach
     const allTargetADs = data.subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
         id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-        date: sp.estimatedCompletionDate
+        date: sp.estimatedCompletionDate,
+        record: makeSubprojectAdRecord(sp)
     })).filter(x => x.id);
     const allActualADs = data.subprojects.map(sp => ({
         id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
         label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-        date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
+        date: actualDateIfSubmitted(sp, sp.actualCompletionDate),
+        record: makeSubprojectAdRecord(sp)
     })).filter(x => x.id);
 
     const allTargetIPOs = data.subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
         id: sp.indigenousPeopleOrganization,
         label: sp.indigenousPeopleOrganization,
-        date: sp.estimatedCompletionDate
+        date: sp.estimatedCompletionDate,
+        record: makeSubprojectIpoRecord(sp)
     }));
     const allActualIPOs = data.subprojects.map(sp => ({
         id: sp.indigenousPeopleOrganization,
         label: sp.indigenousPeopleOrganization,
-        date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
+        date: actualDateIfSubmitted(sp, sp.actualCompletionDate),
+        record: makeSubprojectIpoRecord(sp)
     }));
 
     finalData['Production and Livelihood'].packages['Subproject Reach'] = {
@@ -209,12 +320,14 @@ export const calculateBAR1ReportData = (data: {
         const targetADs = subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            date: sp.estimatedCompletionDate 
+            date: sp.estimatedCompletionDate,
+            record: makeSubprojectAdRecord(sp)
         })).filter(x => x.id); 
         const actualADs = subprojects.map(sp => ({
             id: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
             label: ipoAdMap.get(sp.indigenousPeopleOrganization) || '',
-            date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
+            date: actualDateIfSubmitted(sp, sp.actualCompletionDate),
+            record: makeSubprojectAdRecord(sp)
         })).filter(x => x.id);
 
         pkgItems.push({
@@ -226,12 +339,14 @@ export const calculateBAR1ReportData = (data: {
         const targetIPOs = subprojects.filter(sp => !isParentRealignmentOrSavings(sp)).map(sp => ({
             id: sp.indigenousPeopleOrganization,
             label: sp.indigenousPeopleOrganization,
-            date: sp.estimatedCompletionDate
+            date: sp.estimatedCompletionDate,
+            record: makeSubprojectIpoRecord(sp)
         }));
         const actualIPOs = subprojects.map(sp => ({
             id: sp.indigenousPeopleOrganization,
             label: sp.indigenousPeopleOrganization,
-            date: actualDateIfSubmitted(sp, sp.actualCompletionDate)
+            date: actualDateIfSubmitted(sp, sp.actualCompletionDate),
+            record: makeSubprojectIpoRecord(sp)
         }));
 
         pkgItems.push({
@@ -242,8 +357,8 @@ export const calculateBAR1ReportData = (data: {
 
         const targetSPs = subprojects
             .filter(sp => !isParentRealignmentOrSavings(sp))
-            .map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name }));
-        const actualSPs = subprojects.map(sp => ({ val: countPhysicalActual(sp, 1), date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name }));
+            .map(sp => ({ val: 1, date: sp.estimatedCompletionDate, label: sp.name, record: makeSubprojectRecord(sp) }));
+        const actualSPs = subprojects.map(sp => ({ val: countPhysicalActual(sp, 1), date: actualDateIfSubmitted(sp, sp.actualCompletionDate), label: sp.name, record: makeSubprojectRecord(sp) }));
         pkgItems.push({
             indicator: "Number of Subprojects",
             target: calculateSumOverTime(targetSPs, reportingYear),
@@ -260,29 +375,31 @@ export const calculateBAR1ReportData = (data: {
         const getActualDate = (t: Training) => actualDateIfSubmitted(t, t.actualDate);
         const targetTrainings = relevantTrainings
             .filter(t => !isParentRealignmentOrSavings(t))
-            .map(t => ({ val: 1, label: t.name, date: getTargetDate(t) }));
-        const actualTrainings = relevantTrainings.map(t => ({ val: countPhysicalActual(t, 1), label: t.name, date: getActualDate(t) }));
-        const targetIPOs: { id: string, label: string, date?: string }[] = [];
-        const actualIPOs: { id: string, label: string, date?: string }[] = [];
+            .map(t => ({ val: 1, label: t.name, date: getTargetDate(t), record: makeActivityRecord(t, getActualDate(t)) }));
+        const actualTrainings = relevantTrainings.map(t => ({ val: countPhysicalActual(t, 1), label: t.name, date: getActualDate(t), record: makeActivityRecord(t, getActualDate(t)) }));
+        const targetIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];
+        const actualIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];
         
         relevantTrainings.forEach(t => {
             const tDate = getTargetDate(t);
             const aDate = getActualDate(t);
             (t.participatingIpos || []).forEach(ipo => {
-                if (!isParentRealignmentOrSavings(t)) targetIPOs.push({ id: ipo, label: ipo, date: tDate });
-                if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate });
+                if (!isParentRealignmentOrSavings(t)) targetIPOs.push({ id: ipo, label: ipo, date: tDate, record: makeActivityIpoRecord(t, ipo, aDate) });
+                if (aDate) actualIPOs.push({ id: ipo, label: ipo, date: aDate, record: makeActivityIpoRecord(t, ipo, aDate) });
             });
         });
 
         const targetPax = relevantTrainings.filter(t => !isParentRealignmentOrSavings(t)).map(t => ({
             val: (t.participantsMale || 0) + (t.participantsFemale || 0), 
             label: t.name,
-            date: getTargetDate(t) 
+            date: getTargetDate(t),
+            record: { ...makeActivityRecord(t, getActualDate(t)), type: 'participant' as BAR1DrilldownRecordType }
         }));
         const actualPax = relevantTrainings.map(t => ({ 
             val: (t.actualParticipantsMale || 0) + (t.actualParticipantsFemale || 0), 
             label: t.name,
-            date: getActualDate(t) 
+            date: getActualDate(t),
+            record: { ...makeActivityRecord(t, getActualDate(t)), type: 'participant' as BAR1DrilldownRecordType }
         }));
 
         const trainingGroup = {
@@ -330,18 +447,18 @@ export const calculateBAR1ReportData = (data: {
         Object.entries(groups).forEach(([name, activities]) => {
             const targetConducted = activities
                 .filter(a => !isParentRealignmentOrSavings(a))
-                .map(a => ({ val: 1, label: a.location || a.name, date: a.date }));
-            const actualConducted = activities.map(a => ({ val: countPhysicalActual(a, 1), label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate) }));
+                .map(a => ({ val: 1, label: a.location || a.name, date: a.date, record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
+            const actualConducted = activities.map(a => ({ val: countPhysicalActual(a, 1), label: a.location || a.name, date: actualDateIfSubmitted(a, a.actualDate), record: makeActivityRecord(a, actualDateIfSubmitted(a, a.actualDate)) }));
 
-            const targetIPOs: { id: string, label: string, date?: string }[] = [];
-            const actualIPOs: { id: string, label: string, date?: string }[] = [];
+            const targetIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];
+            const actualIPOs: { id: string, label: string, date?: string, record?: BAR1DrilldownRecord }[] = [];
             
             activities.forEach(a => {
                 if (a.participatingIpos) {
                     a.participatingIpos.forEach(ipo => {
-                        if (!isParentRealignmentOrSavings(a)) targetIPOs.push({ id: ipo, label: ipo, date: a.date });
                         const actualDate = actualDateIfSubmitted(a, a.actualDate);
-                        if (actualDate) actualIPOs.push({ id: ipo, label: ipo, date: actualDate });
+                        if (!isParentRealignmentOrSavings(a)) targetIPOs.push({ id: ipo, label: ipo, date: a.date, record: makeActivityIpoRecord(a, ipo, actualDate) });
+                        if (actualDate) actualIPOs.push({ id: ipo, label: ipo, date: actualDate, record: makeActivityIpoRecord(a, ipo, actualDate) });
                     });
                 }
             });
@@ -391,14 +508,14 @@ export const calculateBAR1ReportData = (data: {
     processOtherActivities('Marketing and Enterprise', finalData['Marketing and Enterprise']);
     processOtherActivities('Program Management', [], true);
 
-    const createBar1Item = (indicator: string, targetCount: number, targetDate?: string, actualDate?: string, itemName?: string, actualCount = targetCount) => {
+    const createBar1Item = (indicator: string, targetCount: number, targetDate?: string, actualDate?: string, itemName?: string, actualCount = targetCount, record?: BAR1DrilldownRecord) => {
         const item: any = {
             indicator,
             target: initializeCounter(),
             actual: initializeCounter()
         };
-        incrementCounter(item.target, targetDate, targetCount, itemName, reportingYear);
-        incrementCounter(item.actual, actualDate, actualCount, itemName, reportingYear);
+        incrementCounter(item.target, targetDate, targetCount, itemName, reportingYear, record);
+        incrementCounter(item.actual, actualDate, actualCount, itemName, reportingYear, record);
         return item;
     };
 
@@ -408,12 +525,16 @@ export const calculateBAR1ReportData = (data: {
             for (const key in newItem.target) {
                 if (key.endsWith('_items')) {
                     existing.target[key] = [...(existing.target[key] || []), ...((newItem.target[key] as any) || [])];
+                } else if (key.endsWith('_records')) {
+                    existing.target[key] = [...(existing.target[key] || []), ...((newItem.target[key] as any) || [])];
                 } else {
                     (existing.target as any)[key] += (newItem.target as any)[key];
                 }
             }
             for (const key in newItem.actual) {
                 if (key.endsWith('_items')) {
+                    existing.actual[key] = [...(existing.actual[key] || []), ...((newItem.actual[key] as any) || [])];
+                } else if (key.endsWith('_records')) {
                     existing.actual[key] = [...(existing.actual[key] || []), ...((newItem.actual[key] as any) || [])];
                 } else {
                     (existing.actual as any)[key] += (newItem.actual as any)[key];
@@ -431,13 +552,15 @@ export const calculateBAR1ReportData = (data: {
             const count = isStaff ? 1 : (pm.numberOfUnits || 1);
             const itemName = isStaff ? pm.personnelPosition : (pm.equipment || pm.particulars);
             const actualDate = actualDateIfSubmitted(pm, pm.actualDate || pm.actualObligationDate);
+            const record = makeProgramRecord(pm, isStaff ? 'staffing' : 'office', itemName, actualDate);
             const item = createBar1Item(
                 indicator,
                 countPhysicalTarget(pm, count),
                 pm.obligationDate,
                 actualDate,
                 itemName,
-                countPhysicalActual(pm, count)
+                countPhysicalActual(pm, count),
+                record
             );
             addItemToGroup(finalData['Program Management'].packages[pkgKey].items, item);
         });

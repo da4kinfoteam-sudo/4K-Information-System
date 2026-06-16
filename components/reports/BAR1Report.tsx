@@ -1,15 +1,16 @@
 
 // Author: 4K 
 import React, { useMemo, useState } from 'react';
-import { Download, Printer, X } from 'lucide-react';
+import { Download, Printer, Search, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
 import { ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
-import { calculateBAR1ReportData } from './BAR1Calculation';
+import { BAR1DrilldownRecord, calculateBAR1ReportData } from './BAR1Calculation';
 
 interface DetailPopup {
     indicator: string;
     month: string;
     items: string[];
+    records: BAR1DrilldownRecord[];
     type: 'Target' | 'Accomplishment';
 }
 
@@ -30,15 +31,22 @@ interface BAR1ReportProps {
     selectedTier: string;
     selectedFundType: string;
     deadlines: Deadline[];
+    onSelectSubproject: (subproject: Subproject) => void;
+    onSelectActivity: (activity: Training | OtherActivity) => void;
+    onSelectIpo: (ipo: IPO) => void;
+    onSelectOfficeReq: (req: OfficeRequirement) => void;
+    onSelectStaffingReq: (req: StaffingRequirement) => void;
+    onOpenIpoListForAncestralDomain: (adNo: string) => void;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const BAR1_COLUMN_COUNT = 50;
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, deadlines, onPrintReport, onExportReport }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, deadlines, onSelectSubproject, onSelectActivity, onSelectIpo, onSelectOfficeReq, onSelectStaffingReq, onOpenIpoListForAncestralDomain, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
+    const [popupSearch, setPopupSearch] = useState('');
 
     const [selectedAsOfDate, setSelectedAsOfDate] = useState<string>('');
     const sortedDeadlines = useMemo(() => {
@@ -60,6 +68,101 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return calculateBAR1ReportData(data, selectedYear, selectedOu, { asOfDate: selectedAsOfDate || undefined, reportingYear: selectedReportingYear });
     }, [data, selectedYear, selectedReportingYear, selectedOu, selectedAsOfDate]);
 
+    const ipoByName = useMemo(() => {
+        const map = new Map<string, IPO>();
+        data.ipos.forEach(ipo => map.set(ipo.name, ipo));
+        return map;
+    }, [data.ipos]);
+
+    const formatDate = (value?: string) => {
+        if (!value) return '-';
+        const date = new Date(`${value}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    };
+
+    const uniqueStrings = (values?: string[]) => Array.from(new Set((values || []).filter(Boolean))).sort();
+
+    const mergePopupRecords = (records: BAR1DrilldownRecord[]) => {
+        const merged = new Map<string, BAR1DrilldownRecord>();
+        records.forEach(record => {
+            const key = `${record.type}-${record.id}`;
+            const existing = merged.get(key);
+            if (!existing) {
+                merged.set(key, {
+                    ...record,
+                    ipoNames: uniqueStrings(record.ipoNames),
+                    linkedNames: uniqueStrings(record.linkedNames),
+                });
+                return;
+            }
+            existing.ipoNames = uniqueStrings([...(existing.ipoNames || []), ...(record.ipoNames || [])]);
+            existing.linkedNames = uniqueStrings([...(existing.linkedNames || []), ...(record.linkedNames || [])]);
+            existing.targetDate = existing.targetDate || record.targetDate;
+            existing.actualDate = existing.actualDate || record.actualDate;
+            existing.source = existing.source || record.source;
+        });
+        return Array.from(merged.values());
+    };
+
+    const popupRecords = useMemo(() => {
+        if (!popup) return [];
+        const term = popupSearch.trim().toLowerCase();
+        return mergePopupRecords(popup.records).filter(record => {
+            if (!term) return true;
+            return [
+                record.label,
+                record.description,
+                record.adNo,
+                record.ipoName,
+                ...(record.ipoNames || []),
+                ...(record.linkedNames || []),
+            ].filter(Boolean).join(' ').toLowerCase().includes(term);
+        });
+    }, [popup, popupSearch]);
+
+    const isRecordOverdue = (record: BAR1DrilldownRecord) => {
+        if (!record.targetDate || record.actualDate) return false;
+        const targetDate = new Date(`${record.targetDate}T00:00:00`);
+        if (Number.isNaN(targetDate.getTime())) return false;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return targetDate < today;
+    };
+
+    const openRecord = (record: BAR1DrilldownRecord) => {
+        if (record.type === 'subproject' && record.source) {
+            onSelectSubproject(record.source as Subproject);
+            return;
+        }
+        if ((record.type === 'training' || record.type === 'activity') && record.source) {
+            onSelectActivity(record.source as Training | OtherActivity);
+            return;
+        }
+        if (record.type === 'ipo') {
+            const ipo = (record.source as IPO | undefined) || ipoByName.get(record.label);
+            if (ipo) onSelectIpo(ipo);
+            return;
+        }
+        if (record.type === 'ad' && record.adNo) {
+            onOpenIpoListForAncestralDomain(record.adNo);
+            return;
+        }
+        if (record.type === 'office' && record.source) {
+            onSelectOfficeReq(record.source as OfficeRequirement);
+            return;
+        }
+        if (record.type === 'staffing' && record.source) {
+            onSelectStaffingReq(record.source as StaffingRequirement);
+        }
+    };
+
+    const canOpenRecord = (record: BAR1DrilldownRecord) => {
+        if (record.type === 'ad') return Boolean(record.adNo);
+        if (record.type === 'ipo') return Boolean((record.source as IPO | undefined) || ipoByName.get(record.label));
+        return Boolean(record.source && record.type !== 'participant');
+    };
+
     const calculateTotals = (items: any[]) => {
         const initial = {
             m1: 0, m2: 0, m3: 0, q1: 0,
@@ -70,7 +173,11 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             m1_items: [] as string[], m2_items: [] as string[], m3_items: [] as string[],
             m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
             m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
-            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[]
+            m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[],
+            m1_records: [] as BAR1DrilldownRecord[], m2_records: [] as BAR1DrilldownRecord[], m3_records: [] as BAR1DrilldownRecord[],
+            m4_records: [] as BAR1DrilldownRecord[], m5_records: [] as BAR1DrilldownRecord[], m6_records: [] as BAR1DrilldownRecord[],
+            m7_records: [] as BAR1DrilldownRecord[], m8_records: [] as BAR1DrilldownRecord[], m9_records: [] as BAR1DrilldownRecord[],
+            m10_records: [] as BAR1DrilldownRecord[], m11_records: [] as BAR1DrilldownRecord[], m12_records: [] as BAR1DrilldownRecord[]
         };
 
         const total = {
@@ -87,6 +194,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                         total.actual[`m${i}`] += (primaryMetric.actual[`m${i}`] || 0);
                         total.target[`m${i}_items`] = [...new Set([...total.target[`m${i}_items`], ...(primaryMetric.target[`m${i}_items`] || [])])];
                         total.actual[`m${i}_items`] = [...new Set([...total.actual[`m${i}_items`], ...(primaryMetric.actual[`m${i}_items`] || [])])];
+                        total.target[`m${i}_records`] = [...(total.target[`m${i}_records`] || []), ...(primaryMetric.target[`m${i}_records`] || [])];
+                        total.actual[`m${i}_records`] = [...(total.actual[`m${i}_records`] || []), ...(primaryMetric.actual[`m${i}_records`] || [])];
                     }
                     total.target.q1 += (primaryMetric.target.q1 || 0); total.actual.q1 += (primaryMetric.actual.q1 || 0);
                     total.target.q2 += (primaryMetric.target.q2 || 0); total.actual.q2 += (primaryMetric.actual.q2 || 0);
@@ -102,6 +211,8 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 total.actual[`m${i}`] += (item.actual[`m${i}`] || 0);
                 total.target[`m${i}_items`] = [...new Set([...total.target[`m${i}_items`], ...(item.target[`m${i}_items`] || [])])];
                 total.actual[`m${i}_items`] = [...new Set([...total.actual[`m${i}_items`], ...(item.actual[`m${i}_items`] || [])])];
+                total.target[`m${i}_records`] = [...(total.target[`m${i}_records`] || []), ...(item.target[`m${i}_records`] || [])];
+                total.actual[`m${i}_records`] = [...(total.actual[`m${i}_records`] || []), ...(item.actual[`m${i}_records`] || [])];
             }
             total.target.q1 += (item.target.q1 || 0); total.actual.q1 += (item.actual.q1 || 0);
             total.target.q2 += (item.target.q2 || 0); total.actual.q2 += (item.actual.q2 || 0);
@@ -112,7 +223,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return total;
     };
 
-    const renderDataCells = (item: any, isTotal: boolean = false) => {
+    const renderDataCells = (item: any, isTotal: boolean = false, rowLabel?: string) => {
         const cellClass = `${dataCellClass} text-center ${isTotal ? 'font-bold' : ''}`;
         const totalClass = `${dataCellClass} bar1-report__cell--total text-center font-bold`;
         const calculatedClass = `${dataCellClass} bar1-report__cell--calculated text-center font-bold`;
@@ -134,15 +245,28 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             return `${Math.round((actual / target) * 100)}%`;
         };
 
-        const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const getUnmetClass = (actual: number, target: number) => target > 0 && actual < target ? 'bar1-report__cell--unmet' : '';
 
-        const ClickableValue = ({ val, items, month, type }: { val: number | string, items: string[], month: string, type: 'Target' | 'Accomplishment' }) => {
+        const collectMonthItems = (source: any, months: number[]) => {
+            return Array.from(new Set(months.flatMap(month => source[`m${month}_items`] || [])));
+        };
+
+        const collectMonthRecords = (source: any, months: number[]) => {
+            return months.flatMap(month => source[`m${month}_records`] || []);
+        };
+
+        const ClickableValue = ({ val, items, records, month, type }: { val: number | string, items: string[], records?: BAR1DrilldownRecord[], month: string, type: 'Target' | 'Accomplishment' }) => {
             if (!val || val === 0) return <span></span>;
-            if (!items || items.length === 0) return <span>{val}</span>;
+            const usableRecords = (records || []).filter(record => record.type !== 'participant');
+            const isParticipantMetric = /participant/i.test(item.indicator || rowLabel || '');
+            if (isParticipantMetric || usableRecords.length === 0) return <span>{val}</span>;
             
             return (
                 <button 
-                    onClick={() => setPopup({ indicator: item.indicator, month, items, type })}
+                    onClick={() => {
+                        setPopup({ indicator: item.indicator || rowLabel || 'Summary', month, items, records: usableRecords, type });
+                        setPopupSearch('');
+                    }}
                     className="hover:text-emerald-600 hover:underline transition-colors focus:outline-none"
                 >
                     {val}
@@ -152,72 +276,72 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
         const renderTargetSection = () => (
             <>
-                <td className={cellClass}><ClickableValue val={t.m1} items={t.m1_items} month="January" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m2} items={t.m2_items} month="February" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m3} items={t.m3_items} month="March" type="Target" /></td>
-                <td className={totalClass}>{t.q1 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m1} items={t.m1_items} records={t.m1_records} month="January" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m2} items={t.m2_items} records={t.m2_records} month="February" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m3} items={t.m3_items} records={t.m3_records} month="March" type="Target" /></td>
+                <td className={totalClass}><ClickableValue val={t.q1} items={collectMonthItems(t, [1, 2, 3])} records={collectMonthRecords(t, [1, 2, 3])} month="1st Quarter" type="Target" /></td>
 
-                <td className={cellClass}><ClickableValue val={t.m4} items={t.m4_items} month="April" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m5} items={t.m5_items} month="May" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m6} items={t.m6_items} month="June" type="Target" /></td>
-                <td className={totalClass}>{t.q2 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m4} items={t.m4_items} records={t.m4_records} month="April" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m5} items={t.m5_items} records={t.m5_records} month="May" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m6} items={t.m6_items} records={t.m6_records} month="June" type="Target" /></td>
+                <td className={totalClass}><ClickableValue val={t.q2} items={collectMonthItems(t, [4, 5, 6])} records={collectMonthRecords(t, [4, 5, 6])} month="2nd Quarter" type="Target" /></td>
 
-                <td className={calculatedClass}>{t.semestralTotal || ''}</td>
+                <td className={calculatedClass}><ClickableValue val={t.semestralTotal} items={collectMonthItems(t, [1, 2, 3, 4, 5, 6])} records={collectMonthRecords(t, [1, 2, 3, 4, 5, 6])} month="Semestral" type="Target" /></td>
 
-                <td className={cellClass}><ClickableValue val={t.m7} items={t.m7_items} month="July" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m8} items={t.m8_items} month="August" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m9} items={t.m9_items} month="September" type="Target" /></td>
-                <td className={totalClass}>{t.q3 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m7} items={t.m7_items} records={t.m7_records} month="July" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m8} items={t.m8_items} records={t.m8_records} month="August" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m9} items={t.m9_items} records={t.m9_records} month="September" type="Target" /></td>
+                <td className={totalClass}><ClickableValue val={t.q3} items={collectMonthItems(t, [7, 8, 9])} records={collectMonthRecords(t, [7, 8, 9])} month="3rd Quarter" type="Target" /></td>
 
-                <td className={calculatedClass}>{t.asOfSept || ''}</td>
+                <td className={calculatedClass}><ClickableValue val={t.asOfSept} items={collectMonthItems(t, [1, 2, 3, 4, 5, 6, 7, 8, 9])} records={collectMonthRecords(t, [1, 2, 3, 4, 5, 6, 7, 8, 9])} month="As of September" type="Target" /></td>
 
-                <td className={cellClass}><ClickableValue val={t.m10} items={t.m10_items} month="October" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m11} items={t.m11_items} month="November" type="Target" /></td>
-                <td className={cellClass}><ClickableValue val={t.m12} items={t.m12_items} month="December" type="Target" /></td>
-                <td className={totalClass}>{t.q4 || ''}</td>
+                <td className={cellClass}><ClickableValue val={t.m10} items={t.m10_items} records={t.m10_records} month="October" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m11} items={t.m11_items} records={t.m11_records} month="November" type="Target" /></td>
+                <td className={cellClass}><ClickableValue val={t.m12} items={t.m12_items} records={t.m12_records} month="December" type="Target" /></td>
+                <td className={totalClass}><ClickableValue val={t.q4} items={collectMonthItems(t, [10, 11, 12])} records={collectMonthRecords(t, [10, 11, 12])} month="4th Quarter" type="Target" /></td>
 
-                <td className={yearEndClass}>{t.yearEndNov || ''}</td>
-                <td className={`${dataCellClass} bar1-report__cell--grand-target text-center font-bold`}>{t.total || ''}</td>
+                <td className={yearEndClass}><ClickableValue val={t.yearEndNov} items={collectMonthItems(t, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])} records={collectMonthRecords(t, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])} month="Year-end (Nov)" type="Target" /></td>
+                <td className={`${dataCellClass} bar1-report__cell--grand-target text-center font-bold`}><ClickableValue val={t.total} items={collectMonthItems(t, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])} records={collectMonthRecords(t, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])} month="Annual Total" type="Target" /></td>
             </>
         );
 
         const renderActualSection = () => (
             <>
-                <td className={cellClass}><ClickableValue val={a.m1} items={a.m1_items} month="January" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m2} items={a.m2_items} month="February" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m3} items={a.m3_items} month="March" type="Accomplishment" /></td>
-                <td className={totalClass}>{a.q1 || ''}</td>
-                <td className={percentClass}>{getPct(a.q1, t.q1)}</td>
+                <td className={`${cellClass} ${getUnmetClass(a.m1, t.m1)}`}><ClickableValue val={a.m1} items={a.m1_items} records={a.m1_records} month="January" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m2, t.m2)}`}><ClickableValue val={a.m2} items={a.m2_items} records={a.m2_records} month="February" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m3, t.m3)}`}><ClickableValue val={a.m3} items={a.m3_items} records={a.m3_records} month="March" type="Accomplishment" /></td>
+                <td className={`${totalClass} ${getUnmetClass(a.q1, t.q1)}`}><ClickableValue val={a.q1} items={collectMonthItems(a, [1, 2, 3])} records={collectMonthRecords(a, [1, 2, 3])} month="1st Quarter" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.q1, t.q1)}`}>{getPct(a.q1, t.q1)}</td>
 
-                <td className={cellClass}><ClickableValue val={a.m4} items={a.m4_items} month="April" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m5} items={a.m5_items} month="May" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m6} items={a.m6_items} month="June" type="Accomplishment" /></td>
-                <td className={totalClass}>{a.q2 || ''}</td>
-                <td className={percentClass}>{getPct(a.q2, t.q2)}</td>
+                <td className={`${cellClass} ${getUnmetClass(a.m4, t.m4)}`}><ClickableValue val={a.m4} items={a.m4_items} records={a.m4_records} month="April" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m5, t.m5)}`}><ClickableValue val={a.m5} items={a.m5_items} records={a.m5_records} month="May" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m6, t.m6)}`}><ClickableValue val={a.m6} items={a.m6_items} records={a.m6_records} month="June" type="Accomplishment" /></td>
+                <td className={`${totalClass} ${getUnmetClass(a.q2, t.q2)}`}><ClickableValue val={a.q2} items={collectMonthItems(a, [4, 5, 6])} records={collectMonthRecords(a, [4, 5, 6])} month="2nd Quarter" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.q2, t.q2)}`}>{getPct(a.q2, t.q2)}</td>
 
-                <td className={calculatedClass}>{a.semestralTotal || ''}</td>
-                <td className={percentClass}>{getPct(a.semestralTotal, t.semestralTotal)}</td>
+                <td className={`${calculatedClass} ${getUnmetClass(a.semestralTotal, t.semestralTotal)}`}><ClickableValue val={a.semestralTotal} items={collectMonthItems(a, [1, 2, 3, 4, 5, 6])} records={collectMonthRecords(a, [1, 2, 3, 4, 5, 6])} month="Semestral" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.semestralTotal, t.semestralTotal)}`}>{getPct(a.semestralTotal, t.semestralTotal)}</td>
 
-                <td className={cellClass}><ClickableValue val={a.m7} items={a.m7_items} month="July" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m8} items={a.m8_items} month="August" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m9} items={a.m9_items} month="September" type="Accomplishment" /></td>
-                <td className={totalClass}>{a.q3 || ''}</td>
-                <td className={percentClass}>{getPct(a.q3, t.q3)}</td>
+                <td className={`${cellClass} ${getUnmetClass(a.m7, t.m7)}`}><ClickableValue val={a.m7} items={a.m7_items} records={a.m7_records} month="July" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m8, t.m8)}`}><ClickableValue val={a.m8} items={a.m8_items} records={a.m8_records} month="August" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m9, t.m9)}`}><ClickableValue val={a.m9} items={a.m9_items} records={a.m9_records} month="September" type="Accomplishment" /></td>
+                <td className={`${totalClass} ${getUnmetClass(a.q3, t.q3)}`}><ClickableValue val={a.q3} items={collectMonthItems(a, [7, 8, 9])} records={collectMonthRecords(a, [7, 8, 9])} month="3rd Quarter" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.q3, t.q3)}`}>{getPct(a.q3, t.q3)}</td>
 
-                <td className={calculatedClass}>{a.asOfSept || ''}</td>
-                <td className={percentClass}>{getPct(a.asOfSept, t.asOfSept)}</td>
+                <td className={`${calculatedClass} ${getUnmetClass(a.asOfSept, t.asOfSept)}`}><ClickableValue val={a.asOfSept} items={collectMonthItems(a, [1, 2, 3, 4, 5, 6, 7, 8, 9])} records={collectMonthRecords(a, [1, 2, 3, 4, 5, 6, 7, 8, 9])} month="As of September" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.asOfSept, t.asOfSept)}`}>{getPct(a.asOfSept, t.asOfSept)}</td>
 
-                <td className={cellClass}><ClickableValue val={a.m10} items={a.m10_items} month="October" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m11} items={a.m11_items} month="November" type="Accomplishment" /></td>
-                <td className={cellClass}><ClickableValue val={a.m12} items={a.m12_items} month="December" type="Accomplishment" /></td>
-                <td className={totalClass}>{a.q4 || ''}</td>
-                <td className={percentClass}>{getPct(a.q4, t.q4)}</td>
+                <td className={`${cellClass} ${getUnmetClass(a.m10, t.m10)}`}><ClickableValue val={a.m10} items={a.m10_items} records={a.m10_records} month="October" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m11, t.m11)}`}><ClickableValue val={a.m11} items={a.m11_items} records={a.m11_records} month="November" type="Accomplishment" /></td>
+                <td className={`${cellClass} ${getUnmetClass(a.m12, t.m12)}`}><ClickableValue val={a.m12} items={a.m12_items} records={a.m12_records} month="December" type="Accomplishment" /></td>
+                <td className={`${totalClass} ${getUnmetClass(a.q4, t.q4)}`}><ClickableValue val={a.q4} items={collectMonthItems(a, [10, 11, 12])} records={collectMonthRecords(a, [10, 11, 12])} month="4th Quarter" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.q4, t.q4)}`}>{getPct(a.q4, t.q4)}</td>
 
-                <td className={yearEndClass}>{a.yearEndNov || ''}</td>
-                <td className={percentClass}>{getPct(a.yearEndNov, t.yearEndNov)}</td>
+                <td className={`${yearEndClass} ${getUnmetClass(a.yearEndNov, t.yearEndNov)}`}><ClickableValue val={a.yearEndNov} items={collectMonthItems(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])} records={collectMonthRecords(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])} month="Year-end (Nov)" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.yearEndNov, t.yearEndNov)}`}>{getPct(a.yearEndNov, t.yearEndNov)}</td>
 
-                <td className={`${dataCellClass} bar1-report__cell--grand-actual text-center font-bold`}>{a.total || ''}</td>
-                <td className={percentClass}>{getPct(a.total, t.total)}</td>
+                <td className={`${dataCellClass} bar1-report__cell--grand-actual text-center font-bold ${getUnmetClass(a.total, t.total)}`}><ClickableValue val={a.total} items={collectMonthItems(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])} records={collectMonthRecords(a, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])} month="Annual Total" type="Accomplishment" /></td>
+                <td className={`${percentClass} ${getUnmetClass(a.total, t.total)}`}>{getPct(a.total, t.total)}</td>
             </>
         );
 
@@ -235,7 +359,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return (
             <tr className="bar1-report__row bar1-report__row--total text-xs">
                 <td className={`${dataCellClass} sticky left-0 z-10`}>{label}</td>
-                {renderDataCells(totals, true)}
+                {renderDataCells(totals, true, label)}
             </tr>
         );
     };
@@ -262,7 +386,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 z-10`}>
                     <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400">{isExpanded ? '−' : '+'}</span> {label}
                 </td>
-                {showTotals && totals ? renderDataCells(totals, true) : <td colSpan={53} className={dataCellClass}></td>}
+                {showTotals && totals ? renderDataCells(totals, true, label) : <td colSpan={53} className={dataCellClass}></td>}
             </tr>
         );
     };
@@ -271,7 +395,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         return (
             <tr key={key} className="bar1-report__row">
                 <td className={`${dataCellClass} ${indentClasses[indentLevel]} sticky left-0 z-10`}>{item.indicator}</td>
-                {renderDataCells(item)}
+                {renderDataCells(item, false, item.indicator)}
             </tr>
         )
     };
@@ -294,6 +418,10 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
             m4_items: [] as string[], m5_items: [] as string[], m6_items: [] as string[],
             m7_items: [] as string[], m8_items: [] as string[], m9_items: [] as string[],
             m10_items: [] as string[], m11_items: [] as string[], m12_items: [] as string[],
+            m1_records: [] as BAR1DrilldownRecord[], m2_records: [] as BAR1DrilldownRecord[], m3_records: [] as BAR1DrilldownRecord[],
+            m4_records: [] as BAR1DrilldownRecord[], m5_records: [] as BAR1DrilldownRecord[], m6_records: [] as BAR1DrilldownRecord[],
+            m7_records: [] as BAR1DrilldownRecord[], m8_records: [] as BAR1DrilldownRecord[], m9_records: [] as BAR1DrilldownRecord[],
+            m10_records: [] as BAR1DrilldownRecord[], m11_records: [] as BAR1DrilldownRecord[], m12_records: [] as BAR1DrilldownRecord[],
         });
 
         const safeCounter = (source: any) => ({ ...createEmptyCounter(), ...(source || {}) });
@@ -576,42 +704,132 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
         </>
     );
 
+    const renderRecordDateLabel = (record: BAR1DrilldownRecord) => {
+        return popup?.type === 'Target'
+            ? `Target date: ${formatDate(record.targetDate)}`
+            : `Actual date: ${formatDate(record.actualDate)}`;
+    };
+
+    const getRecordKindLabel = (record: BAR1DrilldownRecord) => {
+        if (record.type === 'training') return 'Training';
+        if (record.type === 'activity') return 'Activity';
+        if (record.type === 'subproject') return record.packageName || 'Subproject';
+        if (record.type === 'ad') return 'Ancestral Domain';
+        if (record.type === 'ipo') return 'IPO';
+        if (record.type === 'staffing') return 'Staffing Requirement';
+        if (record.type === 'office') return 'Office Requirement';
+        return 'Record';
+    };
+
+    const renderRecordDetails = (record: BAR1DrilldownRecord) => {
+        if (record.type === 'ipo') {
+            return (
+                <>
+                    <dt>Linked records</dt>
+                    <dd>{uniqueStrings(record.linkedNames).join(', ') || '-'}</dd>
+                </>
+            );
+        }
+        if (record.type === 'ad') {
+            return (
+                <>
+                    <dt>Linked IPOs</dt>
+                    <dd>{uniqueStrings(record.ipoNames).join(', ') || '-'}</dd>
+                    <dt>Related subprojects</dt>
+                    <dd>{uniqueStrings(record.linkedNames).join(', ') || '-'}</dd>
+                </>
+            );
+        }
+        if (record.type === 'subproject') {
+            return (
+                <>
+                    <dt>IPO</dt>
+                    <dd>{record.ipoName || uniqueStrings(record.ipoNames)[0] || '-'}</dd>
+                    <dt>Package</dt>
+                    <dd>{record.packageName || '-'}</dd>
+                </>
+            );
+        }
+        if (record.type === 'training' || record.type === 'activity') {
+            return (
+                <>
+                    <dt>Component</dt>
+                    <dd>{record.component || '-'}</dd>
+                    <dt>Target IPOs</dt>
+                    <dd>{uniqueStrings(record.ipoNames).join(', ') || '-'}</dd>
+                </>
+            );
+        }
+        return (
+            <>
+                <dt>Component</dt>
+                <dd>{record.component || 'Program Management'}</dd>
+            </>
+        );
+    };
+
     return (
         <div className="report-card bar1-report-card">
             {popup && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in duration-200">
-                        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                <div className="bar1-drilldown-overlay print-hidden" role="presentation" onMouseDown={() => setPopup(null)}>
+                    <div
+                        className="bar1-drilldown-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="bar1-drilldown-title"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <div className="bar1-drilldown-modal__header">
                             <div>
-                                <h4 className="font-bold text-gray-900 dark:text-white text-lg">{popup.type} Details</h4>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{popup.month} - {popup.indicator}</p>
+                                <h4 id="bar1-drilldown-title">{popup.indicator}</h4>
+                                <p>{popup.type} · {popup.month} · {popupRecords.length} record{popupRecords.length === 1 ? '' : 's'}</p>
                             </div>
                             <button 
                                 onClick={() => setPopup(null)}
-                                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
+                                className="bar1-drilldown-modal__close"
+                                type="button"
+                                aria-label="Close BAR1 details"
                             >
-                                <X className="h-5 w-5 text-gray-500" />
+                                <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <div className="p-6 max-h-[60vh] overflow-y-auto">
-                            <ul className="space-y-2">
-                                {popup.items.map((item, idx) => (
-                                    <li key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800">
-                                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs font-bold">
-                                            {idx + 1}
-                                        </span>
-                                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">{item}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-right">
-                            <button 
-                                onClick={() => setPopup(null)}
-                                className="px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity"
-                            >
-                                Close
-                            </button>
+                        {(popup.records.length > 8 || popupSearch) && (
+                            <label className="bar1-drilldown-search">
+                                <Search className="h-4 w-4" aria-hidden="true" />
+                                <input
+                                    value={popupSearch}
+                                    onChange={(event) => setPopupSearch(event.target.value)}
+                                    placeholder="Search records..."
+                                />
+                            </label>
+                        )}
+                        <div className="bar1-drilldown-list">
+                            {popupRecords.map(record => {
+                                const clickable = canOpenRecord(record);
+                                const CardTag: any = clickable ? 'button' : 'article';
+                                return (
+                                    <CardTag
+                                        key={`${record.type}-${record.id}`}
+                                        type={clickable ? 'button' : undefined}
+                                        onClick={clickable ? () => openRecord(record) : undefined}
+                                        className={`bar1-drilldown-card ${isRecordOverdue(record) ? 'bar1-drilldown-card--overdue' : ''}`}
+                                    >
+                                        <div className="bar1-drilldown-card__title">
+                                            <strong>{record.label}</strong>
+                                            <span>{getRecordKindLabel(record)}</span>
+                                        </div>
+                                        {record.description && <p>{record.description}</p>}
+                                        <dl>
+                                            <dt>{popup.type === 'Target' ? 'Target date' : 'Actual date'}</dt>
+                                            <dd>{renderRecordDateLabel(record).replace(/^Target date: |^Actual date: /, '')}</dd>
+                                            {renderRecordDetails(record)}
+                                        </dl>
+                                    </CardTag>
+                                );
+                            })}
+                            {popupRecords.length === 0 && (
+                                <div className="bar1-drilldown-empty">No matching records found.</div>
+                            )}
                         </div>
                     </div>
                 </div>
