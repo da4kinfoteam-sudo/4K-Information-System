@@ -439,7 +439,20 @@ const Reports: React.FC<ReportsProps> = ({
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
                 return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Detailed Accomplishment Data':
-                return <DetailedAccomplishmentDataReport data={filteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return (
+                    <DetailedAccomplishmentDataReport
+                        data={filteredData}
+                        selectedYear={selectedYear}
+                        selectedReportingYear={selectedReportingYear}
+                        selectedOu={selectedOu}
+                        selectedTier={selectedTier}
+                        selectedFundType={selectedFundType}
+                        onSelectSubproject={onSelectSubproject}
+                        onSelectActivity={onSelectActivity}
+                        onPrintReport={handleRequestPrint}
+                        onExportReport={handleRequestExport}
+                    />
+                );
             case 'Financial Audit':
                 if (!isSuperAdmin) return null;
                 return (
