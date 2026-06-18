@@ -1,6 +1,7 @@
 // Author: 4K
 import React, { useMemo, useState } from 'react';
-import { IPO, MarketLinkage, MarketingPartner, philippineRegions } from '../../constants';
+import { IPO, MarketLinkage, MarketingPartner, marketLinkageUnits, philippineRegions } from '../../constants';
+import { getMarketLinkageUnit } from '../../lib/marketSalesAggregation';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 
@@ -25,6 +26,7 @@ const createBlankLinkage = (): MarketLinkage => ({
     commodityName: '',
     commodityType: '',
     negotiationStatus: 'Agreed',
+    unitOfMeasure: 'KG',
     agreedQuantityValue: 0,
     agreedQuantityTimeframe: 'Monthly',
     agreedPricePerKg: 0,
@@ -46,6 +48,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
     const [tempLinkage, setTempLinkage] = useState<MarketLinkage>(createBlankLinkage);
     const [isSaving, setIsSaving] = useState(false);
     const commodityNeeds = partner.commodityNeeds || [];
+    const selectedUnit = getMarketLinkageUnit(tempLinkage);
 
     const iposInLinkageRegion = useMemo(() => {
         if (!tempLinkage.region) return [];
@@ -80,6 +83,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
         const newLinkage: MarketLinkage = {
             ...tempLinkage,
             id: tempLinkage.id || Date.now(),
+            unitOfMeasure: selectedUnit,
         };
         const marketingLinkages = [...(partner.marketingLinkages || []), newLinkage];
         const updatedPartner: MarketingPartner = {
@@ -169,9 +173,17 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty (Kg)</label>
+                                <label className="block text-xs font-bold uppercase text-gray-500">Unit of Measure</label>
+                                <select value={selectedUnit} onChange={e => setTempLinkage({ ...tempLinkage, unitOfMeasure: e.target.value as MarketLinkage['unitOfMeasure'] })} className={commonInputClasses}>
+                                    {marketLinkageUnits.map(unit => <option key={unit} value={unit}>{unit}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty ({selectedUnit})</label>
                                 <input type="number" value={tempLinkage.agreedQuantityValue || ''} onChange={e => setTempLinkage({ ...tempLinkage, agreedQuantityValue: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                             </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
                             <div>
                                 <label className="block text-xs font-bold uppercase text-gray-500">Timeframe</label>
                                 <select value={tempLinkage.agreedQuantityTimeframe} onChange={e => setTempLinkage({ ...tempLinkage, agreedQuantityTimeframe: e.target.value as MarketLinkage['agreedQuantityTimeframe'] })} className={commonInputClasses}>
@@ -181,7 +193,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (PHP/Kg)</label>
+                                <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (PHP/{selectedUnit})</label>
                                 <input type="number" value={tempLinkage.agreedPricePerKg || ''} onChange={e => setTempLinkage({ ...tempLinkage, agreedPricePerKg: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                             </div>
                             <div>
@@ -203,7 +215,7 @@ const MarketLinkageEdit: React.FC<MarketLinkageEditProps> = ({ partner, ipos, on
                                     <input type="date" value={tempLinkage.testBuyDate || ''} onChange={e => setTempLinkage({ ...tempLinkage, testBuyDate: e.target.value })} className={commonInputClasses} />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty (Kg)</label>
+                                    <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty ({selectedUnit})</label>
                                     <input type="number" value={tempLinkage.testBuyQuantity || ''} onChange={e => setTempLinkage({ ...tempLinkage, testBuyQuantity: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                                 </div>
                                 <div className="md:col-span-2">

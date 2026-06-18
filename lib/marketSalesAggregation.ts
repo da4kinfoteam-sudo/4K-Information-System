@@ -1,4 +1,4 @@
-import type { MarketLinkage, MarketingPartner } from '../constants';
+import { marketLinkageUnits, type MarketLinkage, type MarketLinkageUnit, type MarketingPartner } from '../constants';
 
 const toNumber = (value: unknown) => {
     const parsed = Number(value ?? 0);
@@ -6,15 +6,19 @@ const toNumber = (value: unknown) => {
 };
 
 export interface MarketLinkageSales {
+    quantity: number;
+    unitOfMeasure: MarketLinkageUnit;
+    pricePerUnit: number;
+    salesValue: number;
     quantityKg: number;
     pricePerKg: number;
-    salesValue: number;
 }
 
 export interface MarketSalesSummary {
     linkageCount: number;
     linkedIpoCount: number;
     linkedMarketCount: number;
+    totalQuantityByUnit: Record<MarketLinkageUnit, number>;
     totalKg: number;
     totalSales: number;
 }
@@ -24,14 +28,40 @@ export interface IpoMarketSalesRow extends MarketLinkageSales {
     link: MarketLinkage;
 }
 
+export const getMarketLinkageUnit = (link?: Partial<MarketLinkage> | null): MarketLinkageUnit => {
+    const unit = String(link?.unitOfMeasure || 'KG').trim();
+    return marketLinkageUnits.includes(unit as MarketLinkageUnit) ? unit as MarketLinkageUnit : 'KG';
+};
+
+export const createEmptyMarketQuantityTotals = (): Record<MarketLinkageUnit, number> => (
+    marketLinkageUnits.reduce((totals, unit) => {
+        totals[unit] = 0;
+        return totals;
+    }, {} as Record<MarketLinkageUnit, number>)
+);
+
+export const formatMarketQuantity = (quantity: number, unit: MarketLinkageUnit) => `${new Intl.NumberFormat('en-US').format(Number.isFinite(quantity) ? quantity : 0)} ${unit}`;
+
+export const formatMarketQuantityTotals = (totals: Partial<Record<MarketLinkageUnit, number>>) => {
+    const parts = marketLinkageUnits
+        .map(unit => ({ unit, quantity: Number(totals[unit] || 0) }))
+        .filter(item => item.quantity > 0)
+        .map(item => formatMarketQuantity(item.quantity, item.unit));
+    return parts.length > 0 ? parts.join(', ') : `0 ${marketLinkageUnits[0]}`;
+};
+
 export const calculateMarketLinkageSales = (link: MarketLinkage): MarketLinkageSales => {
-    const quantityKg = toNumber(link.agreedQuantityValue);
-    const pricePerKg = toNumber(link.agreedPricePerKg);
+    const quantity = toNumber(link.agreedQuantityValue);
+    const unitOfMeasure = getMarketLinkageUnit(link);
+    const pricePerUnit = toNumber(link.agreedPricePerKg);
 
     return {
-        quantityKg,
-        pricePerKg,
-        salesValue: quantityKg * pricePerKg,
+        quantity,
+        unitOfMeasure,
+        pricePerUnit,
+        salesValue: quantity * pricePerUnit,
+        quantityKg: unitOfMeasure === 'KG' ? quantity : 0,
+        pricePerKg: unitOfMeasure === 'KG' ? pricePerUnit : 0,
     };
 };
 
@@ -47,11 +77,15 @@ export const summarizeMarketLinkages = (linkages: MarketLinkage[] = []): MarketS
                 linkageCount: summary.linkageCount + 1,
                 linkedIpoCount: summary.linkedIpoCount,
                 linkedMarketCount: summary.linkedMarketCount,
-                totalKg: summary.totalKg + sales.quantityKg,
+                totalQuantityByUnit: {
+                    ...summary.totalQuantityByUnit,
+                    [sales.unitOfMeasure]: summary.totalQuantityByUnit[sales.unitOfMeasure] + sales.quantity,
+                },
+                totalKg: summary.totalKg + (sales.unitOfMeasure === 'KG' ? sales.quantity : 0),
                 totalSales: summary.totalSales + sales.salesValue,
             };
         },
-        { linkageCount: 0, linkedIpoCount: 0, linkedMarketCount: 0, totalKg: 0, totalSales: 0 }
+        { linkageCount: 0, linkedIpoCount: 0, linkedMarketCount: 0, totalQuantityByUnit: createEmptyMarketQuantityTotals(), totalKg: 0, totalSales: 0 }
     );
 
     return {
@@ -86,6 +120,10 @@ export const summarizeIpoMarketSales = (rows: IpoMarketSalesRow[]): MarketSalesS
     linkageCount: rows.length,
     linkedIpoCount: rows.length > 0 ? 1 : 0,
     linkedMarketCount: new Set(rows.map(row => row.partner.id)).size,
-    totalKg: rows.reduce((sum, row) => sum + row.quantityKg, 0),
+    totalQuantityByUnit: rows.reduce((totals, row) => ({
+        ...totals,
+        [row.unitOfMeasure]: totals[row.unitOfMeasure] + row.quantity,
+    }), createEmptyMarketQuantityTotals()),
+    totalKg: rows.reduce((sum, row) => sum + (row.unitOfMeasure === 'KG' ? row.quantity : 0), 0),
     totalSales: rows.reduce((sum, row) => sum + row.salesValue, 0),
 });

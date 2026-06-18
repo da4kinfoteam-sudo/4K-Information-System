@@ -12,9 +12,9 @@ import {
     UsersRound,
     WalletCards,
 } from 'lucide-react';
-import { IPO, MarketingPartner, ouToRegionMap, Subproject } from '../../constants';
+import { IPO, MarketingPartner, ouToRegionMap, Subproject, type MarketLinkageUnit } from '../../constants';
 import { collectFinancialLineItems, FinancialAggregationFilters } from '../../lib/financialAggregation';
-import { calculateMarketLinkageSales } from '../../lib/marketSalesAggregation';
+import { calculateMarketLinkageSales, createEmptyMarketQuantityTotals, formatMarketQuantityTotals } from '../../lib/marketSalesAggregation';
 import { parseLocation } from '../LocationPicker';
 import { XLSX } from '../reports/ReportUtils';
 
@@ -65,7 +65,8 @@ interface MarketingSaleRow {
     ipoName: string;
     marketName: string;
     operatingUnit: string;
-    quantityKg: number;
+    quantity: number;
+    unitOfMeasure: MarketLinkageUnit;
     salesValue: number;
     agreementDate?: string;
     partner: MarketingPartner;
@@ -488,7 +489,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                 if (!matchesYear(link.agreementDate, selectedYear)) return;
 
                 const sales = calculateMarketLinkageSales(link);
-                if (sales.salesValue <= 0 && sales.quantityKg <= 0) return;
+                if (sales.salesValue <= 0 && sales.quantity <= 0) return;
 
                 const ipo = ipoByName.get(getIpoKey(link.ipoName));
                 const assignedCommodityName = normalizeText(link.commodityName);
@@ -501,7 +502,8 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                         ipoName: link.ipoName || 'Unspecified IPO',
                         marketName: partner.companyName || 'Unspecified Market',
                         operatingUnit: 'Unspecified OU',
-                        quantityKg: sales.quantityKg,
+                        quantity: sales.quantity,
+                        unitOfMeasure: sales.unitOfMeasure,
                         salesValue: sales.salesValue,
                         agreementDate: link.agreementDate,
                         partner,
@@ -530,7 +532,8 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                         ipoName: link.ipoName || 'Unspecified IPO',
                         marketName: partner.companyName || 'Unspecified Market',
                         operatingUnit: 'Unspecified OU',
-                        quantityKg: sales.quantityKg * share,
+                        quantity: sales.quantity * share,
+                        unitOfMeasure: sales.unitOfMeasure,
                         salesValue: sales.salesValue * share,
                         agreementDate: link.agreementDate,
                         partner,
@@ -667,13 +670,13 @@ const FarmProductivityDashboard: React.FC<Props> = ({
         const performanceRows = Array.from(performanceMap.values())
             .sort((a, b) => b.income - a.income || a.operatingUnit.localeCompare(b.operatingUnit));
 
-        const marketMap = new Map<string, { partner: MarketingPartner; sales: number; volume: number; linkages: number }>();
+        const marketMap = new Map<string, { partner: MarketingPartner; sales: number; volumeByUnit: Record<MarketLinkageUnit, number>; linkages: number }>();
         marketingRows.forEach(row => {
             const key = String(row.partner.id ?? row.marketName);
-            if (!marketMap.has(key)) marketMap.set(key, { partner: row.partner, sales: 0, volume: 0, linkages: 0 });
+            if (!marketMap.has(key)) marketMap.set(key, { partner: row.partner, sales: 0, volumeByUnit: createEmptyMarketQuantityTotals(), linkages: 0 });
             const item = marketMap.get(key)!;
             item.sales += row.salesValue;
-            item.volume += row.quantityKg;
+            item.volumeByUnit[row.unitOfMeasure] += row.quantity;
             item.linkages += 1;
         });
         const topMarkets = Array.from(marketMap.values()).sort((a, b) => b.sales - a.sales).slice(0, 10);
@@ -736,7 +739,10 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                 commoditiesMeetingTarget,
                 cropCommodityCount,
                 activeMarkets: marketMap.size,
-                totalMarketingVolumeKg: marketingRows.reduce((sum, row) => sum + row.quantityKg, 0),
+                totalMarketingQuantityByUnit: marketingRows.reduce((totals, row) => ({
+                    ...totals,
+                    [row.unitOfMeasure]: totals[row.unitOfMeasure] + row.quantity,
+                }), createEmptyMarketQuantityTotals()),
                 averageSaleValue: marketingRows.length > 0 ? marketingIncome / marketingRows.length : 0,
             },
         };
@@ -827,7 +833,8 @@ const FarmProductivityDashboard: React.FC<Props> = ({
             IPO: row.ipoName,
             Commodity: row.commodityName,
             'Commodity Status': row.isCommodityAssigned ? 'Assigned' : 'Unassigned / legacy fallback',
-            'Quantity Kg': row.quantityKg,
+            'Quantity': row.quantity,
+            'Unit': row.unitOfMeasure,
             Sales: row.salesValue,
             'Agreement Date': row.agreementDate || '',
         }))), 'Marketing Sales');
@@ -992,7 +999,7 @@ const FarmProductivityDashboard: React.FC<Props> = ({
                     </div>
                     <div className="farm-impact-market-metrics">
                         <div><span>Total Sales</span><strong>{formatCurrency(analytics.stats.marketingIncome)}</strong></div>
-                        <div><span>Volume Sold</span><strong>{formatNumber(analytics.stats.totalMarketingVolumeKg)} kg</strong></div>
+                        <div><span>Volume Sold</span><strong>{formatMarketQuantityTotals(analytics.stats.totalMarketingQuantityByUnit)}</strong></div>
                         <div><span>Average Sale</span><strong>{formatCurrency(analytics.stats.averageSaleValue)}</strong></div>
                         <div><span>Active Markets</span><strong>{formatInteger(analytics.stats.activeMarkets)}</strong></div>
                     </div>
