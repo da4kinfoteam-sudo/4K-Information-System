@@ -9,7 +9,7 @@ import Subprojects from './components/Subprojects';
 import { ActivitiesComponent } from './components/Activities';
 import IPOs from './components/IPO';
 import References, { ReferenceUacs, ReferenceParticular } from './components/References';
-import Reports from './components/Reports';
+import Reports, { ReportsPageState } from './components/Reports';
 import SubprojectDetail from './components/SubprojectDetail';
 import SubprojectEdit from './components/SubprojectEdit';
 import IPODetail from './components/IPODetail';
@@ -102,6 +102,31 @@ const AccessDenied: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) 
     </div>
 );
 
+interface NavigationOptions {
+    resetReports?: boolean;
+}
+
+const createDefaultReportsPageState = (ownOu?: string | null, isLockedToOwnOu = false): ReportsPageState => {
+    const currentYear = new Date().getFullYear().toString();
+    return {
+        activeTab: 'WFP',
+        selectedYear: currentYear,
+        selectedReportingYear: currentYear,
+        selectedOu: isLockedToOwnOu ? (ownOu || 'All') : 'All',
+        selectedTier: 'Tier 1',
+        selectedFundType: 'Current',
+        bar1SelectedAsOfDate: '',
+        monthlySelectedMonth: new Date().getMonth(),
+        detailedSelectedQuarter: 'All',
+        financialAuditSearchTerm: '',
+        financialAuditSeverityFilter: 'All',
+        financialAuditReportFilter: 'All',
+        financialAuditSourceFilter: 'All',
+        financialAuditIssueTypeFilter: 'All',
+        financialAuditAsOfMonth: new Date().getMonth(),
+    };
+};
+
 const AppContent: React.FC = () => {
     const { currentUser, hasAccess, getVisibilityScope, isAuthReady, refreshUser, refreshUsersList, refreshPermissions } = useAuth();
     // Initialize Sidebar state based on screen width (Open on Desktop by default)
@@ -109,6 +134,11 @@ const AppContent: React.FC = () => {
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
     const [currentPage, setCurrentPage] = useState('/');
     const isDarkMode = themeMode === 'dark';
+    const reportsVisibilityScope = getVisibilityScope('Reports');
+    const isReportsLockedToOwnOu = reportsVisibilityScope === 'Own OU';
+    const [reportsPageState, setReportsPageState] = useState<ReportsPageState>(() =>
+        createDefaultReportsPageState(currentUser?.operatingUnit, isReportsLockedToOwnOu)
+    );
 
     // Global Filter State (Triggered by AI or External links)
     const [externalFilters, setExternalFilters] = useState<{ 
@@ -492,10 +522,29 @@ const AppContent: React.FC = () => {
         historyStackRef.current = historyStack;
     }, [historyStack]);
 
-    const navigateTo = (page: string) => {
+    const resetReportsPageState = useCallback(() => {
+        setReportsPageState(createDefaultReportsPageState(currentUser?.operatingUnit, isReportsLockedToOwnOu));
+    }, [currentUser?.operatingUnit, isReportsLockedToOwnOu]);
+
+    useEffect(() => {
+        if (isReportsLockedToOwnOu && currentUser?.operatingUnit) {
+            setReportsPageState(prev => ({ ...prev, selectedOu: currentUser.operatingUnit }));
+        }
+    }, [currentUser?.operatingUnit, isReportsLockedToOwnOu]);
+
+    useEffect(() => {
+        if (currentUser?.role !== 'Super Admin') {
+            setReportsPageState(prev => prev.activeTab === 'Financial Audit' ? { ...prev, activeTab: 'WFP' } : prev);
+        }
+    }, [currentUser?.role]);
+
+    const navigateTo = (page: string, options: NavigationOptions = {}) => {
         const current = currentPageRef.current;
         const stack = historyStackRef.current;
         const newStack = [...stack, current];
+        if (page === '/reports' && options.resetReports) {
+            resetReportsPageState();
+        }
         setHistoryStack(newStack);
         setCurrentPage(page);
         // Use hash-based routing to avoid 404 on refresh in static environments
@@ -543,7 +592,7 @@ const AppContent: React.FC = () => {
         // because Google must return to the settings page after a full redirect.
         const hashPath = window.location.hash.replace('#', '') || '/';
         const isGoogleDriveCallback = hashPath.startsWith('/settings?drive=');
-        const initialPath = isGoogleDriveCallback ? '/settings' : '/';
+        const initialPath = isGoogleDriveCallback ? '/settings' : hashPath;
         window.history.replaceState({ page: initialPath, stack: [] }, '', isGoogleDriveCallback ? `/#${hashPath}` : `/#${initialPath}`);
         setCurrentPage(initialPath);
 
@@ -563,9 +612,9 @@ const AppContent: React.FC = () => {
                 prevUserRef.current = currentUser;
                 return;
             }
-            setCurrentPage('/');
+            setCurrentPage(hashPath);
             setHistoryStack([]);
-            window.history.replaceState({ page: '/', stack: [] }, '', '/#/');
+            window.history.replaceState({ page: hashPath, stack: [] }, '', `/#${hashPath}`);
         }
         prevUserRef.current = currentUser;
     }, [currentUser]);
@@ -1103,6 +1152,8 @@ const AppContent: React.FC = () => {
                             onSelectOtherExpense={handleSelectOtherExpense}
                             onOpenIpoListForAncestralDomain={handleOpenIpoListForAncestralDomain}
                             onDataScopeChange={ensureDataScope}
+                            reportState={reportsPageState}
+                            onReportStateChange={setReportsPageState}
                         />;
             case '/subproject-detail':
                 if (!selectedSubproject) return <div>Select a subproject</div>;

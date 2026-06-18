@@ -27,7 +27,7 @@ interface SidebarProps {
     toggleSidebar: () => void;
     closeSidebar: () => void;
     currentPage: string;
-    setCurrentPage: (page: string) => void;
+    setCurrentPage: (page: string, options?: { resetReports?: boolean }) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, currentPage, setCurrentPage }) => {
@@ -89,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar, closeSidebar, 
     };
 
     const handleLinkClick = (href: string) => {
-        setCurrentPage(href);
+        setCurrentPage(href, { resetReports: href === '/reports' });
         if (window.innerWidth < 768) {
             closeSidebar();
         }

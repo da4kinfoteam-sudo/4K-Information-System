@@ -557,7 +557,7 @@ const PICSReport: React.FC<PICSReportProps> = ({
                                             <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400 font-bold">{isRegionExpanded ? '−' : '+'}</span>
                                             {region}
                                         </td>
-                                        <td className={`${dataCellClass} text-center`}>-</td>
+                                        <td className={`${dataCellClass} text-center`}>number</td>
                                         <td className={`${dataCellClass} text-center`}>{regionSummary.totalTarget}</td>
                                         <td className={`${dataCellClass} text-center`}>{regionSummary.totalGroup}</td>
                                         <td className={`${dataCellClass} text-center`}>{regionSummary.maleTarget}</td>
@@ -590,7 +590,7 @@ const PICSReport: React.FC<PICSReportProps> = ({
                                                         <span className="inline-block w-5 text-center text-gray-500 dark:text-gray-400 font-bold">{isProvinceExpanded ? '−' : '+'}</span>
                                                         {province}
                                                     </td>
-                                                    <td className={`${dataCellClass} text-center`}>-</td>
+                                                    <td className={`${dataCellClass} text-center`}>number</td>
                                                     <td className={`${dataCellClass} text-center`}>{provinceSummary.totalTarget}</td>
                                                     <td className={`${dataCellClass} text-center`}>{provinceSummary.totalGroup}</td>
                                                     <td className={`${dataCellClass} text-center`}>{provinceSummary.maleTarget}</td>
@@ -644,7 +644,7 @@ const PICSReport: React.FC<PICSReportProps> = ({
                     <tfoot>
                         <tr className="pics-report__row pics-report__row--total">
                             <td className={`${dataCellClass} text-right`}>GRAND TOTAL</td>
-                            <td className={`${dataCellClass} text-center`}>-</td>
+                            <td className={`${dataCellClass} text-center`}>number</td>
                             <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalTarget}</td>
                             <td className={`${dataCellClass} text-center`}>{grandTotalSummary.totalGroup}</td>
                             <td className={`${dataCellClass} text-center`}>{grandTotalSummary.maleTarget}</td>

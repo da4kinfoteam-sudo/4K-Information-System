@@ -29,6 +29,8 @@ interface MonthlyReportMatrixProps {
     selectedYear: string;
     selectedReportingYear: string;
     selectedOu: string;
+    selectedMonth: number;
+    onSelectedMonthChange: (month: number) => void;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
 }
@@ -48,8 +50,7 @@ const formatCurrencyWhole = (amount: number) => {
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.ceil(amount));
 };
 
-const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedReportingYear, selectedOu, onPrintReport, onExportReport }) => {
-    const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financialData, selectedYear, selectedReportingYear, selectedOu, selectedMonth, onSelectedMonthChange, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
 
     const toggleRow = (key: string) => {
@@ -552,7 +553,7 @@ const MonthlyReportMatrix: React.FC<MonthlyReportMatrixProps> = ({ data, financi
                         <label className="monthly-matrix-month-control__label">Month:</label>
                         <select 
                             value={selectedMonth} 
-                            onChange={(e) => setSelectedMonth(Number(e.target.value))} 
+                            onChange={(e) => onSelectedMonthChange(Number(e.target.value))} 
                             className="form-control form-control--compact"
                         >
                             {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
