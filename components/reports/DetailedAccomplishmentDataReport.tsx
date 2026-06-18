@@ -19,11 +19,13 @@ interface DetailedAccomplishmentDataReportProps {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    onSelectSubproject: (subproject: Subproject) => void;
+    onSelectActivity: (activity: Training | OtherActivity) => void;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
 }
 
-interface DetailedAccomplishmentRow {
+interface DetailedAccomplishmentDisplayFields {
     id: string;
     sourceGroup: DisplaySourceGroup;
     level3Key: string;
@@ -40,6 +42,7 @@ interface DetailedAccomplishmentRow {
     performanceIndicatorLevel1: string;
     performanceIndicatorLevel2: string;
     performanceIndicatorLevel3: string;
+    title: string;
     unitOfMeasure: string;
     quantity: number;
     beneficiaryProvince: string;
@@ -55,6 +58,24 @@ interface DetailedAccomplishmentRow {
     fourPs: string;
     contactNumber: string;
     dateReceived: string;
+}
+
+interface DetailedAccomplishmentRow extends DetailedAccomplishmentDisplayFields {
+    titleType: 'subproject' | 'activity' | 'ancestralDomain';
+    sourceSubproject?: Subproject;
+    sourceActivity?: Training | OtherActivity;
+    quarterKeys?: QuarterFilter[];
+    adDrilldown?: AdDrilldown;
+}
+
+interface AdDrilldownIpo {
+    ipo: IPO;
+    subprojects: Subproject[];
+}
+
+interface AdDrilldown {
+    adNo: string;
+    ipos: AdDrilldownIpo[];
 }
 
 interface PsgcLocationItem {
@@ -95,7 +116,7 @@ const psgcCache = {
     geocodesByLocation: new Map<string, Promise<string>>(),
 };
 
-const columns: { key: keyof DetailedAccomplishmentRow; label: string; numeric?: boolean; width: number }[] = [
+const columns: { key: keyof DetailedAccomplishmentDisplayFields; label: string; numeric?: boolean; width: number }[] = [
     { key: 'fundingYear', label: 'FUNDING YEAR', width: 120 },
     { key: 'region', label: 'REGION', width: 190 },
     { key: 'interventionGeocode', label: 'INTERVENTION GEOCODE', width: 155 },
@@ -108,6 +129,7 @@ const columns: { key: keyof DetailedAccomplishmentRow; label: string; numeric?: 
     { key: 'performanceIndicatorLevel1', label: 'PERFORMANCE INDICATOR LEVEL 1', width: 220 },
     { key: 'performanceIndicatorLevel2', label: 'PERFORMANCE INDICATOR LEVEL 2', width: 320 },
     { key: 'performanceIndicatorLevel3', label: 'PERFORMANCE INDICATOR LEVEL 3', width: 260 },
+    { key: 'title', label: 'TITLE', width: 260 },
     { key: 'unitOfMeasure', label: 'UNIT OF MEASURE', width: 140 },
     { key: 'quantity', label: 'QUANTITY', numeric: true, width: 105 },
     { key: 'beneficiaryProvince', label: 'PROVINCE', width: 150 },
@@ -344,6 +366,17 @@ const buildBeneficiaryFields = (ipos: IPO[]) => {
     };
 };
 
+const getSubprojectLinkedIpos = (subproject: Subproject, ipos: IPO[]) => dedupeIpos([
+    findIpoById(ipos, subproject.ipo_id),
+    findIpoByName(ipos, subproject.indigenousPeopleOrganization),
+]);
+
+const getLatestDate = (values: Array<string | undefined | null>) => values
+    .map(value => (value || '').trim())
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0] || '';
+
 const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataReportProps> = ({
     data,
     selectedYear,
@@ -351,6 +384,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     selectedOu,
     selectedTier,
     selectedFundType,
+    onSelectSubproject,
+    onSelectActivity,
     onPrintReport,
     onExportReport,
 }) => {
@@ -366,6 +401,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     const [controllerSaving, setControllerSaving] = useState(false);
     const [controllerError, setControllerError] = useState('');
     const [controllerMessage, setControllerMessage] = useState('');
+    const [adDrilldown, setAdDrilldown] = useState<AdDrilldown | null>(null);
 
     const ipoRegistry = useMemo(() => data.ipos || [], [data.ipos]);
 
@@ -416,10 +452,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
         const subprojectRows = (data.subprojects || [])
             .filter(subproject => !!subproject.actualCompletionDate)
             .map(subproject => {
-                const linkedIpos = dedupeIpos([
-                    findIpoById(ipoRegistry, subproject.ipo_id),
-                    findIpoByName(ipoRegistry, subproject.indigenousPeopleOrganization),
-                ]);
+                const linkedIpos = getSubprojectLinkedIpos(subproject, ipoRegistry);
                 const beneficiary = buildBeneficiaryFields(linkedIpos);
                 const component = 'Production and Livelihood';
                 const performanceIndicatorLevel3 = `Subproject ${subproject.packageType || ''} delivered`.replace(/\s+/g, ' ').trim();
@@ -428,6 +461,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     id: `subproject-${subproject.id}`,
                     sourceGroup: 'Packages',
                     level3Key: makeLevel3Key('Packages', performanceIndicatorLevel3),
+                    titleType: 'subproject',
+                    sourceSubproject: subproject,
                     beneficiaryLocationKeys: beneficiary.beneficiaryLocationKeys,
                     fundingYear: subproject.fundingYear?.toString() || '',
                     region: beneficiary.region,
@@ -441,6 +476,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     performanceIndicatorLevel1: component,
                     performanceIndicatorLevel2: getLevel2(component, 'Subproject'),
                     performanceIndicatorLevel3,
+                    title: subproject.name || '',
                     unitOfMeasure: 'Project',
                     quantity: 1,
                     beneficiaryProvince: beneficiary.province,
@@ -473,6 +509,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     id: `activity-${activity.id}`,
                     sourceGroup: 'Activities',
                     level3Key: makeLevel3Key('Activities', performanceIndicatorLevel3),
+                    titleType: 'activity',
+                    sourceActivity: activity,
                     beneficiaryLocationKeys: beneficiary.beneficiaryLocationKeys,
                     fundingYear: activity.fundingYear?.toString() || '',
                     region: beneficiary.region,
@@ -486,6 +524,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     performanceIndicatorLevel1: component,
                     performanceIndicatorLevel2: getLevel2(component, 'Activity'),
                     performanceIndicatorLevel3,
+                    title: activity.name || '',
                     unitOfMeasure: 'Activity',
                     quantity: 1,
                     beneficiaryProvince: beneficiary.province,
@@ -504,8 +543,97 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                 };
             });
 
+        const adTracker = new Map<string, {
+            dates: Set<string>;
+            quarters: Set<QuarterFilter>;
+            iposByKey: Map<string, AdDrilldownIpo>;
+        }>();
+
+        (data.subprojects || [])
+            .filter(subproject => !!subproject.actualCompletionDate)
+            .filter(subproject => isDateInReportingYear(subproject.actualCompletionDate, selectedReportingYear, subproject.fundingYear?.toString() || ''))
+            .forEach(subproject => {
+                const linkedIpos = getSubprojectLinkedIpos(subproject, ipoRegistry);
+                linkedIpos.forEach(ipo => {
+                    const adNo = (ipo.ancestralDomainNo || '').trim();
+                    if (!adNo) return;
+
+                    if (!adTracker.has(adNo)) {
+                        adTracker.set(adNo, {
+                            dates: new Set<string>(),
+                            quarters: new Set<QuarterFilter>(),
+                            iposByKey: new Map<string, AdDrilldownIpo>(),
+                        });
+                    }
+
+                    const tracker = adTracker.get(adNo)!;
+                    const completionDate = subproject.actualCompletionDate || '';
+                    const quarter = getQuarterFromDate(completionDate);
+                    tracker.dates.add(completionDate);
+                    if (quarter) tracker.quarters.add(quarter);
+
+                    const ipoKey = ipo.id ? `id:${ipo.id}` : `name:${normalizeText(ipo.name)}`;
+                    if (!tracker.iposByKey.has(ipoKey)) {
+                        tracker.iposByKey.set(ipoKey, { ipo, subprojects: [] });
+                    }
+                    tracker.iposByKey.get(ipoKey)!.subprojects.push(subproject);
+                });
+            });
+
+        const adRows = Array.from(adTracker.entries()).map(([adNo, tracker]) => {
+            const adIpos = Array.from(tracker.iposByKey.values())
+                .map(detail => ({
+                    ...detail,
+                    subprojects: [...detail.subprojects].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
+                }))
+                .sort((a, b) => (a.ipo.name || '').localeCompare(b.ipo.name || ''));
+            const linkedIpos = adIpos.map(detail => detail.ipo);
+            const beneficiary = buildBeneficiaryFields(linkedIpos);
+            const component = 'Production and Livelihood';
+            const performanceIndicatorLevel3 = 'AD covered';
+
+            return {
+                id: `ad-covered-${adNo.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || normalizeText(adNo)}`,
+                sourceGroup: 'Packages',
+                level3Key: makeLevel3Key('Packages', performanceIndicatorLevel3),
+                titleType: 'ancestralDomain',
+                quarterKeys: Array.from(tracker.quarters),
+                adDrilldown: { adNo, ipos: adIpos },
+                beneficiaryLocationKeys: beneficiary.beneficiaryLocationKeys,
+                fundingYear: selectedYear === 'All' ? joinUnique(adIpos.flatMap(detail => detail.subprojects.map(subproject => subproject.fundingYear))) : selectedYear,
+                region: beneficiary.region,
+                interventionGeocode: '',
+                province: beneficiary.province,
+                cityMunicipality: beneficiary.cityMunicipality,
+                barangay: beneficiary.barangay,
+                project: '4K',
+                interventionType: 'Non-Infra',
+                prexcProgram: '',
+                performanceIndicatorLevel1: component,
+                performanceIndicatorLevel2: getLevel2(component, 'Subproject'),
+                performanceIndicatorLevel3,
+                title: adNo,
+                unitOfMeasure: 'Ancestral Domain',
+                quantity: 1,
+                beneficiaryProvince: beneficiary.province,
+                beneficiaryCityMunicipality: beneficiary.cityMunicipality,
+                beneficiaryBarangay: beneficiary.barangay,
+                nameOfAssociationOrganization: beneficiary.names,
+                totalNumber: linkedIpos.reduce((sum, ipo) => sum + (Number(ipo.totalMembers) || 0), 0) || '',
+                indigenousPeople: beneficiary.indigenousPeople,
+                nameOfTribe: beneficiary.tribes,
+                srCitizen: '',
+                pwd: '',
+                arb: '',
+                fourPs: '',
+                contactNumber: beneficiary.contacts,
+                dateReceived: getLatestDate(Array.from(tracker.dates)),
+            };
+        });
+
         return [...subprojectRows, ...activityRows]
         .filter(row => isDateInReportingYear(row.dateReceived, selectedReportingYear, row.fundingYear))
+        .concat(adRows)
         .sort((a, b) => {
             const dateCompare = a.dateReceived.localeCompare(b.dateReceived);
             if (dateCompare !== 0) return dateCompare;
@@ -515,7 +643,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
 
     const quarterFilteredRows = useMemo(() => {
         if (selectedQuarter === 'All') return rows;
-        return rows.filter(row => getQuarterFromDate(row.dateReceived) === selectedQuarter);
+        return rows.filter(row => row.quarterKeys?.includes(selectedQuarter) || getQuarterFromDate(row.dateReceived) === selectedQuarter);
     }, [rows, selectedQuarter]);
 
     const level3Options = useMemo<Level3Option[]>(() => {
@@ -665,6 +793,37 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
         interventionGeocode: joinUnique(row.beneficiaryLocationKeys.map(key => geocodes[key])),
     })), [controllerFilteredRows, geocodes]);
 
+    const renderTitleCell = (row: DetailedAccomplishmentRow) => {
+        const title = row.title || '';
+        if (!title) return '';
+
+        const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+            event.preventDefault();
+            if (row.titleType === 'subproject' && row.sourceSubproject) {
+                onSelectSubproject(row.sourceSubproject);
+                return;
+            }
+            if (row.titleType === 'activity' && row.sourceActivity) {
+                onSelectActivity(row.sourceActivity);
+                return;
+            }
+            if (row.titleType === 'ancestralDomain' && row.adDrilldown) {
+                setAdDrilldown(row.adDrilldown);
+            }
+        };
+
+        return (
+            <a
+                href="#"
+                className="table-link"
+                onClick={handleClick}
+                aria-label={`Open ${title}`}
+            >
+                {title}
+            </a>
+        );
+    };
+
     const filteredLevel3Options = useMemo(() => {
         const search = normalizeText(controllerSearch);
         if (!search) return level3Options;
@@ -675,7 +834,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
 
     const handleDownload = () => {
         const aoa = [
-            ['PERFORMANCE INDICATOR', ...Array(13).fill(''), 'BENEFICIARY INFORMATION', ...Array(12).fill('')],
+            ['PERFORMANCE INDICATOR', ...Array(14).fill(''), 'BENEFICIARY INFORMATION', ...Array(12).fill('')],
             columns.map(column => column.label),
             ...displayRows.map(row => columns.map(column => row[column.key] ?? '')),
         ];
@@ -688,8 +847,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                 rows: aoa,
                 headerRowCount: 2,
                 merges: [
-                    { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
-                    { s: { r: 0, c: 14 }, e: { r: 0, c: 26 } },
+                    { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
+                    { s: { r: 0, c: 15 }, e: { r: 0, c: 27 } },
                 ],
                 columnWidths: columns.map(column => Math.max(12, Math.ceil(column.width / 8))),
                 columnFormats: columns.reduce<Record<number, 'physical'>>((acc, column, index) => {
@@ -904,7 +1063,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     </colgroup>
                     <thead>
                         <tr>
-                            <th className="detailed-accomplishment-table__group detailed-accomplishment-table__group--performance" colSpan={14}>
+                            <th className="detailed-accomplishment-table__group detailed-accomplishment-table__group--performance" colSpan={15}>
                                 PERFORMANCE INDICATOR
                             </th>
                             <th className="detailed-accomplishment-table__group detailed-accomplishment-table__group--beneficiary" colSpan={13}>
@@ -924,7 +1083,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                             <tr key={row.id}>
                                 {columns.map(column => (
                                     <td key={`${row.id}-${column.key}`} className={column.numeric ? 'text-right' : ''}>
-                                        {row[column.key] || ''}
+                                        {column.key === 'title' ? renderTitleCell(row) : (row[column.key] || '')}
                                     </td>
                                 ))}
                             </tr>
@@ -940,6 +1099,60 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     </tbody>
                 </table>
             </div>
+            {adDrilldown && (
+                <div className="pics-drilldown-overlay print-hidden" role="presentation" onMouseDown={() => setAdDrilldown(null)}>
+                    <section
+                        className="pics-drilldown-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="detailed-ad-drilldown-title"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <div className="pics-drilldown-modal__header">
+                            <div>
+                                <h4 id="detailed-ad-drilldown-title">AD covered - {adDrilldown.adNo}</h4>
+                                <p>
+                                    {adDrilldown.ipos.length} IPO{adDrilldown.ipos.length === 1 ? '' : 's'} with completed subprojects in the current filters
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                className="pics-drilldown-modal__close"
+                                onClick={() => setAdDrilldown(null)}
+                                aria-label="Close AD covered details"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="pics-drilldown-list">
+                            {adDrilldown.ipos.map(detail => {
+                                const location = parseBeneficiaryLocation(detail.ipo.location, detail.ipo.region);
+                                return (
+                                    <div key={detail.ipo.id || detail.ipo.name} className="pics-drilldown-card">
+                                        <div className="pics-drilldown-card__title">
+                                            <strong>{detail.ipo.name}</strong>
+                                            <span className="status-badge status-badge--compact status-badge--info">
+                                                {detail.subprojects.length} subproject{detail.subprojects.length === 1 ? '' : 's'}
+                                            </span>
+                                        </div>
+                                        <p>{detail.subprojects.map(subproject => subproject.name).filter(Boolean).join('; ') || 'No subproject title available.'}</p>
+                                        <dl>
+                                            <div><dt>Region</dt><dd>{detail.ipo.region || '-'}</dd></div>
+                                            <div><dt>Province</dt><dd>{location.province || '-'}</dd></div>
+                                            <div><dt>City/Municipality</dt><dd>{location.cityMunicipality || '-'}</dd></div>
+                                            <div><dt>Barangay</dt><dd>{location.barangay || '-'}</dd></div>
+                                        </dl>
+                                    </div>
+                                );
+                            })}
+                            {adDrilldown.ipos.length === 0 && (
+                                <div className="pics-drilldown-empty">No IPOs found for this ancestral domain under the current filters.</div>
+                            )}
+                        </div>
+                    </section>
+                </div>
+            )}
         </div>
     );
 };
