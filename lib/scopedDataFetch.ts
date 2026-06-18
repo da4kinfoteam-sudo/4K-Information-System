@@ -66,6 +66,11 @@ export interface ScopedAppData {
 
 const PAGE_SIZE = 1000;
 const CHUNK_SIZE = 200;
+type IpoReferenceSources = {
+  subprojects: any[];
+  activities: any[];
+  activityMonitoringReports: any[];
+};
 
 export const normalizeDataScope = (scope: DataScope, fallbackOu?: string): DataScope => {
   const lockedOu = !scope.canViewAllOus;
@@ -152,6 +157,80 @@ async function fetchScopedIpos(scope: DataScope) {
     if (targetRegion) query = query.eq('region', targetRegion);
   }
   return fetchQuery(query);
+}
+
+function uniqueStrings(values: unknown[]) {
+  return Array.from(new Set(
+    values
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+async function fetchRowsByValues(tableName: string, columnName: string, values: Array<number | string>) {
+  if (!supabase || values.length === 0) return [];
+  const chunks: Array<Array<number | string>> = [];
+  for (let index = 0; index < values.length; index += CHUNK_SIZE) {
+    chunks.push(values.slice(index, index + CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(chunks.map(chunk => fetchQuery(
+    supabase
+      .from(tableName)
+      .select('*')
+      .in(columnName, chunk)
+      .order('id', { ascending: true })
+  )));
+
+  return results.flat();
+}
+
+function collectIpoReferences({ subprojects, activities, activityMonitoringReports }: IpoReferenceSources) {
+  const ids = uniqueNumbers([
+    ...subprojects.map(item => item.ipo_id),
+    ...activities.flatMap(item => item.participating_ipo_ids || []),
+    ...activityMonitoringReports.map(report => report.ipo_id),
+  ]);
+  const names = uniqueStrings([
+    ...subprojects.map(item => item.indigenousPeopleOrganization),
+    ...activities.flatMap(item => item.participatingIpos || []),
+  ]);
+  return { ids, names };
+}
+
+function mergeIpos(baseIpos: any[], extraIpos: any[]) {
+  const byId = new Map<number, any>();
+  const byName = new Map<string, any>();
+  const merged: any[] = [];
+
+  [...baseIpos, ...extraIpos].forEach(ipo => {
+    const id = Number(ipo?.id);
+    const name = String(ipo?.name || '').trim();
+    if (Number.isFinite(id) && byId.has(id)) return;
+    if (!Number.isFinite(id) && name && byName.has(name)) return;
+
+    merged.push(ipo);
+    if (Number.isFinite(id)) byId.set(id, ipo);
+    if (name) byName.set(name, ipo);
+  });
+
+  return merged.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
+async function enrichScopedIpos(baseIpos: any[], sources: IpoReferenceSources) {
+  const { ids, names } = collectIpoReferences(sources);
+  const existingIds = new Set(baseIpos.map(ipo => Number(ipo.id)).filter(Number.isFinite));
+  const existingNames = new Set(baseIpos.map(ipo => String(ipo.name || '').trim()).filter(Boolean));
+  const missingIds = ids.filter(id => !existingIds.has(id));
+  const missingNames = names.filter(name => !existingNames.has(name));
+
+  const [iposById, iposByName] = await Promise.all([
+    fetchRowsByValues('ipos', 'id', missingIds),
+    fetchRowsByValues('ipos', 'name', missingNames),
+  ]);
+
+  return mergeIpos(baseIpos, [...iposById, ...iposByName]);
 }
 
 async function fetchScopedMarketingPartners(scope: DataScope) {
@@ -300,6 +379,17 @@ function applyLocalIpoScope(scope: DataScope) {
   return sampleIPOs.filter(ipo => ipo.region === targetRegion);
 }
 
+function enrichLocalIpos(baseIpos: any[], sources: IpoReferenceSources) {
+  const { ids, names } = collectIpoReferences(sources);
+  const referencedIds = new Set(ids);
+  const referencedNames = new Set(names);
+  const extraIpos = sampleIPOs.filter(ipo =>
+    referencedIds.has(Number(ipo.id)) ||
+    referencedNames.has(String(ipo.name || '').trim())
+  );
+  return mergeIpos(baseIpos, extraIpos);
+}
+
 function filterLocalBudgetCeilings(scope: DataScope) {
   return sampleBudgetCeilings.filter(row => {
     if (!isAll(scope.year) && Number(row.year) !== Number(scope.year)) return false;
@@ -354,7 +444,7 @@ function filterLocalAdjustmentHistory(subprojects: any[], activities: any[], sta
 function loadLocalSeedScopedData(scope: DataScope): ScopedAppData {
   const normalizedScope = normalizeDataScope(scope);
   const subprojects = applyLocalCommonScope(sampleSubprojects, normalizedScope, 'fundingYear');
-  const ipos = applyLocalIpoScope(normalizedScope);
+  const baseIpos = applyLocalIpoScope(normalizedScope);
   const activities = applyLocalCommonScope(sampleActivities, normalizedScope, 'fundingYear');
   const marketingPartners = sampleMarketingPartners;
   const officeReqs = applyLocalCommonScope(sampleOfficeRequirements, normalizedScope, 'fundYear');
@@ -368,6 +458,7 @@ function loadLocalSeedScopedData(scope: DataScope): ScopedAppData {
     otherProgramExpenses,
   };
   const { activityMonitoringReports, activityMonitoringActions } = filterLocalMonitoringRows(activities);
+  const ipos = enrichLocalIpos(baseIpos, { subprojects, activities, activityMonitoringReports });
 
   return {
     subprojects,
@@ -406,7 +497,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
 
   const [
     subprojects,
-    ipos,
+    baseIpos,
     activities,
     marketingPartners,
     officeReqs,
@@ -463,6 +554,7 @@ export async function loadScopedAppData(scope: DataScope): Promise<ScopedAppData
     fetchScopedMonitoringRows(activities),
     fetchBudgetItemAdjustmentHistory(subprojects, activities, staffingReqs),
   ]);
+  const ipos = await enrichScopedIpos(baseIpos, { subprojects, activities, activityMonitoringReports });
 
   return {
     subprojects,
