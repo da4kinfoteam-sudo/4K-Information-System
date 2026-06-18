@@ -533,6 +533,9 @@ export interface CommodityNeed {
     volumeDec: number;
 }
 
+export const marketLinkageUnits = ['KG', 'PCS', 'sack', 'bundle', 'box', 'crate', 'head'] as const;
+export type MarketLinkageUnit = typeof marketLinkageUnits[number];
+
 export interface MarketLinkage {
     id: number | string;
     region: string;
@@ -541,6 +544,7 @@ export interface MarketLinkage {
     commodityName: string;
     commodityType: string;
     negotiationStatus: 'Agreed' | 'Contract Signed' | 'Pending Test Buy';
+    unitOfMeasure?: MarketLinkageUnit;
     agreedQuantityValue: number;
     agreedQuantityTimeframe: 'Per Week' | 'Monthly' | 'One-time Transaction';
     agreedPricePerKg: number;

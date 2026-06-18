@@ -3,7 +3,7 @@
 import React, { useState, useEffect, FormEvent, useMemo, useCallback } from 'react';
 import { AlertCircle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Edit3, ExternalLink, Eye, FileText, HardDrive, Image as ImageIcon, Loader2, Pencil, Plus, Trash2, UploadCloud, X } from 'lucide-react';
 import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Subproject, Training, Commodity, CommodityNeed, referenceCommodityTypes, MarketingPartner, MarketLinkage, LodAssessment } from '../constants';
-import { getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
+import { formatMarketQuantityTotals, getIpoMarketSalesRows, summarizeIpoMarketSales } from '../lib/marketSalesAggregation';
 import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess, usePagination } from './mainfunctions/TableHooks';
@@ -1537,9 +1537,9 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                 value={formatFullNumber(ipoMarketSalesSummary.linkedMarketCount)}
                             />
                             <OverviewMetric
-                                label="Total Kg Sold"
-                                value={formatCompactNumber(ipoMarketSalesSummary.totalKg)}
-                                fullValue={`${formatFullNumber(ipoMarketSalesSummary.totalKg)} kg`}
+                                label="Total Quantity Sold"
+                                value={formatMarketQuantityTotals(ipoMarketSalesSummary.totalQuantityByUnit)}
+                                fullValue={formatMarketQuantityTotals(ipoMarketSalesSummary.totalQuantityByUnit)}
                             />
                             <OverviewMetric
                                 label="Total Sales from Market Linkage"
@@ -1588,7 +1588,7 @@ const IPODetail: React.FC<IPODetailProps> = ({ ipo, subprojects, trainings, moni
                                                         {item.partner.companyName}
                                                     </button>
                                                     <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
-                                                        <span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantityKg)} Kg ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerKg)}/Kg
+                                                        <span className="font-semibold">Agreement:</span> {formatFullNumber(item.quantity)} {item.unitOfMeasure} ({item.link.agreedQuantityTimeframe}) @ {formatCurrency(item.pricePerUnit)}/{item.unitOfMeasure}
                                                     </p>
                                                     <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
                                                         <span className="font-semibold">Commodity Sold:</span>{' '}

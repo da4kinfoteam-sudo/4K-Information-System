@@ -1,8 +1,8 @@
 // Author: 4K
 import React, { useEffect, useMemo, useState } from 'react';
-import { IPO, MarketLinkage, MarketingPartner, philippineRegions } from '../../constants';
+import { IPO, MarketLinkage, MarketingPartner, marketLinkageUnits, philippineRegions } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
-import { calculateMarketLinkageSales } from '../../lib/marketSalesAggregation';
+import { calculateMarketLinkageSales, getMarketLinkageUnit } from '../../lib/marketSalesAggregation';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 
@@ -61,6 +61,7 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const commodityNeeds = partner.commodityNeeds || [];
+    const selectedUnit = getMarketLinkageUnit(draft || linkage);
 
     useEffect(() => {
         setDraft(linkage ? { commodityNeedId: null, commodityName: '', commodityType: '', ...linkage } : null);
@@ -110,6 +111,7 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
         const normalizedDraft: MarketLinkage = {
             ...draft,
             id: draft.id || Date.now(),
+            unitOfMeasure: selectedUnit,
         };
         const updatedLinkages = linkages.map((link, idx) => idx === linkageIndex ? normalizedDraft : link);
         const updatedPartner: MarketingPartner = {
@@ -218,12 +220,12 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                         <DetailBlock label="Negotiation Status" value={<span className={`inline-flex rounded px-2 py-0.5 text-[10px] font-bold uppercase ${linkage.negotiationStatus === 'Contract Signed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>{linkage.negotiationStatus}</span>} />
                         <DetailBlock label="Agreement Type" value={linkage.agreementType} />
                         <DetailBlock label="Agreement Date" value={linkage.agreementDate ? new Date(linkage.agreementDate).toLocaleDateString() : 'N/A'} />
-                        <DetailBlock label="Agreed Quantity" value={`${formatNumber(sales.quantityKg)} Kg (${linkage.agreedQuantityTimeframe})`} />
-                        <DetailBlock label="Agreed Price" value={`${formatCurrency(sales.pricePerKg)} / Kg`} />
+                        <DetailBlock label="Agreed Quantity" value={`${formatNumber(sales.quantity)} ${sales.unitOfMeasure} (${linkage.agreedQuantityTimeframe})`} />
+                        <DetailBlock label="Agreed Price" value={`${formatCurrency(sales.pricePerUnit)} / ${sales.unitOfMeasure}`} />
                         <DetailBlock label="Sales Value" value={formatCurrency(sales.salesValue)} />
                         <DetailBlock label="Test Buy" value={linkage.testBuyConducted ? 'Conducted' : 'Not recorded'} />
                         <DetailBlock label="Test Buy Date" value={linkage.testBuyDate ? new Date(linkage.testBuyDate).toLocaleDateString() : 'N/A'} />
-                        <DetailBlock label="Test Buy Quantity" value={`${formatNumber(linkage.testBuyQuantity || 0)} Kg`} />
+                        <DetailBlock label="Test Buy Quantity" value={`${formatNumber(linkage.testBuyQuantity || 0)} ${sales.unitOfMeasure}`} />
                         <div className="md:col-span-3">
                             <DetailBlock label="Test Buy Feedback" value={<span className="italic text-gray-600 dark:text-gray-300">{linkage.testBuyFeedback || 'No feedback provided.'}</span>} />
                         </div>
@@ -269,9 +271,17 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty (Kg)</label>
+                                    <label className="block text-xs font-bold uppercase text-gray-500">Unit of Measure</label>
+                                    <select value={selectedUnit} onChange={e => setDraft({ ...draft, unitOfMeasure: e.target.value as MarketLinkage['unitOfMeasure'] })} className={commonInputClasses}>
+                                        {marketLinkageUnits.map(unit => <option key={unit} value={unit}>{unit}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase text-gray-500">Agreed Qty ({selectedUnit})</label>
                                     <input type="number" value={draft.agreedQuantityValue || ''} onChange={e => setDraft({ ...draft, agreedQuantityValue: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                                 </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="block text-xs font-bold uppercase text-gray-500">Timeframe</label>
                                     <select value={draft.agreedQuantityTimeframe} onChange={e => setDraft({ ...draft, agreedQuantityTimeframe: e.target.value as MarketLinkage['agreedQuantityTimeframe'] })} className={commonInputClasses}>
@@ -281,7 +291,7 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (PHP/Kg)</label>
+                                    <label className="block text-xs font-bold uppercase text-gray-500">Agreed Price (PHP/{selectedUnit})</label>
                                     <input type="number" value={draft.agreedPricePerKg || ''} onChange={e => setDraft({ ...draft, agreedPricePerKg: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                                 </div>
                                 <div>
@@ -303,7 +313,7 @@ const MarketLinkageDetail: React.FC<MarketLinkageDetailProps> = ({ partner, link
                                         <input type="date" value={draft.testBuyDate || ''} onChange={e => setDraft({ ...draft, testBuyDate: e.target.value })} className={commonInputClasses} />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty (Kg)</label>
+                                        <label className="block text-xs font-bold uppercase text-gray-500">Test Buy Qty ({selectedUnit})</label>
                                         <input type="number" value={draft.testBuyQuantity || ''} onChange={e => setDraft({ ...draft, testBuyQuantity: parseFloat(e.target.value) || 0 })} className={commonInputClasses} />
                                     </div>
                                     <div className="md:col-span-2">

@@ -2,8 +2,8 @@
 // Author: 4K 
 import React, { useMemo } from 'react';
 import { MarketingPartner, IPO } from '../../constants';
-import { useUserAccess } from '../mainfunctions/TableHooks';
-import { calculateMarketLinkageSales, summarizeMarketPartnerSales } from '../../lib/marketSalesAggregation';
+import { usePagination, useUserAccess } from '../mainfunctions/TableHooks';
+import { calculateMarketLinkageSales, formatMarketQuantityTotals, summarizeMarketPartnerSales } from '../../lib/marketSalesAggregation';
 
 interface MarketProfileDetailProps {
     partner: MarketingPartner;
@@ -56,6 +56,65 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
             <dd className="text-md font-semibold text-gray-800 dark:text-white mt-0.5">{value || 'N/A'}</dd>
         </div>
     );
+
+    const PaginationControls = ({
+        currentPage,
+        totalPages,
+        onPageChange,
+        itemsPerPage,
+        onItemsPerPageChange,
+        totalItems,
+    }: {
+        currentPage: number;
+        totalPages: number;
+        onPageChange: (page: number) => void;
+        itemsPerPage: number;
+        onItemsPerPageChange: (value: number) => void;
+        totalItems: number;
+    }) => (
+        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3 text-xs">
+            <div className="flex items-center gap-2">
+                <span className="text-gray-600 dark:text-gray-400">Show</span>
+                <select
+                    value={itemsPerPage}
+                    onChange={(event) => onItemsPerPageChange(Number(event.target.value))}
+                    className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-sm py-1 px-2 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 text-gray-700 dark:text-gray-200"
+                >
+                    {[5, 10, 20].map(size => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <span className="text-gray-600 dark:text-gray-400">entries</span>
+            </div>
+            <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-4 sm:text-left">
+                <span className="text-gray-600 dark:text-gray-400">
+                    {totalItems === 0 ? 'No entries' : `Showing ${(currentPage - 1) * itemsPerPage + 1} to ${Math.min(currentPage * itemsPerPage, totalItems)} of ${totalItems}`}
+                </span>
+                <div className="flex gap-1">
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                        disabled={currentPage === 1}
+                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
+                    >
+                        Prev
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50"
+                    >
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    const marketingLinkageItems = useMemo(() => (
+        (partner.marketingLinkages || []).map((link, index) => ({ link, index }))
+    ), [partner.marketingLinkages]);
+    const linkagePagination = usePagination(marketingLinkageItems, [partner.id, marketingLinkageItems.length]);
+    const matchedIpoPagination = usePagination(potentialIpos, [partner.id, potentialIpos.length]);
 
     return (
         <div className="space-y-8 animate-fadeIn">
@@ -165,23 +224,23 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                     <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatNumber(marketSalesSummary.linkedIpoCount)}</p>
                                 </div>
                                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
-                                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Total Kg Sold</p>
-                                    <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatNumber(marketSalesSummary.totalKg)} Kg</p>
+                                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Total Quantity Sold</p>
+                                    <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatMarketQuantityTotals(marketSalesSummary.totalQuantityByUnit)}</p>
                                 </div>
                                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800">
                                     <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Total Sales from Market Linkage</p>
                                     <p className="text-xl font-bold text-gray-800 dark:text-white mt-1">{formatCurrency(marketSalesSummary.totalSales)}</p>
                                 </div>
                             </div>
-                            {(partner.marketingLinkages || []).length > 0 ? (
+                            {marketingLinkageItems.length > 0 ? (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {partner.marketingLinkages?.map((link, idx) => {
+                                    {linkagePagination.paginatedData.map(({ link, index }) => {
                                         const linkSales = calculateMarketLinkageSales(link);
                                         return (
                                         <button
                                             type="button"
-                                            key={link.id ?? idx}
-                                            onClick={() => onSelectLinkage(link.id ?? idx)}
+                                            key={link.id ?? index}
+                                            onClick={() => onSelectLinkage(link.id ?? index)}
                                             className="w-full p-4 bg-gray-50 dark:bg-gray-700/30 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-3 text-left transition-all hover:border-emerald-300 hover:bg-emerald-50/60 dark:hover:bg-emerald-900/20 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                                             title={`Open market linkage details for ${link.ipoName}`}
                                         >
@@ -193,8 +252,8 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 text-xs">
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Commodity Sold</p><p className={`font-medium ${link.commodityName ? 'text-gray-700 dark:text-gray-200' : 'text-amber-600 dark:text-amber-300'}`}>{getLinkageCommodityLabel(link)}</p></div>
-                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatNumber(linkSales.quantityKg)} Kg ({link.agreedQuantityTimeframe})</p></div>
-                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.pricePerKg)}/Kg</p></div>
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Qty Agreement</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatNumber(linkSales.quantity)} {linkSales.unitOfMeasure} ({link.agreedQuantityTimeframe})</p></div>
+                                                <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreed Price</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.pricePerUnit)}/{linkSales.unitOfMeasure}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Sales Value</p><p className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(linkSales.salesValue)}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Agreement Type</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementType}</p></div>
                                                 <div><p className="text-[10px] text-gray-400 uppercase font-bold">Effective Date</p><p className="font-medium text-gray-700 dark:text-gray-200">{link.agreementDate ? new Date(link.agreementDate).toLocaleDateString() : 'N/A'}</p></div>
@@ -209,6 +268,16 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                         </button>
                                         );
                                     })}
+                                    <div className="md:col-span-2">
+                                        <PaginationControls
+                                            currentPage={linkagePagination.currentPage}
+                                            totalPages={linkagePagination.totalPages}
+                                            onPageChange={linkagePagination.setCurrentPage}
+                                            itemsPerPage={linkagePagination.itemsPerPage}
+                                            onItemsPerPageChange={linkagePagination.setItemsPerPage}
+                                            totalItems={marketingLinkageItems.length}
+                                        />
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="text-center py-10 bg-gray-50 dark:bg-gray-700/20 rounded-xl border-2 border-dashed dark:border-gray-700">
@@ -230,7 +299,7 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                             <span className="px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-xs font-bold">{potentialIpos.length} Matches</span>
                         </div>
                         <div className="space-y-3">
-                            {potentialIpos.map(ipo => {
+                            {matchedIpoPagination.paginatedData.map(ipo => {
                                 const matchingComms = ipo.commodities.filter(c => 
                                     partner.commodityNeeds?.map(n => n.name.toLowerCase()).includes(c.particular.toLowerCase())
                                 );
@@ -252,6 +321,16 @@ const MarketProfileDetail: React.FC<MarketProfileDetailProps> = ({ partner, ipos
                                     </div>
                                 );
                             })}
+                            {potentialIpos.length > 0 && (
+                                <PaginationControls
+                                    currentPage={matchedIpoPagination.currentPage}
+                                    totalPages={matchedIpoPagination.totalPages}
+                                    onPageChange={matchedIpoPagination.setCurrentPage}
+                                    itemsPerPage={matchedIpoPagination.itemsPerPage}
+                                    onItemsPerPageChange={matchedIpoPagination.setItemsPerPage}
+                                    totalItems={potentialIpos.length}
+                                />
+                            )}
                         </div>
                     </div>
 
