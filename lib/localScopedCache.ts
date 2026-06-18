@@ -3,7 +3,7 @@ import { DataScope, getDataScopeKey, ScopedAppData } from './scopedDataFetch';
 
 const DB_NAME = '4kis-local-cache';
 const DB_VERSION = 1;
-export const LOCAL_CACHE_SCHEMA_VERSION = 1;
+export const LOCAL_CACHE_SCHEMA_VERSION = 2;
 
 export const SCOPED_CACHE_TABLES = [
   'subprojects',
