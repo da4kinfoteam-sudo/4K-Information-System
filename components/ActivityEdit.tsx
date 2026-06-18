@@ -11,6 +11,7 @@ import { supabase } from '../supabaseClient';
 import { Pencil, Trash2 } from 'lucide-react';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
+import { MonthYearPicker } from './ui/MonthYearPicker';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import {
     ensureOriginalBudgetSnapshot,
@@ -33,11 +34,6 @@ interface ActivityEditProps {
     referenceActivities?: ReferenceActivity[];
     forcedType?: 'Training' | 'Activity';
 }
-
-const MONTH_NAMES = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-];
 
 const commonInputClasses = "form-control";
 
@@ -136,19 +132,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
         if (parts.length > 1) return (parseInt(parts[1]) - 1).toString();
         return '';
     };
-
-    // Helper inside component to use state for Expense Form (Targets)
-    const updateExpenseDateFromMonth = (field: string, monthIndex: string) => {
-        if (monthIndex === '') {
-            setCurrentExpense(prev => ({ ...prev, [field]: '' }));
-            return;
-        }
-        const mIndex = parseInt(monthIndex);
-        const year = formData.fundingYear || new Date().getFullYear();
-        // Construct date as YYYY-MM-01
-        const dateStr = `${year}-${String(mIndex + 1).padStart(2, '0')}-01`;
-        setCurrentExpense(prev => ({ ...prev, [field]: dateStr }));
-    }
 
     // Helper for Actuals (Accomplishments)
     const updateActualDateFromMonth = (id: number, field: keyof ActivityExpense, monthIndex: string) => {
@@ -291,18 +274,6 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
             if (name === 'fundingYear') {
                 newData.expenses = newData.expenses.map(exp => {
                     const updatedExp = { ...exp };
-                    if (updatedExp.obligationMonth) {
-                        const month = getMonthFromDateStr(updatedExp.obligationMonth);
-                        if (month !== '') {
-                            updatedExp.obligationMonth = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                        }
-                    }
-                    if (updatedExp.disbursementMonth) {
-                        const month = getMonthFromDateStr(updatedExp.disbursementMonth);
-                        if (month !== '') {
-                            updatedExp.disbursementMonth = `${numValue}-${String(parseInt(month) + 1).padStart(2, '0')}-01`;
-                        }
-                    }
                     if (updatedExp.actualObligationDate) {
                         const month = getMonthFromDateStr(updatedExp.actualObligationDate);
                         if (month !== '') {
@@ -1111,25 +1082,23 @@ const ActivityEdit: React.FC<ActivityEditProps> = ({
                                     {/* Row 2: Financial Details */}
                                     <div>
                                         <label className="block text-xs font-medium">Obligation Month</label>
-                                        <select 
-                                            value={getMonthFromDateStr(currentExpense.obligationMonth)} 
-                                            onChange={(e) => updateExpenseDateFromMonth('obligationMonth', e.target.value)} 
-                                            className={commonInputClasses}
-                                        >
-                                            <option value="">Select Month</option>
-                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                        </select>
+                                        <MonthYearPicker
+                                            value={currentExpense.obligationMonth}
+                                            onChange={(val) => setCurrentExpense(prev => ({ ...prev, obligationMonth: val }))}
+                                            placeholder="Select month"
+                                            defaultYear={formData.fundingYear}
+                                            className="h-9"
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium">Disbursement Month</label>
-                                        <select 
-                                            value={getMonthFromDateStr(currentExpense.disbursementMonth)} 
-                                            onChange={(e) => updateExpenseDateFromMonth('disbursementMonth', e.target.value)} 
-                                            className={commonInputClasses}
-                                        >
-                                            <option value="">Select Month</option>
-                                            {MONTH_NAMES.map((m, i) => <option key={i} value={i}>{m}</option>)}
-                                        </select>
+                                        <MonthYearPicker
+                                            value={currentExpense.disbursementMonth}
+                                            onChange={(val) => setCurrentExpense(prev => ({ ...prev, disbursementMonth: val }))}
+                                            placeholder="Select month"
+                                            defaultYear={formData.fundingYear}
+                                            className="h-9"
+                                        />
                                     </div>
                                     <div><label className="block text-xs font-medium">Amount</label><input type="number" name="amount" value={currentExpense.amount} onChange={handleExpenseChange} className={commonInputClasses} /></div>
                                     <div className="md:col-span-3 budget-line-adjustment-options">
