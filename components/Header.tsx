@@ -8,7 +8,7 @@ interface HeaderProps {
     toggleSidebar: () => void;
     toggleDarkMode: () => void;
     isDarkMode: boolean;
-    setCurrentPage: (page: string) => void;
+    setCurrentPage: (page: string, options?: { resetReports?: boolean }) => void;
     onRefreshData?: () => Promise<void> | void;
     onClearLocalCache?: () => Promise<void> | void;
     isRefreshingData?: boolean;

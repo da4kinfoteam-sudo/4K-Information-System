@@ -19,6 +19,8 @@ interface DetailedAccomplishmentDataReportProps {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    selectedQuarter: QuarterFilter;
+    onSelectedQuarterChange: (quarter: QuarterFilter) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Training | OtherActivity) => void;
     onPrintReport: (request: ReportPrintRequest) => void;
@@ -84,7 +86,7 @@ interface PsgcLocationItem {
     regionCode?: string;
 }
 
-type QuarterFilter = 'All' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+export type QuarterFilter = 'All' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
 type DisplaySourceGroup = 'Packages' | 'Activities';
 
 interface ReportDisplaySettings {
@@ -384,6 +386,8 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     selectedOu,
     selectedTier,
     selectedFundType,
+    selectedQuarter,
+    onSelectedQuarterChange,
     onSelectSubproject,
     onSelectActivity,
     onPrintReport,
@@ -392,7 +396,6 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
     const { currentUser } = useAuth();
     const isReportAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const [geocodes, setGeocodes] = useState<Record<string, string>>({});
-    const [selectedQuarter, setSelectedQuarter] = useState<QuarterFilter>('All');
     const [controllerOpen, setControllerOpen] = useState(false);
     const [controllerSearch, setControllerSearch] = useState('');
     const [controllerSettings, setControllerSettings] = useState<ReportDisplaySettings>(DEFAULT_DISPLAY_SETTINGS);
@@ -880,7 +883,7 @@ const DetailedAccomplishmentDataReport: React.FC<DetailedAccomplishmentDataRepor
                     <select
                         id="detailed-accomplishment-quarter-filter"
                         value={selectedQuarter}
-                        onChange={(event) => setSelectedQuarter(event.target.value as QuarterFilter)}
+                        onChange={(event) => onSelectedQuarterChange(event.target.value as QuarterFilter)}
                         className="form-control"
                         aria-label="Filter detailed accomplishment data by actual date quarter"
                     >

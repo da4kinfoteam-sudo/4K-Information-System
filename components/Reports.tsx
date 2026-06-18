@@ -17,6 +17,26 @@ import type { DataScope } from '../lib/scopedDataFetch';
 import { exportReportWorkbook } from '../lib/reportExcelExport';
 import type { ReportExcelRequest, ReportPrintRequest } from './reports/ReportUtils';
 
+export type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
+
+export interface ReportsPageState {
+    activeTab: ReportTab;
+    selectedYear: string;
+    selectedReportingYear: string;
+    selectedOu: string;
+    selectedTier: string;
+    selectedFundType: string;
+    bar1SelectedAsOfDate: string;
+    monthlySelectedMonth: number;
+    detailedSelectedQuarter: 'All' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
+    financialAuditSearchTerm: string;
+    financialAuditSeverityFilter: string;
+    financialAuditReportFilter: string;
+    financialAuditSourceFilter: string;
+    financialAuditIssueTypeFilter: string;
+    financialAuditAsOfMonth: number;
+}
+
 interface ReportsProps {
     ipos: IPO[];
     subprojects: Subproject[];
@@ -36,9 +56,9 @@ interface ReportsProps {
     onSelectOtherExpense: (req: OtherProgramExpense) => void;
     onOpenIpoListForAncestralDomain: (adNo: string) => void;
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
+    reportState: ReportsPageState;
+    onReportStateChange: React.Dispatch<React.SetStateAction<ReportsPageState>>;
 }
-
-type ReportTab = 'WFP' | 'BP Forms' | 'BEDS' | 'PICS' | 'BAR1' | 'Budget Utilization Report' | 'Monthly Matrix' | 'Detailed Accomplishment Data' | 'Financial Audit';
 
 interface PreparedPrintJob extends ReportPrintRequest {
     tableHtml: string;
@@ -67,19 +87,25 @@ const Reports: React.FC<ReportsProps> = ({
     onSelectOtherExpense,
     onOpenIpoListForAncestralDomain,
     onDataScopeChange,
+    reportState,
+    onReportStateChange,
 }) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Reports');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
     const isSuperAdmin = currentUser?.role === 'Super Admin';
 
-    const [activeTab, setActiveTab] = useState<ReportTab>('WFP');
-    // Default to current year
-    const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedReportingYear, setSelectedReportingYear] = useState<string>(new Date().getFullYear().toString());
-    const [selectedOu, setSelectedOu] = useState<string>(isLockedToOwnOu ? (currentUser?.operatingUnit || 'All') : 'All');
-    const [selectedTier, setSelectedTier] = useState<string>('Tier 1');
-    const [selectedFundType, setSelectedFundType] = useState<string>('Current');
+    const {
+        activeTab,
+        selectedYear,
+        selectedReportingYear,
+        selectedOu,
+        selectedTier,
+        selectedFundType,
+    } = reportState;
+    const updateReportState = React.useCallback((patch: Partial<ReportsPageState>) => {
+        onReportStateChange(prev => ({ ...prev, ...patch }));
+    }, [onReportStateChange]);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [pendingPrintRequest, setPendingPrintRequest] = useState<ReportPrintRequest | null>(null);
     const [pendingExcelRequest, setPendingExcelRequest] = useState<ReportExcelRequest | null>(null);
@@ -129,25 +155,22 @@ const Reports: React.FC<ReportsProps> = ({
 
     useEffect(() => {
         if (isLockedToOwnOu && currentUser) {
-            setSelectedOu(currentUser.operatingUnit);
+            updateReportState({ selectedOu: currentUser.operatingUnit });
         }
-    }, [currentUser, isLockedToOwnOu]);
+    }, [currentUser, isLockedToOwnOu, updateReportState]);
 
-    useEffect(() => {
-        setSelectedReportingYear(selectedYear);
-    }, [selectedYear]);
     // Enforce User OU restriction on mount/change
     useEffect(() => {
         if (currentUser && currentUser.role === 'User') {
-            setSelectedOu(currentUser.operatingUnit);
+            updateReportState({ selectedOu: currentUser.operatingUnit });
         }
-    }, [currentUser]);
+    }, [currentUser, updateReportState]);
 
     useEffect(() => {
         if (!isSuperAdmin && activeTab === 'Financial Audit') {
-            setActiveTab('WFP');
+            updateReportState({ activeTab: 'WFP' });
         }
-    }, [activeTab, isSuperAdmin]);
+    }, [activeTab, isSuperAdmin, updateReportState]);
 
     useEffect(() => {
         const handleAfterPrint = () => {
@@ -270,7 +293,7 @@ const Reports: React.FC<ReportsProps> = ({
         return (
             <button
                 type="button"
-                onClick={() => setActiveTab(tabName)}
+                onClick={() => updateReportState({ activeTab: tabName })}
                 className={`data-tab ${isActive ? 'is-active' : ''}`}
             >
                 {label}
@@ -408,6 +431,8 @@ const Reports: React.FC<ReportsProps> = ({
                         onSelectSubproject={onSelectSubproject}
                         onSelectActivity={onSelectActivity}
                         onOpenIpoListForAncestralDomain={onOpenIpoListForAncestralDomain}
+                        selectedAsOfDate={reportState.bar1SelectedAsOfDate}
+                        onSelectedAsOfDateChange={(bar1SelectedAsOfDate) => updateReportState({ bar1SelectedAsOfDate })}
                         onPrintReport={handleRequestPrint}
                         onExportReport={handleRequestExport}
                     />
@@ -437,7 +462,7 @@ const Reports: React.FC<ReportsProps> = ({
                 return <BudgetUtilizationReport data={filteredData} uacsCodes={uacsCodes} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedTier={selectedTier} selectedFundType={selectedFundType} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Monthly Matrix':
                 // Pass filteredData for Physical (Year specific) and financialFilteredData for Financial (History/Breakdown)
-                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
+                return <MonthlyReportMatrix data={filteredData} financialData={financialFilteredData} selectedYear={selectedYear} selectedReportingYear={selectedReportingYear} selectedOu={selectedOu} selectedMonth={reportState.monthlySelectedMonth} onSelectedMonthChange={(monthlySelectedMonth) => updateReportState({ monthlySelectedMonth })} onPrintReport={handleRequestPrint} onExportReport={handleRequestExport} />;
             case 'Detailed Accomplishment Data':
                 return (
                     <DetailedAccomplishmentDataReport
@@ -447,6 +472,8 @@ const Reports: React.FC<ReportsProps> = ({
                         selectedOu={selectedOu}
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
+                        selectedQuarter={reportState.detailedSelectedQuarter}
+                        onSelectedQuarterChange={(detailedSelectedQuarter) => updateReportState({ detailedSelectedQuarter })}
                         onSelectSubproject={onSelectSubproject}
                         onSelectActivity={onSelectActivity}
                         onPrintReport={handleRequestPrint}
@@ -463,6 +490,20 @@ const Reports: React.FC<ReportsProps> = ({
                         selectedOu={selectedOu}
                         selectedTier={selectedTier}
                         selectedFundType={selectedFundType}
+                        searchTerm={reportState.financialAuditSearchTerm}
+                        severityFilter={reportState.financialAuditSeverityFilter}
+                        reportFilter={reportState.financialAuditReportFilter}
+                        sourceFilter={reportState.financialAuditSourceFilter}
+                        issueTypeFilter={reportState.financialAuditIssueTypeFilter}
+                        auditAsOfMonth={reportState.financialAuditAsOfMonth}
+                        onFilterChange={(patch) => updateReportState({
+                            financialAuditSearchTerm: patch.searchTerm ?? reportState.financialAuditSearchTerm,
+                            financialAuditSeverityFilter: patch.severityFilter ?? reportState.financialAuditSeverityFilter,
+                            financialAuditReportFilter: patch.reportFilter ?? reportState.financialAuditReportFilter,
+                            financialAuditSourceFilter: patch.sourceFilter ?? reportState.financialAuditSourceFilter,
+                            financialAuditIssueTypeFilter: patch.issueTypeFilter ?? reportState.financialAuditIssueTypeFilter,
+                            financialAuditAsOfMonth: patch.auditAsOfMonth ?? reportState.financialAuditAsOfMonth,
+                        })}
                         onSelectSubproject={onSelectSubproject}
                         onSelectActivity={onSelectActivity}
                         onSelectOfficeReq={onSelectOfficeReq}
@@ -506,7 +547,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <select 
                             id="ou-filter"
                             value={selectedOu}
-                            onChange={(e) => setSelectedOu(e.target.value)}
+                            onChange={(e) => updateReportState({ selectedOu: e.target.value })}
                             disabled={isLockedToOwnOu}
                             className="form-control"
                         >
@@ -521,7 +562,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <select 
                             id="tier-filter"
                             value={selectedTier}
-                            onChange={(e) => setSelectedTier(e.target.value)}
+                            onChange={(e) => updateReportState({ selectedTier: e.target.value })}
                             className="form-control"
                         >
                             <option value="All">All Tiers</option>
@@ -535,7 +576,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <select 
                             id="fund-type-filter"
                             value={selectedFundType}
-                            onChange={(e) => setSelectedFundType(e.target.value)}
+                            onChange={(e) => updateReportState({ selectedFundType: e.target.value })}
                             className="form-control"
                         >
                             <option value="All">All Fund Types</option>
@@ -549,7 +590,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <select 
                             id="year-filter"
                             value={selectedYear}
-                            onChange={(e) => setSelectedYear(e.target.value)}
+                            onChange={(e) => updateReportState({ selectedYear: e.target.value, selectedReportingYear: e.target.value })}
                             className="form-control"
                         >
                             <option value="All">All Years</option>
@@ -561,7 +602,7 @@ const Reports: React.FC<ReportsProps> = ({
                         <select
                             id="reporting-year-filter"
                             value={selectedReportingYear}
-                            onChange={(e) => setSelectedReportingYear(e.target.value)}
+                            onChange={(e) => updateReportState({ selectedReportingYear: e.target.value })}
                             className="form-control"
                         >
                             <option value="All">All Reporting Years</option>

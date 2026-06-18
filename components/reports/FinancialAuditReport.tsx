@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { AlertTriangle, Download, Printer, Search } from 'lucide-react';
 import { Activity, OfficeRequirement, OtherProgramExpense, StaffingRequirement, Subproject } from '../../constants';
 import { buildFinancialAudit, FinancialAuditIssue, FinancialAuditSeverity } from '../../lib/financialAudit';
@@ -19,6 +19,20 @@ interface FinancialAuditReportProps {
     selectedOu: string;
     selectedTier: string;
     selectedFundType: string;
+    searchTerm: string;
+    severityFilter: string;
+    reportFilter: string;
+    sourceFilter: string;
+    issueTypeFilter: string;
+    auditAsOfMonth: number;
+    onFilterChange: (patch: Partial<{
+        searchTerm: string;
+        severityFilter: string;
+        reportFilter: string;
+        sourceFilter: string;
+        issueTypeFilter: string;
+        auditAsOfMonth: number;
+    }>) => void;
     onSelectSubproject: (subproject: Subproject) => void;
     onSelectActivity: (activity: Activity) => void;
     onSelectOfficeReq: (req: OfficeRequirement) => void;
@@ -75,6 +89,13 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     selectedOu,
     selectedTier,
     selectedFundType,
+    searchTerm,
+    severityFilter,
+    reportFilter,
+    sourceFilter,
+    issueTypeFilter,
+    auditAsOfMonth,
+    onFilterChange,
     onSelectSubproject,
     onSelectActivity,
     onSelectOfficeReq,
@@ -83,13 +104,6 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
     onPrintReport,
     onExportReport,
 }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [severityFilter, setSeverityFilter] = useState('All');
-    const [reportFilter, setReportFilter] = useState('All');
-    const [sourceFilter, setSourceFilter] = useState('All');
-    const [issueTypeFilter, setIssueTypeFilter] = useState('All');
-    const [auditAsOfMonth, setAuditAsOfMonth] = useState(new Date().getMonth());
-
     const audit = useMemo(() => {
         const filters: FinancialAggregationFilters = {
             year: selectedYear,
@@ -279,14 +293,14 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
                         type="search"
                         className="form-control"
                         value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
+                        onChange={(event) => onFilterChange({ searchTerm: event.target.value })}
                         placeholder="Search record, item, issue, OU, or report..."
                     />
                 </div>
                 <div className="financial-audit-filter-grid">
                     <div>
                         <label className="form-label">Severity</label>
-                        <select className="form-control" value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
+                        <select className="form-control" value={severityFilter} onChange={(event) => onFilterChange({ severityFilter: event.target.value })}>
                             <option value="All">All Severities</option>
                             <option value="High">High</option>
                             <option value="Warning">Warning</option>
@@ -295,28 +309,28 @@ const FinancialAuditReport: React.FC<FinancialAuditReportProps> = ({
                     </div>
                     <div>
                         <label className="form-label">Affected Report</label>
-                        <select className="form-control" value={reportFilter} onChange={(event) => setReportFilter(event.target.value)}>
+                        <select className="form-control" value={reportFilter} onChange={(event) => onFilterChange({ reportFilter: event.target.value })}>
                             <option value="All">All Reports</option>
                             {filterOptions.reports.map(report => <option key={report} value={report}>{report}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="form-label">Source</label>
-                        <select className="form-control" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+                        <select className="form-control" value={sourceFilter} onChange={(event) => onFilterChange({ sourceFilter: event.target.value })}>
                             <option value="All">All Sources</option>
                             {filterOptions.sources.map(source => <option key={source} value={source}>{source}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="form-label">Issue Type</label>
-                        <select className="form-control" value={issueTypeFilter} onChange={(event) => setIssueTypeFilter(event.target.value)}>
+                        <select className="form-control" value={issueTypeFilter} onChange={(event) => onFilterChange({ issueTypeFilter: event.target.value })}>
                             <option value="All">All Issue Types</option>
                             {filterOptions.issueTypes.map(issueType => <option key={issueType} value={issueType}>{issueType}</option>)}
                         </select>
                     </div>
                     <div>
                         <label className="form-label">Audit As Of</label>
-                        <select className="form-control" value={auditAsOfMonth} onChange={(event) => setAuditAsOfMonth(Number(event.target.value))}>
+                        <select className="form-control" value={auditAsOfMonth} onChange={(event) => onFilterChange({ auditAsOfMonth: Number(event.target.value) })}>
                             {MONTHS.map((month, index) => <option key={month} value={index}>{month}</option>)}
                         </select>
                     </div>

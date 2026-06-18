@@ -37,18 +37,18 @@ interface BAR1ReportProps {
     onSelectOfficeReq: (req: OfficeRequirement) => void;
     onSelectStaffingReq: (req: StaffingRequirement) => void;
     onOpenIpoListForAncestralDomain: (adNo: string) => void;
+    selectedAsOfDate: string;
+    onSelectedAsOfDateChange: (value: string) => void;
     onPrintReport: (request: ReportPrintRequest) => void;
     onExportReport: (request: ReportExcelRequest) => void;
 }
 
 const BAR1_COLUMN_COUNT = 50;
 
-const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, deadlines, onSelectSubproject, onSelectActivity, onSelectIpo, onSelectOfficeReq, onSelectStaffingReq, onOpenIpoListForAncestralDomain, onPrintReport, onExportReport }) => {
+const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, selectedReportingYear, selectedOu, selectedTier, selectedFundType, deadlines, onSelectSubproject, onSelectActivity, onSelectIpo, onSelectOfficeReq, onSelectStaffingReq, onOpenIpoListForAncestralDomain, selectedAsOfDate, onSelectedAsOfDateChange, onPrintReport, onExportReport }) => {
     const [expandedRows, setExpandedRows] = useState(new Set<string>());
     const [popup, setPopup] = useState<DetailPopup | null>(null);
     const [popupSearch, setPopupSearch] = useState('');
-
-    const [selectedAsOfDate, setSelectedAsOfDate] = useState<string>('');
     const sortedDeadlines = useMemo(() => {
         return [...deadlines].sort((a, b) => a.date.localeCompare(b.date));
     }, [deadlines]);
@@ -843,7 +843,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                         <select
                             id="as-of-date-preset"
                             value={selectedAsOfDate || 'current'}
-                            onChange={(e) => setSelectedAsOfDate(e.target.value === 'current' ? '' : e.target.value)}
+                            onChange={(e) => onSelectedAsOfDateChange(e.target.value === 'current' ? '' : e.target.value)}
                             className="form-control form-control--compact"
                         >
                             <option value="current" className="text-gray-900 dark:text-white dark:bg-gray-800">Current approved data</option>
@@ -856,13 +856,13 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
                         <input
                             type="date"
                             value={selectedAsOfDate}
-                            onChange={(e) => setSelectedAsOfDate(e.target.value)}
+                            onChange={(e) => onSelectedAsOfDateChange(e.target.value)}
                             className="form-control form-control--compact"
                         />
                         {selectedAsOfDate && (
                             <button
                                 type="button"
-                                onClick={() => setSelectedAsOfDate('')}
+                                onClick={() => onSelectedAsOfDateChange('')}
                                 className="bar1-as-of-filter__clear"
                             >
                                 Clear
