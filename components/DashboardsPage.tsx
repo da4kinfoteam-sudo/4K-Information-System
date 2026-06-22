@@ -25,6 +25,7 @@ export interface DashboardsPageProps {
     otherProgramExpenses: OtherProgramExpense[];
     marketingPartners: MarketingPartner[];
     onSelectIpo?: (ipo: IPO) => void;
+    onSelectLodIpo?: (ipo: IPO, year?: number) => void;
     onSelectSubproject?: (project: Subproject) => void;
     onSelectActivity?: (activity: Training | OtherActivity) => void;
     onSelectMarketingPartner?: (partner: MarketingPartner) => void;
@@ -295,7 +296,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                 {activeTab === 'Agricultural Interventions' && <AgriculturalInterventionsDashboard subprojects={filteredData.subprojects} />}
                 {activeTab === 'Commodities' && <CommodityDashboard subprojects={filteredData.subprojects} onSelectSubproject={props.onSelectSubproject} />}
                 {activeTab === 'GAD' && <GADDashboard trainings={filteredData.trainings} otherActivities={filteredData.otherActivities} ipos={filteredData.ipos} subprojects={filteredData.subprojects} />}
-                {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} />}
+                {activeTab === 'IPO Level of Development' && <IPOLevelDashboard ipos={filteredData.ipos} selectedYear={selectedYear} onSelectLodIpo={props.onSelectLodIpo} />}
                 {activeTab === 'Nutrition' && <NutritionDashboard />}
                 {activeTab === 'Farm Productivity and Income' && (
                     <FarmProductivityDashboard

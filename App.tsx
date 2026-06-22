@@ -866,6 +866,7 @@ const AppContent: React.FC = () => {
                             otherProgramExpenses={visibleOtherExpenses}
                             marketingPartners={marketingPartners}
                             onSelectIpo={handleSelectIpo}
+                            onSelectLodIpo={handleSelectIpoForLod}
                             onSelectSubproject={handleSelectSubproject}
                             onSelectActivity={handleSelectActivity}
                             onSelectMarketingPartner={handleSelectMarketingPartner}
