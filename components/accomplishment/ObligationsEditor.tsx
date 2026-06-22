@@ -47,6 +47,7 @@ export const ObligationsEditor: React.FC<ObligationsEditorProps> = ({ obligation
                                 defaultYear={defaultYear}
                                 className="h-8 text-xs w-full"
                                 disabled={readOnly}
+                                allowClear
                             />
                         </div>
                         <div className="budget-record-row__amount">

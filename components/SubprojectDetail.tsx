@@ -772,6 +772,14 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
         setDetailItems(prev => prev.map((d, i) => i === index ? { ...d, [field]: value } : d));
     };
 
+    const handleActualDeliveryDateChange = (index: number, value: string) => {
+        setDetailItems(prev => prev.map((d, i) => (
+            i === index
+                ? { ...d, actualDeliveryDate: value, ...(value ? {} : { isCompleted: false }) }
+                : d
+        )));
+    };
+
     const handleCommodityChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         if (name === 'typeName') {
@@ -1695,10 +1703,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                                 <td className="px-3 py-2">
                                                                     <MonthYearPicker
                                                                         value={(detail as any).actualDeliveryDate}
-                                                                        onChange={(val) => handleDetailAccomplishmentChange(idx, 'actualDeliveryDate', val)}
+                                                                        onChange={(val) => handleActualDeliveryDateChange(idx, val)}
                                                                         placeholder="Select month"
                                                                         defaultYear={editedSubproject.fundingYear}
                                                                         className="h-8 text-xs"
+                                                                        allowClear
                                                                     />
                                                                 </td>
                                                                 <td className="px-3 py-2" colSpan={2}>

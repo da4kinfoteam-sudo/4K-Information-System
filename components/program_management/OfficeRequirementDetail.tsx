@@ -495,6 +495,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <MonthYearPicker 
                                         value={formData.actualDate}
                                         onChange={(val) => setFormData(prev => ({ ...prev, actualDate: val }))}
+                                        allowClear
                                     />
                                 </div>
                                 <div>
@@ -512,7 +513,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                                 ...prev, 
                                                 obligations: newObs, 
                                                 actualObligationAmount: total,
-                                                actualObligationDate: latestOb ? latestOb.date : prev.actualObligationDate
+                                                actualObligationDate: latestOb ? latestOb.date : ''
                                             }));
                                         }}
                                         defaultYear={formData.fundYear?.toString()}
@@ -524,6 +525,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                                     <MonthYearPicker 
                                         value={formData.actualDisbursementDate}
                                         onChange={(val) => setFormData(prev => ({ ...prev, actualDisbursementDate: val }))}
+                                        allowClear
                                     />
                                 </div>
                                 <div>

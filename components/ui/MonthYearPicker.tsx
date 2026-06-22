@@ -19,6 +19,8 @@ interface MonthYearPickerProps {
   disabled?: boolean;
   className?: string;
   defaultYear?: number;
+  allowClear?: boolean;
+  clearLabel?: string;
 }
 
 export function MonthYearPicker({
@@ -28,6 +30,8 @@ export function MonthYearPicker({
   disabled = false,
   className,
   defaultYear,
+  allowClear = false,
+  clearLabel = "Clear",
 }: MonthYearPickerProps) {
   const [date, setDate] = React.useState<Date | undefined>(() => {
     if (!value) return undefined;
@@ -53,6 +57,12 @@ export function MonthYearPicker({
     const normalizedDate = new Date(newDate.getFullYear(), newDate.getMonth(), 1);
     setDate(normalizedDate);
     onChange(format(normalizedDate, "yyyy-MM-dd"));
+    setOpen(false);
+  };
+
+  const handleClear = () => {
+    setDate(undefined);
+    onChange("");
     setOpen(false);
   };
 
@@ -83,6 +93,17 @@ export function MonthYearPicker({
           onMonthSelect={handleSelect}
           defaultYear={defaultYear}
         />
+        {allowClear && !disabled && date && (
+          <div className="month-year-picker-popover__footer">
+            <button
+              type="button"
+              onClick={handleClear}
+              className="month-year-picker-clear"
+            >
+              {clearLabel}
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
