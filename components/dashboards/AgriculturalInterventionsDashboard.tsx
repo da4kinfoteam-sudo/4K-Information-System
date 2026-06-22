@@ -20,6 +20,7 @@ import {
 import { Subproject } from '../../constants';
 import { parseLocation } from '../LocationPicker';
 import { XLSX } from '../reports/ReportUtils';
+import { isMonthTargetOverdue } from '../../lib/dateStatus';
 
 interface Props {
     subprojects: Subproject[];
@@ -164,10 +165,7 @@ const getStatus = (row: {
     const completed = row.isCompleted || (row.targetQty > 0 && row.actualQty >= row.targetQty);
     if (completed) return 'completed';
 
-    const targetDate = parseDate(row.deliveryDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (targetDate && targetDate < today) return 'delayed';
+    if (isMonthTargetOverdue(row.deliveryDate)) return 'delayed';
     if (row.actualQty > 0) return 'partial';
     return 'notStarted';
 };

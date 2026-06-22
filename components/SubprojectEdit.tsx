@@ -10,6 +10,7 @@ import { getMonetaryChanges } from '../lib/logUtils';
 import { useIpoHistory } from '../hooks/useIpoHistory';
 import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
+import { isMonthTargetOverdue } from '../lib/dateStatus';
 
 interface SubprojectEditProps {
     subproject?: Subproject;
@@ -679,7 +680,7 @@ const SubprojectEdit: React.FC<SubprojectEditProps> = ({
                                     </label>
                                 </div>
                             </div>
-                            {formData.estimatedCompletionDate && new Date() > new Date(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
+                            {isMonthTargetOverdue(formData.estimatedCompletionDate) && formData.status !== 'Completed' && (
                                 <div className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md mt-4">
                                     <h4 className="font-semibold text-red-600 dark:text-red-400 mb-2">Catch Up Plan</h4>
                                     <p className="text-xs text-red-500 mb-4">Project is delayed. Please provide a catch-up plan.</p>
