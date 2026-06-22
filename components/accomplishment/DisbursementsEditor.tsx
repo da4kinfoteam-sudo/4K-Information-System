@@ -47,6 +47,7 @@ export const DisbursementsEditor: React.FC<DisbursementsEditorProps> = ({ disbur
                                 defaultYear={defaultYear}
                                 className="h-8 text-xs w-full"
                                 disabled={readOnly}
+                                allowClear
                             />
                         </div>
                         <div className="budget-record-row__amount">

@@ -84,6 +84,7 @@ export const DisbursementListEditor: React.FC<Props> = ({ disbursements = [], on
                                         onChange={(val) => handleUpdate(disb.id, { date: val })}
                                         disabled={readOnly}
                                         className="h-8 text-[11px] px-2"
+                                        allowClear
                                     />
                                 </div>
                                 <div>

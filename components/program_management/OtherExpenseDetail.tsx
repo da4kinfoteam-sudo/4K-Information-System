@@ -546,7 +546,7 @@ const OtherExpenseDetail: React.FC<OtherExpenseDetailProps> = ({ item, onBack, u
                                                 ...prev, 
                                                 obligations: newObs, 
                                                 actualObligationAmount: total,
-                                                actualObligationDate: latestOb ? latestOb.date : prev.actualObligationDate
+                                                actualObligationDate: latestOb ? latestOb.date : ''
                                             }));
                                         }}
                                         defaultYear={formData.fundYear?.toString()}

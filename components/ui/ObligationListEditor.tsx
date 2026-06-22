@@ -84,6 +84,7 @@ export const ObligationListEditor: React.FC<Props> = ({ obligations = [], onChan
                                         onChange={(val) => handleUpdate(obli.id, { date: val })}
                                         disabled={readOnly}
                                         className="h-8 text-[11px] px-2"
+                                        allowClear
                                     />
                                 </div>
                                 <div>

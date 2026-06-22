@@ -4608,6 +4608,32 @@ button.bar1-drilldown-card:focus-visible {
   width: auto !important;
 }
 
+.month-year-picker-popover__footer {
+  border-top: 1px solid var(--app-border);
+  padding: 0.45rem 0.6rem 0.6rem;
+}
+
+.month-year-picker-clear {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  color: var(--app-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.75rem;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 1.8rem;
+  padding: 0.25rem 0.5rem;
+  width: 100%;
+}
+
+.month-year-picker-clear:hover {
+  background: var(--app-surface-muted);
+  color: hsl(var(--destructive));
+}
+
 .month-picker {
   background: var(--app-surface);
   border-radius: var(--app-radius-lg);
