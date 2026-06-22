@@ -1255,11 +1255,11 @@
 
 .lod-component-score-layout {
   display: grid;
-  min-height: 20rem;
+  min-height: 24rem;
 }
 
 .lod-radar-chart-shell {
-  min-height: 21rem;
+  min-height: 24.5rem;
 }
 
 .lod-radar-label {
@@ -1483,13 +1483,19 @@
 }
 
 .lod-gap-question-table {
-  min-width: 38rem;
+  min-width: 28rem;
 }
 
 .lod-gap-question-table td:first-child,
 .lod-gap-question-table th:first-child {
   min-width: 14rem;
   white-space: normal;
+}
+
+.lod-gap-question-row--lowest td {
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 800;
 }
 
 .lod-insight-list {

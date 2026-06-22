@@ -58,8 +58,9 @@ interface QuestionGapScore {
     question: string;
     averageScore: number | null;
     maxScore: number;
-    gap: number | null;
     answeredCount: number;
+    utilization: number | null;
+    isLowest: boolean;
 }
 
 interface SectionGapScore {
@@ -150,6 +151,11 @@ const formatScore = (value: number | null | undefined, digits = 2) => {
 const formatComponentScore = (value: number | null | undefined, weight: number | null | undefined) => {
     if (value === null || value === undefined || Number.isNaN(value)) return 'No Data';
     return `${value.toFixed(2)} / ${(Number(weight) || 0).toFixed(2)}`;
+};
+
+const formatPercentagePoints = (value: number | null | undefined) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return 'No Data';
+    return `${(value * 100).toFixed(1)} pp`;
 };
 
 const wrapLabel = (value: string, maxLineLength = 16) => {
@@ -617,12 +623,16 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [assessedRows, data.sections]);
 
     const componentGapAnalysis = useMemo(() => {
-        const scoredComponents = componentAverages.filter(component => component.score !== null);
-        const highest = scoredComponents.length > 0 ? Math.max(...scoredComponents.map(component => component.score || 0)) : null;
-
-        return componentAverages.map(component => ({
+        const componentsWithUtilization = componentAverages.map(component => ({
             ...component,
-            gap: component.score !== null && highest !== null ? highest - component.score : null,
+            utilization: component.score !== null && component.weight > 0 ? component.score / component.weight : null,
+        }));
+        const scoredComponents = componentsWithUtilization.filter(component => component.utilization !== null);
+        const highest = scoredComponents.length > 0 ? Math.max(...scoredComponents.map(component => component.utilization || 0)) : null;
+
+        return componentsWithUtilization.map(component => ({
+            ...component,
+            gap: component.utilization !== null && highest !== null ? highest - component.utilization : null,
         })).sort((a, b) => (b.gap || 0) - (a.gap || 0));
     }, [componentAverages]);
 
@@ -661,21 +671,24 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     question: question.text,
                     averageScore: average(values),
                     maxScore: maxWeightedContribution,
-                    gap: null,
                     answeredCount: values.length,
+                    utilization: null,
+                    isLowest: false,
                 } satisfies QuestionGapScore;
             });
 
-            const questionBenchmark = questionScores
-                .filter(question => question.averageScore !== null)
-                .reduce<number | null>((highest, question) => {
-                    if (question.averageScore === null) return highest;
-                    return highest === null ? question.averageScore : Math.max(highest, question.averageScore);
-                }, null);
+            const questionUtilizations = questionScores
+                .map(question => question.averageScore !== null && question.maxScore > 0 ? question.averageScore / question.maxScore : null)
+                .filter((value): value is number => value !== null);
+            const lowestQuestionUtilization = questionUtilizations.length > 0 ? Math.min(...questionUtilizations) : null;
 
             const questionsWithGaps = questionScores.map(question => ({
                 ...question,
-                gap: question.averageScore !== null && questionBenchmark !== null ? questionBenchmark - question.averageScore : null,
+                utilization: question.averageScore !== null && question.maxScore > 0 ? question.averageScore / question.maxScore : null,
+                isLowest: question.averageScore !== null
+                    && question.maxScore > 0
+                    && lowestQuestionUtilization !== null
+                    && Math.abs((question.averageScore / question.maxScore) - lowestQuestionUtilization) < 0.0001,
             }));
 
             const component = componentById.get(section.id);
@@ -735,11 +748,11 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     const insights = useMemo(() => {
         const strongest = componentAverages
-            .filter(component => component.score !== null)
-            .sort((a, b) => (b.score || 0) - (a.score || 0))[0] || null;
+            .filter(component => component.score !== null && component.weight > 0)
+            .sort((a, b) => ((b.score || 0) / b.weight) - ((a.score || 0) / a.weight))[0] || null;
         const weakest = componentAverages
-            .filter(component => component.score !== null)
-            .sort((a, b) => (a.score || 0) - (b.score || 0))[0] || null;
+            .filter(component => component.score !== null && component.weight > 0)
+            .sort((a, b) => ((a.score || 0) / a.weight) - ((b.score || 0) / b.weight))[0] || null;
         const topRegion = regionalAverages[0] || null;
 
         const componentDeltas = data.sections.map(section => {
@@ -873,8 +886,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     );
 
     const radarChartMargin = isCompactChartViewport
-        ? { top: 48, right: 78, bottom: 48, left: 78 }
-        : { top: 52, right: 118, bottom: 52, left: 118 };
+        ? { top: 34, right: 54, bottom: 34, left: 54 }
+        : { top: 34, right: 76, bottom: 34, left: 76 };
 
     const componentTickLabels = new Map<string, { lines: string[]; score: string }>();
     componentAverages.forEach(component => {
@@ -1148,24 +1161,24 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     {componentAverages.some(component => component.score !== null) ? (
                         <div className="lod-component-score-layout">
                             <div className="lod-radar-chart-shell">
-                            <ResponsiveContainer width="100%" height={330}>
-                                <RadarChart
-                                    data={componentAverages.map(component => ({
-                                        component: component.component,
-                                        fullName: component.component,
-                                        score: Number((component.score || 0).toFixed(2)),
-                                        label: formatComponentScore(component.score, component.weight),
-                                    }))}
-                                    margin={radarChartMargin}
-                                    outerRadius={isCompactChartViewport ? '42%' : '46%'}
-                                >
-                                    <PolarGrid />
-                                    <PolarAngleAxis dataKey="component" tick={renderComponentRadarTick} />
-                                    <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...componentAverages.map(component => component.weight || 0))]} tick={false} axisLine={false} />
-                                    <Radar name="Weighted Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
-                                    <Tooltip formatter={(_value: number, _name: string, props: any) => [props.payload.label, props.payload.fullName]} />
-                                </RadarChart>
-                            </ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height={390}>
+                                    <RadarChart
+                                        data={componentAverages.map(component => ({
+                                            component: component.component,
+                                            fullName: component.component,
+                                            score: Number((component.score || 0).toFixed(2)),
+                                            label: formatComponentScore(component.score, component.weight),
+                                        }))}
+                                        margin={radarChartMargin}
+                                        outerRadius={isCompactChartViewport ? '58%' : '64%'}
+                                    >
+                                        <PolarGrid />
+                                        <PolarAngleAxis dataKey="component" tick={renderComponentRadarTick} />
+                                        <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...componentAverages.map(component => component.weight || 0))]} tick={false} axisLine={false} />
+                                        <Radar name="Weighted Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
+                                        <Tooltip formatter={(_value: number, _name: string, props: any) => [props.payload.label, props.payload.fullName]} />
+                                    </RadarChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
                     ) : (
@@ -1227,7 +1240,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                                 </span>
                                                 <span className="lod-gap-section__metric">
                                                     <small>Gap</small>
-                                                    <strong>{formatScore(section.gap)}</strong>
+                                                    <strong>{formatPercentagePoints(section.gap)}</strong>
                                                 </span>
                                             </span>
                                             <ChevronDown className="lod-gap-section__chevron" aria-hidden="true" />
@@ -1240,17 +1253,15 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                                             <tr>
                                                                 <th>Question</th>
                                                                 <th className="data-table__numeric">Average</th>
-                                                                <th className="data-table__numeric">Gap</th>
-                                                                <th className="data-table__numeric">Answered</th>
+                                                                <th className="data-table__numeric">Weight</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             {section.questions.map(question => (
-                                                                <tr key={question.id}>
+                                                                <tr key={question.id} className={question.isLowest ? 'lod-gap-question-row--lowest' : undefined}>
                                                                     <td>{question.question}</td>
-                                                                    <td className="data-table__numeric">{formatComponentScore(question.averageScore, question.maxScore)}</td>
-                                                                    <td className="data-table__numeric">{formatScore(question.gap)}</td>
-                                                                    <td className="data-table__numeric">{question.answeredCount}</td>
+                                                                    <td className="data-table__numeric">{formatScore(question.averageScore)}</td>
+                                                                    <td className="data-table__numeric">{formatScore(question.maxScore)}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
