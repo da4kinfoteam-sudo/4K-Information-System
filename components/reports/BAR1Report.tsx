@@ -5,6 +5,7 @@ import { Download, Printer, Search, X } from 'lucide-react';
 import { Subproject, Training, OtherActivity, OfficeRequirement, StaffingRequirement, OtherProgramExpense, IPO, Deadline } from '../../constants';
 import { ReportExcelRequest, ReportPrintRequest, withReportYearLabel } from './ReportUtils';
 import { BAR1DrilldownRecord, calculateBAR1ReportData } from './BAR1Calculation';
+import { isMonthTargetOverdue } from '../../lib/dateStatus';
 
 interface DetailPopup {
     indicator: string;
@@ -123,11 +124,7 @@ const BAR1Report: React.FC<BAR1ReportProps> = ({ data, uacsCodes, selectedYear, 
 
     const isRecordOverdue = (record: BAR1DrilldownRecord) => {
         if (!record.targetDate || record.actualDate) return false;
-        const targetDate = new Date(`${record.targetDate}T00:00:00`);
-        if (Number.isNaN(targetDate.getTime())) return false;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        return targetDate < today;
+        return isMonthTargetOverdue(record.targetDate);
     };
 
     const openRecord = (record: BAR1DrilldownRecord) => {

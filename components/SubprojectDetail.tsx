@@ -12,6 +12,7 @@ import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
 import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { resolveSubprojectCompletionRollup } from '../lib/subprojectCompletion';
+import { isMonthTargetOverdue } from '../lib/dateStatus';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -1826,7 +1827,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                     </fieldset>
 
                                     {/* Section 5: Catch Up Plan (Conditional) */}
-                                    {new Date() > new Date(editedSubproject.estimatedCompletionDate) && editedSubproject.status !== 'Completed' && (
+                                    {isMonthTargetOverdue(editedSubproject.estimatedCompletionDate) && editedSubproject.status !== 'Completed' && (
                                         <fieldset className="border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 p-4 rounded-md">
                                             <legend className="px-2 font-semibold text-red-600 dark:text-red-400">Catch Up Plan</legend>
                                             <p className="text-xs text-red-500 mb-2">Project is delayed. Please provide a catch-up plan.</p>

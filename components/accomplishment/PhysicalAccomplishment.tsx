@@ -9,6 +9,7 @@ import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
 import { getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../../lib/budgetLineAdjustments';
 import { resolveSubprojectCompletionRollup } from '../../lib/subprojectCompletion';
+import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import type { DataScope } from '../../lib/scopedDataFetch';
 
 interface Props {
@@ -97,9 +98,7 @@ const getPhysicalDueStatus = (targetDate: string | undefined, completed: boolean
     if (completed) return { dueStatus: 'Completed' as const, isOverdue: false };
     const dueDate = getDateOnly(targetDate);
     if (!dueDate) return { dueStatus: 'Not Started' as const, isOverdue: false };
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const isOverdue = dueDate < today;
+    const isOverdue = isMonthTargetOverdue(targetDate);
     return { dueStatus: isOverdue ? 'Overdue' as const : 'On Track' as const, isOverdue };
 };
 
