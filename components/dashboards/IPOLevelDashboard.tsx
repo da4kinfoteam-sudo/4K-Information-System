@@ -126,12 +126,12 @@ const STATUS_COLORS: Record<ProgressionStatus, string> = {
     'Needs Assessment': '#94a3b8',
 };
 
-const STATUS_BADGE_CLASS: Record<ProgressionStatus, string> = {
-    Improved: 'status-badge--completed',
-    Maintained: 'status-badge--info',
-    Declined: 'status-badge--cancelled',
-    'New / No Baseline': 'status-badge--pending',
-    'Needs Assessment': 'status-badge--neutral',
+const STATUS_TEXT_CLASS: Record<ProgressionStatus, string> = {
+    Improved: 'lod-status-text--green',
+    Maintained: 'lod-status-text--blue',
+    Declined: 'lod-status-text--red',
+    'New / No Baseline': 'lod-status-text--orange',
+    'Needs Assessment': 'lod-status-text--gray',
 };
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -150,6 +150,22 @@ const formatScore = (value: number | null | undefined, digits = 2) => {
 const formatComponentScore = (value: number | null | undefined, weight: number | null | undefined) => {
     if (value === null || value === undefined || Number.isNaN(value)) return 'No Data';
     return `${value.toFixed(2)} / ${(Number(weight) || 0).toFixed(2)}`;
+};
+
+const wrapLabel = (value: string, maxLineLength = 16) => {
+    const words = value.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+
+    words.forEach(word => {
+        const last = lines[lines.length - 1];
+        if (!last || `${last} ${word}`.length > maxLineLength) {
+            lines.push(word);
+        } else {
+            lines[lines.length - 1] = `${last} ${word}`;
+        }
+    });
+
+    return lines.length > 0 ? lines : [value];
 };
 
 const average = (values: number[]) => {
@@ -265,6 +281,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const [filtersOpen, setFiltersOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth >= 768);
     const [filtersTouched, setFiltersTouched] = useState(false);
     const [expandedGapSections, setExpandedGapSections] = useState<Record<number, boolean>>({});
+    const [isCompactChartViewport, setIsCompactChartViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
 
     useEffect(() => {
         setYearFilter(selectedYear || new Date().getFullYear().toString());
@@ -272,6 +289,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
     useEffect(() => {
         const handleResize = () => {
+            setIsCompactChartViewport(window.innerWidth < 760);
             if (!filtersTouched) {
                 setFiltersOpen(window.innerWidth >= 768);
             }
@@ -854,6 +872,45 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         </article>
     );
 
+    const radarChartMargin = isCompactChartViewport
+        ? { top: 48, right: 78, bottom: 48, left: 78 }
+        : { top: 52, right: 118, bottom: 52, left: 118 };
+
+    const componentTickLabels = new Map<string, { lines: string[]; score: string }>();
+    componentAverages.forEach(component => {
+        componentTickLabels.set(component.component, {
+            lines: wrapLabel(component.component, 15),
+            score: formatComponentScore(component.score, component.weight),
+        });
+    });
+
+    const renderComponentRadarTick = (props: any) => {
+        const { x, y, cx, cy, payload } = props;
+        const value = String(payload?.value || '');
+        const label = componentTickLabels.get(value) || { lines: wrapLabel(value, 15), score: '' };
+        const anchor = x > cx + 8 ? 'start' : x < cx - 8 ? 'end' : 'middle';
+        const offsetX = x > cx + 8 ? 8 : x < cx - 8 ? -8 : 0;
+        const offsetY = y > cy + 8 ? 10 : y < cy - 8 ? -10 : 0;
+        const lineHeight = 12;
+        const totalLines = label.lines.length + (label.score ? 1 : 0);
+        const startY = y + offsetY - ((totalLines - 1) * lineHeight) / 2;
+
+        return (
+            <text x={x + offsetX} y={startY} textAnchor={anchor} className="lod-radar-label">
+                {label.lines.map((line, index) => (
+                    <tspan key={`${value}-${line}-${index}`} x={x + offsetX} dy={index === 0 ? 0 : lineHeight}>
+                        {line}
+                    </tspan>
+                ))}
+                {label.score && (
+                    <tspan x={x + offsetX} dy={lineHeight} className="lod-radar-label__score">
+                        {label.score}
+                    </tspan>
+                )}
+            </text>
+        );
+    };
+
     const renderSectionIcon = (title: string, index: number) => {
         const normalizedTitle = title.toLowerCase();
         let icon: React.ReactNode = <BarChart3 />;
@@ -920,7 +977,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 <div>
                     <p className="lod-dashboard-eyebrow">IPO Level of Development</p>
                     <h3 id="lod-dashboard-title">LOD Dashboard</h3>
-                    <span>Monitoring development status and progression across assessed Indigenous Peoples Organizations.</span>
                 </div>
                 <div className="lod-dashboard-hero__meta">
                     <span>{metrics.assessedTotal} assessed IPOs</span>
@@ -1061,10 +1117,10 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                     <XAxis dataKey="year" tick={{ fontSize: 11 }} />
                                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
                                     <Tooltip />
+                                    <Bar stackId="levels" dataKey="forAssessment" name="For Assessment" fill={FOR_ASSESSMENT_COLOR} />
                                     {[1, 2, 3, 4, 5].map(level => (
                                         <Bar key={level} stackId="levels" dataKey={`level${level}`} name={LEVEL_LABELS[level]} fill={LEVEL_COLORS[level]} />
                                     ))}
-                                    <Bar stackId="levels" dataKey="forAssessment" name="For Assessment" fill={FOR_ASSESSMENT_COLOR} />
                                 </BarChart>
                             </ResponsiveContainer>
                             <div className="lod-chart-legend lod-chart-legend--inline">
@@ -1091,31 +1147,25 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     </div>
                     {componentAverages.some(component => component.score !== null) ? (
                         <div className="lod-component-score-layout">
-                            <ResponsiveContainer width="100%" height={320}>
+                            <div className="lod-radar-chart-shell">
+                            <ResponsiveContainer width="100%" height={330}>
                                 <RadarChart
                                     data={componentAverages.map(component => ({
-                                        component: component.component.length > 24 ? `${component.component.slice(0, 24)}...` : component.component,
+                                        component: component.component,
                                         fullName: component.component,
                                         score: Number((component.score || 0).toFixed(2)),
                                         label: formatComponentScore(component.score, component.weight),
                                     }))}
-                                    margin={{ top: 24, right: 78, bottom: 24, left: 78 }}
-                                    outerRadius="58%"
+                                    margin={radarChartMargin}
+                                    outerRadius={isCompactChartViewport ? '42%' : '46%'}
                                 >
                                     <PolarGrid />
-                                    <PolarAngleAxis dataKey="component" tick={{ fontSize: 11, fill: '#334155' }} />
+                                    <PolarAngleAxis dataKey="component" tick={renderComponentRadarTick} />
                                     <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...componentAverages.map(component => component.weight || 0))]} tick={false} axisLine={false} />
                                     <Radar name="Weighted Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
                                     <Tooltip formatter={(_value: number, _name: string, props: any) => [props.payload.label, props.payload.fullName]} />
                                 </RadarChart>
                             </ResponsiveContainer>
-                            <div className="lod-component-score-list">
-                                {componentAverages.map(component => (
-                                    <div key={component.id} className="lod-component-score-row">
-                                        <span>{component.component}</span>
-                                        <strong>{formatComponentScore(component.score, component.weight)}</strong>
-                                    </div>
-                                ))}
                             </div>
                         </div>
                     ) : (
@@ -1170,13 +1220,15 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                                 <strong>{section.title}</strong>
                                                 <small>{section.answeredCount > 0 ? `${section.answeredCount} answered assessments` : 'No answered assessment records'}</small>
                                             </span>
-                                            <span className="lod-gap-section__metric">
-                                                <small>Average</small>
-                                                <strong>{formatComponentScore(section.averageScore, section.weight)}</strong>
-                                            </span>
-                                            <span className="lod-gap-section__metric">
-                                                <small>Gap</small>
-                                                <strong>{formatScore(section.gap)}</strong>
+                                            <span className="lod-gap-section__metrics">
+                                                <span className="lod-gap-section__metric">
+                                                    <small>Average</small>
+                                                    <strong>{formatComponentScore(section.averageScore, section.weight)}</strong>
+                                                </span>
+                                                <span className="lod-gap-section__metric">
+                                                    <small>Gap</small>
+                                                    <strong>{formatScore(section.gap)}</strong>
+                                                </span>
                                             </span>
                                             <ChevronDown className="lod-gap-section__chevron" aria-hidden="true" />
                                         </button>
@@ -1329,7 +1381,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     </div>
                 </div>
 
-                <div className="data-table-scroll custom-scrollbar">
+                <div className="data-table-scroll custom-scrollbar lod-monitoring-table-scroll">
                     <table className="data-table lod-monitoring-table">
                         <thead>
                             <tr>
@@ -1371,7 +1423,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                         <td key={section.id} className="data-table__numeric">{formatComponentScore(row.componentScores[section.id]?.weighted, row.componentScores[section.id]?.weight)}</td>
                                     ))}
                                     <td>
-                                        <span className={`status-badge status-badge--compact ${STATUS_BADGE_CLASS[row.status]}`}>{row.status}</span>
+                                        <span className={`lod-status-text ${STATUS_TEXT_CLASS[row.status]}`}>{row.status}</span>
                                     </td>
                                     <td>
                                         {row.history.length > 0 ? (

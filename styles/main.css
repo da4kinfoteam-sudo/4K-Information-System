@@ -1255,42 +1255,32 @@
 
 .lod-component-score-layout {
   display: grid;
-  gap: 0.75rem;
+  min-height: 20rem;
 }
 
-.lod-component-score-list {
-  display: grid;
-  gap: 0.5rem;
+.lod-radar-chart-shell {
+  min-height: 21rem;
 }
 
-.lod-component-score-row {
-  align-items: center;
-  background: var(--app-shell-bg);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-md);
-  display: grid;
-  gap: 0.7rem;
-  grid-template-columns: minmax(0, 1fr) auto;
-  padding: 0.6rem 0.7rem;
+.lod-radar-label {
+  fill: var(--app-text-muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+  pointer-events: none;
 }
 
-.lod-component-score-row span {
-  color: var(--app-text-muted);
-  font-size: 0.8rem;
-  line-height: 1.35;
-  min-width: 0;
-}
-
-.lod-component-score-row strong {
-  color: var(--app-text);
-  font-size: 0.82rem;
-  font-weight: 850;
-  white-space: nowrap;
+.lod-radar-label__score {
+  fill: var(--app-text);
+  font-size: 0.68rem;
+  font-weight: 900;
 }
 
 .lod-rank-list {
   display: grid;
   gap: 0.65rem;
+  max-height: 18.5rem;
+  overflow: auto;
+  padding-right: 0.25rem;
 }
 
 .lod-rank-list--region {
@@ -1303,7 +1293,8 @@
   align-items: center;
   display: grid;
   gap: 0.7rem;
-  grid-template-columns: minmax(9rem, 1fr) minmax(6rem, 1fr) auto;
+  grid-template-columns: minmax(7.5rem, 1fr) minmax(4.25rem, 6rem) 3rem;
+  min-width: 0;
 }
 
 .lod-rank-row strong {
@@ -1324,7 +1315,8 @@
 .lod-rank-row b {
   color: var(--app-text);
   font-size: 0.86rem;
-}
+  font-variant-numeric: tabular-nums;
+  }
 
 .lod-rank-bar {
   background: var(--app-surface-muted);
@@ -1356,7 +1348,7 @@
 .lod-gap-analysis {
   display: grid;
   gap: 0.65rem;
-  max-height: 18.5rem;
+  max-height: 20.75rem;
   overflow: auto;
   padding-right: 0.25rem;
 }
@@ -1374,9 +1366,9 @@
   color: var(--app-text);
   cursor: pointer;
   display: grid;
-  gap: 0.7rem;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  padding: 0.72rem;
+  gap: 0.55rem 0.7rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 0.68rem 0.72rem;
   text-align: left;
   width: 100%;
 }
@@ -1432,7 +1424,7 @@
 
 .lod-gap-section__name strong {
   color: var(--app-text);
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   font-weight: 850;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1446,16 +1438,28 @@
   line-height: 1.25;
 }
 
+.lod-gap-section__metrics {
+  display: grid;
+  gap: 0.45rem;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(3.5rem, auto);
+  min-width: 0;
+}
+
 .lod-gap-section__metric {
   display: grid;
   gap: 0.12rem;
+  justify-items: start;
+  min-width: 0;
+}
+
+.lod-gap-section__metric:last-child {
   justify-items: end;
-  min-width: 4.75rem;
 }
 
 .lod-gap-section__metric strong {
   color: var(--app-text);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 850;
   white-space: nowrap;
 }
@@ -1590,17 +1594,66 @@
   overflow: hidden;
 }
 
+.lod-monitoring-table-scroll {
+  max-height: 30.5rem;
+  overflow: auto;
+}
+
 .lod-monitoring-table {
-  min-width: 92rem;
+  min-width: 118rem;
 }
 
 .lod-monitoring-table th {
-  max-width: 10rem;
+  background: var(--app-surface);
+  line-height: 1.2;
+  min-width: 9.5rem;
+  position: sticky;
+  top: 0;
   white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+  z-index: 2;
 }
 
 .lod-monitoring-table td {
   white-space: nowrap;
+}
+
+.lod-monitoring-table th:nth-child(1),
+.lod-monitoring-table td:nth-child(1) {
+  min-width: 14rem;
+}
+
+.lod-monitoring-table th:nth-child(2),
+.lod-monitoring-table td:nth-child(2),
+.lod-monitoring-table th:nth-child(3),
+.lod-monitoring-table td:nth-child(3) {
+  min-width: 10rem;
+}
+
+.lod-monitoring-table th:nth-child(4),
+.lod-monitoring-table td:nth-child(4),
+.lod-monitoring-table th:nth-child(7),
+.lod-monitoring-table td:nth-child(7) {
+  min-width: 6.5rem;
+}
+
+.lod-monitoring-table th:nth-child(5),
+.lod-monitoring-table td:nth-child(5),
+.lod-monitoring-table th:nth-child(6),
+.lod-monitoring-table td:nth-child(6) {
+  min-width: 8.25rem;
+}
+
+.lod-monitoring-table th:last-child,
+.lod-monitoring-table td:last-child {
+  min-width: 6rem;
+}
+
+.lod-monitoring-table th:nth-last-child(2),
+.lod-monitoring-table td:nth-last-child(2) {
+  min-width: 9rem;
 }
 
 .lod-monitoring-row--clickable {
@@ -1614,6 +1667,35 @@
 .lod-ipo-link {
   font-weight: 850;
   text-align: left;
+}
+
+.lod-status-text {
+  display: inline-block;
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.lod-status-text--green {
+  color: var(--brand-green-700);
+}
+
+.lod-status-text--blue {
+  color: #2563eb;
+}
+
+.lod-status-text--red {
+  color: #dc2626;
+}
+
+.lod-status-text--orange {
+  color: #d97706;
+}
+
+.lod-status-text--gray {
+  color: #64748b;
 }
 
 .lod-positive {
@@ -1721,22 +1803,12 @@
     grid-row: 2;
   }
 
-  .lod-component-score-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .lod-component-score-row strong {
-    white-space: normal;
-  }
-
   .lod-gap-section__summary {
-    align-items: start;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
   }
 
-  .lod-gap-section__metric {
+  .lod-gap-section__metrics {
     grid-column: 2 / -1;
-    justify-items: start;
   }
 
   .lod-gap-section__chevron {
@@ -1745,7 +1817,7 @@
   }
 
   .lod-monitoring-table {
-    min-width: 76rem;
+    min-width: 108rem;
   }
 }
 
