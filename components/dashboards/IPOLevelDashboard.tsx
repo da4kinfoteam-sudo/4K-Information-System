@@ -4,6 +4,7 @@ import {
     AlertTriangle,
     Award,
     BarChart3,
+    ChevronDown,
     Download,
     Gauge,
     MapPin,
@@ -19,9 +20,8 @@ import {
     BarChart,
     CartesianGrid,
     Cell,
-    ComposedChart,
-    Legend,
     Line,
+    LineChart,
     Pie,
     PieChart,
     PolarAngleAxis,
@@ -41,9 +41,36 @@ import { parseLocation } from '../LocationPicker';
 interface IPOLevelDashboardProps {
     ipos: IPO[];
     selectedYear: string;
+    onSelectLodIpo?: (ipo: IPO, year?: number) => void;
 }
 
 type ProgressionStatus = 'Improved' | 'Maintained' | 'Declined' | 'New / No Baseline' | 'Needs Assessment';
+
+interface ComponentScore {
+    weighted: number | null;
+    normalized: number | null;
+    percent: number | null;
+    weight: number;
+}
+
+interface QuestionGapScore {
+    id: number;
+    question: string;
+    averageScore: number | null;
+    maxScore: number;
+    gap: number | null;
+    answeredCount: number;
+}
+
+interface SectionGapScore {
+    id: number;
+    title: string;
+    averageScore: number | null;
+    weight: number;
+    gap: number | null;
+    answeredCount: number;
+    questions: QuestionGapScore[];
+}
 
 interface LodDashboardRow {
     ipo: IPO;
@@ -54,8 +81,8 @@ interface LodDashboardRow {
     currentLevel: number | null;
     previousLevel: number | null;
     change: number | null;
-    componentScores: Record<number, number | null>;
-    previousComponentScores: Record<number, number | null>;
+    componentScores: Record<number, ComponentScore>;
+    previousComponentScores: Record<number, ComponentScore>;
     status: ProgressionStatus;
     isHighPerforming: boolean;
     isAtRisk: boolean;
@@ -89,6 +116,8 @@ const LEVEL_COLORS: Record<number, string> = {
     5: '#0f766e',
 };
 
+const FOR_ASSESSMENT_COLOR = '#94a3b8';
+
 const STATUS_COLORS: Record<ProgressionStatus, string> = {
     Improved: '#16a34a',
     Maintained: '#2563eb',
@@ -116,6 +145,11 @@ const LEVEL_LABELS: Record<number, string> = {
 const formatScore = (value: number | null | undefined, digits = 2) => {
     if (value === null || value === undefined || Number.isNaN(value)) return 'No Data';
     return value.toFixed(digits);
+};
+
+const formatComponentScore = (value: number | null | undefined, weight: number | null | undefined) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return 'No Data';
+    return `${value.toFixed(2)} / ${(Number(weight) || 0).toFixed(2)}`;
 };
 
 const average = (values: number[]) => {
@@ -148,11 +182,12 @@ const getComponentScores = (
     choicesByQuestion: Map<number, LodChoice[]>,
     answersByAssessmentQuestion: Map<string, LodAnswer>
 ) => {
-    const scores: Record<number, number | null> = {};
+    const scores: Record<number, ComponentScore> = {};
 
     sections.forEach(section => {
+        const sectionWeight = Number(section.weight) || 0;
         if (!assessment) {
-            scores[section.id] = null;
+            scores[section.id] = { weighted: null, normalized: null, percent: null, weight: sectionWeight };
             return;
         }
 
@@ -177,7 +212,17 @@ const getComponentScores = (
             }
         });
 
-        scores[section.id] = hasAnswer && possible > 0 ? Math.max(0, Math.min(5, (earned / possible) * 5)) : null;
+        if (hasAnswer && possible > 0) {
+            const sectionPercent = Math.max(0, Math.min(1, earned / possible));
+            scores[section.id] = {
+                weighted: sectionPercent * sectionWeight,
+                normalized: sectionPercent * 5,
+                percent: sectionPercent * 100,
+                weight: sectionWeight,
+            };
+        } else {
+            scores[section.id] = { weighted: null, normalized: null, percent: null, weight: sectionWeight };
+        }
     });
 
     return scores;
@@ -205,7 +250,7 @@ const buildSparklinePoints = (history: { year: number; level: number }[]) => {
 
 const getInsightToneClass = (status: 'green' | 'blue' | 'orange' | 'red' | 'gray') => `lod-insight lod-insight--${status}`;
 
-const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYear }) => {
+const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYear, onSelectLodIpo }) => {
     const [data, setData] = useState<LodDashboardData>(EMPTY_DATA);
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
@@ -217,10 +262,26 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [filtersOpen, setFiltersOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth >= 768);
+    const [filtersTouched, setFiltersTouched] = useState(false);
+    const [expandedGapSections, setExpandedGapSections] = useState<Record<number, boolean>>({});
 
     useEffect(() => {
         setYearFilter(selectedYear || new Date().getFullYear().toString());
     }, [selectedYear]);
+
+    useEffect(() => {
+        const handleResize = () => {
+            if (!filtersTouched) {
+                setFiltersOpen(window.innerWidth >= 768);
+            }
+        };
+
+        window.addEventListener('resize', handleResize);
+        handleResize();
+
+        return () => window.removeEventListener('resize', handleResize);
+    }, [filtersTouched]);
 
     useEffect(() => {
         const fetchDashboardData = async () => {
@@ -322,7 +383,16 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             const change = currentLevel !== null && previousLevel !== null ? currentLevel - previousLevel : null;
             const componentScores = getComponentScores(currentAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
             const previousComponentScores = getComponentScores(previousAssessment, data.sections, questionsBySection, choicesByQuestion, answersByAssessmentQuestion);
-            const componentValues = Object.values(componentScores).filter((value): value is number => value !== null);
+            const requiredScaleUpSections = data.sections.filter(section => {
+                const sectionWeight = Number(section.weight) || 0;
+                const questionCount = questionsBySection.get(section.id)?.length || 0;
+                return sectionWeight > 0 && questionCount > 0;
+            });
+            const scaleUpComponentsPass = requiredScaleUpSections.length > 0 && requiredScaleUpSections.every(section => {
+                const score = componentScores[section.id];
+                if (!score || score.percent === null || score.percent === undefined) return false;
+                return score.percent >= 60;
+            });
             const history = ipoAssessments
                 .slice()
                 .sort((a, b) => Number(a.year) - Number(b.year))
@@ -358,8 +428,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     currentLevel !== null &&
                     currentLevel >= 3 &&
                     status !== 'Declined' &&
-                    componentValues.length > 0 &&
-                    componentValues.every(value => value >= 3)
+                    scaleUpComponentsPass
                 ),
                 history,
             } satisfies LodDashboardRow;
@@ -370,6 +439,9 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             visibleAssessments,
             availableYears,
             assessmentsByIpo: assessmentYearsByIpo,
+            questionsBySection,
+            choicesByQuestion,
+            answersByAssessmentQuestion,
         };
     }, [data, ipos, yearFilter]);
 
@@ -402,6 +474,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [levelFilter, model.rows, provinceFilter, regionFilter, statusFilter]);
 
     const assessedRows = filteredRows.filter(row => row.currentAssessment && row.currentLevel !== null);
+    const forAssessmentRows = filteredRows.filter(row => !row.currentAssessment || row.currentLevel === null);
 
     const metrics = useMemo(() => {
         const assessedTotal = assessedRows.length;
@@ -439,33 +512,58 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     }, [assessedRows, filteredRows]);
 
     const levelDistribution = useMemo(() => {
-        return [1, 2, 3, 4, 5].map(level => {
+        const totalRows = filteredRows.length;
+        const assessedLevels = [1, 2, 3, 4, 5].map(level => {
             const count = assessedRows.filter(row => row.currentLevel === level).length;
             return {
                 level,
+                key: `level-${level}`,
                 name: LEVEL_LABELS[level],
                 count,
-                percent: metrics.assessedTotal > 0 ? (count / metrics.assessedTotal) * 100 : 0,
+                color: LEVEL_COLORS[level],
+                percent: totalRows > 0 ? (count / totalRows) * 100 : 0,
             };
         });
-    }, [assessedRows, metrics.assessedTotal]);
+
+        return [
+            ...assessedLevels,
+            {
+                level: 'for-assessment' as const,
+                key: 'for-assessment',
+                name: 'For Assessment',
+                count: forAssessmentRows.length,
+                color: FOR_ASSESSMENT_COLOR,
+                percent: totalRows > 0 ? (forAssessmentRows.length / totalRows) * 100 : 0,
+            },
+        ];
+    }, [assessedRows, filteredRows.length, forAssessmentRows.length]);
 
     const progressionByYear = useMemo(() => {
         const includedIpoIds = new Set(filteredRows.map(row => Number(row.ipo.id)));
-        const yearGroups = new Map<number, { year: number; level1: number; level2: number; level3: number; level4: number; level5: number; levels: number[] }>();
+        const years = Array.from(new Set([
+            ...model.availableYears,
+            ...(yearFilter !== 'All' && Number.isFinite(Number(yearFilter)) ? [Number(yearFilter)] : []),
+        ])).sort((a, b) => a - b);
+        const yearGroups = new Map<number, { year: number; level1: number; level2: number; level3: number; level4: number; level5: number; forAssessment: number; levels: number[] }>();
 
-        model.visibleAssessments
-            .filter(assessment => includedIpoIds.has(Number(assessment.ipo_id)))
-            .forEach(assessment => {
+        years.forEach(year => {
+            const group = { year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, forAssessment: 0, levels: [] as number[] };
+
+            includedIpoIds.forEach(ipoId => {
+                const assessment = model.assessmentsByIpo.get(ipoId)?.find(item => Number(item.year) === year) || null;
                 const level = getEffectiveLevel(assessment, data.levelConfigs);
-                if (level === null) return;
 
-                const year = Number(assessment.year);
-                const group = yearGroups.get(year) || { year, level1: 0, level2: 0, level3: 0, level4: 0, level5: 0, levels: [] };
+                if (level === null) {
+                    group.forAssessment += 1;
+                    return;
+                }
+
                 group[`level${level}` as 'level1'] += 1;
                 group.levels.push(level);
-                yearGroups.set(year, group);
             });
+
+            yearGroups.set(year, group);
+        });
 
         return Array.from(yearGroups.values())
             .sort((a, b) => a.year - b.year)
@@ -476,20 +574,26 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 level3: group.level3,
                 level4: group.level4,
                 level5: group.level5,
+                forAssessment: group.forAssessment,
                 average: Number((average(group.levels) || 0).toFixed(2)),
             }));
-    }, [data.levelConfigs, filteredRows, model.visibleAssessments]);
+    }, [data.levelConfigs, filteredRows, model.assessmentsByIpo, model.availableYears, yearFilter]);
 
     const componentAverages = useMemo(() => {
         return data.sections.map(section => {
-            const values = assessedRows
-                .map(row => row.componentScores[section.id])
+            const weightedValues = assessedRows
+                .map(row => row.componentScores[section.id]?.weighted)
+                .filter((value): value is number => value !== null && value !== undefined);
+            const percentValues = assessedRows
+                .map(row => row.componentScores[section.id]?.percent)
                 .filter((value): value is number => value !== null && value !== undefined);
             return {
                 id: section.id,
                 component: section.title,
-                score: average(values),
-                count: values.length,
+                score: average(weightedValues),
+                percent: average(percentValues),
+                weight: Number(section.weight) || 0,
+                count: weightedValues.length,
             };
         });
     }, [assessedRows, data.sections]);
@@ -503,6 +607,76 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             gap: component.score !== null && highest !== null ? highest - component.score : null,
         })).sort((a, b) => (b.gap || 0) - (a.gap || 0));
     }, [componentAverages]);
+
+    const detailedGapAnalysis = useMemo<SectionGapScore[]>(() => {
+        const componentById = new Map<number, typeof componentGapAnalysis[number]>();
+        componentGapAnalysis.forEach(component => {
+            componentById.set(component.id, component);
+        });
+
+        return data.sections.map(section => {
+            const sectionWeight = Number(section.weight) || 0;
+            const questions = model.questionsBySection.get(section.id) || [];
+            const questionMaxScores = new Map<number, number>();
+            const sectionMaxScore = questions.reduce((total, question) => {
+                const choices = model.choicesByQuestion.get(question.id) || [];
+                const maxChoicePoints = choices.reduce((max, choice) => Math.max(max, Number(choice.points) || 0), 0);
+                const maxScore = maxChoicePoints * (Number(question.weight) || 1);
+                questionMaxScores.set(question.id, maxScore);
+                return total + maxScore;
+            }, 0);
+
+            const questionScores = questions.map(question => {
+                const questionMaxScore = questionMaxScores.get(question.id) || 0;
+                const maxWeightedContribution = sectionMaxScore > 0 ? (questionMaxScore / sectionMaxScore) * sectionWeight : 0;
+                const values = assessedRows
+                    .map(row => {
+                        if (!row.currentAssessment || questionMaxScore <= 0 || sectionMaxScore <= 0) return null;
+                        const answer = model.answersByAssessmentQuestion.get(getAssessmentKey(row.currentAssessment.id, question.id));
+                        if (!answer) return null;
+                        return ((Number(answer.points_earned) || 0) / sectionMaxScore) * sectionWeight;
+                    })
+                    .filter((value): value is number => value !== null);
+
+                return {
+                    id: question.id,
+                    question: question.text,
+                    averageScore: average(values),
+                    maxScore: maxWeightedContribution,
+                    gap: null,
+                    answeredCount: values.length,
+                } satisfies QuestionGapScore;
+            });
+
+            const questionBenchmark = questionScores
+                .filter(question => question.averageScore !== null)
+                .reduce<number | null>((highest, question) => {
+                    if (question.averageScore === null) return highest;
+                    return highest === null ? question.averageScore : Math.max(highest, question.averageScore);
+                }, null);
+
+            const questionsWithGaps = questionScores.map(question => ({
+                ...question,
+                gap: question.averageScore !== null && questionBenchmark !== null ? questionBenchmark - question.averageScore : null,
+            }));
+
+            const component = componentById.get(section.id);
+            const answeredCount = assessedRows.filter(row => {
+                const score = row.componentScores[section.id];
+                return score?.weighted !== null && score?.weighted !== undefined;
+            }).length;
+
+            return {
+                id: section.id,
+                title: section.title,
+                averageScore: component?.score ?? null,
+                weight: sectionWeight,
+                gap: component?.gap ?? null,
+                answeredCount,
+                questions: questionsWithGaps,
+            };
+        }).sort((a, b) => (b.gap || 0) - (a.gap || 0));
+    }, [assessedRows, componentGapAnalysis, data.sections, model.answersByAssessmentQuestion, model.choicesByQuestion, model.questionsBySection]);
 
     const regionalAverages = useMemo(() => {
         const regionGroups = new Map<string, number[]>();
@@ -553,8 +727,8 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         const componentDeltas = data.sections.map(section => {
             const deltas = filteredRows
                 .map(row => {
-                    const current = row.componentScores[section.id];
-                    const previous = row.previousComponentScores[section.id];
+                    const current = row.componentScores[section.id]?.weighted;
+                    const previous = row.previousComponentScores[section.id]?.weighted;
                     return current !== null && current !== undefined && previous !== null && previous !== undefined ? current - previous : null;
                 })
                 .filter((value): value is number => value !== null);
@@ -572,11 +746,11 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             },
             strongest ? {
                 tone: 'green' as const,
-                text: `${strongest.component} is the strongest component with an average score of ${formatScore(strongest.score)}.`,
+                text: `${strongest.component} is the strongest component with an average score of ${formatComponentScore(strongest.score, strongest.weight)}.`,
             } : null,
             weakest ? {
                 tone: 'orange' as const,
-                text: `${weakest.component} is the weakest component with an average score of ${formatScore(weakest.score)}.`,
+                text: `${weakest.component} is the weakest component with an average score of ${formatComponentScore(weakest.score, weakest.weight)}.`,
             } : null,
             topRegion ? {
                 tone: 'blue' as const,
@@ -645,7 +819,10 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
             row.currentLevel ?? '',
             row.previousLevel ?? '',
             row.change ?? '',
-            ...data.sections.map(section => row.componentScores[section.id] !== null && row.componentScores[section.id] !== undefined ? formatScore(row.componentScores[section.id]) : ''),
+            ...data.sections.map(section => {
+                const score = row.componentScores[section.id];
+                return score?.weighted !== null && score?.weighted !== undefined ? formatComponentScore(score.weighted, score.weight) : '';
+            }),
             row.status,
         ]);
         const csv = [headers, ...rows]
@@ -677,6 +854,54 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
         </article>
     );
 
+    const renderSectionIcon = (title: string, index: number) => {
+        const normalizedTitle = title.toLowerCase();
+        let icon: React.ReactNode = <BarChart3 />;
+        if (normalizedTitle.includes('organization') || normalizedTitle.includes('maturity')) {
+            icon = <Award />;
+        } else if (normalizedTitle.includes('farm') || normalizedTitle.includes('income') || normalizedTitle.includes('productivity')) {
+            icon = <TrendingUp />;
+        } else if (normalizedTitle.includes('gender') || normalizedTitle.includes('gad')) {
+            icon = <Users />;
+        } else if (normalizedTitle.includes('social') || normalizedTitle.includes('service')) {
+            icon = <Gauge />;
+        }
+
+        return (
+            <span className={`lod-gap-section__icon lod-gap-section__icon--${(index % 5) + 1}`} aria-hidden="true">
+                {icon}
+            </span>
+        );
+    };
+
+    const handleToggleFilters = () => {
+        setFiltersTouched(true);
+        setFiltersOpen(open => !open);
+    };
+
+    const handleToggleGapSection = (sectionId: number) => {
+        setExpandedGapSections(prev => ({
+            ...prev,
+            [sectionId]: !prev[sectionId],
+        }));
+    };
+
+    const handleOpenLodDetails = (row: LodDashboardRow) => {
+        if (!onSelectLodIpo) return;
+        const selectedDashboardYear = yearFilter !== 'All' && Number.isFinite(Number(yearFilter))
+            ? Number(yearFilter)
+            : row.currentAssessment?.year ? Number(row.currentAssessment.year) : undefined;
+        onSelectLodIpo(row.ipo, selectedDashboardYear);
+    };
+
+    const activeFilterLabels = [
+        yearFilter === 'All' ? 'Latest' : yearFilter,
+        regionFilter === 'All' ? 'All Regions' : regionFilter,
+        provinceFilter === 'All' ? 'All Provinces' : provinceFilter,
+        statusFilter === 'All' ? 'All Statuses' : statusFilter,
+        levelFilter === 'All' ? 'All Levels' : LEVEL_LABELS[Number(levelFilter)] || 'All Levels',
+    ];
+
     if (loading) {
         return <div className="dashboard-empty dashboard-empty--center">Loading LOD dashboard data...</div>;
     }
@@ -703,56 +928,67 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                 </div>
             </section>
 
-            <section className="lod-filter-panel" aria-label="LOD dashboard filters">
-                <div className="dashboard-filter">
-                    <label htmlFor="lod-year-filter">Year</label>
-                    <select id="lod-year-filter" value={yearFilter} onChange={event => setYearFilter(event.target.value)}>
-                        <option value="All">All / Latest</option>
-                        {model.availableYears.map(year => (
-                            <option key={year} value={year}>{year}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="dashboard-filter">
-                    <label htmlFor="lod-region-filter">Region</label>
-                    <select id="lod-region-filter" value={regionFilter} onChange={event => setRegionFilter(event.target.value)}>
-                        <option value="All">All Regions</option>
-                        {regionOptions.map(region => (
-                            <option key={region} value={region}>{region}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="dashboard-filter">
-                    <label htmlFor="lod-province-filter">Province</label>
-                    <select id="lod-province-filter" value={provinceFilter} onChange={event => setProvinceFilter(event.target.value)}>
-                        <option value="All">All Provinces</option>
-                        {provinceOptions.map(province => (
-                            <option key={province} value={province}>{province}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="dashboard-filter">
-                    <label htmlFor="lod-status-filter">Status</label>
-                    <select id="lod-status-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-                        <option value="All">All Statuses</option>
-                        {(['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Needs Assessment'] as ProgressionStatus[]).map(status => (
-                            <option key={status} value={status}>{status}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="dashboard-filter">
-                    <label htmlFor="lod-level-filter">LOD Level</label>
-                    <select id="lod-level-filter" value={levelFilter} onChange={event => setLevelFilter(event.target.value)}>
-                        <option value="All">All Levels</option>
-                        {[1, 2, 3, 4, 5].map(level => (
-                            <option key={level} value={level}>{LEVEL_LABELS[level]}</option>
-                        ))}
-                    </select>
-                </div>
-                <button type="button" className="btn btn-secondary lod-reset-button" onClick={handleResetFilters}>
-                    <RefreshCw size={16} />
-                    Reset
+            <section className={`lod-filter-shell ${filtersOpen ? 'is-open' : 'is-collapsed'}`} aria-label="LOD dashboard filters">
+                <button type="button" className="lod-filter-toggle" onClick={handleToggleFilters} aria-expanded={filtersOpen}>
+                    <span>
+                        <strong>Filters</strong>
+                        <small>{activeFilterLabels.join(' / ')}</small>
+                    </span>
+                    <ChevronDown aria-hidden="true" />
                 </button>
+                {filtersOpen && (
+                    <div className="lod-filter-panel">
+                        <div className="dashboard-filter">
+                            <label htmlFor="lod-year-filter">Year</label>
+                            <select id="lod-year-filter" value={yearFilter} onChange={event => setYearFilter(event.target.value)}>
+                                <option value="All">All / Latest</option>
+                                {model.availableYears.map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="dashboard-filter">
+                            <label htmlFor="lod-region-filter">Region</label>
+                            <select id="lod-region-filter" value={regionFilter} onChange={event => setRegionFilter(event.target.value)}>
+                                <option value="All">All Regions</option>
+                                {regionOptions.map(region => (
+                                    <option key={region} value={region}>{region}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="dashboard-filter">
+                            <label htmlFor="lod-province-filter">Province</label>
+                            <select id="lod-province-filter" value={provinceFilter} onChange={event => setProvinceFilter(event.target.value)}>
+                                <option value="All">All Provinces</option>
+                                {provinceOptions.map(province => (
+                                    <option key={province} value={province}>{province}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="dashboard-filter">
+                            <label htmlFor="lod-status-filter">Status</label>
+                            <select id="lod-status-filter" value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
+                                <option value="All">All Statuses</option>
+                                {(['Improved', 'Maintained', 'Declined', 'New / No Baseline', 'Needs Assessment'] as ProgressionStatus[]).map(status => (
+                                    <option key={status} value={status}>{status}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="dashboard-filter">
+                            <label htmlFor="lod-level-filter">LOD Level</label>
+                            <select id="lod-level-filter" value={levelFilter} onChange={event => setLevelFilter(event.target.value)}>
+                                <option value="All">All Levels</option>
+                                {[1, 2, 3, 4, 5].map(level => (
+                                    <option key={level} value={level}>{LEVEL_LABELS[level]}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <button type="button" className="btn btn-secondary lod-reset-button" onClick={handleResetFilters}>
+                            <RefreshCw size={16} />
+                            Reset
+                        </button>
+                    </div>
+                )}
             </section>
 
             <section className="lod-kpi-grid" aria-label="Executive KPI cards">
@@ -771,22 +1007,28 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     <div className="dashboard-panel__header">
                         <h4 className="dashboard-panel__title">LOD Level Distribution</h4>
                     </div>
-                    {metrics.assessedTotal > 0 ? (
+                    {filteredRows.length > 0 ? (
                         <div className="lod-donut-layout">
-                            <ResponsiveContainer width="100%" height={240}>
-                                <PieChart>
+                            <div className="lod-donut-chart-shell">
+                                <ResponsiveContainer width="100%" height={240}>
+                                    <PieChart>
                                     <Pie data={levelDistribution.filter(item => item.count > 0)} dataKey="count" nameKey="name" innerRadius={62} outerRadius={94} paddingAngle={2}>
                                         {levelDistribution.filter(item => item.count > 0).map(item => (
-                                            <Cell key={item.level} fill={LEVEL_COLORS[item.level]} />
+                                            <Cell key={item.key} fill={item.color} />
                                         ))}
                                     </Pie>
                                     <Tooltip formatter={(value: number, name: string) => [`${value} IPOs`, name]} />
-                                </PieChart>
-                            </ResponsiveContainer>
+                                    </PieChart>
+                                </ResponsiveContainer>
+                                <div className="lod-donut-center">
+                                    <strong>{filteredRows.length.toLocaleString()}</strong>
+                                    <span>Total IPOs</span>
+                                </div>
+                            </div>
                             <div className="lod-chart-legend">
                                 {levelDistribution.map(item => (
-                                    <div key={item.level} className="lod-legend-row">
-                                        <span style={{ background: LEVEL_COLORS[item.level] }}></span>
+                                    <div key={item.key} className="lod-legend-row">
+                                        <span style={{ background: item.color }}></span>
                                         <p>{item.name}</p>
                                         <strong>{item.count} ({item.percent.toFixed(1)}%)</strong>
                                     </div>
@@ -803,20 +1045,41 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                         <h4 className="dashboard-panel__title">LOD Progression Over Time</h4>
                     </div>
                     {progressionByYear.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <ComposedChart data={progressionByYear}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis dataKey="year" />
-                                <YAxis yAxisId="left" allowDecimals={false} />
-                                <YAxis yAxisId="right" orientation="right" domain={[1, 5]} />
-                                <Tooltip />
-                                <Legend />
-                                {[1, 2, 3, 4, 5].map(level => (
-                                    <Bar key={level} yAxisId="left" stackId="levels" dataKey={`level${level}`} name={LEVEL_LABELS[level]} fill={LEVEL_COLORS[level]} />
+                        <div className="lod-progression-stack">
+                            <ResponsiveContainer width="100%" height={130}>
+                                <LineChart data={progressionByYear} margin={{ top: 14, right: 18, bottom: 4, left: 4 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                                    <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                                    <YAxis domain={[1, 5]} tick={{ fontSize: 11 }} width={28} />
+                                    <Tooltip formatter={(value: number) => [formatScore(value), 'Average LOD Score']} />
+                                    <Line type="monotone" dataKey="average" name="Average LOD Score" stroke="#0f766e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                            <ResponsiveContainer width="100%" height={220}>
+                                <BarChart data={progressionByYear} margin={{ top: 10, right: 18, bottom: 4, left: 4 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                                    <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={32} />
+                                    <Tooltip />
+                                    {[1, 2, 3, 4, 5].map(level => (
+                                        <Bar key={level} stackId="levels" dataKey={`level${level}`} name={LEVEL_LABELS[level]} fill={LEVEL_COLORS[level]} />
+                                    ))}
+                                    <Bar stackId="levels" dataKey="forAssessment" name="For Assessment" fill={FOR_ASSESSMENT_COLOR} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                            <div className="lod-chart-legend lod-chart-legend--inline">
+                                {[...levelDistribution.filter(item => item.level !== 'for-assessment'), levelDistribution.find(item => item.level === 'for-assessment')!].map(item => (
+                                    <div key={item.key} className="lod-legend-row">
+                                        <span style={{ background: item.color }}></span>
+                                        <p>{item.name}</p>
+                                    </div>
                                 ))}
-                                <Line yAxisId="right" type="monotone" dataKey="average" name="Average LOD Score" stroke="#0f766e" strokeWidth={3} dot={{ r: 4 }} />
-                            </ComposedChart>
-                        </ResponsiveContainer>
+                                <div className="lod-legend-row">
+                                    <span className="lod-line-marker"></span>
+                                    <p>Average LOD Score</p>
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         <p className="dashboard-empty dashboard-empty--center">No Data</p>
                     )}
@@ -827,18 +1090,34 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                         <h4 className="dashboard-panel__title">LOD Component Average Scores</h4>
                     </div>
                     {componentAverages.some(component => component.score !== null) ? (
-                        <ResponsiveContainer width="100%" height={300}>
-                            <RadarChart data={componentAverages.map(component => ({
-                                component: component.component.length > 28 ? `${component.component.slice(0, 28)}...` : component.component,
-                                score: Number((component.score || 0).toFixed(2)),
-                            }))}>
-                                <PolarGrid />
-                                <PolarAngleAxis dataKey="component" tick={{ fontSize: 11 }} />
-                                <PolarRadiusAxis angle={90} domain={[0, 5]} tickCount={6} />
-                                <Radar name="Average Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
-                                <Tooltip />
-                            </RadarChart>
-                        </ResponsiveContainer>
+                        <div className="lod-component-score-layout">
+                            <ResponsiveContainer width="100%" height={320}>
+                                <RadarChart
+                                    data={componentAverages.map(component => ({
+                                        component: component.component.length > 24 ? `${component.component.slice(0, 24)}...` : component.component,
+                                        fullName: component.component,
+                                        score: Number((component.score || 0).toFixed(2)),
+                                        label: formatComponentScore(component.score, component.weight),
+                                    }))}
+                                    margin={{ top: 24, right: 78, bottom: 24, left: 78 }}
+                                    outerRadius="58%"
+                                >
+                                    <PolarGrid />
+                                    <PolarAngleAxis dataKey="component" tick={{ fontSize: 11, fill: '#334155' }} />
+                                    <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...componentAverages.map(component => component.weight || 0))]} tick={false} axisLine={false} />
+                                    <Radar name="Weighted Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.22} />
+                                    <Tooltip formatter={(_value: number, _name: string, props: any) => [props.payload.label, props.payload.fullName]} />
+                                </RadarChart>
+                            </ResponsiveContainer>
+                            <div className="lod-component-score-list">
+                                {componentAverages.map(component => (
+                                    <div key={component.id} className="lod-component-score-row">
+                                        <span>{component.component}</span>
+                                        <strong>{formatComponentScore(component.score, component.weight)}</strong>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     ) : (
                         <p className="dashboard-empty dashboard-empty--center">No Data</p>
                     )}
@@ -874,29 +1153,67 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     <div className="dashboard-panel__header">
                         <h4 className="dashboard-panel__title">LOD Component Gap Analysis</h4>
                     </div>
-                    {componentGapAnalysis.some(component => component.score !== null) ? (
-                        <div className="data-table-scroll custom-scrollbar lod-compact-table">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Component</th>
-                                        <th className="data-table__numeric">Average</th>
-                                        <th className="data-table__numeric">Gap</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {componentGapAnalysis.map(component => (
-                                        <tr key={component.id}>
-                                            <td>{component.component}</td>
-                                            <td className="data-table__numeric">{formatScore(component.score)}</td>
-                                            <td className="data-table__numeric">{formatScore(component.gap)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {detailedGapAnalysis.some(section => section.averageScore !== null) ? (
+                        <div className="lod-gap-analysis custom-scrollbar">
+                            {detailedGapAnalysis.map((section, index) => {
+                                const isExpanded = Boolean(expandedGapSections[section.id]);
+                                return (
+                                    <div key={section.id} className="lod-gap-section">
+                                        <button
+                                            type="button"
+                                            className="lod-gap-section__summary"
+                                            onClick={() => handleToggleGapSection(section.id)}
+                                            aria-expanded={isExpanded}
+                                        >
+                                            {renderSectionIcon(section.title, index)}
+                                            <span className="lod-gap-section__name">
+                                                <strong>{section.title}</strong>
+                                                <small>{section.answeredCount > 0 ? `${section.answeredCount} answered assessments` : 'No answered assessment records'}</small>
+                                            </span>
+                                            <span className="lod-gap-section__metric">
+                                                <small>Average</small>
+                                                <strong>{formatComponentScore(section.averageScore, section.weight)}</strong>
+                                            </span>
+                                            <span className="lod-gap-section__metric">
+                                                <small>Gap</small>
+                                                <strong>{formatScore(section.gap)}</strong>
+                                            </span>
+                                            <ChevronDown className="lod-gap-section__chevron" aria-hidden="true" />
+                                        </button>
+                                        {isExpanded && (
+                                            <div className="lod-gap-questions">
+                                                {section.questions.some(question => question.averageScore !== null) ? (
+                                                    <table className="data-table lod-gap-question-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Question</th>
+                                                                <th className="data-table__numeric">Average</th>
+                                                                <th className="data-table__numeric">Gap</th>
+                                                                <th className="data-table__numeric">Answered</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {section.questions.map(question => (
+                                                                <tr key={question.id}>
+                                                                    <td>{question.question}</td>
+                                                                    <td className="data-table__numeric">{formatComponentScore(question.averageScore, question.maxScore)}</td>
+                                                                    <td className="data-table__numeric">{formatScore(question.gap)}</td>
+                                                                    <td className="data-table__numeric">{question.answeredCount}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                ) : (
+                                                    <p className="dashboard-empty">No answered question records for this section. Manual override assessments are excluded from question-level averages.</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ) : (
-                        <p className="dashboard-empty dashboard-empty--center">No Data</p>
+                        <p className="dashboard-empty dashboard-empty--center">No answered LOD question data. Manual override assessments can still appear in the dashboard, but detailed component gaps need saved answers.</p>
                     )}
                 </article>
 
@@ -983,7 +1300,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                             <span>{percent(metrics.readyForScaleUp, metrics.assessedTotal)} of assessed IPOs</span>
                         </div>
                     </div>
-                    <p className="lod-scale-note">LOD level at least 3, all available component scores at least 3, and not declining.</p>
+                    <p className="lod-scale-note">Current LOD level must be at least 3, not declining, and every weighted section with questions must have answered data scoring at least 60% of its section weight.</p>
                 </article>
             </section>
 
@@ -1032,8 +1349,16 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                         </thead>
                         <tbody>
                             {paginatedRows.length > 0 ? paginatedRows.map(row => (
-                                <tr key={row.ipo.id}>
-                                    <td><strong>{row.ipo.name}</strong></td>
+                                <tr key={row.ipo.id} className={onSelectLodIpo ? 'lod-monitoring-row--clickable' : undefined} onClick={() => handleOpenLodDetails(row)}>
+                                    <td>
+                                        {onSelectLodIpo ? (
+                                            <button type="button" className="table-link lod-ipo-link" onClick={(event) => { event.stopPropagation(); handleOpenLodDetails(row); }}>
+                                                {row.ipo.name}
+                                            </button>
+                                        ) : (
+                                            <strong>{row.ipo.name}</strong>
+                                        )}
+                                    </td>
                                     <td>{row.region}</td>
                                     <td>{row.province}</td>
                                     <td className="data-table__numeric">{row.currentAssessment?.year || 'No Data'}</td>
@@ -1043,7 +1368,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                                         {row.change === null ? 'No Data' : `${row.change > 0 ? '+' : ''}${formatScore(row.change)}`}
                                     </td>
                                     {data.sections.map(section => (
-                                        <td key={section.id} className="data-table__numeric">{formatScore(row.componentScores[section.id])}</td>
+                                        <td key={section.id} className="data-table__numeric">{formatComponentScore(row.componentScores[section.id]?.weighted, row.componentScores[section.id]?.weight)}</td>
                                     ))}
                                     <td>
                                         <span className={`status-badge status-badge--compact ${STATUS_BADGE_CLASS[row.status]}`}>{row.status}</span>
@@ -1071,13 +1396,18 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
 
                 <div className="data-table-pagination">
                     <div className="data-table-pagination__page-size">
+                        <span className="data-table-pagination__entries-label">Show</span>
                         <select value={itemsPerPage} onChange={event => setItemsPerPage(Number(event.target.value))}>
-                            {[10, 25, 50].map(size => <option key={size} value={size}>{size} / page</option>)}
+                            {[10, 25, 50].map(size => <option key={size} value={size}>{size}</option>)}
                         </select>
+                        <span className="data-table-pagination__entries-label">per page</span>
                     </div>
                     <div className="data-table-pagination__status">
-                        <span>
+                        <span className="data-table-pagination__range">
                             Showing {searchedRows.length === 0 ? 0 : ((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, searchedRows.length)} of {searchedRows.length} IPOs
+                        </span>
+                        <span className="data-table-pagination__compact-range">
+                            {searchedRows.length === 0 ? '0 IPOs' : `${((currentPage - 1) * itemsPerPage) + 1}-${Math.min(currentPage * itemsPerPage, searchedRows.length)} of ${searchedRows.length}`}
                         </span>
                     </div>
                     <div className="data-table-pagination__controls">
