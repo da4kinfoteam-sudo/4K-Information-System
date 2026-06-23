@@ -5,6 +5,7 @@ import { Activity, ActivityMonitoringAction, ActivityMonitoringReport, IPO, Refe
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
 import { getBudgetLineAmount, getBudgetLineTag, isBudgetLineExcludedFromTargets } from '../lib/budgetLineAdjustments';
+import { getActualDisbursementSummary, getActualObligationSummary } from '../lib/financialActualSummary';
 import { supabase } from '../supabaseClient';
 import {
     ACTIVITY_DRIVE_FILE_ACCEPT,
@@ -674,19 +675,24 @@ export const ActivityDetail: React.FC<ActivityDetailProps> = ({ activity, ipos, 
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {activity.expenses.map(exp => (
-                                                    <tr key={exp.id}>
-                                                        <td className="font-medium">{exp.expenseParticular}</td>
-                                                        <td>{formatMonthYear(exp.actualObligationDate)}</td>
-                                                        <td>{formatMonthYear(exp.actualDisbursementDate)}</td>
-                                                        <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
-                                                            {exp.actualObligationAmount !== undefined && exp.actualObligationAmount !== null ? formatCurrency(exp.actualObligationAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
-                                                        </td>
-                                                        <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
-                                                            {exp.actualDisbursementAmount !== undefined && exp.actualDisbursementAmount !== null ? formatCurrency(exp.actualDisbursementAmount) : (exp.actualAmount ? formatCurrency(exp.actualAmount) : '-')}
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                {activity.expenses.map(exp => {
+                                                    const obligationSummary = getActualObligationSummary(exp);
+                                                    const disbursementSummary = getActualDisbursementSummary(exp);
+
+                                                    return (
+                                                        <tr key={exp.id}>
+                                                            <td className="font-medium">{exp.expenseParticular}</td>
+                                                            <td>{formatMonthYear(obligationSummary.date)}</td>
+                                                            <td>{formatMonthYear(disbursementSummary.date)}</td>
+                                                            <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                                {obligationSummary.amount > 0 ? formatCurrency(obligationSummary.amount) : '-'}
+                                                            </td>
+                                                            <td className="text-right font-medium text-emerald-600 dark:text-emerald-400">
+                                                                {disbursementSummary.amount > 0 ? formatCurrency(disbursementSummary.amount) : '-'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>

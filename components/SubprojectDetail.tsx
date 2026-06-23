@@ -13,6 +13,7 @@ import { supabase } from '../supabaseClient';
 import { resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../lib/physicalAccomplishmentTimestamp';
 import { resolveSubprojectCompletionRollup } from '../lib/subprojectCompletion';
 import { isMonthTargetOverdue } from '../lib/dateStatus';
+import { getActualDisbursementSummary, getActualObligationSummary, hasFinancialActuals } from '../lib/financialActualSummary';
 import {
     BudgetItemAdjustmentHistory,
     ensureOriginalBudgetSnapshot,
@@ -2192,7 +2193,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                             {/* Financial Performance (Read-Only) */}
                             <div className="mt-8">
                                 <h4 className="text-sm font-bold text-gray-600 dark:text-gray-300 mb-2">Financial Performance</h4>
-                                {subproject.details.some(d => d.actualObligationAmount || d.actualDisbursementAmount) ? (
+                                {subproject.details.some(hasFinancialActuals) ? (
                                     <div className="data-table-scroll">
                                         <table className="data-table">
                                             <thead>
@@ -2204,14 +2205,19 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                                {subproject.details.map(d => (
-                                                    <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
-                                                        <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">{d.particulars}</td>
-                                                        <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
-                                                        <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">{formatCurrency(d.actualObligationAmount || 0)}</td>
-                                                        <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(d.actualDisbursementAmount || 0)}</td>
-                                                    </tr>
-                                                ))}
+                                                {subproject.details.map(d => {
+                                                    const obligationSummary = getActualObligationSummary(d);
+                                                    const disbursementSummary = getActualDisbursementSummary(d);
+
+                                                    return (
+                                                        <tr key={d.id} className="border-b border-gray-100 dark:border-gray-700">
+                                                            <td className="px-4 py-2 font-medium text-gray-800 dark:text-gray-200">{d.particulars}</td>
+                                                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-400">{formatCurrency(d.pricePerUnit * d.numberOfUnits)}</td>
+                                                            <td className="px-4 py-2 text-right text-blue-600 dark:text-blue-400">{formatCurrency(obligationSummary.amount)}</td>
+                                                            <td className="px-4 py-2 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(disbursementSummary.amount)}</td>
+                                                        </tr>
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     </div>
