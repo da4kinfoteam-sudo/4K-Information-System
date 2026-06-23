@@ -17,6 +17,7 @@ import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSub
 import { resolveDisbursementEntries, summarizeDisbursements } from '../../lib/disbursementUtils';
 import { getBudgetLineAmount } from '../../lib/budgetLineAdjustments';
 import type { DataScope } from '../../lib/scopedDataFetch';
+import { normalizeStaffingExpenses, staffingExpenseItemId } from '../../lib/staffingExpenseIdentity';
 
 interface Props {
     subprojects: Subproject[];
@@ -313,6 +314,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 const centralizedDisbursements = disbRes || [];
 
                 // Helper to get obligations for a specific item
+                const matchesCentralItemId = (sourceType: string, rowItemId: string | number | null | undefined, detailId?: number) => {
+                    const itemId = sourceType === 'Staffing'
+                        ? staffingExpenseItemId(detailId)
+                        : detailId !== undefined && detailId !== null
+                            ? detailId.toString()
+                            : null;
+
+                    if (itemId) return rowItemId?.toString() === itemId;
+                    if (sourceType === 'Staffing') return rowItemId === null || rowItemId === undefined || rowItemId === '';
+                    return true;
+                };
+
                 const getObligations = (sourceType: string, parentId: number, detailId?: number) => {
                     const entityType = sourceType === 'Subproject' ? 'subproject_detail' : 
                                       sourceType === 'Activity' ? 'activity_expense' : 
@@ -322,7 +335,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     const matches = centralizedObligations.filter(o => 
                         o.entity_type === entityType && 
                         o.parent_id === parentId && 
-                        (detailId ? o.item_id === detailId.toString() : true)
+                        matchesCentralItemId(sourceType, o.item_id, detailId)
                     );
 
                     return matches.map(o => ({
@@ -342,7 +355,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                     const matches = centralizedDisbursements.filter(d => 
                         d.entity_type === entityType && 
                         d.parent_id === parentId && 
-                        (detailId ? d.item_id === detailId.toString() : true)
+                        matchesCentralItemId(sourceType, d.item_id, detailId)
                     );
 
                     return matches.map(d => ({
@@ -464,9 +477,18 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 });
 
                 // Staffing
+                const staffingNormalizationUpdates: Array<{ id: number; expenses: StaffingRequirement['expenses'] }> = [];
+
                 filteredStaffingReqs.forEach(s => {
                     if (s.expenses && s.expenses.length > 0) {
-                        (s.expenses || []).forEach(e => {
+                        const normalizedExpenses = normalizeStaffingExpenses(s.expenses);
+                        const hasNormalizedIds = normalizedExpenses.some((expense, index) => expense.id !== s.expenses?.[index]?.id);
+
+                        if (hasNormalizedIds) {
+                            staffingNormalizationUpdates.push({ id: s.id, expenses: normalizedExpenses });
+                        }
+
+                        normalizedExpenses.forEach(e => {
                             const obs = getObligations('Staffing', s.id, e.id);
                             const centralDibs = getDisbursements('Staffing', s.id, e.id);
                             const disbursements = centralDibs.length > 0
@@ -573,6 +595,13 @@ const FinancialAccomplishment: React.FC<Props> = ({
                         isConfirmed: false
                     });
                 });
+
+                if (staffingNormalizationUpdates.length > 0) {
+                    setStaffingReqs(prev => prev.map(req => {
+                        const update = staffingNormalizationUpdates.find(item => item.id === req.id);
+                        return update ? { ...req, expenses: update.expenses } : req;
+                    }));
+                }
 
                 setItems(loadedItems);
                 setOriginalItems(loadedItems);
@@ -931,7 +960,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                           item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
         
         const parentId = item.sourceId;
-        const itemId = item.detailId?.toString() || null;
+        const itemId = item.sourceType === 'Staffing'
+            ? staffingExpenseItemId(item.detailId)
+            : item.detailId?.toString() || null;
 
         // 1. Delete existing records for this specific item
         let deleteQuery = supabase.from('financial_obligations')
@@ -980,7 +1011,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
                           item.sourceType === 'Office' ? 'office_requirement' : 'other_program_expense';
         
         const parentId = item.sourceId;
-        const itemId = item.detailId?.toString() || null;
+        const itemId = item.sourceType === 'Staffing'
+            ? staffingExpenseItemId(item.detailId)
+            : item.detailId?.toString() || null;
 
         let deleteQuery = supabase.from('financial_disbursements')
             .delete()
@@ -1090,9 +1123,9 @@ const FinancialAccomplishment: React.FC<Props> = ({
             if (!s) throw new Error("Staffing Requirement not found");
 
             let payload: any = {};
-            let updatedExpenses = s.expenses || [];
+            let updatedExpenses = normalizeStaffingExpenses(s.expenses || []);
 
-            if (item.detailId) {
+            if (staffingExpenseItemId(item.detailId)) {
                 updatedExpenses = updatedExpenses.map(e => {
                     if (e.id === item.detailId) {
                         const disbursementSummary = summarizeDisbursements(item.disbursements || [], selectedYear?.toString());

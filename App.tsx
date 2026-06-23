@@ -41,6 +41,7 @@ import { supabase } from './supabaseClient'; // Import supabase client
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataScope, getDataScopeKey, loadScopedAppData } from './lib/scopedDataFetch';
 import { clearUserCache, getScopeCacheMeta, readScopedCache, writeScopedCache } from './lib/localScopedCache';
+import { normalizeStaffingExpenses } from './lib/staffingExpenseIdentity';
 import { 
     initialUacsCodes, initialParticularTypes, Subproject, IPO, Activity, User,
     OfficeRequirement, StaffingRequirement, OtherProgramExpense, SystemSettings, defaultSystemSettings,
@@ -245,9 +246,10 @@ const AppContent: React.FC = () => {
     const enrichedStaffingReqs: StaffingRequirement[] = useMemo(() => {
         return staffingReqs.map(s => {
             if (s.expenses && s.expenses.length > 0) {
+                const normalizedExpenses = normalizeStaffingExpenses(s.expenses);
                 return {
                     ...s,
-                    expenses: s.expenses.map(e => {
+                    expenses: normalizedExpenses.map(e => {
                         const key = `staffing_expense-${s.id}-${e.id}`;
                         return { 
                             ...e, 

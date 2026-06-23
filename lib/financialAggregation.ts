@@ -1,5 +1,6 @@
 import type { Activity, OtherProgramExpense, OfficeRequirement, StaffingRequirement, Subproject } from '../constants';
 import { getBudgetLineTag, isRecordOrLineExcludedFromTargets } from './budgetLineAdjustments';
+import { normalizeStaffingExpenses } from './staffingExpenseIdentity';
 
 type YearFilter = string | 'All';
 
@@ -437,7 +438,7 @@ export const collectFinancialLineItems = (
     });
 
     (data.staffingReqs || []).forEach(item => {
-        const expenses = compact(item.expenses);
+        const expenses = normalizeStaffingExpenses(compact(item.expenses));
         if (expenses.length > 0) {
             expenses.forEach(expense => {
                 addLineItem(items, item, { ...expense, disbursementDate: (expense as FinancialLine).disbursementDate || item.disbursementDate }, filters, {

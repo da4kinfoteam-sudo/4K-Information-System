@@ -11,6 +11,7 @@ import { supabase } from '../../supabaseClient';
 import { resolveOperatingUnit, resolveTier } from '../mainfunctions/ImportExportService';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
 import { Search, Filter, ArrowUpDown, ArrowUp, ArrowDown, X, Check, Download, FileSpreadsheet, Plus, Upload } from 'lucide-react';
+import { createStaffingExpenseId } from '../../lib/staffingExpenseIdentity';
 
 declare const XLSX: any;
 
@@ -426,7 +427,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
         }
 
         const newExpense: StaffingExpense = {
-            id: Date.now(),
+            id: createStaffingExpenseId(expensesList.map(expense => expense.id)),
             ...currentExpense,
             amount: Number(currentExpense.amount),
             // @ts-ignore dynamic month assignment
@@ -605,10 +606,15 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
             const { id, uid, created_at, updated_at, obligations, physical_accomplishment_submitted_at, ...rest } = item;
             const newUid = `SR-${item.fundYear}-${Date.now().toString().slice(-6)}${index}`;
             
+            const clonedExpenseIds: number[] = [];
             // Deep copy and reset expenses actuals
             const clonedExpenses = (item.expenses || []).map(exp => ({
                 ...exp,
-                id: Date.now() + Math.random(), // New ID for expense
+                id: (() => {
+                    const id = createStaffingExpenseId(clonedExpenseIds);
+                    clonedExpenseIds.push(id);
+                    return id;
+                })(),
                 actualObligationAmount: 0,
                 actualObligationDate: '',
                 actualDisbursementAmount: 0,
@@ -776,7 +782,7 @@ export const StaffingRequirementsTab: React.FC<StaffingRequirementsTabProps> = (
                     // Construct default expense object from flat row data for legacy support
                     const annualSalary = Number(row.amount || row.annualSalary) || 0;
                     const expense: StaffingExpense = {
-                        id: Date.now() + index,
+                        id: createStaffingExpenseId([index]),
                         objectType: 'MOOE', // Default
                         expenseParticular: 'Salaries & Wages',
                         uacsCode: row.uacsCode || '',
