@@ -252,17 +252,65 @@ const FinancialAccomplishment: React.FC<Props> = ({
 
         const fetchData = async () => {
             try {
-                // Fetch centralized obligations and disbursements for the current year
-                const startDate = `${selectedYear}-01-01`;
-                const endDate = `${selectedYear}-12-31`;
+                const matchesFilters = (item: any) => {
+                    const itemYear = item.fundingYear || item.fundYear;
+                    if (itemYear !== selectedYear) return false;
+                    if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
+                    if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
+                    if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
+                    return true;
+                };
+
+                const filteredSubprojects = (subprojects || []).filter(matchesFilters);
+                const filteredActivities = (activities || []).filter(matchesFilters);
+                const filteredOfficeReqs = (officeReqs || []).filter(matchesFilters);
+                const filteredStaffingReqs = (staffingReqs || []).filter(matchesFilters);
+                const filteredOtherProgramExpenses = (otherProgramExpenses || []).filter(matchesFilters);
+
+                const uniqueIds = (values: unknown[]) =>
+                    Array.from(new Set(values.map(Number).filter(Number.isFinite)));
+
+                const financialGroups = [
+                    { entityType: 'subproject_detail', ids: uniqueIds(filteredSubprojects.map(item => item.id)) },
+                    { entityType: 'activity_expense', ids: uniqueIds(filteredActivities.map(item => item.id)) },
+                    { entityType: 'office_requirement', ids: uniqueIds(filteredOfficeReqs.map(item => item.id)) },
+                    { entityType: 'staffing_expense', ids: uniqueIds(filteredStaffingReqs.map(item => item.id)) },
+                    { entityType: 'other_program_expense', ids: uniqueIds(filteredOtherProgramExpenses.map(item => item.id)) },
+                ];
+
+                const fetchFinancialRows = async (
+                    tableName: 'financial_obligations' | 'financial_disbursements',
+                    groups: Array<{ entityType: string; ids: number[] }>
+                ) => {
+                    const chunkSize = 100;
+                    const queries = groups.flatMap(group => {
+                        const chunks: number[][] = [];
+                        for (let index = 0; index < group.ids.length; index += chunkSize) {
+                            chunks.push(group.ids.slice(index, index + chunkSize));
+                        }
+                        return chunks.map(chunk =>
+                            supabase
+                                .from(tableName)
+                                .select('*')
+                                .eq('entity_type', group.entityType)
+                                .in('parent_id', chunk)
+                        );
+                    });
+
+                    if (queries.length === 0) return [];
+                    const responses = await Promise.all(queries);
+                    const error = responses.find(response => response.error)?.error;
+                    if (error) throw error;
+                    return responses.flatMap(response => response.data || []);
+                };
 
                 const [obliRes, disbRes] = await Promise.all([
-                    supabase.from('financial_obligations').select('*').gte('obligation_date', startDate).lte('obligation_date', endDate),
-                    supabase.from('financial_disbursements').select('*').gte('disbursement_date', startDate).lte('disbursement_date', endDate)
+                    fetchFinancialRows('financial_obligations', financialGroups),
+                    fetchFinancialRows('financial_disbursements', financialGroups)
                 ]);
 
-                const centralizedObligations = obliRes.data || [];
-                const centralizedDisbursements = disbRes.data || [];
+                const centralizedObligations = obliRes || [];
+                const centralizedDisbursements = disbRes || [];
 
                 // Helper to get obligations for a specific item
                 const getObligations = (sourceType: string, parentId: number, detailId?: number) => {
@@ -313,17 +361,8 @@ const FinancialAccomplishment: React.FC<Props> = ({
                      actualDisbursementOct: 0, actualDisbursementNov: 0, actualDisbursementDec: 0
                 };
 
-                const matchesFilters = (item: any) => {
-                    const itemYear = item.fundingYear || item.fundYear;
-                    if (itemYear !== selectedYear) return false;
-                    if (selectedOu !== 'All' && item.operatingUnit !== selectedOu) return false;
-                    if (selectedTier !== 'All' && item.tier !== selectedTier) return false;
-                    if (selectedFundType !== 'All' && item.fundType !== selectedFundType) return false;
-                    return true;
-                };
-
                 // Subprojects
-                (subprojects || []).filter(matchesFilters).forEach(sp => {
+                filteredSubprojects.forEach(sp => {
                     (sp.details || []).forEach(d => {
                         const obs = getObligations('Subproject', sp.id, d.id);
                         const dibs = getDisbursements('Subproject', sp.id, d.id);
@@ -359,7 +398,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 });
 
                 // Activities
-                (activities || []).filter(matchesFilters).forEach(act => {
+                filteredActivities.forEach(act => {
                     (act.expenses || []).forEach(e => {
                         const obs = getObligations('Activity', act.id, e.id);
                         const dibs = getDisbursements('Activity', act.id, e.id);
@@ -394,7 +433,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 });
 
                 // Office Requirements
-                (officeReqs || []).filter(matchesFilters).forEach(o => {
+                filteredOfficeReqs.forEach(o => {
                     const obs = getObligations('Office', o.id);
                     const dibs = getDisbursements('Office', o.id);
 
@@ -425,7 +464,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 });
 
                 // Staffing
-                (staffingReqs || []).filter(matchesFilters).forEach(s => {
+                filteredStaffingReqs.forEach(s => {
                     if (s.expenses && s.expenses.length > 0) {
                         (s.expenses || []).forEach(e => {
                             const obs = getObligations('Staffing', s.id, e.id);
@@ -500,7 +539,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 });
 
                 // Other
-                (otherProgramExpenses || []).filter(matchesFilters).forEach(ope => {
+                filteredOtherProgramExpenses.forEach(ope => {
                     const obs = getObligations('Other', ope.id);
                     const centralDibs = getDisbursements('Other', ope.id);
                     const disbursements = centralDibs.length > 0
