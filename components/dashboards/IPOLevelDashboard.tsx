@@ -58,9 +58,9 @@ interface QuestionGapScore {
     question: string;
     averageScore: number | null;
     maxScore: number;
+    gap: number | null;
     answeredCount: number;
-    utilization: number | null;
-    isLowest: boolean;
+    isBelowHalfWeight: boolean;
 }
 
 interface SectionGapScore {
@@ -286,7 +286,7 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [filtersOpen, setFiltersOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth >= 768);
     const [filtersTouched, setFiltersTouched] = useState(false);
-    const [expandedGapSections, setExpandedGapSections] = useState<Record<number, boolean>>({});
+    const [selectedGapSection, setSelectedGapSection] = useState<SectionGapScore | null>(null);
     const [isCompactChartViewport, setIsCompactChartViewport] = useState(() => typeof window !== 'undefined' && window.innerWidth < 760);
 
     useEffect(() => {
@@ -671,24 +671,16 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     question: question.text,
                     averageScore: average(values),
                     maxScore: maxWeightedContribution,
+                    gap: null,
                     answeredCount: values.length,
-                    utilization: null,
-                    isLowest: false,
+                    isBelowHalfWeight: false,
                 } satisfies QuestionGapScore;
             });
 
-            const questionUtilizations = questionScores
-                .map(question => question.averageScore !== null && question.maxScore > 0 ? question.averageScore / question.maxScore : null)
-                .filter((value): value is number => value !== null);
-            const lowestQuestionUtilization = questionUtilizations.length > 0 ? Math.min(...questionUtilizations) : null;
-
             const questionsWithGaps = questionScores.map(question => ({
                 ...question,
-                utilization: question.averageScore !== null && question.maxScore > 0 ? question.averageScore / question.maxScore : null,
-                isLowest: question.averageScore !== null
-                    && question.maxScore > 0
-                    && lowestQuestionUtilization !== null
-                    && Math.abs((question.averageScore / question.maxScore) - lowestQuestionUtilization) < 0.0001,
+                gap: question.averageScore !== null ? Math.max(0, question.maxScore - question.averageScore) : null,
+                isBelowHalfWeight: question.averageScore !== null && question.maxScore > 0 && question.averageScore < (question.maxScore * 0.5),
             }));
 
             const component = componentById.get(section.id);
@@ -947,13 +939,6 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
     const handleToggleFilters = () => {
         setFiltersTouched(true);
         setFiltersOpen(open => !open);
-    };
-
-    const handleToggleGapSection = (sectionId: number) => {
-        setExpandedGapSections(prev => ({
-            ...prev,
-            [sectionId]: !prev[sectionId],
-        }));
     };
 
     const handleOpenLodDetails = (row: LodDashboardRow) => {
@@ -1217,63 +1202,32 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                         <h4 className="dashboard-panel__title">LOD Component Gap Analysis</h4>
                     </div>
                     {detailedGapAnalysis.some(section => section.averageScore !== null) ? (
-                        <div className="lod-gap-analysis custom-scrollbar">
-                            {detailedGapAnalysis.map((section, index) => {
-                                const isExpanded = Boolean(expandedGapSections[section.id]);
-                                return (
-                                    <div key={section.id} className="lod-gap-section">
-                                        <button
-                                            type="button"
-                                            className="lod-gap-section__summary"
-                                            onClick={() => handleToggleGapSection(section.id)}
-                                            aria-expanded={isExpanded}
-                                        >
-                                            {renderSectionIcon(section.title, index)}
-                                            <span className="lod-gap-section__name">
-                                                <strong>{section.title}</strong>
-                                                <small>{section.answeredCount > 0 ? `${section.answeredCount} answered assessments` : 'No answered assessment records'}</small>
-                                            </span>
-                                            <span className="lod-gap-section__metrics">
-                                                <span className="lod-gap-section__metric">
-                                                    <small>Average</small>
-                                                    <strong>{formatComponentScore(section.averageScore, section.weight)}</strong>
-                                                </span>
-                                                <span className="lod-gap-section__metric">
-                                                    <small>Gap</small>
-                                                    <strong>{formatPercentagePoints(section.gap)}</strong>
-                                                </span>
-                                            </span>
-                                            <ChevronDown className="lod-gap-section__chevron" aria-hidden="true" />
-                                        </button>
-                                        {isExpanded && (
-                                            <div className="lod-gap-questions">
-                                                {section.questions.some(question => question.averageScore !== null) ? (
-                                                    <table className="data-table lod-gap-question-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Question</th>
-                                                                <th className="data-table__numeric">Average</th>
-                                                                <th className="data-table__numeric">Weight</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {section.questions.map(question => (
-                                                                <tr key={question.id} className={question.isLowest ? 'lod-gap-question-row--lowest' : undefined}>
-                                                                    <td>{question.question}</td>
-                                                                    <td className="data-table__numeric">{formatScore(question.averageScore)}</td>
-                                                                    <td className="data-table__numeric">{formatScore(question.maxScore)}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                ) : (
-                                                    <p className="dashboard-empty">No answered question records for this section. Manual override assessments are excluded from question-level averages.</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
+                        <div className="lod-gap-analysis">
+                            {detailedGapAnalysis.map((section, index) => (
+                                <button
+                                    key={section.id}
+                                    type="button"
+                                    className="lod-gap-section"
+                                    onClick={() => setSelectedGapSection(section)}
+                                >
+                                    <span className="lod-gap-section__summary">
+                                        {renderSectionIcon(section.title, index)}
+                                        <span className="lod-gap-section__name">
+                                            <strong>{section.title}</strong>
+                                        </span>
+                                    </span>
+                                    <span className="lod-gap-section__metrics">
+                                        <span className="lod-gap-section__metric">
+                                            <small>Average</small>
+                                            <strong>{formatComponentScore(section.averageScore, section.weight)}</strong>
+                                        </span>
+                                        <span className="lod-gap-section__metric">
+                                            <small>Gap</small>
+                                            <strong>{formatPercentagePoints(section.gap)}</strong>
+                                        </span>
+                                    </span>
+                                </button>
+                            ))}
                         </div>
                     ) : (
                         <p className="dashboard-empty dashboard-empty--center">No answered LOD question data. Manual override assessments can still appear in the dashboard, but detailed component gaps need saved answers.</p>
@@ -1480,6 +1434,60 @@ const IPOLevelDashboard: React.FC<IPOLevelDashboardProps> = ({ ipos, selectedYea
                     </div>
                 </div>
             </section>
+
+            {selectedGapSection && (
+                <div className="dashboard-modal-backdrop" onClick={() => setSelectedGapSection(null)} role="presentation">
+                    <div
+                        className="dashboard-modal dashboard-modal--wide lod-gap-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="lod-gap-modal-title"
+                        onClick={event => event.stopPropagation()}
+                    >
+                        <div className="dashboard-modal__header">
+                            <div>
+                                <h3 id="lod-gap-modal-title">{selectedGapSection.title}</h3>
+                                <p className="dashboard-modal__metric-subtext">
+                                    Average {formatComponentScore(selectedGapSection.averageScore, selectedGapSection.weight)} &middot; Gap {formatPercentagePoints(selectedGapSection.gap)}
+                                </p>
+                            </div>
+                            <button type="button" className="dashboard-modal__close" onClick={() => setSelectedGapSection(null)} aria-label="Close LOD component questions">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="dashboard-modal__body custom-scrollbar">
+                            {selectedGapSection.questions.some(question => question.averageScore !== null) ? (
+                                <div className="data-table-scroll custom-scrollbar">
+                                    <table className="data-table lod-gap-question-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Question</th>
+                                                <th className="data-table__numeric">Average</th>
+                                                <th className="data-table__numeric">Weight</th>
+                                                <th className="data-table__numeric">Gap</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {selectedGapSection.questions.map(question => (
+                                                <tr key={question.id} className={question.isBelowHalfWeight ? 'lod-gap-question-row--warning' : undefined}>
+                                                    <td>{question.question}</td>
+                                                    <td className="data-table__numeric">{formatScore(question.averageScore)}</td>
+                                                    <td className="data-table__numeric">{formatScore(question.maxScore)}</td>
+                                                    <td className="data-table__numeric">{formatScore(question.gap)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <p className="dashboard-empty dashboard-empty--center">No answered question records for this section. Manual override assessments are excluded from question-level averages.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
