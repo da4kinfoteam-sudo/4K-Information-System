@@ -23,6 +23,7 @@ import {
     summarizeBudgetAdjustments,
     writeBudgetItemAdjustmentHistory
 } from '../../lib/budgetLineAdjustments';
+import { createStaffingExpenseId, normalizeStaffingExpenses } from '../../lib/staffingExpenseIdentity';
 
 interface StaffingRequirementDetailProps {
     item: StaffingRequirement;
@@ -91,7 +92,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         // Legacy Fallback: If no expenses, construct a single expense from root fields
         if (expenses.length === 0 && (item.annualSalary > 0 || item.uacsCode)) {
              const legacy: StaffingExpense = {
-                id: 99999, // Dummy ID for display
+                id: 0,
                 objectType: 'MOOE',
                 expenseParticular: 'Salaries & Wages',
                 uacsCode: item.uacsCode || '',
@@ -120,7 +121,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
 
         // Migrate legacy actual fields into obligations array
-        return expenses.map(exp => {
+        return normalizeStaffingExpenses(expenses).map(exp => {
             const disbursementSummary = exp.disbursements && exp.disbursements.length > 0
                 ? summarizeDisbursements(exp.disbursements, item.fundYear)
                 : null;
@@ -377,7 +378,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
 
         const newExpenseData: StaffingExpense = ensureOriginalBudgetSnapshot(normalizeBudgetLineStatus({
-            id: editingExpenseId || Date.now(),
+            id: editingExpenseId || createStaffingExpenseId(expensesList.map(expense => expense.id)),
             ...currentExpense,
             amount: Number(currentExpense.amount),
             // @ts-ignore
@@ -515,7 +516,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             return;
         }
 
-        if (expensesList.length === 0) {
+        const normalizedExpensesList = normalizeStaffingExpenses(expensesList);
+
+        if (normalizedExpensesList.length === 0) {
             alert("At least one financial requirement item is required.");
             return;
         }
@@ -536,9 +539,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         let primaryUacs = formData.uacsCode; 
         let primaryObligationDate = formData.obligationDate;
 
-        if (expensesList.length > 0) {
-            primaryUacs = expensesList[0].uacsCode;
-            primaryObligationDate = expensesList[0].obligationDate;
+        if (normalizedExpensesList.length > 0) {
+            primaryUacs = normalizedExpensesList[0].uacsCode;
+            primaryObligationDate = normalizedExpensesList[0].obligationDate;
             
             // Reset totals to sum up from list
             aggregatedTotals.annualSalary = 0; 
@@ -549,7 +552,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 aggregatedTotals[`actualDisbursement${m}`] = 0; 
             });
 
-            expensesList.forEach(exp => {
+            normalizedExpensesList.forEach(exp => {
                 // Update legacy fields for each expense from its obligations
                 if (exp.obligations && exp.obligations.length > 0) {
                     const latestOb = [...exp.obligations].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
@@ -580,7 +583,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
         }
 
         const timestamp = new Date().toISOString();
-        const nextActualObligationDate = expensesList.length === 0 ? null : (formData.actualObligationDate || null);
+        const nextActualObligationDate = normalizedExpensesList.length === 0 ? null : (formData.actualObligationDate || null);
         const actualDateBasis = getProgramManagementPhysicalDateBasis({ ...formData, actualObligationDate: nextActualObligationDate });
         const previousActualDateBasis = getProgramManagementPhysicalDateBasis(item);
         const updatedItem: any = {
@@ -590,9 +593,9 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
             obligationDate: primaryObligationDate,
             salaryGrade: Number(formData.salaryGrade),
             fundYear: Number(formData.fundYear),
-            expenses: expensesList,
+            expenses: normalizedExpensesList,
             actualAmount: 0, // Removed usage as per request, ensuring 0
-            actualObligationAmount: expensesList.length === 0 ? null : aggregatedTotals.actualObligationAmount,
+            actualObligationAmount: normalizedExpensesList.length === 0 ? null : aggregatedTotals.actualObligationAmount,
             actualObligationDate: nextActualObligationDate,
             physical_accomplishment_submitted_at: resolvePhysicalAccomplishmentSubmittedAt({
                 hasPhysicalAccomplishment: !!actualDateBasis,
@@ -628,7 +631,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 
                 // Insert new
                 const syncPayload: any[] = [];
-                expensesList.forEach(exp => {
+                normalizedExpensesList.forEach(exp => {
                     if (exp.obligations && exp.obligations.length > 0) {
                         exp.obligations.forEach(o => {
                             syncPayload.push({
@@ -652,7 +655,7 @@ const StaffingRequirementDetail: React.FC<StaffingRequirementDetailProps> = ({ i
                 }
 
                 const disbursementSyncPayload: any[] = [];
-                expensesList.forEach(exp => {
+                normalizedExpensesList.forEach(exp => {
                     createDisbursementsFromMonthlyFields(exp, formData.fundYear, 'Synced from staffing monthly matrix').forEach(disb => {
                         disbursementSyncPayload.push({
                             entity_type: entityType,
