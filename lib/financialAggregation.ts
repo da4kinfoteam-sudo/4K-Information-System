@@ -197,7 +197,10 @@ const isTargetRecord = (record: ScopedRecord, filters: FinancialAggregationFilte
     return matchesSelectedYear(getRecordYear(record), filters.year);
 };
 
-const isActualRecord = (record: ScopedRecord, filters: FinancialAggregationFilters) => matchesBaseFilters(record, filters);
+const isActualRecord = (record: ScopedRecord, filters: FinancialAggregationFilters) => {
+    if (!matchesBaseFilters(record, filters)) return false;
+    return matchesSelectedYear(getRecordYear(record), filters.year);
+};
 
 export const getFinancialAllocation = (line: FinancialLine) => {
     if (line.amount !== undefined) return toNumber(line.amount);
@@ -343,7 +346,7 @@ const addLineItem = (
     const rawTargetAllocation = isTarget ? getFinancialAllocation(line) : 0;
     const excludedTargetAllocation = isTarget && isTaggedExclusion ? rawTargetAllocation : 0;
     const alloc = includeTarget ? rawTargetAllocation : 0;
-    const actualYear = filters.actualYear ?? filters.year;
+    const actualYear = filters.actualYear ?? 'All';
     const obli = includeActual ? getActualObligationTotal(line, { year: actualYear, fallbackYear }) : 0;
     const disb = includeActual ? getActualDisbursementTotal(line, { year: actualYear, fallbackYear }) : 0;
     const targetDate = metadata.targetDate || line.obligationMonth || line.obligationDate;

@@ -750,7 +750,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                         </div>
                         <p className="financial-summary-card__value" title={formatCurrencyWhole(totalObligation)}>{formatCurrencyWhole(totalObligation)}</p>
                         <div className="financial-summary-card__footer">
-                            <p>Actual Obligated</p>
+                            <p>FY Item Actual Obligated</p>
                             <span>
                                 {totalAllocation > 0 ? Math.round((totalObligation / totalAllocation) * 100) : 0}% Utilized
                             </span>
@@ -764,7 +764,7 @@ const FinancialDashboard: React.FC<FinancialDashboardProps> = ({
                         </div>
                         <p className="financial-summary-card__value" title={formatCurrencyWhole(totalDisbursement)}>{formatCurrencyWhole(totalDisbursement)}</p>
                         <div className="financial-summary-card__footer">
-                            <p>Actual Disbursed</p>
+                            <p>FY Item Actual Disbursed</p>
                             <span>
                                 {totalObligation > 0 ? Math.round((totalDisbursement / totalObligation) * 100) : 0}% of Obli.
                             </span>

@@ -510,8 +510,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const getBudgetMetrics = (bucket: { disb: number; obli: number; alloc: number }) => [
-        { label: "Actual Disbursed", value: bucket.disb, isCurrency: true },
-        { label: "Actual Obligated", value: bucket.obli, isCurrency: true },
+        { label: "FY Item Actual Disbursed", value: bucket.disb, isCurrency: true },
+        { label: "FY Item Actual Obligated", value: bucket.obli, isCurrency: true },
         { label: "Allocation", value: bucket.alloc, isCurrency: true },
         { label: "Utilization Rate", value: formatRate(bucket.obli, bucket.alloc), subtext: "Obligation vs Allotment" },
         { label: "Disbursement Rate", value: formatRate(bucket.disb, bucket.obli), subtext: "Disbursement vs Obligation" },
@@ -519,10 +519,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const showTotalBudget = () => {
         const metrics = getBudgetMetrics(dashboardStats.financials.total).map(metric =>
-            metric.label === 'Actual Disbursed'
-                ? { ...metric, label: 'Total Actual Disbursed' }
-                : metric.label === 'Actual Obligated'
-                    ? { ...metric, label: 'Total Actual Obligated' }
+            metric.label === 'FY Item Actual Disbursed'
+                ? { ...metric, label: 'Total FY Item Actual Disbursed' }
+                : metric.label === 'FY Item Actual Obligated'
+                    ? { ...metric, label: 'Total FY Item Actual Obligated' }
                     : metric.label === 'Allocation'
                         ? { ...metric, label: 'Total Allocation' }
                         : metric
