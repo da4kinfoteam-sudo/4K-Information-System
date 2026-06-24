@@ -8429,6 +8429,16 @@ button.bar1-drilldown-card:focus-visible {
 
 .physical-dashboard-legend__target { background: #cbd5e1; }
 .physical-dashboard-legend__actual { background: #16a34a; }
+.physical-dashboard-legend__target-bar { background: rgba(148, 163, 184, 0.45); }
+.physical-dashboard-legend__actual-bar { background: rgba(34, 197, 94, 0.38); }
+.physical-dashboard-legend__target-line {
+  background: #64748b;
+  height: 0.18rem !important;
+}
+.physical-dashboard-legend__actual-line {
+  background: #16a34a;
+  height: 0.18rem !important;
+}
 
 .physical-dashboard-province-table {
   min-width: 52rem;
@@ -8537,6 +8547,32 @@ button.bar1-drilldown-card:focus-visible {
   width: 100%;
 }
 
+.physical-dashboard-trend-header {
+  align-items: end;
+}
+
+.physical-dashboard-trend-selector {
+  color: var(--app-text-muted);
+  display: grid;
+  flex: 0 0 min(16rem, 100%);
+  font-size: 0.75rem;
+  font-weight: 800;
+  gap: 0.25rem;
+}
+
+.physical-dashboard-line-chart rect {
+  rx: 0.45;
+  vector-effect: non-scaling-stroke;
+}
+
+.physical-dashboard-line-chart__target-bar {
+  fill: rgba(148, 163, 184, 0.35);
+}
+
+.physical-dashboard-line-chart__actual-bar {
+  fill: rgba(34, 197, 94, 0.36);
+}
+
 .physical-dashboard-line-chart polyline {
   fill: none;
   stroke-linecap: round;
@@ -8562,6 +8598,34 @@ button.bar1-drilldown-card:focus-visible {
   grid-template-columns: repeat(12, minmax(0, 1fr));
   margin-top: 0.5rem;
   text-align: center;
+}
+
+.physical-dashboard-modal-title {
+  min-width: 0;
+  text-align: left;
+}
+
+.physical-dashboard-modal-title h3,
+.physical-dashboard-modal-title p {
+  text-align: left;
+}
+
+.dashboard-modal__event.physical-dashboard-modal-event--completed {
+  background: #ecfdf5;
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.dashboard-modal__event.physical-dashboard-modal-event--completed .dashboard-modal__metric-value {
+  color: #166534;
+}
+
+.dashboard-modal__event.physical-dashboard-modal-event--overdue {
+  background: #fef2f2;
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+.dashboard-modal__event.physical-dashboard-modal-event--overdue .dashboard-modal__metric-value {
+  color: #991b1b;
 }
 
 .physical-dashboard-alert-list,
@@ -8731,6 +8795,24 @@ button.bar1-drilldown-card:focus-visible {
 
 .dark .physical-dashboard-alert--good {
   background: rgba(6, 78, 59, 0.32);
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--completed {
+  background: rgba(6, 78, 59, 0.3);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--completed .dashboard-modal__metric-value {
+  color: #86efac;
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--overdue {
+  background: rgba(127, 29, 29, 0.32);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.dark .dashboard-modal__event.physical-dashboard-modal-event--overdue .dashboard-modal__metric-value {
+  color: #fca5a5;
 }
 
 @media (min-width: 1024px) {
