@@ -17,6 +17,7 @@ import {
     Users,
 } from 'lucide-react';
 import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, ouToRegionMap } from '../../constants';
+import { isMonthTargetOverdue } from '../../lib/dateStatus';
 import { parseLocation } from '../LocationPicker';
 import { ModalItem } from './DashboardComponents';
 
@@ -44,8 +45,15 @@ type ViewMode = 'Annual' | 'Monthly';
 type DetailView = 'national' | 'provinces' | 'trend' | 'alerts' | 'rankings' | 'submissions';
 type ModalType = 'ipos' | 'subprojects' | 'trainings' | 'ads' | 'provinces';
 type MetricId = 'ipos' | 'subprojects' | 'iposWithSubprojects' | 'trainings' | 'iposTrained' | 'ads';
+type TrendIndicatorId = 'physicalPercentage' | 'ipos' | 'subprojects' | 'trainings' | 'ads';
 
-type ModalItemWithOu = ModalItem & { operatingUnit?: string };
+type ModalItemWithOu = ModalItem & {
+    operatingUnit?: string;
+    targetDate?: string;
+    actualDate?: string;
+    isCompleted?: boolean;
+    isOverdue?: boolean;
+};
 
 type MetricScope = {
     target: number;
@@ -87,6 +95,22 @@ type RecentSubmission = {
     editedAt: string;
     completionDate: string;
 };
+
+type CumulativeTrendRow = {
+    month: string;
+    monthShort: string;
+    target: number;
+    actual: number;
+    rate: number;
+};
+
+const trendIndicatorOptions: Array<{ id: TrendIndicatorId; label: string }> = [
+    { id: 'physicalPercentage', label: 'Physical Percentage' },
+    { id: 'ipos', label: 'IPOs Assisted' },
+    { id: 'subprojects', label: 'Subprojects' },
+    { id: 'trainings', label: 'Trainings' },
+    { id: 'ads', label: 'ADs Assisted' },
+];
 
 const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -326,6 +350,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     const currentMonth = new Date().getMonth();
     const [viewMode, setViewMode] = useState<ViewMode>('Annual');
     const [asOfMonth, setAsOfMonth] = useState(currentMonth);
+    const [trendIndicator, setTrendIndicator] = useState<TrendIndicatorId>('physicalPercentage');
     const [expandedCards, setExpandedCards] = useState<Set<MetricId>>(new Set());
     const [expandedOus, setExpandedOus] = useState<Set<string>>(new Set());
     const [detailView, setDetailView] = useState<DetailView | null>(null);
@@ -367,35 +392,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const cumulativeActualSubprojects = actualSubprojects.filter(sp => isDueByCutoff(sp.actualCompletionDate, cumulativeCutoff.cutoffDate));
         const cumulativeActualTrainings = actualTrainings.filter(training => isDueByCutoff(training.actualDate, cumulativeCutoff.cutoffDate));
 
-        const makeIpoItems = (names: Set<string>) => Array.from(names)
-            .map(name => ipoMap.get(name))
-            .filter((ipo): ipo is IPO => !!ipo)
-            .map(ipo => ({
-                id: ipo.id,
-                name: ipo.name,
-                details: ipo.location,
-                operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU',
-            }))
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
-
-        const makeSubprojectItems = (items: Subproject[]) => items
-            .map(sp => ({
-                id: sp.id,
-                name: sp.name,
-                details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.estimatedCompletionDate)} | Completed: ${formatDate(sp.actualCompletionDate)}`,
-                operatingUnit: sp.operatingUnit,
-            }))
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
-
-        const makeTrainingItems = (items: Training[]) => items
-            .map(training => ({
-                id: training.id,
-                name: training.name,
-                details: `${training.component} | Target: ${formatDate(getActivityTargetDate(training))} | Conducted: ${formatDate(training.actualDate)}`,
-                operatingUnit: training.operatingUnit,
-            }))
-            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
-
         const getIpoSetFromSubprojects = (items: Subproject[]): Set<string> =>
             new Set(items.map(sp => sp.indigenousPeopleOrganization).filter((name): name is string => !!name));
         const getIpoSetFromTrainings = (items: Training[]): Set<string> =>
@@ -406,8 +402,100 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             return merged;
         };
 
-        const makeAdScope = (ipoNames: Set<string>) => {
-            const adMap = new Map<string, { ipoNames: string[]; ou: string }>();
+        const getLinkedTargetsForIpo = (ipoName: string, subprojects: Subproject[], trainings: Training[]) => [
+            ...subprojects.filter(sp => sp.indigenousPeopleOrganization === ipoName),
+            ...trainings.filter(training => (training.participatingIpos || []).includes(ipoName)),
+        ];
+
+        const isLinkedTargetIncomplete = (item: Subproject | Training) => {
+            if ('indigenousPeopleOrganization' in item) return !isCompletedSubproject(item);
+            return !isCompletedTraining(item);
+        };
+
+        const getLinkedTargetDate = (item: Subproject | Training) =>
+            'indigenousPeopleOrganization' in item ? item.estimatedCompletionDate : getActivityTargetDate(item);
+
+        const areAllLinkedTargetsOverdueAndIncomplete = (items: Array<Subproject | Training>) => {
+            const overdueItems = items.filter(item => isMonthTargetOverdue(getLinkedTargetDate(item)));
+            return overdueItems.length > 0 && overdueItems.every(isLinkedTargetIncomplete);
+        };
+
+        const makeIpoItems = (
+            names: Set<string>,
+            options: {
+                completedNames?: Set<string>;
+                targetSubprojects?: Subproject[];
+                targetTrainings?: Training[];
+            } = {}
+        ) => Array.from(names)
+            .map(name => {
+                const ipo = ipoMap.get(name);
+                if (!ipo) return null;
+                const linkedTargets = getLinkedTargetsForIpo(
+                    name,
+                    options.targetSubprojects || [],
+                    options.targetTrainings || []
+                );
+                const isCompleted = options.completedNames?.has(name) || false;
+                return {
+                    id: ipo.id,
+                    name: ipo.name,
+                    details: ipo.location,
+                    operatingUnit: regionToOuMap[ipo.region] || 'Unknown OU',
+                    isCompleted,
+                    isOverdue: !isCompleted && areAllLinkedTargetsOverdueAndIncomplete(linkedTargets),
+                };
+            })
+            .filter((item): item is NonNullable<typeof item> => !!item)
+            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+
+        const makeSubprojectItems = (items: Subproject[], completedIds?: Set<number>) => items
+            .map(sp => {
+                const isCompleted = completedIds?.has(sp.id) ?? isCompletedSubproject(sp);
+                return {
+                    id: sp.id,
+                    name: sp.name,
+                    details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.estimatedCompletionDate)} | Completed: ${formatDate(sp.actualCompletionDate)}`,
+                    operatingUnit: sp.operatingUnit,
+                    targetDate: sp.estimatedCompletionDate,
+                    actualDate: sp.actualCompletionDate,
+                    isCompleted,
+                    isOverdue: !isCompleted && isMonthTargetOverdue(sp.estimatedCompletionDate),
+                };
+            })
+            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+
+        const makeTrainingItems = (items: Training[], completedIds?: Set<number>) => items
+            .map(training => {
+                const targetDate = getActivityTargetDate(training);
+                const isCompleted = completedIds?.has(training.id) ?? isCompletedTraining(training);
+                return {
+                    id: training.id,
+                    name: training.name,
+                    details: `${training.component} | Target: ${formatDate(targetDate)} | Conducted: ${formatDate(training.actualDate)}`,
+                    operatingUnit: training.operatingUnit,
+                    targetDate,
+                    actualDate: training.actualDate,
+                    isCompleted,
+                    isOverdue: !isCompleted && isMonthTargetOverdue(targetDate),
+                };
+            })
+            .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
+
+        const makeAdScope = (
+            ipoNames: Set<string>,
+            options: {
+                completedIpoNames?: Set<string>;
+                targetSubprojects?: Subproject[];
+                targetTrainings?: Training[];
+            } = {}
+        ) => {
+            const completedAdNos = new Set<string>();
+            options.completedIpoNames?.forEach(name => {
+                const ipo = ipoMap.get(name);
+                if (ipo?.ancestralDomainNo) completedAdNos.add(ipo.ancestralDomainNo);
+            });
+            const adMap = new Map<string, { ipoNames: string[]; ou: string; linkedTargets: Array<Subproject | Training> }>();
             ipoNames.forEach(name => {
                 const ipo = ipoMap.get(name);
                 if (!ipo?.ancestralDomainNo) return;
@@ -415,17 +503,29 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     adMap.set(ipo.ancestralDomainNo, {
                         ipoNames: [],
                         ou: regionToOuMap[ipo.region] || 'Unknown OU',
+                        linkedTargets: [],
                     });
                 }
-                adMap.get(ipo.ancestralDomainNo)!.ipoNames.push(ipo.name);
+                const adItem = adMap.get(ipo.ancestralDomainNo)!;
+                adItem.ipoNames.push(ipo.name);
+                adItem.linkedTargets.push(...getLinkedTargetsForIpo(
+                    name,
+                    options.targetSubprojects || [],
+                    options.targetTrainings || []
+                ));
             });
             return Array.from(adMap.entries())
-                .map(([adNo, item]) => ({
-                    id: adNo,
-                    name: `AD No: ${adNo}`,
-                    details: item.ipoNames.join(', '),
-                    operatingUnit: item.ou,
-                }))
+                .map(([adNo, item]) => {
+                    const isCompleted = completedAdNos.has(adNo);
+                    return {
+                        id: adNo,
+                        name: `AD No: ${adNo}`,
+                        details: item.ipoNames.join(', '),
+                        operatingUnit: item.ou,
+                        isCompleted,
+                        isOverdue: !isCompleted && areAllLinkedTargetsOverdueAndIncomplete(item.linkedTargets),
+                    };
+                })
                 .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
         };
 
@@ -456,6 +556,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const monthlyActualIposTrained = getIpoSetFromTrainings(monthActualTrainings);
         const monthlyTargetIpos = unionSets(monthlyTargetIposWithSp, monthlyTargetIposTrained);
         const monthlyActualIpos = unionSets(monthlyActualIposWithSp, monthlyActualIposTrained);
+        const annualActualSubprojectIds = new Set<number>(actualSubprojects.map(sp => sp.id));
+        const monthlyActualSubprojectIds = new Set<number>(monthActualSubprojects.map(sp => sp.id));
+        const cumulativeActualSubprojectIds = new Set<number>(cumulativeActualSubprojects.map(sp => sp.id));
+        const annualActualTrainingIds = new Set<number>(actualTrainings.map(training => training.id));
+        const monthlyActualTrainingIds = new Set<number>(monthActualTrainings.map(training => training.id));
+        const cumulativeActualTrainingIds = new Set<number>(cumulativeActualTrainings.map(training => training.id));
 
         const metrics: Metric[] = [
             {
@@ -464,9 +570,24 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'teal',
                 modalType: 'ipos',
                 icon: <Users />,
-                annual: makeMetricScope(annualTargetIpos.size, annualActualIpos.size, makeIpoItems(annualTargetIpos), makeIpoItems(annualActualIpos)),
-                monthly: makeMetricScope(monthlyTargetIpos.size, monthlyActualIpos.size, makeIpoItems(monthlyTargetIpos), makeIpoItems(monthlyActualIpos)),
-                cumulative: makeMetricScope(cumulativeTargetIpos.size, cumulativeActualIpos.size, makeIpoItems(cumulativeTargetIpos), makeIpoItems(cumulativeActualIpos)),
+                annual: makeMetricScope(
+                    annualTargetIpos.size,
+                    annualActualIpos.size,
+                    makeIpoItems(annualTargetIpos, { completedNames: annualActualIpos, targetSubprojects, targetTrainings }),
+                    makeIpoItems(annualActualIpos)
+                ),
+                monthly: makeMetricScope(
+                    monthlyTargetIpos.size,
+                    monthlyActualIpos.size,
+                    makeIpoItems(monthlyTargetIpos, { completedNames: monthlyActualIpos, targetSubprojects: monthTargetSubprojects, targetTrainings: monthTargetTrainings }),
+                    makeIpoItems(monthlyActualIpos)
+                ),
+                cumulative: makeMetricScope(
+                    cumulativeTargetIpos.size,
+                    cumulativeActualIpos.size,
+                    makeIpoItems(cumulativeTargetIpos, { completedNames: cumulativeActualIpos, targetSubprojects: cumulativeTargetSubprojects, targetTrainings: cumulativeTargetTrainings }),
+                    makeIpoItems(cumulativeActualIpos)
+                ),
             },
             {
                 id: 'subprojects',
@@ -474,9 +595,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'orange',
                 modalType: 'subprojects',
                 icon: <Briefcase />,
-                annual: makeMetricScope(targetSubprojects.length, actualSubprojects.length, makeSubprojectItems(targetSubprojects), makeSubprojectItems(actualSubprojects)),
-                monthly: makeMetricScope(monthTargetSubprojects.length, monthActualSubprojects.length, makeSubprojectItems(monthTargetSubprojects), makeSubprojectItems(monthActualSubprojects)),
-                cumulative: makeMetricScope(cumulativeTargetSubprojects.length, cumulativeActualSubprojects.length, makeSubprojectItems(cumulativeTargetSubprojects), makeSubprojectItems(cumulativeActualSubprojects)),
+                annual: makeMetricScope(targetSubprojects.length, actualSubprojects.length, makeSubprojectItems(targetSubprojects, annualActualSubprojectIds), makeSubprojectItems(actualSubprojects)),
+                monthly: makeMetricScope(monthTargetSubprojects.length, monthActualSubprojects.length, makeSubprojectItems(monthTargetSubprojects, monthlyActualSubprojectIds), makeSubprojectItems(monthActualSubprojects)),
+                cumulative: makeMetricScope(cumulativeTargetSubprojects.length, cumulativeActualSubprojects.length, makeSubprojectItems(cumulativeTargetSubprojects, cumulativeActualSubprojectIds), makeSubprojectItems(cumulativeActualSubprojects)),
             },
             {
                 id: 'iposWithSubprojects',
@@ -484,9 +605,24 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'blue',
                 modalType: 'ipos',
                 icon: <Building2 />,
-                annual: makeMetricScope(annualTargetIposWithSp.size, annualActualIposWithSp.size, makeIpoItems(annualTargetIposWithSp), makeIpoItems(annualActualIposWithSp)),
-                monthly: makeMetricScope(monthlyTargetIposWithSp.size, monthlyActualIposWithSp.size, makeIpoItems(monthlyTargetIposWithSp), makeIpoItems(monthlyActualIposWithSp)),
-                cumulative: makeMetricScope(cumulativeTargetIposWithSp.size, cumulativeActualIposWithSp.size, makeIpoItems(cumulativeTargetIposWithSp), makeIpoItems(cumulativeActualIposWithSp)),
+                annual: makeMetricScope(
+                    annualTargetIposWithSp.size,
+                    annualActualIposWithSp.size,
+                    makeIpoItems(annualTargetIposWithSp, { completedNames: annualActualIposWithSp, targetSubprojects }),
+                    makeIpoItems(annualActualIposWithSp)
+                ),
+                monthly: makeMetricScope(
+                    monthlyTargetIposWithSp.size,
+                    monthlyActualIposWithSp.size,
+                    makeIpoItems(monthlyTargetIposWithSp, { completedNames: monthlyActualIposWithSp, targetSubprojects: monthTargetSubprojects }),
+                    makeIpoItems(monthlyActualIposWithSp)
+                ),
+                cumulative: makeMetricScope(
+                    cumulativeTargetIposWithSp.size,
+                    cumulativeActualIposWithSp.size,
+                    makeIpoItems(cumulativeTargetIposWithSp, { completedNames: cumulativeActualIposWithSp, targetSubprojects: cumulativeTargetSubprojects }),
+                    makeIpoItems(cumulativeActualIposWithSp)
+                ),
             },
             {
                 id: 'trainings',
@@ -494,9 +630,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'violet',
                 modalType: 'trainings',
                 icon: <BookOpen />,
-                annual: makeMetricScope(targetTrainings.length, actualTrainings.length, makeTrainingItems(targetTrainings), makeTrainingItems(actualTrainings)),
-                monthly: makeMetricScope(monthTargetTrainings.length, monthActualTrainings.length, makeTrainingItems(monthTargetTrainings), makeTrainingItems(monthActualTrainings)),
-                cumulative: makeMetricScope(cumulativeTargetTrainings.length, cumulativeActualTrainings.length, makeTrainingItems(cumulativeTargetTrainings), makeTrainingItems(cumulativeActualTrainings)),
+                annual: makeMetricScope(targetTrainings.length, actualTrainings.length, makeTrainingItems(targetTrainings, annualActualTrainingIds), makeTrainingItems(actualTrainings)),
+                monthly: makeMetricScope(monthTargetTrainings.length, monthActualTrainings.length, makeTrainingItems(monthTargetTrainings, monthlyActualTrainingIds), makeTrainingItems(monthActualTrainings)),
+                cumulative: makeMetricScope(cumulativeTargetTrainings.length, cumulativeActualTrainings.length, makeTrainingItems(cumulativeTargetTrainings, cumulativeActualTrainingIds), makeTrainingItems(cumulativeActualTrainings)),
             },
             {
                 id: 'iposTrained',
@@ -504,9 +640,24 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'cyan',
                 modalType: 'ipos',
                 icon: <GraduationCap />,
-                annual: makeMetricScope(annualTargetIposTrained.size, annualActualIposTrained.size, makeIpoItems(annualTargetIposTrained), makeIpoItems(annualActualIposTrained)),
-                monthly: makeMetricScope(monthlyTargetIposTrained.size, monthlyActualIposTrained.size, makeIpoItems(monthlyTargetIposTrained), makeIpoItems(monthlyActualIposTrained)),
-                cumulative: makeMetricScope(cumulativeTargetIposTrained.size, cumulativeActualIposTrained.size, makeIpoItems(cumulativeTargetIposTrained), makeIpoItems(cumulativeActualIposTrained)),
+                annual: makeMetricScope(
+                    annualTargetIposTrained.size,
+                    annualActualIposTrained.size,
+                    makeIpoItems(annualTargetIposTrained, { completedNames: annualActualIposTrained, targetTrainings }),
+                    makeIpoItems(annualActualIposTrained)
+                ),
+                monthly: makeMetricScope(
+                    monthlyTargetIposTrained.size,
+                    monthlyActualIposTrained.size,
+                    makeIpoItems(monthlyTargetIposTrained, { completedNames: monthlyActualIposTrained, targetTrainings: monthTargetTrainings }),
+                    makeIpoItems(monthlyActualIposTrained)
+                ),
+                cumulative: makeMetricScope(
+                    cumulativeTargetIposTrained.size,
+                    cumulativeActualIposTrained.size,
+                    makeIpoItems(cumulativeTargetIposTrained, { completedNames: cumulativeActualIposTrained, targetTrainings: cumulativeTargetTrainings }),
+                    makeIpoItems(cumulativeActualIposTrained)
+                ),
             },
             {
                 id: 'ads',
@@ -514,9 +665,24 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 variant: 'green',
                 modalType: 'ads',
                 icon: <Landmark />,
-                annual: makeMetricScope(makeAdScope(annualTargetIpos).length, makeAdScope(annualActualIpos).length, makeAdScope(annualTargetIpos), makeAdScope(annualActualIpos)),
-                monthly: makeMetricScope(makeAdScope(monthlyTargetIpos).length, makeAdScope(monthlyActualIpos).length, makeAdScope(monthlyTargetIpos), makeAdScope(monthlyActualIpos)),
-                cumulative: makeMetricScope(makeAdScope(cumulativeTargetIpos).length, makeAdScope(cumulativeActualIpos).length, makeAdScope(cumulativeTargetIpos), makeAdScope(cumulativeActualIpos)),
+                annual: makeMetricScope(
+                    makeAdScope(annualTargetIpos).length,
+                    makeAdScope(annualActualIpos).length,
+                    makeAdScope(annualTargetIpos, { completedIpoNames: annualActualIpos, targetSubprojects, targetTrainings }),
+                    makeAdScope(annualActualIpos)
+                ),
+                monthly: makeMetricScope(
+                    makeAdScope(monthlyTargetIpos).length,
+                    makeAdScope(monthlyActualIpos).length,
+                    makeAdScope(monthlyTargetIpos, { completedIpoNames: monthlyActualIpos, targetSubprojects: monthTargetSubprojects, targetTrainings: monthTargetTrainings }),
+                    makeAdScope(monthlyActualIpos)
+                ),
+                cumulative: makeMetricScope(
+                    makeAdScope(cumulativeTargetIpos).length,
+                    makeAdScope(cumulativeActualIpos).length,
+                    makeAdScope(cumulativeTargetIpos, { completedIpoNames: cumulativeActualIpos, targetSubprojects: cumulativeTargetSubprojects, targetTrainings: cumulativeTargetTrainings }),
+                    makeAdScope(cumulativeActualIpos)
+                ),
             },
         ];
 
@@ -530,6 +696,79 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 actualTrainings.filter(training => getDateMonth(training.actualDate) === index).length,
             ].reduce((sum, value) => sum + value, 0);
             return { month, monthShort: shortMonthNames[index], target: monthTargets, actual: monthActuals };
+        });
+
+        const cumulativeTrendSeries = monthNames.map((month, index) => {
+            const targetSubprojectsToMonth = targetSubprojects.filter(sp => {
+                const monthIndex = getDateMonth(sp.estimatedCompletionDate);
+                return monthIndex >= 0 && monthIndex <= index;
+            });
+            const targetTrainingsToMonth = targetTrainings.filter(training => {
+                const monthIndex = getDateMonth(getActivityTargetDate(training));
+                return monthIndex >= 0 && monthIndex <= index;
+            });
+            const actualSubprojectsToMonth = actualSubprojects.filter(sp => {
+                const monthIndex = getDateMonth(sp.actualCompletionDate);
+                return monthIndex >= 0 && monthIndex <= index;
+            });
+            const actualTrainingsToMonth = actualTrainings.filter(training => {
+                const monthIndex = getDateMonth(training.actualDate);
+                return monthIndex >= 0 && monthIndex <= index;
+            });
+
+            const targetIposToMonth = unionSets(
+                getIpoSetFromSubprojects(targetSubprojectsToMonth),
+                getIpoSetFromTrainings(targetTrainingsToMonth)
+            );
+            const actualIposToMonth = unionSets(
+                getIpoSetFromSubprojects(actualSubprojectsToMonth),
+                getIpoSetFromTrainings(actualTrainingsToMonth)
+            );
+            const targetAdCount = makeAdScope(targetIposToMonth).length;
+            const actualAdCount = makeAdScope(actualIposToMonth).length;
+            const physicalTargetCount = targetSubprojectsToMonth.length + targetTrainingsToMonth.length;
+            const physicalActualCount = actualSubprojectsToMonth.length + actualTrainingsToMonth.length;
+            const physicalRate = percent(physicalActualCount, physicalTargetCount);
+
+            return {
+                month,
+                monthShort: shortMonthNames[index],
+                physicalPercentage: {
+                    month,
+                    monthShort: shortMonthNames[index],
+                    target: physicalTargetCount > 0 ? 100 : 0,
+                    actual: physicalRate,
+                    rate: physicalRate,
+                },
+                ipos: {
+                    month,
+                    monthShort: shortMonthNames[index],
+                    target: targetIposToMonth.size,
+                    actual: actualIposToMonth.size,
+                    rate: percent(actualIposToMonth.size, targetIposToMonth.size),
+                },
+                subprojects: {
+                    month,
+                    monthShort: shortMonthNames[index],
+                    target: targetSubprojectsToMonth.length,
+                    actual: actualSubprojectsToMonth.length,
+                    rate: percent(actualSubprojectsToMonth.length, targetSubprojectsToMonth.length),
+                },
+                trainings: {
+                    month,
+                    monthShort: shortMonthNames[index],
+                    target: targetTrainingsToMonth.length,
+                    actual: actualTrainingsToMonth.length,
+                    rate: percent(actualTrainingsToMonth.length, targetTrainingsToMonth.length),
+                },
+                ads: {
+                    month,
+                    monthShort: shortMonthNames[index],
+                    target: targetAdCount,
+                    actual: actualAdCount,
+                    rate: percent(actualAdCount, targetAdCount),
+                },
+            };
         });
 
         type MutableProvince = {
@@ -718,6 +957,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             metricMap: new Map(metrics.map(metric => [metric.id, metric])),
             cumulativeCutoff,
             monthSeries,
+            cumulativeTrendSeries,
             provinceRows,
             ouRows,
             alerts,
@@ -781,6 +1021,9 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         setDetailSearch('');
     };
 
+    const activeTrendRows = analytics.cumulativeTrendSeries.map(row => row[trendIndicator]) as CumulativeTrendRow[];
+    const activeTrendLabel = trendIndicatorOptions.find(option => option.id === trendIndicator)?.label || 'Physical Percentage';
+
     const getDetailRows = () => {
         if (detailView === 'national') {
             return analytics.metrics.map(metric => {
@@ -810,11 +1053,11 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             }));
         }
         if (detailView === 'trend') {
-            return analytics.monthSeries.map(row => ({
+            return activeTrendRows.map(row => ({
                 Month: row.month,
-                Target: row.target,
-                Accomplishment: row.actual,
-                Rate: `${percent(row.actual, row.target)}%`,
+                'Cumulative Target': row.target,
+                'Cumulative Accomplishment': row.actual,
+                Rate: `${row.rate}%`,
             }));
         }
         if (detailView === 'alerts') {
@@ -863,10 +1106,20 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     };
 
     const chartMax = Math.max(1, ...analytics.metrics.map(metric => activeScope(metric).target));
-    const trendMax = Math.max(1, ...analytics.monthSeries.flatMap(row => [row.target, row.actual]));
-    const trendPoints = (key: 'target' | 'actual') => analytics.monthSeries.map((row, index) => {
-        const x = analytics.monthSeries.length === 1 ? 0 : (index / (analytics.monthSeries.length - 1)) * 100;
-        const y = 100 - ((row[key] / trendMax) * 88 + 6);
+    const trendMax = trendIndicator === 'physicalPercentage'
+        ? 100
+        : Math.max(1, ...activeTrendRows.flatMap(row => [row.target, row.actual]));
+    const trendChartTop = 8;
+    const trendChartBottom = 92;
+    const trendSlotWidth = 100 / activeTrendRows.length;
+    const trendY = (value: number) => trendChartBottom - ((Math.min(value, trendMax) / trendMax) * (trendChartBottom - trendChartTop));
+    const trendBar = (value: number) => {
+        const y = trendY(value);
+        return { y, height: Math.max(0, trendChartBottom - y) };
+    };
+    const trendPoints = (key: 'target' | 'actual') => activeTrendRows.map((row, index) => {
+        const x = (index + 0.5) * trendSlotWidth;
+        const y = trendY(row[key]);
         return `${x},${y}`;
     }).join(' ');
 
@@ -874,7 +1127,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const titleMap: Record<DetailView, string> = {
             national: 'National Target vs Accomplishment',
             provinces: allOuMode ? 'OU and Province Performance Summary' : 'Province Performance Summary',
-            trend: 'Monthly Accomplishment Trend',
+            trend: 'Cumulative Accomplishment Trend',
             alerts: 'Key Insights and Alerts',
             rankings: 'Top Performers',
             submissions: 'Recent Data Submissions',
@@ -1094,14 +1347,52 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
 
             <section className="physical-dashboard-main-grid physical-dashboard-main-grid--lower">
                 <article className="report-card physical-dashboard-trend-card">
-                    <SectionHeader
-                        title="Monthly Accomplishment Trend"
-                        meta="Target vs Accomplishment"
-                        actionLabel="View Trend Report"
-                        onAction={() => openDetailView('trend')}
-                    />
+                    <div className="physical-dashboard-section-header physical-dashboard-trend-header">
+                        <div>
+                            <h3>Cumulative Accomplishment Trend</h3>
+                            <span>{activeTrendLabel} | Jan-Dec {selectedYear}</span>
+                        </div>
+                        <label className="physical-dashboard-trend-selector">
+                            <span>Indicator</span>
+                            <select
+                                value={trendIndicator}
+                                onChange={event => setTrendIndicator(event.target.value as TrendIndicatorId)}
+                                className="form-control"
+                            >
+                                {trendIndicatorOptions.map(option => (
+                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
                     <div className="physical-dashboard-line-chart">
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Monthly accomplishment trend">
+                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Cumulative ${activeTrendLabel} target and accomplishment trend`}>
+                            <title>{`Cumulative ${activeTrendLabel} trend for ${selectedYear}`}</title>
+                            {activeTrendRows.map((row, index) => {
+                                const targetBar = trendBar(row.target);
+                                const actualBar = trendBar(row.actual);
+                                const targetWidth = trendSlotWidth * 0.58;
+                                const actualWidth = trendSlotWidth * 0.32;
+                                const slotLeft = index * trendSlotWidth;
+                                return (
+                                    <g key={row.month}>
+                                        <rect
+                                            className="physical-dashboard-line-chart__target-bar"
+                                            x={slotLeft + (trendSlotWidth - targetWidth) / 2}
+                                            y={targetBar.y}
+                                            width={targetWidth}
+                                            height={targetBar.height}
+                                        />
+                                        <rect
+                                            className="physical-dashboard-line-chart__actual-bar"
+                                            x={slotLeft + (trendSlotWidth - actualWidth) / 2}
+                                            y={actualBar.y}
+                                            width={actualWidth}
+                                            height={actualBar.height}
+                                        />
+                                    </g>
+                                );
+                            })}
                             <polyline points={trendPoints('target')} className="physical-dashboard-line-chart__target" />
                             <polyline points={trendPoints('actual')} className="physical-dashboard-line-chart__actual" />
                         </svg>
@@ -1110,8 +1401,10 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                         </div>
                     </div>
                     <div className="physical-dashboard-legend">
-                        <span><i className="physical-dashboard-legend__target" /> Target</span>
-                        <span><i className="physical-dashboard-legend__actual" /> Accomplishment</span>
+                        <span><i className="physical-dashboard-legend__target-bar" /> Target bar</span>
+                        <span><i className="physical-dashboard-legend__actual-bar" /> Actual bar</span>
+                        <span><i className="physical-dashboard-legend__target-line" /> Target trend</span>
+                        <span><i className="physical-dashboard-legend__actual-line" /> Actual trend</span>
                     </div>
                 </article>
 
@@ -1173,7 +1466,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 <div className="dashboard-modal-backdrop" onClick={() => setLocalModal(null)}>
                     <div className="dashboard-modal dashboard-modal--wide" onClick={event => event.stopPropagation()}>
                         <div className="dashboard-modal__header">
-                            <div>
+                            <div className="physical-dashboard-modal-title">
                                 <h3>{localModal.title}</h3>
                                 <p className="dashboard-modal__metric-subtext">{viewMode} | Year: {selectedYear}</p>
                             </div>
@@ -1217,7 +1510,12 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                                                     {items.map((item, index) => (
                                                         <li
                                                             key={`${item.id}-${index}`}
-                                                            className={`dashboard-modal__event ${localModal.type !== 'provinces' ? 'dashboard-modal__event--clickable' : ''}`}
+                                                            className={[
+                                                                'dashboard-modal__event',
+                                                                localModal.type !== 'provinces' ? 'dashboard-modal__event--clickable' : '',
+                                                                modalTab === 'targets' && item.isCompleted ? 'physical-dashboard-modal-event--completed' : '',
+                                                                modalTab === 'targets' && !item.isCompleted && item.isOverdue ? 'physical-dashboard-modal-event--overdue' : '',
+                                                            ].filter(Boolean).join(' ')}
                                                             onClick={() => localModal.type !== 'provinces' && handleItemClick(item)}
                                                         >
                                                             <p className="dashboard-modal__metric-value">{item.name}</p>
