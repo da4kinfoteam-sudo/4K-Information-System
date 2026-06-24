@@ -65,18 +65,45 @@ import {
     ThemeMode
 } from './lib/theme';
 
+const parseAppRoute = (fullPath: string) => {
+    const normalized = fullPath || '/';
+    const [pathPart, queryPart = ''] = normalized.split('?');
+    return {
+        path: pathPart || '/',
+        params: new URLSearchParams(queryPart),
+    };
+};
+
+const getRouteId = (params: URLSearchParams): number | null => {
+    const rawId = params.get('id');
+    if (!rawId) return null;
+    const id = Number(rawId);
+    return Number.isFinite(id) ? id : null;
+};
+
+const findByRouteId = <T extends { id: number }>(items: T[], id: number | null): T | undefined => {
+    if (id === null) return undefined;
+    return items.find(item => item.id === id);
+};
+
+const buildDetailPath = (path: string, id?: number | string | null) => {
+    if (id === undefined || id === null || id === '') return path;
+    return `${path}?id=${encodeURIComponent(String(id))}`;
+};
+
 // Helper to format page names for "Back to..." buttons
 const getPageName = (path: string) => {
-    if (path === '/') return 'Dashboard';
-    if (path === '/ipo-detail') return 'IPO Details';
-    if (path === '/ipo') return 'IPO List';
-    if (path === '/activity-detail') return 'Activity Details';
-    if (path === '/program-management') return 'Program Management';
-    if (path === '/marketing-database') return 'Marketing Database';
-    if (path === '/marketing-profile-detail') return 'Partner Profile';
+    const routePath = parseAppRoute(path).path;
+    if (routePath === '/') return 'Dashboard';
+    if (routePath === '/ipo-detail') return 'IPO Details';
+    if (routePath === '/ipo') return 'IPO List';
+    if (routePath === '/activity-detail') return 'Activity Details';
+    if (routePath === '/program-management') return 'Program Management';
+    if (routePath === '/marketing-database') return 'Marketing Database';
+    if (routePath === '/marketing-profile-detail') return 'Partner Profile';
     
     // Generic formatter: remove slash, replace hyphens with spaces, capitalize words
-    return path.substring(1)
+    return routePath.substring(1)
         .replace(/-/g, ' ')
         .replace(/\b\w/g, char => char.toUpperCase());
 };
@@ -100,6 +127,27 @@ const AccessDenied: React.FC<{ onBackToHome: () => void }> = ({ onBackToHome }) 
         >
             Return to Dashboard
         </button>
+    </div>
+);
+
+const DetailRouteFallback: React.FC<{
+    title: string;
+    message: string;
+    actionLabel: string;
+    onAction: () => void;
+}> = ({ title, message, actionLabel, onAction }) => (
+    <div className="flex h-full items-center justify-center p-6">
+        <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
+            <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p>
+            <button
+                type="button"
+                onClick={onAction}
+                className="mt-6 rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-opacity-90"
+            >
+                {actionLabel}
+            </button>
+        </div>
     </div>
 );
 
@@ -134,6 +182,9 @@ const AppContent: React.FC = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 768);
     const [themeMode, setThemeMode] = useState<ThemeMode>(() => resolveInitialTheme());
     const [currentPage, setCurrentPage] = useState('/');
+    const currentRoute = useMemo(() => parseAppRoute(currentPage), [currentPage]);
+    const routePath = currentRoute.path;
+    const routeParams = currentRoute.params;
     const isDarkMode = themeMode === 'dark';
     const reportsVisibilityScope = getVisibilityScope('Reports');
     const isReportsLockedToOwnOu = reportsVisibilityScope === 'Own OU';
@@ -289,6 +340,7 @@ const AppContent: React.FC = () => {
     const [globalLastRefreshedAt, setGlobalLastRefreshedAt] = useState<string | null>(null);
     const [globalRefreshError, setGlobalRefreshError] = useState<string | null>(null);
     const [globalCacheStatus, setGlobalCacheStatus] = useState<string | null>(null);
+    const isRouteDataLoading = isGlobalRefreshing || (!globalLastRefreshedAt && !globalRefreshError && !globalCacheStatus);
     const activeDataScopeKeyRef = useRef<string | null>(null);
     const activeDataScopeRef = useRef<DataScope | null>(null);
     const scopeRequestSeqRef = useRef(0);
@@ -555,7 +607,7 @@ const AppContent: React.FC = () => {
 
     useEffect(() => {
         const handlePopState = (event: PopStateEvent) => {
-            const leavingPage = currentPageRef.current;
+            const leavingPage = parseAppRoute(currentPageRef.current).path;
             
             if (leavingPage === '/subproject-detail') setSelectedSubproject(null);
             if (leavingPage === '/activity-detail') setSelectedActivity(null);
@@ -704,7 +756,7 @@ const AppContent: React.FC = () => {
     // Navigation Handlers
     const handleSelectSubproject = (project: Subproject) => {
         setSelectedSubproject(project);
-        navigateTo('/subproject-detail');
+        navigateTo(buildDetailPath('/subproject-detail', project.id));
     };
 
     const handleSelectIpo = (ipo: IPO) => {
@@ -719,7 +771,7 @@ const AppContent: React.FC = () => {
 
     const handleSelectActivity = (activity: Activity) => {
         setSelectedActivity(activity);
-        navigateTo('/activity-detail');
+        navigateTo(buildDetailPath('/activity-detail', activity.id));
     };
 
     const handleOpenMonitoringReport = (activity: Activity, ipo: IPO, report?: ActivityMonitoringReport | null) => {
@@ -729,17 +781,17 @@ const AppContent: React.FC = () => {
 
     const handleSelectOfficeReq = (req: OfficeRequirement) => {
         setSelectedOfficeReq(req);
-        navigateTo('/program-management/office-detail');
+        navigateTo(buildDetailPath('/program-management/office-detail', req.id));
     };
 
     const handleSelectStaffingReq = (req: StaffingRequirement) => {
         setSelectedStaffingReq(req);
-        navigateTo('/program-management/staffing-detail');
+        navigateTo(buildDetailPath('/program-management/staffing-detail', req.id));
     };
 
     const handleSelectOtherExpense = (req: OtherProgramExpense) => {
         setSelectedOtherExpense(req);
-        navigateTo('/program-management/other-expense-detail');
+        navigateTo(buildDetailPath('/program-management/other-expense-detail', req.id));
     };
 
     const handleSelectMarketingPartner = (partner: MarketingPartner) => {
@@ -808,40 +860,40 @@ const AppContent: React.FC = () => {
         const denied = <AccessDenied onBackToHome={() => navigateTo('/')} />;
 
         // Phase 6: Guard clauses for module-level access
-        if (currentPage === '/dashboards' && !checkAccess('Dashboards')) return denied;
-        if (currentPage === '/reports' && !checkAccess('Reports')) return denied;
+        if (routePath === '/dashboards' && !checkAccess('Dashboards')) return denied;
+        if (routePath === '/reports' && !checkAccess('Reports')) return denied;
         
-        if (['/subprojects', '/subproject-edit', '/subproject-detail'].includes(currentPage)) {
+        if (['/subprojects', '/subproject-edit', '/subproject-detail'].includes(routePath)) {
             if (!checkAccess('Subprojects')) return denied;
         }
-        if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail', '/activity-monitoring-report'].includes(currentPage)) {
+        if (['/trainings', '/other-activities', '/activities', '/activity-edit', '/activity-detail', '/activity-monitoring-report'].includes(routePath)) {
             if (!checkAccess('Activities')) return denied;
         }
-        if (['/program-management', '/program-management/office-detail', '/program-management/staffing-detail', '/program-management/other-expense-detail'].includes(currentPage)) {
+        if (['/program-management', '/program-management/office-detail', '/program-management/staffing-detail', '/program-management/other-expense-detail'].includes(routePath)) {
             if (!checkAccess('Program Management')) return denied;
         }
-        if (currentPage === '/accomplishment/financial' && !checkAccess('Accomplishment - Financial')) return denied;
-        if (currentPage === '/accomplishment/physical' && !checkAccess('Accomplishment - Physical')) return denied;
+        if (routePath === '/accomplishment/financial' && !checkAccess('Accomplishment - Financial')) return denied;
+        if (routePath === '/accomplishment/physical' && !checkAccess('Accomplishment - Physical')) return denied;
         
-        if (['/ipo', '/ipo-detail'].includes(currentPage)) {
+        if (['/ipo', '/ipo-detail'].includes(routePath)) {
             if (!checkAccess('IPO Management')) return denied;
         }
-        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(currentPage)) {
+        if (['/marketing-database', '/marketing-profile-detail', '/marketing-profile-edit', '/marketing-linkage-edit', '/marketing-linkage-detail'].includes(routePath)) {
             if (!checkAccess('Marketing Database')) return denied;
         }
-        if (['/level-of-development', '/lod-details'].includes(currentPage)) {
+        if (['/level-of-development', '/lod-details'].includes(routePath)) {
             if (!checkAccess('Level of Development')) return denied;
         }
-        if (currentPage === '/commodity-mapping') {
+        if (routePath === '/commodity-mapping') {
             if (!checkAccess('Commodity Mapping')) return denied;
         }
-        if (currentPage === '/references' && !checkAccess('References')) return denied;
-        if (currentPage === '/settings' && !checkAccess('System Management')) {
+        if (routePath === '/references' && !checkAccess('References')) return denied;
+        if (routePath === '/settings' && !checkAccess('System Management')) {
              // System Management is for the whole settings tab, but maybe we should allow profiles?
              // Usually settings has profile. Let's see.
         }
 
-        switch (currentPage) {
+        switch (routePath) {
             case '/':
                 return <Dashboard 
                             subprojects={visibleSubprojects} 
@@ -1059,9 +1111,24 @@ const AppContent: React.FC = () => {
                             onDataScopeChange={ensureDataScope}
                         />;
                 
-            case '/program-management/office-detail':
-                if (!selectedOfficeReq) return <div>Select an item</div>;
-                const latestOffice = visibleOfficeReqs.find(i => i.id === selectedOfficeReq.id) || selectedOfficeReq;
+            case '/program-management/office-detail': {
+                const routeId = getRouteId(routeParams);
+                const routeItem = findByRouteId(visibleOfficeReqs, routeId);
+                const latestOffice = routeId !== null
+                    ? (selectedOfficeReq?.id === routeId ? (routeItem || selectedOfficeReq) : routeItem)
+                    : selectedOfficeReq;
+                if (!latestOffice) {
+                    if (routeId === null) return <div>Select an item</div>;
+                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading office requirement...</div>;
+                    return (
+                        <DetailRouteFallback
+                            title="Office requirement not found"
+                            message="This office requirement is no longer available, or it is outside your current visibility scope."
+                            actionLabel="Back to Program Management"
+                            onAction={() => navigateTo('/program-management')}
+                        />
+                    );
+                }
                 return <OfficeRequirementDetail 
                             item={latestOffice}
                             onBack={handleBack}
@@ -1071,9 +1138,25 @@ const AppContent: React.FC = () => {
                                 setSelectedOfficeReq(updatedItem);
                             }}
                         />;
-            case '/program-management/staffing-detail':
-                if (!selectedStaffingReq) return <div>Select an item</div>;
-                const latestStaff = visibleStaffingReqs.find(i => i.id === selectedStaffingReq.id) || selectedStaffingReq;
+            }
+            case '/program-management/staffing-detail': {
+                const routeId = getRouteId(routeParams);
+                const routeItem = findByRouteId(visibleStaffingReqs, routeId);
+                const latestStaff = routeId !== null
+                    ? (selectedStaffingReq?.id === routeId ? (routeItem || selectedStaffingReq) : routeItem)
+                    : selectedStaffingReq;
+                if (!latestStaff) {
+                    if (routeId === null) return <div>Select an item</div>;
+                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading staffing requirement...</div>;
+                    return (
+                        <DetailRouteFallback
+                            title="Staffing requirement not found"
+                            message="This staffing requirement is no longer available, or it is outside your current visibility scope."
+                            actionLabel="Back to Program Management"
+                            onAction={() => navigateTo('/program-management')}
+                        />
+                    );
+                }
                 return <StaffingRequirementDetail 
                             item={latestStaff}
                             onBack={handleBack}
@@ -1083,9 +1166,25 @@ const AppContent: React.FC = () => {
                                 setSelectedStaffingReq(updatedItem);
                             }}
                         />;
-            case '/program-management/other-expense-detail':
-                if (!selectedOtherExpense) return <div>Select an item</div>;
-                const latestOther = visibleOtherExpenses.find(i => i.id === selectedOtherExpense.id) || selectedOtherExpense;
+            }
+            case '/program-management/other-expense-detail': {
+                const routeId = getRouteId(routeParams);
+                const routeItem = findByRouteId(visibleOtherExpenses, routeId);
+                const latestOther = routeId !== null
+                    ? (selectedOtherExpense?.id === routeId ? (routeItem || selectedOtherExpense) : routeItem)
+                    : selectedOtherExpense;
+                if (!latestOther) {
+                    if (routeId === null) return <div>Select an item</div>;
+                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading other program expense...</div>;
+                    return (
+                        <DetailRouteFallback
+                            title="Program expense not found"
+                            message="This program expense is no longer available, or it is outside your current visibility scope."
+                            actionLabel="Back to Program Management"
+                            onAction={() => navigateTo('/program-management')}
+                        />
+                    );
+                }
                 return <OtherExpenseDetail 
                             item={latestOther}
                             onBack={handleBack}
@@ -1095,6 +1194,7 @@ const AppContent: React.FC = () => {
                                 setSelectedOtherExpense(updatedItem);
                             }}
                         />;
+            }
             case '/ipo':
                 return <IPOs 
                             ipos={ipos} 
@@ -1158,9 +1258,24 @@ const AppContent: React.FC = () => {
                             reportState={reportsPageState}
                             onReportStateChange={setReportsPageState}
                         />;
-            case '/subproject-detail':
-                if (!selectedSubproject) return <div>Select a subproject</div>;
-                const latestSp = visibleSubprojects.find(s => s.id === selectedSubproject.id) || selectedSubproject;
+            case '/subproject-detail': {
+                const routeId = getRouteId(routeParams);
+                const routeItem = findByRouteId(visibleSubprojects, routeId);
+                const latestSp = routeId !== null
+                    ? (selectedSubproject?.id === routeId ? (routeItem || selectedSubproject) : routeItem)
+                    : selectedSubproject;
+                if (!latestSp) {
+                    if (routeId === null) return <div>Select a subproject</div>;
+                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading subproject...</div>;
+                    return (
+                        <DetailRouteFallback
+                            title="Subproject not found"
+                            message="This subproject is no longer available, or it is outside your current visibility scope."
+                            actionLabel="Back to Subprojects"
+                            onAction={() => navigateTo('/subprojects')}
+                        />
+                    );
+                }
                 return <SubprojectDetail 
                             subproject={latestSp} 
                             ipos={ipos}
@@ -1200,6 +1315,7 @@ const AppContent: React.FC = () => {
                             refCommodities={refCommodities}
                             refLivestock={refLivestock}
                         />;
+            }
             case '/ipo-detail':
                 if (!selectedIpo) return <div>Select an IPO</div>;
                 return <IPODetail 
@@ -1224,9 +1340,24 @@ const AppContent: React.FC = () => {
                             particularTypes={derivedParticularTypes}
                             commodityCategories={derivedCommodityCategories}
                         />;
-            case '/activity-detail':
-                if (!selectedActivity) return <div>Select an activity</div>;
-                const latestAct = visibleActivities.find(a => a.id === selectedActivity.id) || selectedActivity;
+            case '/activity-detail': {
+                const routeId = getRouteId(routeParams);
+                const routeItem = findByRouteId(visibleActivities, routeId);
+                const latestAct = routeId !== null
+                    ? (selectedActivity?.id === routeId ? (routeItem || selectedActivity) : routeItem)
+                    : selectedActivity;
+                if (!latestAct) {
+                    if (routeId === null) return <div>Select an activity</div>;
+                    if (isRouteDataLoading) return <div className="p-6 text-gray-500 dark:text-gray-400">Loading activity...</div>;
+                    return (
+                        <DetailRouteFallback
+                            title="Activity not found"
+                            message="This activity is no longer available, or it is outside your current visibility scope."
+                            actionLabel="Back to Activities"
+                            onAction={() => navigateTo('/activities')}
+                        />
+                    );
+                }
                 return <ActivityDetail
                             activity={latestAct}
                             ipos={ipos}
@@ -1237,6 +1368,7 @@ const AppContent: React.FC = () => {
                                 setSelectedActivity(updated);
                             }}
                             onEdit={(mode) => {
+                                setSelectedActivity(latestAct);
                                 setActivityEditMode(mode);
                                 navigateTo('/activity-edit');
                             }}
@@ -1247,6 +1379,7 @@ const AppContent: React.FC = () => {
                             onSelectIpo={handleSelectIpo}
                             onOpenMonitoringReport={handleOpenMonitoringReport}
                         />;
+            }
             case '/activity-monitoring-report':
                 if (!selectedMonitoringReportContext) return <div>Select a monitoring report</div>;
                 return <ActivityMonitoringReportDetail
@@ -1353,7 +1486,7 @@ const AppContent: React.FC = () => {
                 isOpen={isSidebarOpen} 
                 toggleSidebar={toggleSidebar}
                 closeSidebar={() => setIsSidebarOpen(false)} 
-                currentPage={currentPage} 
+                currentPage={routePath} 
                 setCurrentPage={navigateTo} 
             />
             <div className="app-workspace">
