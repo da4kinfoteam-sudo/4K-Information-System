@@ -14,7 +14,6 @@ import {
     GraduationCap,
     Landmark,
     Search,
-    TrendingUp,
     Users,
 } from 'lucide-react';
 import { Subproject, IPO, Training, OtherActivity, OfficeRequirement, StaffingRequirement, ouToRegionMap } from '../../constants';
@@ -44,7 +43,7 @@ interface PhysicalDashboardProps {
 type ViewMode = 'Annual' | 'Monthly';
 type DetailView = 'national' | 'provinces' | 'trend' | 'alerts' | 'rankings' | 'submissions';
 type ModalType = 'ipos' | 'subprojects' | 'trainings' | 'ads' | 'provinces';
-type MetricId = 'ipos' | 'subprojects' | 'iposWithSubprojects' | 'trainings' | 'iposTrained' | 'ads' | 'provinces';
+type MetricId = 'ipos' | 'subprojects' | 'iposWithSubprojects' | 'trainings' | 'iposTrained' | 'ads';
 
 type ModalItemWithOu = ModalItem & { operatingUnit?: string };
 
@@ -63,6 +62,7 @@ type Metric = {
     icon: React.ReactNode;
     annual: MetricScope;
     monthly: MetricScope;
+    cumulative: MetricScope;
 };
 
 type ProvincePerformance = {
@@ -127,6 +127,50 @@ const getDateMonth = (dateString?: string) => {
     return parsed ? parsed.getMonth() : -1;
 };
 
+const getActivityTargetDate = (activity: Training | OtherActivity) => activity.endDate || activity.date;
+
+const getCumulativeCutoff = (selectedYear: string) => {
+    if (selectedYear === 'All') {
+        return { month: 11, label: 'Full year', cutoffDate: null as Date | null };
+    }
+
+    const selectedYearNumber = Number(selectedYear);
+    if (!Number.isFinite(selectedYearNumber)) {
+        return { month: 11, label: 'Full year', cutoffDate: null as Date | null };
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    if (selectedYearNumber < currentYear) {
+        return {
+            month: 11,
+            label: 'December',
+            cutoffDate: new Date(selectedYearNumber, 11, 31, 23, 59, 59, 999),
+        };
+    }
+    if (selectedYearNumber > currentYear) {
+        return {
+            month: -1,
+            label: 'Not yet due',
+            cutoffDate: new Date(selectedYearNumber, 0, 0, 23, 59, 59, 999),
+        };
+    }
+
+    const month = now.getMonth();
+    return {
+        month,
+        label: monthNames[month],
+        cutoffDate: new Date(selectedYearNumber, month + 1, 0, 23, 59, 59, 999),
+    };
+};
+
+const isDueByCutoff = (dateString: string | undefined, cutoffDate: Date | null) => {
+    if (!dateString) return false;
+    if (!cutoffDate) return true;
+    const parsed = parseDate(dateString);
+    return !!parsed && parsed.getTime() <= cutoffDate.getTime();
+};
+
 const matchesSelectedYear = (dateString: string | undefined, selectedYear: string) => {
     if (selectedYear === 'All') return true;
     return getDateYear(dateString) === selectedYear;
@@ -143,8 +187,11 @@ const isCompletedTraining = (training: Training) =>
 
 const percent = (actual: number, target: number) => target > 0 ? Math.round((actual / target) * 100) : 0;
 
-const getStatus = (actual: number, target: number) => {
-    if (target === 0) return { label: actual > 0 ? 'Recorded' : 'No target', tone: 'neutral' };
+const getStatus = (actual: number, target: number, options: { notYetDue?: boolean } = {}) => {
+    if (target === 0) {
+        if (options.notYetDue) return { label: 'Not Yet Due', tone: 'neutral' };
+        return { label: actual > 0 ? 'Recorded' : 'No target', tone: 'neutral' };
+    }
     const value = percent(actual, target);
     if (value >= 80) return { label: 'On Track', tone: 'good' };
     if (value >= 50) return { label: 'Needs Attention', tone: 'warning' };
@@ -159,12 +206,16 @@ const PhysicalMetricCard: React.FC<{
     metric: Metric;
     viewMode: ViewMode;
     asOfMonth: number;
+    cumulativeLabel: string;
     expanded: boolean;
     onToggleExpand: () => void;
     onOpen: () => void;
-}> = ({ metric, viewMode, asOfMonth, expanded, onToggleExpand, onOpen }) => {
+}> = ({ metric, viewMode, asOfMonth, cumulativeLabel, expanded, onToggleExpand, onOpen }) => {
     const active = viewMode === 'Annual' ? metric.annual : metric.monthly;
-    const status = getStatus(active.actual, active.target);
+    const statusScope = viewMode === 'Annual' ? metric.cumulative : metric.monthly;
+    const status = getStatus(statusScope.actual, statusScope.target, {
+        notYetDue: viewMode === 'Annual' && metric.annual.target > 0 && statusScope.target === 0,
+    });
     return (
         <article
             className={`physical-dashboard-kpi physical-dashboard-kpi--${metric.variant} physical-dashboard-kpi--${status.tone}`}
@@ -212,6 +263,13 @@ const PhysicalMetricCard: React.FC<{
                         <span>{monthNames[asOfMonth]}</span>
                         <strong>{metric.monthly.actual.toLocaleString()} / {metric.monthly.target.toLocaleString()}</strong>
                         <small>{percent(metric.monthly.actual, metric.monthly.target)}%</small>
+                    </div>
+                    <div>
+                        <span>Cumulative as of {cumulativeLabel}</span>
+                        <strong>{metric.cumulative.actual.toLocaleString()} / {metric.cumulative.target.toLocaleString()}</strong>
+                        <small>{getStatus(metric.cumulative.actual, metric.cumulative.target, {
+                            notYetDue: metric.annual.target > 0 && metric.cumulative.target === 0,
+                        }).label}</small>
                     </div>
                 </div>
             )}
@@ -298,11 +356,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const actualTrainings = (data.trainings || []).filter(training =>
             isCompletedTraining(training) && matchesSelectedYear(training.actualDate, selectedYear)
         );
+        const cumulativeCutoff = getCumulativeCutoff(selectedYear);
 
-        const monthTargetSubprojects = targetSubprojects.filter(sp => getDateMonth(sp.startDate) === asOfMonth);
-        const monthTargetTrainings = targetTrainings.filter(training => getDateMonth(training.date) === asOfMonth);
+        const monthTargetSubprojects = targetSubprojects.filter(sp => getDateMonth(sp.estimatedCompletionDate) === asOfMonth);
+        const monthTargetTrainings = targetTrainings.filter(training => getDateMonth(getActivityTargetDate(training)) === asOfMonth);
         const monthActualSubprojects = actualSubprojects.filter(sp => getDateMonth(sp.actualCompletionDate) === asOfMonth);
         const monthActualTrainings = actualTrainings.filter(training => getDateMonth(training.actualDate) === asOfMonth);
+        const cumulativeTargetSubprojects = targetSubprojects.filter(sp => isDueByCutoff(sp.estimatedCompletionDate, cumulativeCutoff.cutoffDate));
+        const cumulativeTargetTrainings = targetTrainings.filter(training => isDueByCutoff(getActivityTargetDate(training), cumulativeCutoff.cutoffDate));
+        const cumulativeActualSubprojects = actualSubprojects.filter(sp => isDueByCutoff(sp.actualCompletionDate, cumulativeCutoff.cutoffDate));
+        const cumulativeActualTrainings = actualTrainings.filter(training => isDueByCutoff(training.actualDate, cumulativeCutoff.cutoffDate));
 
         const makeIpoItems = (names: Set<string>) => Array.from(names)
             .map(name => ipoMap.get(name))
@@ -319,7 +382,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             .map(sp => ({
                 id: sp.id,
                 name: sp.name,
-                details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.startDate)} | Completed: ${formatDate(sp.actualCompletionDate)}`,
+                details: `${sp.indigenousPeopleOrganization} | Target: ${formatDate(sp.estimatedCompletionDate)} | Completed: ${formatDate(sp.actualCompletionDate)}`,
                 operatingUnit: sp.operatingUnit,
             }))
             .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
@@ -328,7 +391,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
             .map(training => ({
                 id: training.id,
                 name: training.name,
-                details: `${training.component} | Target: ${formatDate(training.date)} | Conducted: ${formatDate(training.actualDate)}`,
+                details: `${training.component} | Target: ${formatDate(getActivityTargetDate(training))} | Conducted: ${formatDate(training.actualDate)}`,
                 operatingUnit: training.operatingUnit,
             }))
             .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
@@ -366,29 +429,6 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
         };
 
-        const makeProvinceScope = (subprojects: Subproject[]) => {
-            const provinces = new Map<string, { ou: string; count: number }>();
-            subprojects.forEach(sp => {
-                const ipo = ipoMap.get(sp.indigenousPeopleOrganization);
-                const province = getProvinceForIpo(ipo);
-                const key = `${sp.operatingUnit}|${province}`;
-                const entry = provinces.get(key) || { ou: sp.operatingUnit || 'Unknown OU', count: 0 };
-                entry.count += 1;
-                provinces.set(key, entry);
-            });
-            return Array.from(provinces.entries())
-                .map(([key, item]) => {
-                    const province = key.split('|')[1] || 'Unspecified Province';
-                    return {
-                        id: key,
-                        name: province,
-                        details: `${item.count.toLocaleString()} active subproject${item.count === 1 ? '' : 's'}`,
-                        operatingUnit: item.ou,
-                    };
-                })
-                .sort((a, b) => (a.operatingUnit || '').localeCompare(b.operatingUnit || '') || a.name.localeCompare(b.name));
-        };
-
         const makeMetricScope = (
             target: number,
             actual: number,
@@ -403,6 +443,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const annualTargetIpos = unionSets(annualTargetIposWithSp, annualTargetIposTrained);
         const annualActualIpos = unionSets(annualActualIposWithSp, annualActualIposTrained);
 
+        const cumulativeTargetIposWithSp = getIpoSetFromSubprojects(cumulativeTargetSubprojects);
+        const cumulativeActualIposWithSp = getIpoSetFromSubprojects(cumulativeActualSubprojects);
+        const cumulativeTargetIposTrained = getIpoSetFromTrainings(cumulativeTargetTrainings);
+        const cumulativeActualIposTrained = getIpoSetFromTrainings(cumulativeActualTrainings);
+        const cumulativeTargetIpos = unionSets(cumulativeTargetIposWithSp, cumulativeTargetIposTrained);
+        const cumulativeActualIpos = unionSets(cumulativeActualIposWithSp, cumulativeActualIposTrained);
+
         const monthlyTargetIposWithSp = getIpoSetFromSubprojects(monthTargetSubprojects);
         const monthlyActualIposWithSp = getIpoSetFromSubprojects(monthActualSubprojects);
         const monthlyTargetIposTrained = getIpoSetFromTrainings(monthTargetTrainings);
@@ -413,12 +460,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         const metrics: Metric[] = [
             {
                 id: 'ipos',
-                label: 'IPOs Organized',
+                label: 'IPOs Assisted',
                 variant: 'teal',
                 modalType: 'ipos',
                 icon: <Users />,
                 annual: makeMetricScope(annualTargetIpos.size, annualActualIpos.size, makeIpoItems(annualTargetIpos), makeIpoItems(annualActualIpos)),
                 monthly: makeMetricScope(monthlyTargetIpos.size, monthlyActualIpos.size, makeIpoItems(monthlyTargetIpos), makeIpoItems(monthlyActualIpos)),
+                cumulative: makeMetricScope(cumulativeTargetIpos.size, cumulativeActualIpos.size, makeIpoItems(cumulativeTargetIpos), makeIpoItems(cumulativeActualIpos)),
             },
             {
                 id: 'subprojects',
@@ -428,15 +476,17 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 icon: <Briefcase />,
                 annual: makeMetricScope(targetSubprojects.length, actualSubprojects.length, makeSubprojectItems(targetSubprojects), makeSubprojectItems(actualSubprojects)),
                 monthly: makeMetricScope(monthTargetSubprojects.length, monthActualSubprojects.length, makeSubprojectItems(monthTargetSubprojects), makeSubprojectItems(monthActualSubprojects)),
+                cumulative: makeMetricScope(cumulativeTargetSubprojects.length, cumulativeActualSubprojects.length, makeSubprojectItems(cumulativeTargetSubprojects), makeSubprojectItems(cumulativeActualSubprojects)),
             },
             {
                 id: 'iposWithSubprojects',
-                label: 'IPOs w/ Subprojects',
+                label: 'IPOs with Subprojects',
                 variant: 'blue',
                 modalType: 'ipos',
                 icon: <Building2 />,
                 annual: makeMetricScope(annualTargetIposWithSp.size, annualActualIposWithSp.size, makeIpoItems(annualTargetIposWithSp), makeIpoItems(annualActualIposWithSp)),
                 monthly: makeMetricScope(monthlyTargetIposWithSp.size, monthlyActualIposWithSp.size, makeIpoItems(monthlyTargetIposWithSp), makeIpoItems(monthlyActualIposWithSp)),
+                cumulative: makeMetricScope(cumulativeTargetIposWithSp.size, cumulativeActualIposWithSp.size, makeIpoItems(cumulativeTargetIposWithSp), makeIpoItems(cumulativeActualIposWithSp)),
             },
             {
                 id: 'trainings',
@@ -446,6 +496,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 icon: <BookOpen />,
                 annual: makeMetricScope(targetTrainings.length, actualTrainings.length, makeTrainingItems(targetTrainings), makeTrainingItems(actualTrainings)),
                 monthly: makeMetricScope(monthTargetTrainings.length, monthActualTrainings.length, makeTrainingItems(monthTargetTrainings), makeTrainingItems(monthActualTrainings)),
+                cumulative: makeMetricScope(cumulativeTargetTrainings.length, cumulativeActualTrainings.length, makeTrainingItems(cumulativeTargetTrainings), makeTrainingItems(cumulativeActualTrainings)),
             },
             {
                 id: 'iposTrained',
@@ -455,31 +506,24 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                 icon: <GraduationCap />,
                 annual: makeMetricScope(annualTargetIposTrained.size, annualActualIposTrained.size, makeIpoItems(annualTargetIposTrained), makeIpoItems(annualActualIposTrained)),
                 monthly: makeMetricScope(monthlyTargetIposTrained.size, monthlyActualIposTrained.size, makeIpoItems(monthlyTargetIposTrained), makeIpoItems(monthlyActualIposTrained)),
+                cumulative: makeMetricScope(cumulativeTargetIposTrained.size, cumulativeActualIposTrained.size, makeIpoItems(cumulativeTargetIposTrained), makeIpoItems(cumulativeActualIposTrained)),
             },
             {
                 id: 'ads',
-                label: 'Ancestral Domains Linked to IPOs',
+                label: 'Ancestral Domains Assisted',
                 variant: 'green',
                 modalType: 'ads',
                 icon: <Landmark />,
                 annual: makeMetricScope(makeAdScope(annualTargetIpos).length, makeAdScope(annualActualIpos).length, makeAdScope(annualTargetIpos), makeAdScope(annualActualIpos)),
                 monthly: makeMetricScope(makeAdScope(monthlyTargetIpos).length, makeAdScope(monthlyActualIpos).length, makeAdScope(monthlyTargetIpos), makeAdScope(monthlyActualIpos)),
-            },
-            {
-                id: 'provinces',
-                label: 'Provinces w/ Active Projects',
-                variant: 'indigo',
-                modalType: 'provinces',
-                icon: <TrendingUp />,
-                annual: makeMetricScope(makeProvinceScope(targetSubprojects).length, makeProvinceScope(actualSubprojects).length, makeProvinceScope(targetSubprojects), makeProvinceScope(actualSubprojects)),
-                monthly: makeMetricScope(makeProvinceScope(monthTargetSubprojects).length, makeProvinceScope(monthActualSubprojects).length, makeProvinceScope(monthTargetSubprojects), makeProvinceScope(monthActualSubprojects)),
+                cumulative: makeMetricScope(makeAdScope(cumulativeTargetIpos).length, makeAdScope(cumulativeActualIpos).length, makeAdScope(cumulativeTargetIpos), makeAdScope(cumulativeActualIpos)),
             },
         ];
 
         const monthSeries = monthNames.map((month, index) => {
             const monthTargets = [
-                targetSubprojects.filter(sp => getDateMonth(sp.startDate) === index).length,
-                targetTrainings.filter(training => getDateMonth(training.date) === index).length,
+                targetSubprojects.filter(sp => getDateMonth(sp.estimatedCompletionDate) === index).length,
+                targetTrainings.filter(training => getDateMonth(getActivityTargetDate(training)) === index).length,
             ].reduce((sum, value) => sum + value, 0);
             const monthActuals = [
                 actualSubprojects.filter(sp => getDateMonth(sp.actualCompletionDate) === index).length,
@@ -599,13 +643,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                     title: `${row.province} is below 50% overall accomplishment.`,
                     details: `${row.ou} | ${row.rate}% accomplishment rate`,
                     tone: 'danger',
-                })),
+            })),
             ...metrics
-                .filter(metric => metric.annual.target > 0 && percent(metric.annual.actual, metric.annual.target) < 50)
+                .filter(metric => metric.cumulative.target > 0 && percent(metric.cumulative.actual, metric.cumulative.target) < 50)
                 .slice(0, 2)
                 .map(metric => ({
                     title: `${metric.label} needs attention.`,
-                    details: `${metric.annual.actual.toLocaleString()} of ${metric.annual.target.toLocaleString()} annual target accomplished`,
+                    details: `${metric.cumulative.actual.toLocaleString()} of ${metric.cumulative.target.toLocaleString()} targets due by ${cumulativeCutoff.label} accomplished`,
                     tone: 'warning',
                 })),
         ];
@@ -672,6 +716,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         return {
             metrics,
             metricMap: new Map(metrics.map(metric => [metric.id, metric])),
+            cumulativeCutoff,
             monthSeries,
             provinceRows,
             ouRows,
@@ -682,6 +727,13 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
     }, [asOfMonth, data.ipos, data.officeReqs, data.otherActivities, data.staffingReqs, data.subprojects, data.trainings, regionToOuMap, selectedYear]);
 
     const activeScope = (metric: Metric) => viewMode === 'Annual' ? metric.annual : metric.monthly;
+    const statusScope = (metric: Metric) => viewMode === 'Annual' ? metric.cumulative : metric.monthly;
+    const metricStatus = (metric: Metric) => {
+        const scope = statusScope(metric);
+        return getStatus(scope.actual, scope.target, {
+            notYetDue: viewMode === 'Annual' && metric.annual.target > 0 && scope.target === 0,
+        });
+    };
     const allOuMode = isAllOuView ?? selectedOu === 'All';
 
     const openMetricModal = (metric: Metric) => {
@@ -733,12 +785,16 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
         if (detailView === 'national') {
             return analytics.metrics.map(metric => {
                 const scope = activeScope(metric);
+                const basis = statusScope(metric);
                 return {
                     Indicator: metric.label,
                     Target: scope.target,
                     Accomplishment: scope.actual,
                     Rate: `${percent(scope.actual, scope.target)}%`,
-                    Status: getStatus(scope.actual, scope.target).label,
+                    'Status Basis': viewMode === 'Annual'
+                        ? `${basis.actual} / ${basis.target} cumulative as of ${analytics.cumulativeCutoff.label}`
+                        : `${basis.actual} / ${basis.target} for ${monthNames[asOfMonth]}`,
+                    Status: metricStatus(metric).label,
                 };
             });
         }
@@ -912,6 +968,7 @@ const PhysicalDashboard: React.FC<PhysicalDashboardProps> = ({
                             metric={metric}
                             viewMode={viewMode}
                             asOfMonth={asOfMonth}
+                            cumulativeLabel={analytics.cumulativeCutoff.label}
                             expanded={expandedCards.has(metric.id)}
                             onToggleExpand={() => {
                                 setExpandedCards(prev => {
