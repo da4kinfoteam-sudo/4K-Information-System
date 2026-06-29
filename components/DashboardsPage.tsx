@@ -10,6 +10,7 @@ import FarmProductivityDashboard from './dashboards/FarmProductivityDashboard';
 import SCADDashboard from './dashboards/SCADDashboard';
 import AgriculturalInterventionsDashboard from './dashboards/AgriculturalInterventionsDashboard';
 import CommodityDashboard from './dashboards/CommodityDashboard';
+import AwardsRankingsDashboard from './dashboards/AwardsRankingsDashboard';
 import { ModalItem } from './dashboards/DashboardComponents';
 import { useAuth } from '../contexts/AuthContext';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
@@ -34,12 +35,13 @@ export interface DashboardsPageProps {
     onDataScopeChange?: (scope: Partial<DataScope>) => void;
 }
 
-type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'Commodities' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions';
+type DashboardTab = 'Physical' | 'Financial' | 'GAD' | 'Commodities' | 'IPO Level of Development' | 'Nutrition' | 'Farm Productivity and Income' | 'SCAD' | 'Agricultural Interventions' | 'Awards and Rankings';
 
 const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
     const { currentUser, getVisibilityScope } = useAuth();
     const visibilityScope = getVisibilityScope('Dashboards');
     const isLockedToOwnOu = visibilityScope === 'Own OU';
+    const canViewAwards = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const { onDataScopeChange } = props;
 
     const [activeTab, setActiveTab] = useState<DashboardTab>('Physical');
@@ -67,6 +69,12 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             setSelectedOu(currentUser.operatingUnit);
         }
     }, [currentUser, isLockedToOwnOu]);
+
+    useEffect(() => {
+        if (!canViewAwards && activeTab === 'Awards and Rankings') {
+            setActiveTab('Physical');
+        }
+    }, [activeTab, canViewAwards]);
 
     const availableYears = useMemo(() => {
         return [...filterYears].sort((a, b) => parseInt(b) - parseInt(a));
@@ -154,6 +162,56 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
             otherProgramExpenses: props.otherProgramExpenses,
         };
     }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses]);
+
+    const awardsData = useMemo(() => {
+        const sanitizeDetails = (items: any[] | undefined) => (items || []).filter(i => i);
+        const sanitizeExpenses = (items: any[] | undefined) => (items || []).filter(i => i);
+
+        let data = {
+            subprojects: props.subprojects.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            ipos: props.ipos.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            trainings: props.trainings.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            otherActivities: props.otherActivities.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            officeReqs: props.officeReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            staffingReqs: props.staffingReqs.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+            otherProgramExpenses: props.otherProgramExpenses.filter(i => !i.workflow_status || i.workflow_status === 'APPROVED'),
+        };
+
+        if (selectedYear !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.fundingYear?.toString() === selectedYear);
+            data.trainings = data.trainings.filter(t => t.fundingYear?.toString() === selectedYear);
+            data.otherActivities = data.otherActivities.filter(a => a.fundingYear?.toString() === selectedYear);
+            data.officeReqs = data.officeReqs.filter(i => i.fundYear?.toString() === selectedYear);
+            data.staffingReqs = data.staffingReqs.filter(i => i.fundYear?.toString() === selectedYear);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundYear?.toString() === selectedYear);
+        }
+
+        if (selectedTier !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.tier === selectedTier);
+            data.trainings = data.trainings.filter(t => t.tier === selectedTier);
+            data.otherActivities = data.otherActivities.filter(a => a.tier === selectedTier);
+            data.officeReqs = data.officeReqs.filter(i => i.tier === selectedTier);
+            data.staffingReqs = data.staffingReqs.filter(i => i.tier === selectedTier);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.tier === selectedTier);
+        }
+
+        if (selectedFundType !== 'All') {
+            data.subprojects = data.subprojects.filter(p => p.fundType === selectedFundType);
+            data.trainings = data.trainings.filter(t => t.fundType === selectedFundType);
+            data.otherActivities = data.otherActivities.filter(a => a.fundType === selectedFundType);
+            data.officeReqs = data.officeReqs.filter(i => i.fundType === selectedFundType);
+            data.staffingReqs = data.staffingReqs.filter(i => i.fundType === selectedFundType);
+            data.otherProgramExpenses = data.otherProgramExpenses.filter(i => i.fundType === selectedFundType);
+        }
+
+        return {
+            ...data,
+            subprojects: data.subprojects.map(p => ({ ...p, details: sanitizeDetails(p.details) })),
+            trainings: data.trainings.map(t => ({ ...t, expenses: sanitizeExpenses(t.expenses) })),
+            otherActivities: data.otherActivities.map(a => ({ ...a, expenses: sanitizeExpenses(a.expenses) })),
+            staffingReqs: data.staffingReqs.map(s => ({ ...s, expenses: sanitizeExpenses(s.expenses) })),
+        };
+    }, [props.subprojects, props.ipos, props.trainings, props.otherActivities, props.officeReqs, props.staffingReqs, props.otherProgramExpenses, selectedYear, selectedTier, selectedFundType]);
 
     const TabButton: React.FC<{ tabName: DashboardTab; label: string }> = ({ tabName, label }) => {
         const isActive = activeTab === tabName;
@@ -264,6 +322,7 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                     <TabButton tabName="IPO Level of Development" label="IPO Level of Development" />
                     <TabButton tabName="Nutrition" label="Nutrition" />
                     <TabButton tabName="Farm Productivity and Income" label="Farm Productivity and Income" />
+                    {canViewAwards && <TabButton tabName="Awards and Rankings" label="Awards and Rankings" />}
                 </nav>
             </div>
 
@@ -310,6 +369,14 @@ const DashboardsPage: React.FC<DashboardsPageProps> = (props) => {
                         onSelectSubproject={props.onSelectSubproject}
                         onSelectIpo={props.onSelectIpo}
                         onSelectMarketingPartner={props.onSelectMarketingPartner}
+                    />
+                )}
+                {activeTab === 'Awards and Rankings' && (
+                    <AwardsRankingsDashboard
+                        data={awardsData}
+                        selectedYear={selectedYear}
+                        selectedTier={selectedTier}
+                        selectedFundType={selectedFundType}
                     />
                 )}
             </div>
