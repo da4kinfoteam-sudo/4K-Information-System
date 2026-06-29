@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Award,
     BarChart3,
     CalendarDays,
     ChevronDown,
@@ -18,8 +17,10 @@ import {
     AwardAnnualOuRow,
     AwardManualScore,
     AwardPhysicalComponentKey,
+    AwardQuarter,
     AwardQuarterResult,
     AwardRankingSettings,
+    AwardSpecialScore,
     awardQuarters,
     calculateAwardsDashboardData,
     DEFAULT_AWARD_SETTINGS,
@@ -68,7 +69,12 @@ const formatCurrency = (amount: number) => new Intl.NumberFormat('en-PH', {
     maximumFractionDigits: 0,
 }).format(Math.ceil(amount));
 
-const getMedalClass = (rank: number) => rank <= 3 ? `award-rank-medal award-rank-medal--${rank}` : 'award-rank-medal';
+type QuarterDetailMode = 'financial' | 'physical';
+type QuarterDetailPeriod = AwardQuarter | 'All';
+
+const formatPoint = (value: number) => `${value.toFixed(0)} pts`;
+const formatCountPoints = (count: number, points: number) => `${count} (${formatPoint(points)})`;
+const formatRank = (rank: number | undefined) => rank ? String(rank) : '-';
 
 const ensureManualRows = (rows: AwardManualScore[], year: number): AwardManualScore[] => {
     const map = new Map<string, AwardManualScore>();
@@ -105,12 +111,12 @@ const LeaderboardTable: React.FC<{
     rows: AwardAnnualOuRow[];
     columns: Array<{ key: string; label: string; render: (row: AwardAnnualOuRow) => React.ReactNode }>;
 }> = ({ title, rows, columns }) => (
-    <article className="dashboard-panel award-panel">
+    <article className="dashboard-panel award-panel award-leaderboard-panel">
         <div className="dashboard-panel__header">
             <h3 className="dashboard-panel__title">{title}</h3>
         </div>
         <div className="data-table-scroll custom-scrollbar">
-            <table className="data-table award-table">
+            <table className="data-table award-table award-table--wide">
                 <thead>
                     <tr>
                         <th>Rank</th>
@@ -122,7 +128,7 @@ const LeaderboardTable: React.FC<{
                 <tbody>
                     {rows.map(row => (
                         <tr key={row.ou}>
-                            <td><span className={getMedalClass(row.rank)}>{row.rank}</span></td>
+                            <td className="award-rank-text">{formatRank(row.rank)}</td>
                             <td className="font-semibold">{row.ou}</td>
                             <td className="data-table__numeric font-black">{formatScore(row.totalPoints)}</td>
                             {columns.map(column => (
@@ -140,61 +146,72 @@ const QuarterLeaderboard: React.FC<{ quarter: AwardQuarterResult }> = ({ quarter
     <article className="dashboard-panel award-panel award-quarter-panel">
         <div className="dashboard-panel__header">
             <h3 className="dashboard-panel__title">{quarter.period} Awards</h3>
-            <span className="award-panel__meta">Quarter-only performance</span>
+            <span className="award-panel__meta">{quarter.statusLabel}</span>
         </div>
-        <div className="award-quarter-grid">
-            <div className="award-mini-board">
-                <h4>Top Physical Performance</h4>
-                <ul>
-                    {quarter.physicalOverall.slice(0, 5).map(row => (
-                        <li key={row.ou}>
-                            <span className={getMedalClass(row.rank)}>{row.rank}</span>
-                            <strong>{row.ou}</strong>
-                            <b>{formatScore(row.points)} pts</b>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            <div className="award-mini-board">
-                <h4>Top Financial Performance</h4>
-                <ul>
-                    {quarter.financial.slice(0, 5).map(row => (
-                        <li key={row.ou}>
-                            <span className={getMedalClass(row.rank)}>{row.rank}</span>
-                            <strong>{row.ou}</strong>
-                            <b>{formatScore(row.points)} pts</b>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-            <div className="award-component-board">
-                <h4>Physical Component Points</h4>
-                <div className="data-table-scroll custom-scrollbar">
-                    <table className="data-table award-table award-table--compact">
-                        <thead>
-                            <tr>
-                                <th>Component</th>
-                                <th>Top OU</th>
-                                <th className="data-table__numeric">Score</th>
-                                <th className="data-table__numeric">Completion</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(Object.entries(quarter.physicalComponents) as Array<[AwardPhysicalComponentKey, typeof quarter.physicalComponents[AwardPhysicalComponentKey]]>).map(([key, rows]) => {
-                                const winner = rows[0];
-                                return (
-                                    <tr key={key}>
-                                        <td>{componentLabels[key]}</td>
-                                        <td className="font-semibold">{winner?.ou || 'No Data'}</td>
-                                        <td className="data-table__numeric">{winner ? formatScore(winner.score) : '0.00'}</td>
-                                        <td className="data-table__numeric">{winner ? formatPercent(winner.completionRate) : '0.0%'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+        {!quarter.isActive ? (
+            <p className="award-empty-note">This quarter is not yet due for the selected fund year.</p>
+        ) : (
+            <div className="award-quarter-grid">
+                <div className="award-mini-board">
+                    <h4>Top Physical Performance</h4>
+                    <ul>
+                        {quarter.physicalOverall.map(row => (
+                            <li key={row.ou}>
+                                <span className="award-rank-text">{formatRank(row.rank)}</span>
+                                <strong>{row.ou}</strong>
+                                <b>{formatScore(row.points)} pts</b>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div className="award-mini-board">
+                    <h4>Top Financial Performance</h4>
+                    <ul>
+                        {quarter.financial.map(row => (
+                            <li key={row.ou}>
+                                <span className="award-rank-text">{formatRank(row.rank)}</span>
+                                <strong>{row.ou}</strong>
+                                <b>{formatScore(row.points)} pts</b>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             </div>
+        )}
+    </article>
+);
+
+const SpecialAwardsTable: React.FC<{
+    title: string;
+    rows: AwardSpecialScore[];
+    valueLabel: string;
+    showTarget?: boolean;
+}> = ({ title, rows, valueLabel, showTarget = false }) => (
+    <article className="dashboard-panel award-panel award-special-table-card">
+        <div className="dashboard-panel__header">
+            <h3 className="dashboard-panel__title">{title}</h3>
+        </div>
+        <div className="data-table-scroll custom-scrollbar">
+            <table className="data-table award-table award-table--special">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>OU</th>
+                        <th className="data-table__numeric">{valueLabel}</th>
+                        {showTarget && <th className="data-table__numeric">Target IPOs</th>}
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map(row => (
+                        <tr key={row.ou}>
+                            <td className="award-rank-text">{formatRank(row.rank)}</td>
+                            <td className="font-semibold">{row.ou}</td>
+                            <td className="data-table__numeric font-black">{row.score.toLocaleString()}</td>
+                            {showTarget && <td className="data-table__numeric">{(row.target || 0).toLocaleString()}</td>}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     </article>
 );
@@ -204,6 +221,8 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     const isAdmin = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
     const effectiveYear = Number.isFinite(Number(selectedYear)) ? Number(selectedYear) : new Date().getFullYear();
     const [controllerOpen, setControllerOpen] = useState(false);
+    const [quarterDetailMode, setQuarterDetailMode] = useState<QuarterDetailMode>('financial');
+    const [quarterDetailPeriod, setQuarterDetailPeriod] = useState<QuarterDetailPeriod>('All');
     const [activeManualPeriod, setActiveManualPeriod] = useState<AwardManualScore['period']>('Q1');
     const [settings, setSettings] = useState<AwardRankingSettings>(DEFAULT_AWARD_SETTINGS);
     const [draftSettings, setDraftSettings] = useState<AwardRankingSettings>(DEFAULT_AWARD_SETTINGS);
@@ -265,6 +284,29 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
     );
 
     const hasChanges = !settingsEqual(settings, draftSettings) || !manualEqual(manualScores, draftManualScores);
+
+    const activeQuarters = useMemo(() => awardsData.quarters.filter(quarter => quarter.isActive), [awardsData.quarters]);
+    const visibleDetailQuarters = useMemo(
+        () => activeQuarters.filter(quarter => quarterDetailPeriod === 'All' || quarter.period === quarterDetailPeriod),
+        [activeQuarters, quarterDetailPeriod]
+    );
+    const financialDetailRows = useMemo(
+        () => visibleDetailQuarters.flatMap(quarter => quarter.financial.map(row => ({ ...row, period: quarter.period }))),
+        [visibleDetailQuarters]
+    );
+    const physicalDetailRows = useMemo(
+        () => visibleDetailQuarters.flatMap(quarter => (
+            (Object.entries(quarter.physicalComponents) as Array<[AwardPhysicalComponentKey, typeof quarter.physicalComponents[AwardPhysicalComponentKey]]>)
+                .flatMap(([component, rows]) => rows.map(row => ({
+                    ...row,
+                    period: quarter.period,
+                    component,
+                    componentLabel: componentLabels[component],
+                })))
+        )),
+        [visibleDetailQuarters]
+    );
+    const quarterDetailTitle = `${quarterDetailMode === 'financial' ? 'Quarter Financial Details' : 'Quarter Physical Details'}${quarterDetailPeriod === 'All' ? '' : ` - ${quarterDetailPeriod}`}`;
 
     const updateManual = (period: AwardManualScore['period'], ou: string, field: ManualField, value: string) => {
         setDraftManualScores(current => ensureManualRows(current, effectiveYear).map(row => {
@@ -368,21 +410,82 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
             Rank: row.rank,
             OU: row.ou,
             Points: row.totalPoints,
+            Allotment: row.allocation,
+            'Actual Obligation': row.obligation,
+            'Actual Disbursement': row.disbursement,
             'Disbursement vs Allotment': row.disbursementVsAllotmentRate,
+            'Disbursement vs Allotment Rank Points': row.breakdown.disbursementVsAllotmentRank,
+            'Disbursement vs Allotment Completion Points': row.breakdown.disbursementVsAllotmentCompletion,
             'Disbursement vs Obligation': row.disbursementVsObligationRate,
+            'Disbursement vs Obligation Rank Points': row.breakdown.disbursementVsObligationRank,
+            'Disbursement vs Obligation Completion Points': row.breakdown.disbursementVsObligationCompletion,
             'Physical Completion': row.physicalCompletionRate,
+            'Physical Rank Points': row.breakdown.physicalCompletionRank,
+            'Physical Completion Points': row.breakdown.physicalCompletionBand,
             'Financial Top 4 Quarters': row.financialTop4Quarters,
+            'Financial Consistency Points': row.breakdown.financialConsistency,
             'Physical Top 4 Quarters': row.physicalTop4Quarters,
+            'Physical Consistency Points': row.breakdown.physicalConsistency,
             'Attendance Missed': row.attendanceMissed,
+            'Attendance Points': row.breakdown.nationalAttendance,
         }))), 'Annual Overall');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.financial.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            Points: row.totalPoints,
+            Allotment: row.allocation,
+            'Actual Obligation': row.obligation,
+            'Actual Disbursement': row.disbursement,
+            'Disbursement vs Allotment': row.disbursementVsAllotmentRate,
+            'Disbursement vs Allotment Rank Points': row.breakdown.disbursementVsAllotmentRank,
+            'Disbursement vs Allotment Completion Points': row.breakdown.disbursementVsAllotmentCompletion,
+            'Disbursement vs Obligation': row.disbursementVsObligationRate,
+            'Disbursement vs Obligation Rank Points': row.breakdown.disbursementVsObligationRank,
+            'Disbursement vs Obligation Completion Points': row.breakdown.disbursementVsObligationCompletion,
+            'Consistent Performance Quarters': row.financialTop4Quarters,
+            'Consistent Performance Points': row.breakdown.financialConsistency,
+        }))), 'Annual Financial');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.physical.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            Points: row.totalPoints,
+            'Physical Completion': row.physicalCompletionRate,
+            'Physical Rank Points': row.breakdown.physicalCompletionRank,
+            'Physical Completion Points': row.breakdown.physicalCompletionBand,
+            'Consistent Performance Quarters': row.physicalTop4Quarters,
+            'Consistent Performance Points': row.breakdown.physicalConsistency,
+        }))), 'Annual Physical');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.mostIposAssisted.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            'Actual IPOs': row.score,
+            'Target IPOs': row.target || 0,
+        }))), 'Most IPOs Assisted');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.mostAttendance.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            Attendance: row.score,
+        }))), 'Attendance');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.mostTrainings.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            Trainings: row.score,
+        }))), 'Most Trainings');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(awardsData.annual.mostSubprojects.map(row => ({
+            Rank: row.rank,
+            OU: row.ou,
+            Subprojects: row.score,
+        }))), 'Most Subprojects');
         awardsData.quarters.forEach(quarter => {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(quarter.physicalOverall.map(row => ({
+                Status: quarter.statusLabel,
                 Rank: row.rank,
                 OU: row.ou,
                 Score: row.score,
                 Points: row.points,
             }))), `${quarter.period} Physical`);
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(quarter.financial.map(row => ({
+                Status: quarter.statusLabel,
                 Rank: row.rank,
                 OU: row.ou,
                 Allocation: row.allocation,
@@ -394,6 +497,26 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                 Points: row.points,
             }))), `${quarter.period} Financial`);
         });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(physicalDetailRows.map(row => ({
+            Period: row.period,
+            Component: row.componentLabel,
+            Rank: row.rank,
+            OU: row.ou,
+            Points: row.points,
+            Score: row.score,
+            Completion: row.completionRate,
+            'Activities Conducted': row.metrics.activitiesConducted || 0,
+            'IPOs Trained': row.metrics.iposTrained || 0,
+            'Trainings Conducted': row.metrics.trainingsConducted || 0,
+            'Subprojects Provided': row.metrics.subprojectsProvided || 0,
+            'IPOs Assisted': row.metrics.iposAssisted || 0,
+            'Reports Submitted': row.metrics.reportorialSubmitted || 0,
+            'Reports Required': row.metrics.reportorialRequired || 0,
+            'National Activities Attended': row.metrics.nationalAttended || 0,
+            'National Activities Required': row.metrics.nationalRequired || 0,
+            'Targets Due': row.metrics.targetsDue || 0,
+            'Targets Completed': row.metrics.targetsCompleted || 0,
+        }))), 'Quarter Physical Details');
         XLSX.writeFile(wb, `Awards_Rankings_FY${awardsData.effectiveYear}.xlsx`);
     };
 
@@ -600,51 +723,51 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                         title="Overall Top Performance"
                         rows={awardsData.annual.overall}
                         columns={[
+                            { key: 'allotment', label: 'Annual Allotment', render: row => formatCurrency(row.allocation) },
+                            { key: 'obligation', label: 'Actual Obligation', render: row => formatCurrency(row.obligation) },
+                            { key: 'disbursement', label: 'Actual Disbursement', render: row => formatCurrency(row.disbursement) },
                             { key: 'disb-allotment', label: 'Disb / Allot', render: row => formatPercent(row.disbursementVsAllotmentRate) },
+                            { key: 'disb-allotment-points', label: 'Disb / Allot Pts', render: row => `${formatPoint(row.breakdown.disbursementVsAllotmentRank)} + ${formatPoint(row.breakdown.disbursementVsAllotmentCompletion)}` },
                             { key: 'disb-obli', label: 'Disb / Obli', render: row => formatPercent(row.disbursementVsObligationRate) },
-                            { key: 'physical', label: 'Physical', render: row => formatPercent(row.physicalCompletionRate) },
-                            { key: 'top4', label: 'Top 4 Qtrs', render: row => `${row.financialTop4Quarters}F / ${row.physicalTop4Quarters}P` },
+                            { key: 'disb-obli-points', label: 'Disb / Obli Pts', render: row => `${formatPoint(row.breakdown.disbursementVsObligationRank)} + ${formatPoint(row.breakdown.disbursementVsObligationCompletion)}` },
+                            { key: 'physical', label: 'Physical Completion', render: row => formatPercent(row.physicalCompletionRate) },
+                            { key: 'physical-points', label: 'Physical Pts', render: row => `${formatPoint(row.breakdown.physicalCompletionRank)} + ${formatPoint(row.breakdown.physicalCompletionBand)}` },
+                            { key: 'financial-consistency', label: 'Financial Consistent Performance', render: row => formatCountPoints(row.financialTop4Quarters, row.breakdown.financialConsistency) },
+                            { key: 'physical-consistency', label: 'Physical Consistent Performance', render: row => formatCountPoints(row.physicalTop4Quarters, row.breakdown.physicalConsistency) },
+                            { key: 'attendance', label: 'Attendance Pts', render: row => formatPoint(row.breakdown.nationalAttendance) },
                         ]}
                     />
                     <LeaderboardTable
                         title="Top Financial Performance"
                         rows={awardsData.annual.financial}
                         columns={[
+                            { key: 'allotment', label: 'Annual Allotment', render: row => formatCurrency(row.allocation) },
+                            { key: 'obligation', label: 'Actual Obligation', render: row => formatCurrency(row.obligation) },
+                            { key: 'disbursement', label: 'Actual Disbursement', render: row => formatCurrency(row.disbursement) },
                             { key: 'disb-allotment', label: 'Disb / Allot', render: row => formatPercent(row.disbursementVsAllotmentRate) },
+                            { key: 'disb-allotment-points', label: 'Disb / Allot Pts', render: row => `${formatPoint(row.breakdown.disbursementVsAllotmentRank)} + ${formatPoint(row.breakdown.disbursementVsAllotmentCompletion)}` },
                             { key: 'disb-obli', label: 'Disb / Obli', render: row => formatPercent(row.disbursementVsObligationRate) },
-                            { key: 'top4', label: 'Top 4 Qtrs', render: row => row.financialTop4Quarters },
+                            { key: 'disb-obli-points', label: 'Disb / Obli Pts', render: row => `${formatPoint(row.breakdown.disbursementVsObligationRank)} + ${formatPoint(row.breakdown.disbursementVsObligationCompletion)}` },
+                            { key: 'consistent', label: 'Consistent Performance', render: row => formatCountPoints(row.financialTop4Quarters, row.breakdown.financialConsistency) },
                         ]}
                     />
                     <LeaderboardTable
                         title="Top Physical Performance"
                         rows={awardsData.annual.physical}
                         columns={[
-                            { key: 'physical', label: 'Physical', render: row => formatPercent(row.physicalCompletionRate) },
-                            { key: 'top4', label: 'Top 4 Qtrs', render: row => row.physicalTop4Quarters },
+                            { key: 'physical', label: 'Physical Completion', render: row => formatPercent(row.physicalCompletionRate) },
+                            { key: 'physical-rank-points', label: 'Physical Rank Pts', render: row => formatPoint(row.breakdown.physicalCompletionRank) },
+                            { key: 'physical-completion-points', label: 'Completion Rate Pts', render: row => formatPoint(row.breakdown.physicalCompletionBand) },
+                            { key: 'consistent', label: 'Consistent Performance', render: row => formatCountPoints(row.physicalTop4Quarters, row.breakdown.physicalConsistency) },
                         ]}
                     />
                 </div>
 
                 <div className="award-special-grid">
-                    {[
-                        ['Most IPOs Assisted', awardsData.annual.mostIposAssisted],
-                        ['Committed to Attending National Activities', awardsData.annual.mostAttendance],
-                        ['Most Trainings Conducted', awardsData.annual.mostTrainings],
-                        ['Most Subprojects Provided', awardsData.annual.mostSubprojects],
-                    ].map(([title, rows]) => (
-                        <article key={title as string} className="award-mini-board award-special-card">
-                            <h4>{title as string}</h4>
-                            <ul>
-                                {(rows as Array<{ ou: string; rank: number; score: number }>).slice(0, 5).map(row => (
-                                    <li key={row.ou}>
-                                        <span className={getMedalClass(row.rank)}>{row.rank}</span>
-                                        <strong>{row.ou}</strong>
-                                        <b>{row.score.toLocaleString()}</b>
-                                    </li>
-                                ))}
-                            </ul>
-                        </article>
-                    ))}
+                    <SpecialAwardsTable title="Most IPOs Assisted" rows={awardsData.annual.mostIposAssisted} valueLabel="Actual IPOs" showTarget />
+                    <SpecialAwardsTable title="Committed to Attending National Activities" rows={awardsData.annual.mostAttendance} valueLabel="Attendance" />
+                    <SpecialAwardsTable title="Most Trainings Conducted" rows={awardsData.annual.mostTrainings} valueLabel="Trainings" />
+                    <SpecialAwardsTable title="Most Subprojects Provided" rows={awardsData.annual.mostSubprojects} valueLabel="Subprojects" />
                 </div>
             </section>
 
@@ -660,44 +783,111 @@ const AwardsRankingsDashboard: React.FC<AwardsRankingsDashboardProps> = ({ data,
                 </div>
             </section>
 
-            <section className="dashboard-panel award-panel">
+            <section className="dashboard-panel award-panel award-detail-panel">
                 <div className="dashboard-panel__header">
-                    <h3 className="dashboard-panel__title">Quarter Financial Details</h3>
-                    <span className="award-panel__meta">Quarter actuals versus quarter due allotment</span>
+                    <div>
+                        <h3 className="dashboard-panel__title">{quarterDetailTitle}</h3>
+                        <span className="award-panel__meta">
+                            {quarterDetailMode === 'financial'
+                                ? 'Quarter actuals versus quarter due allotment'
+                                : 'Quarter physical criteria counts and component points'}
+                        </span>
+                    </div>
+                    <div className="award-detail-controls">
+                        <div className="award-toggle-group" role="group" aria-label="Quarter detail type">
+                            <button type="button" className={quarterDetailMode === 'financial' ? 'is-active' : ''} onClick={() => setQuarterDetailMode('financial')}>Financial Details</button>
+                            <button type="button" className={quarterDetailMode === 'physical' ? 'is-active' : ''} onClick={() => setQuarterDetailMode('physical')}>Physical Details</button>
+                        </div>
+                        <div className="award-toggle-group" role="group" aria-label="Quarter detail period">
+                            {awardQuarters.map(quarter => (
+                                <button key={quarter} type="button" className={quarterDetailPeriod === quarter ? 'is-active' : ''} onClick={() => setQuarterDetailPeriod(quarter)}>
+                                    {quarter}
+                                </button>
+                            ))}
+                            <button type="button" className={quarterDetailPeriod === 'All' ? 'is-active' : ''} onClick={() => setQuarterDetailPeriod('All')}>Display All</button>
+                        </div>
+                    </div>
                 </div>
                 <div className="data-table-scroll custom-scrollbar">
-                    <table className="data-table award-table">
-                        <thead>
-                            <tr>
-                                <th>Period</th>
-                                <th>Rank</th>
-                                <th>OU</th>
-                                <th className="data-table__numeric">Allocation</th>
-                                <th className="data-table__numeric">Obligation</th>
-                                <th className="data-table__numeric">Disbursement</th>
-                                <th className="data-table__numeric">Obli Rate</th>
-                                <th className="data-table__numeric">Disb Rate</th>
-                                <th className="data-table__numeric">Score</th>
-                                <th className="data-table__numeric">Points</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {awardsData.quarters.flatMap(quarter => quarter.financial.slice(0, 5).map(row => (
-                                <tr key={`${quarter.period}-${row.ou}`}>
-                                    <td>{quarter.period}</td>
-                                    <td><span className={getMedalClass(row.rank)}>{row.rank}</span></td>
-                                    <td className="font-semibold">{row.ou}</td>
-                                    <td className="data-table__numeric">{formatCurrency(row.allocation)}</td>
-                                    <td className="data-table__numeric">{formatCurrency(row.obligation)}</td>
-                                    <td className="data-table__numeric">{formatCurrency(row.disbursement)}</td>
-                                    <td className="data-table__numeric">{formatPercent(row.obligationRate)}</td>
-                                    <td className="data-table__numeric">{formatPercent(row.disbursementRate)}</td>
-                                    <td className="data-table__numeric">{formatScore(row.score)}</td>
-                                    <td className="data-table__numeric">{formatScore(row.points)}</td>
+                    {quarterDetailMode === 'financial' ? (
+                        <table className="data-table award-table award-table--wide">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th>Rank</th>
+                                    <th>OU</th>
+                                    <th className="data-table__numeric">Quarter Allotment</th>
+                                    <th className="data-table__numeric">Obligation</th>
+                                    <th className="data-table__numeric">Disbursement</th>
+                                    <th className="data-table__numeric">Obli Rate</th>
+                                    <th className="data-table__numeric">Disb Rate</th>
+                                    <th className="data-table__numeric">Score</th>
+                                    <th className="data-table__numeric">Points</th>
                                 </tr>
-                            )))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {financialDetailRows.length > 0 ? financialDetailRows.map(row => (
+                                    <tr key={`${row.period}-${row.ou}`}>
+                                        <td>{row.period}</td>
+                                        <td className="award-rank-text">{formatRank(row.rank)}</td>
+                                        <td className="font-semibold">{row.ou}</td>
+                                        <td className="data-table__numeric">{formatCurrency(row.allocation)}</td>
+                                        <td className="data-table__numeric">{formatCurrency(row.obligation)}</td>
+                                        <td className="data-table__numeric">{formatCurrency(row.disbursement)}</td>
+                                        <td className="data-table__numeric">{formatPercent(row.obligationRate)}</td>
+                                        <td className="data-table__numeric">{formatPercent(row.disbursementRate)}</td>
+                                        <td className="data-table__numeric">{formatScore(row.score)}</td>
+                                        <td className="data-table__numeric">{formatScore(row.points)}</td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colSpan={10} className="text-center">No active quarter data to display.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <table className="data-table award-table award-table--wide">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th>Component</th>
+                                    <th>Rank</th>
+                                    <th>OU</th>
+                                    <th className="data-table__numeric">Points</th>
+                                    <th className="data-table__numeric">Score</th>
+                                    <th className="data-table__numeric">Completion</th>
+                                    <th className="data-table__numeric">Activities / Trainings</th>
+                                    <th className="data-table__numeric">IPOs Trained</th>
+                                    <th className="data-table__numeric">Subprojects</th>
+                                    <th className="data-table__numeric">IPOs Assisted</th>
+                                    <th className="data-table__numeric">Reports</th>
+                                    <th className="data-table__numeric">National Attendance</th>
+                                    <th className="data-table__numeric">Targets</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {physicalDetailRows.length > 0 ? physicalDetailRows.map(row => (
+                                    <tr key={`${row.period}-${row.component}-${row.ou}`}>
+                                        <td>{row.period}</td>
+                                        <td>{row.componentLabel}</td>
+                                        <td className="award-rank-text">{formatRank(row.rank)}</td>
+                                        <td className="font-semibold">{row.ou}</td>
+                                        <td className="data-table__numeric">{formatScore(row.points)}</td>
+                                        <td className="data-table__numeric">{formatScore(row.score)}</td>
+                                        <td className="data-table__numeric">{formatPercent(row.completionRate)}</td>
+                                        <td className="data-table__numeric">{row.metrics.activitiesConducted ?? row.metrics.trainingsConducted ?? '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.iposTrained ?? '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.subprojectsProvided ?? '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.iposAssisted ?? '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.reportorialRequired ? `${row.metrics.reportorialSubmitted || 0} / ${row.metrics.reportorialRequired}` : '-'}</td>
+                                        <td className="data-table__numeric">{row.metrics.nationalRequired ? `${row.metrics.nationalAttended || 0} / ${row.metrics.nationalRequired}` : '-'}</td>
+                                        <td className="data-table__numeric">{`${row.metrics.targetsCompleted || 0} / ${row.metrics.targetsDue || 0}`}</td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colSpan={14} className="text-center">No active quarter data to display.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </section>
         </div>

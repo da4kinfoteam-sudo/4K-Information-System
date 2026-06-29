@@ -1,5 +1,4 @@
 import {
-    Activity,
     IPO,
     OfficeRequirement,
     operatingUnits,
@@ -77,8 +76,14 @@ export interface AwardComponentScore extends AwardOuScore {
     metrics: Record<string, number>;
 }
 
+export interface AwardSpecialScore extends AwardOuScore {
+    target?: number;
+}
+
 export interface AwardQuarterResult {
     period: AwardQuarter;
+    isActive: boolean;
+    statusLabel: string;
     physicalComponents: Record<AwardPhysicalComponentKey, AwardComponentScore[]>;
     physicalOverall: AwardOuScore[];
     financial: Array<AwardOuScore & {
@@ -94,6 +99,9 @@ export interface AwardAnnualOuRow {
     ou: string;
     rank: number;
     totalPoints: number;
+    allocation: number;
+    obligation: number;
+    disbursement: number;
     disbursementVsAllotmentRate: number;
     disbursementVsObligationRate: number;
     physicalCompletionRate: number;
@@ -107,10 +115,10 @@ export interface AwardAnnualResult {
     overall: AwardAnnualOuRow[];
     financial: AwardAnnualOuRow[];
     physical: AwardAnnualOuRow[];
-    mostIposAssisted: AwardOuScore[];
-    mostAttendance: AwardOuScore[];
-    mostTrainings: AwardOuScore[];
-    mostSubprojects: AwardOuScore[];
+    mostIposAssisted: AwardSpecialScore[];
+    mostAttendance: AwardSpecialScore[];
+    mostTrainings: AwardSpecialScore[];
+    mostSubprojects: AwardSpecialScore[];
 }
 
 export interface AwardsDashboardData {
@@ -204,6 +212,14 @@ const getQuarterFromDate = (date?: string): AwardQuarter | null => {
 const getQuarterEnd = (year: number, quarter: AwardQuarter) => {
     const quarterIndex = QUARTERS.indexOf(quarter);
     return new Date(year, (quarterIndex + 1) * 3, 0, 23, 59, 59, 999);
+};
+
+const getActiveQuarterSet = (year: number, today = new Date()) => {
+    const currentYear = today.getFullYear();
+    if (year < currentYear) return new Set<AwardQuarter>(QUARTERS);
+    if (year > currentYear) return new Set<AwardQuarter>();
+    const currentQuarterIndex = Math.floor(today.getMonth() / 3);
+    return new Set<AwardQuarter>(QUARTERS.filter((_quarter, index) => index <= currentQuarterIndex));
 };
 
 const isDateInYear = (date: string | undefined, year: number) => parseDate(date)?.getFullYear() === year;
@@ -410,6 +426,8 @@ const buildQuarterPhysical = (
             ou,
             activitiesConducted: activitiesInQuarter.length,
             iposTrained: uniqueCount(activitiesInQuarter.flatMap(activity => activity.participatingIpos || [])),
+            targetsDue: completion.target,
+            targetsCompleted: completion.actual,
             completionRate: completion.rate,
         };
     });
@@ -426,6 +444,8 @@ const buildQuarterPhysical = (
                 ...trainingsInQuarter.flatMap(activity => activity.participatingIpos || []),
                 ...subprojectsInQuarter.map(sp => sp.indigenousPeopleOrganization),
             ]),
+            targetsDue: completion.target,
+            targetsCompleted: completion.actual,
             completionRate: completion.rate,
         };
     });
@@ -437,6 +457,8 @@ const buildQuarterPhysical = (
             ou,
             activitiesConducted: activitiesInQuarter.length,
             iposAssisted: uniqueCount(activitiesInQuarter.flatMap(activity => activity.participatingIpos || [])),
+            targetsDue: completion.target,
+            targetsCompleted: completion.actual,
             completionRate: completion.rate,
         };
     });
@@ -444,10 +466,20 @@ const buildQuarterPhysical = (
     const programMetrics = operatingUnits.map(ou => {
         const manual = getManual(manualMap, year, quarter, ou);
         const completion = getQuarterCompletionRate(recordsByOu.programManagement.get(ou) || [], year, quarter);
+        const reportorialRequired = toNumber(manual.reportorial_required);
+        const reportorialSubmitted = toNumber(manual.reportorial_submitted);
+        const nationalRequired = toNumber(manual.national_activities_required);
+        const nationalAttended = toNumber(manual.national_activities_attended);
         return {
             ou,
-            reportorialCompliance: safeRate(toNumber(manual.reportorial_submitted), toNumber(manual.reportorial_required)),
-            nationalAttendance: safeRate(toNumber(manual.national_activities_attended), toNumber(manual.national_activities_required)),
+            reportorialRequired,
+            reportorialSubmitted,
+            reportorialCompliance: safeRate(reportorialSubmitted, reportorialRequired),
+            nationalRequired,
+            nationalAttended,
+            nationalAttendance: safeRate(nationalAttended, nationalRequired),
+            targetsDue: completion.target,
+            targetsCompleted: completion.actual,
             completionRate: completion.rate,
         };
     });
@@ -544,9 +576,25 @@ const buildQuarterResult = (
     data: AwardsInputData,
     year: number,
     quarter: AwardQuarter,
+    isActive: boolean,
     settings: AwardRankingSettings,
     manualMap: Map<string, AwardManualScore>
 ): AwardQuarterResult => {
+    if (!isActive) {
+        return {
+            period: quarter,
+            isActive: false,
+            statusLabel: 'Not Yet Due',
+            physicalComponents: {
+                socialPrep: [],
+                productionLivelihood: [],
+                marketingEnterprise: [],
+                programManagement: [],
+            },
+            physicalOverall: [],
+            financial: [],
+        };
+    }
     const physicalComponents = buildQuarterPhysical(data, year, quarter, settings, manualMap);
     const physicalOverallBase = operatingUnits.map(ou => ({
         ou,
@@ -554,7 +602,7 @@ const buildQuarterResult = (
     }));
     const physicalOverall = rankRows(physicalOverallBase, row => row.componentPoints, (rank, score) => getQuarterRankPoints(settings, rank, score));
     const financial = buildQuarterFinancial(data, year, quarter, settings);
-    return { period: quarter, physicalComponents, physicalOverall, financial };
+    return { period: quarter, isActive: true, statusLabel: 'Calculated', physicalComponents, physicalOverall, financial };
 };
 
 const buildAnnualFinancialBuckets = (data: AwardsInputData, year: number) => {
@@ -590,21 +638,37 @@ const buildAnnualFinancialBuckets = (data: AwardsInputData, year: number) => {
 
 const buildAnnualCounts = (data: AwardsInputData, year: number, manualMap: Map<string, AwardManualScore>) => {
     const iposByOu = new Map<string, Set<string>>();
+    const targetIposByOu = new Map<string, Set<string>>();
     const attendanceByOu = new Map<string, number>();
     const trainingsByOu = new Map<string, number>();
     const subprojectsByOu = new Map<string, number>();
     operatingUnits.forEach(ou => {
         iposByOu.set(ou, new Set());
+        targetIposByOu.set(ou, new Set());
         attendanceByOu.set(ou, 0);
         trainingsByOu.set(ou, 0);
         subprojectsByOu.set(ou, 0);
     });
 
     data.subprojects
+        .filter(sp => recordYearMatches(sp.fundingYear, year) && isTargetRecord(sp))
+        .forEach(sp => {
+            if (sp.indigenousPeopleOrganization) {
+                targetIposByOu.get(sp.operatingUnit)?.add(sp.indigenousPeopleOrganization);
+            }
+        });
+
+    data.subprojects
         .filter(sp => recordYearMatches(sp.fundingYear, year) && isCompletedSubproject(sp) && isDateOnOrBefore(sp.actualCompletionDate, new Date(year, 11, 31, 23, 59, 59, 999)))
         .forEach(sp => {
             iposByOu.get(sp.operatingUnit)?.add(sp.indigenousPeopleOrganization);
             subprojectsByOu.set(sp.operatingUnit, (subprojectsByOu.get(sp.operatingUnit) || 0) + 1);
+        });
+
+    [...data.trainings, ...data.otherActivities]
+        .filter(activity => recordYearMatches(activity.fundingYear, year) && isTargetRecord(activity))
+        .forEach(activity => {
+            (activity.participatingIpos || []).forEach(ipo => targetIposByOu.get(activity.operatingUnit)?.add(ipo));
         });
 
     [...data.trainings, ...data.otherActivities]
@@ -630,7 +694,7 @@ const buildAnnualCounts = (data: AwardsInputData, year: number, manualMap: Map<s
     });
 
     return {
-        iposAssisted: operatingUnits.map(ou => ({ ou, value: iposByOu.get(ou)?.size || 0 })),
+        iposAssisted: operatingUnits.map(ou => ({ ou, value: iposByOu.get(ou)?.size || 0, target: targetIposByOu.get(ou)?.size || 0 })),
         attendance: operatingUnits.map(ou => ({ ou, value: attendanceByOu.get(ou) || 0 })),
         trainings: operatingUnits.map(ou => ({ ou, value: trainingsByOu.get(ou) || 0 })),
         subprojects: operatingUnits.map(ou => ({ ou, value: subprojectsByOu.get(ou) || 0 })),
@@ -681,6 +745,7 @@ const buildAnnualResults = (
     });
 
     const baseRows = operatingUnits.map(ou => {
+        const financialBucket = financialBuckets.find(row => row.ou === ou);
         const disbursementVsAllotmentRate = getRate(financialBuckets, ou, 'disbursementVsAllotmentRate');
         const disbursementVsObligationRate = getRate(financialBuckets, ou, 'disbursementVsObligationRate');
         const physicalCompletionRate = getRate(physicalRows, ou, 'physicalCompletionRate');
@@ -701,6 +766,9 @@ const buildAnnualResults = (
         return {
             ou,
             totalPoints: Object.values(breakdown).reduce((sum, value) => sum + value, 0),
+            allocation: financialBucket?.allocation || 0,
+            obligation: financialBucket?.obligation || 0,
+            disbursement: financialBucket?.disbursement || 0,
             disbursementVsAllotmentRate,
             disbursementVsObligationRate,
             physicalCompletionRate,
@@ -731,9 +799,9 @@ const buildAnnualResults = (
     })));
 
     const counts = buildAnnualCounts(data, year, manualMap);
-    const rankCount = (items: Array<{ ou: string; value: number }>) =>
+    const rankCount = (items: Array<{ ou: string; value: number; target?: number }>) =>
         rankRows(items, item => item.value, (_rank, score) => score)
-            .map(item => ({ ou: item.ou, rank: item.rank, score: item.score, points: item.points }));
+            .map(item => ({ ou: item.ou, rank: item.rank, score: item.score, points: item.points, target: item.target }));
 
     return {
         overall,
@@ -755,7 +823,8 @@ export const calculateAwardsDashboardData = (
     const effectiveYear = getFiscalYear(selectedYear);
     const settings = normalizeAwardSettings(settingsInput);
     const manualMap = makeManualMap(manualScores);
-    const quarters = QUARTERS.map(quarter => buildQuarterResult(data, effectiveYear, quarter, settings, manualMap));
+    const activeQuarters = getActiveQuarterSet(effectiveYear);
+    const quarters = QUARTERS.map(quarter => buildQuarterResult(data, effectiveYear, quarter, activeQuarters.has(quarter), settings, manualMap));
     const annual = buildAnnualResults(data, effectiveYear, settings, quarters, manualMap);
     return { effectiveYear, quarters, annual };
 };
