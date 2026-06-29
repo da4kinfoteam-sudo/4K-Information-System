@@ -209,11 +209,36 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ ipos, subprojects, trainings })
 };
 
 
-type ActivityItem = (Subproject & { activityType: 'Subproject'; activityDate: string }) | (Activity & { activityType: 'Training' | 'Activity'; activityDate: string });
+type ActivityDateView = 'Current Date' | 'All';
+
+type ActivityItem = (
+    (Subproject & { activityType: 'Subproject' }) |
+    (Activity & { activityType: 'Training' | 'Activity' })
+) & {
+    activityDate: string;
+    activityOu: string;
+    activityStatus: Subproject['status'] | Activity['status'];
+};
 
 const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+};
+
+const parseLocalDate = (dateString?: string) => {
+    if (!dateString) return null;
+    const [year, month, day] = dateString.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day);
+};
+
+const isTodayOrLater = (dateString?: string) => {
+    const date = parseLocalDate(dateString);
+    if (!date) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    date.setHours(0, 0, 0, 0);
+    return date >= today;
 };
 
 const isWithinDeadlineWindow = (dateString?: string) => {
@@ -308,6 +333,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     
     // Activities Section State
     const [activitiesFilter, setActivitiesFilter] = useState<'All' | 'Subprojects' | 'Trainings'>('All');
+    const [activitiesDateView, setActivitiesDateView] = useState<ActivityDateView>('Current Date');
     const [activitiesPage, setActivitiesPage] = useState(1);
     const itemsPerPageActivities = 9;
 
@@ -439,11 +465,27 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const allActivities = useMemo(() => {
         const combined: ActivityItem[] = [
-            ...filteredData.subprojects.map(p => ({ ...p, activityType: 'Subproject' as const, activityDate: p.startDate })),
-            ...filteredData.activities.map(a => ({ ...a, activityType: a.type as 'Training' | 'Activity', activityDate: a.date })),
+            ...filteredData.subprojects.map(p => ({
+                ...p,
+                activityType: 'Subproject' as const,
+                activityDate: p.estimatedCompletionDate || '',
+                activityOu: p.operatingUnit,
+                activityStatus: p.status,
+            })),
+            ...filteredData.activities.map(a => ({
+                ...a,
+                activityType: a.type as 'Training' | 'Activity',
+                activityDate: a.date || '',
+                activityOu: a.operatingUnit,
+                activityStatus: a.status,
+            })),
         ];
         // Sort chronologically from January to December (ascending)
-        return combined.sort((a, b) => new Date(a.activityDate).getTime() - new Date(b.activityDate).getTime());
+        return combined.sort((a, b) => {
+            const dateA = parseLocalDate(a.activityDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            const dateB = parseLocalDate(b.activityDate)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+            return dateA - dateB;
+        });
     }, [filteredData]);
 
     const displayedActivities = useMemo(() => {
@@ -453,32 +495,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         } else if (activitiesFilter === 'Trainings') {
             items = items.filter(a => a.activityType === 'Training');
         }
-        return items;
-    }, [allActivities, activitiesFilter]);
-
-    // Default to current month's page
-    useEffect(() => {
-        if (displayedActivities.length > 0) {
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth();
-            
-            // Find index of first activity in current month or later
-            const targetIndex = displayedActivities.findIndex(a => {
-                const d = new Date(a.activityDate);
-                return d.getFullYear() > currentYear || (d.getFullYear() === currentYear && d.getMonth() >= currentMonth);
-            });
-
-            if (targetIndex !== -1) {
-                const targetPage = Math.floor(targetIndex / itemsPerPageActivities) + 1;
-                setActivitiesPage(targetPage);
-            } else {
-                setActivitiesPage(1);
-            }
-        } else {
-            setActivitiesPage(1);
+        if (activitiesDateView === 'Current Date') {
+            items = items.filter(a => isTodayOrLater(a.activityDate));
         }
-    }, [displayedActivities]);
+        return items;
+    }, [allActivities, activitiesFilter, activitiesDateView]);
+
+    useEffect(() => {
+        setActivitiesPage(1);
+    }, [activitiesFilter, activitiesDateView, displayedActivities.length]);
     
     const paginatedActivitiesList = useMemo(() => {
         const startIndex = (activitiesPage - 1) * itemsPerPageActivities;
@@ -548,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     onClick={() => setCardModal(null)}
                 >
                     <div 
-                        className="dashboard-modal"
+                        className="dashboard-modal dashboard-modal--day"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="dashboard-modal__header">
@@ -589,6 +614,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <button onClick={() => setDayModalData(null)} className="dashboard-modal__close">&times;</button>
                         </div>
                         
+                        <div className="dashboard-modal__body dashboard-day-modal__body custom-scrollbar">
                         <div className="dashboard-modal__stack">
                             {dayModalData.items.map((event, index) => (
                                 <div 
@@ -612,6 +638,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     )}
                                 </div>
                             ))}
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -663,7 +690,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </select>
                     </div>
                     <div className="dashboard-filter">
-                        <label htmlFor="year-filter">Year</label>
+                        <label htmlFor="year-filter">Fund Year</label>
                         <select 
                             id="year-filter"
                             value={selectedYear}
@@ -818,25 +845,38 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div>
                         <h3 className="dashboard-panel__title">4K Activities</h3>
                     </div>
-                    <div className="dashboard-segmented">
-                        <button 
-                            onClick={() => setActivitiesFilter('All')} 
-                            className={activitiesFilter === 'All' ? 'is-active' : ''}
-                        >
-                            All
-                        </button>
-                        <button 
-                            onClick={() => setActivitiesFilter('Subprojects')} 
-                            className={activitiesFilter === 'Subprojects' ? 'is-active' : ''}
-                        >
-                            Subprojects
-                        </button>
-                        <button 
-                            onClick={() => setActivitiesFilter('Trainings')} 
-                            className={activitiesFilter === 'Trainings' ? 'is-active' : ''}
-                        >
-                            Trainings
-                        </button>
+                    <div className="dashboard-activity-controls">
+                        <div className="dashboard-filter dashboard-filter--compact">
+                            <label htmlFor="activity-date-view">Date View</label>
+                            <select
+                                id="activity-date-view"
+                                value={activitiesDateView}
+                                onChange={(event) => setActivitiesDateView(event.target.value as ActivityDateView)}
+                            >
+                                <option value="Current Date">Current Date</option>
+                                <option value="All">All</option>
+                            </select>
+                        </div>
+                        <div className="dashboard-segmented">
+                            <button 
+                                onClick={() => setActivitiesFilter('All')} 
+                                className={activitiesFilter === 'All' ? 'is-active' : ''}
+                            >
+                                All
+                            </button>
+                            <button 
+                                onClick={() => setActivitiesFilter('Subprojects')} 
+                                className={activitiesFilter === 'Subprojects' ? 'is-active' : ''}
+                            >
+                                Subprojects
+                            </button>
+                            <button 
+                                onClick={() => setActivitiesFilter('Trainings')} 
+                                className={activitiesFilter === 'Trainings' ? 'is-active' : ''}
+                            >
+                                Trainings
+                            </button>
+                        </div>
                     </div>
                 </div>
                  <div className="dashboard-activity-grid">
@@ -851,6 +891,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <span className="dashboard-activity-card__date">{formatDate(activity.activityDate)}</span>
                             </div>
                             <h4>{activity.name}</h4>
+                            <div className="dashboard-activity-card__context">
+                                <span className="dashboard-activity-card__ou">{activity.activityOu || 'No OU'}</span>
+                                <span className={getStatusBadge(activity.activityStatus)}>{activity.activityStatus}</span>
+                            </div>
                             <p className="line-clamp-2">
                                 {activity.activityType === 'Subproject' ? activity.location : activity.description}
                             </p>
