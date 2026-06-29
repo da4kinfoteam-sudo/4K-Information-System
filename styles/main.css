@@ -12562,7 +12562,8 @@ button.bar1-drilldown-card:focus-visible {
 .award-manual-controller,
 .award-mini-board,
 .award-summary-card,
-.award-special-card {
+.award-special-card,
+.award-special-table-card {
   border: 1px solid #eaecf0;
   border-radius: 0.75rem;
   background: #fff;
@@ -12707,7 +12708,7 @@ button.bar1-drilldown-card:focus-visible {
 
 .award-annual-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 1rem;
 }
 
@@ -12718,7 +12719,7 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 .award-special-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .award-quarter-list {
@@ -12734,6 +12735,57 @@ button.bar1-drilldown-card:focus-visible {
   color: #667085;
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.award-leaderboard-panel,
+.award-detail-panel,
+.award-special-table-card {
+  width: 100%;
+}
+
+.award-empty-note {
+  margin: 0;
+  padding: 1rem;
+  border: 1px dashed #d0d5dd;
+  border-radius: 0.75rem;
+  color: #667085;
+  background: #f9fafb;
+  font-weight: 800;
+  text-align: center;
+}
+
+.award-detail-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.award-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.65rem;
+  background: #f9fafb;
+}
+
+.award-toggle-group button {
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #475467;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.award-toggle-group button.is-active {
+  background: #16a34a;
+  color: #fff;
 }
 
 .award-quarter-grid {
@@ -12789,6 +12841,7 @@ button.bar1-drilldown-card:focus-visible {
 }
 
 .award-table {
+  width: 100%;
   min-width: 46rem;
 }
 
@@ -12801,32 +12854,18 @@ button.bar1-drilldown-card:focus-visible {
   min-width: 34rem;
 }
 
-.award-rank-medal {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 999px;
-  background: #f2f4f7;
-  color: #344054;
-  font-size: 0.78rem;
+.award-table--wide {
+  min-width: 82rem;
+}
+
+.award-table--special {
+  min-width: 34rem;
+}
+
+.award-rank-text {
+  color: #101828;
   font-weight: 900;
-}
-
-.award-rank-medal--1 {
-  background: #fef0c7;
-  color: #b54708;
-}
-
-.award-rank-medal--2 {
-  background: #eef4ff;
-  color: #3538cd;
-}
-
-.award-rank-medal--3 {
-  background: #fff1f3;
-  color: #c01048;
+  text-align: center;
 }
 
 .dark .award-hero h3,
@@ -12852,7 +12891,8 @@ button.bar1-drilldown-card:focus-visible {
 .dark .award-manual-controller,
 .dark .award-mini-board,
 .dark .award-summary-card,
-.dark .award-special-card {
+.dark .award-special-card,
+.dark .award-special-table-card {
   border-color: #334155;
   background: #111827;
 }
@@ -12875,10 +12915,32 @@ button.bar1-drilldown-card:focus-visible {
   color: #86efac;
 }
 
+.dark .award-empty-note {
+  border-color: #334155;
+  background: #0f172a;
+  color: #cbd5e1;
+}
+
+.dark .award-toggle-group {
+  border-color: #334155;
+  background: #0f172a;
+}
+
+.dark .award-toggle-group button {
+  color: #cbd5e1;
+}
+
+.dark .award-toggle-group button.is-active {
+  background: #16a34a;
+  color: #fff;
+}
+
+.dark .award-rank-text {
+  color: #f9fafb;
+}
+
 @media (max-width: 1180px) {
   .award-summary-grid,
-  .award-special-grid,
-  .award-annual-grid,
   .award-quarter-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -12892,7 +12954,8 @@ button.bar1-drilldown-card:focus-visible {
   }
 
   .award-hero__actions,
-  .award-controller__actions {
+  .award-controller__actions,
+  .award-detail-controls {
     justify-content: stretch;
   }
 
@@ -12908,6 +12971,15 @@ button.bar1-drilldown-card:focus-visible {
   .award-quarter-list,
   .award-quarter-grid {
     grid-template-columns: 1fr;
+  }
+
+  .award-toggle-group {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .award-toggle-group button {
+    flex: 1 0 auto;
   }
 
   .award-form-group label {
