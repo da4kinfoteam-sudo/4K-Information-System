@@ -788,6 +788,10 @@
   min-width: 8.5rem;
 }
 
+.dashboard-filter--compact {
+  min-width: 9.5rem;
+}
+
 .dashboard-filter label {
   color: var(--app-text-muted);
   font-size: 0.72rem;
@@ -1838,6 +1842,14 @@
   margin: 0;
 }
 
+.dashboard-activity-controls {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
 .dashboard-schedule-grid {
   display: grid;
   gap: 1rem;
@@ -2033,6 +2045,32 @@
 .dashboard-activity-card__date {
   color: var(--app-text-soft);
   font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.dashboard-activity-card__context {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+  min-width: 0;
+}
+
+.dashboard-activity-card__ou {
+  background: var(--brand-green-50);
+  border: 1px solid rgba(13, 162, 101, 0.18);
+  border-radius: 999px;
+  color: var(--brand-green-700);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.25rem 0.55rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -11582,6 +11620,10 @@ button.bar1-drilldown-card:focus-visible {
   max-width: 42rem;
 }
 
+.dashboard-modal--day {
+  max-height: min(82vh, 42rem);
+}
+
 .dashboard-modal__header {
   align-items: center;
   border-bottom: 1px solid var(--app-border);
@@ -11634,6 +11676,10 @@ button.bar1-drilldown-card:focus-visible {
   min-height: 0;
   overflow-y: auto;
   padding-right: 0.25rem;
+}
+
+.dashboard-day-modal__body {
+  max-height: min(62vh, 32rem);
 }
 
 .dashboard-modal-tabs {
@@ -12318,8 +12364,13 @@ button.bar1-drilldown-card:focus-visible {
   }
 
   .dashboard-filter-bar,
+  .dashboard-activity-controls,
   .dashboard-segmented {
     width: 100%;
+  }
+
+  .dashboard-activity-controls {
+    align-items: stretch;
   }
 
   .dashboard-filter {
