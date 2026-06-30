@@ -6,7 +6,7 @@ import LocationPicker, { parseLocation } from './LocationPicker';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserAccess } from './mainfunctions/TableHooks';
 import { useIpoHistory } from '../hooks/useIpoHistory';
-import { useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
+import { normalizePolicyMonth, useDcfPolicyGuard } from '../hooks/useDcfPolicyGuard';
 import { MonthYearPicker } from './ui/MonthYearPicker';
 import { ObligationsEditor } from './accomplishment/ObligationsEditor';
 import { DisbursementsEditor } from './accomplishment/DisbursementsEditor';
@@ -143,7 +143,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const { canEdit: canEditFinancial } = useUserAccess('Accomplishment - Financial');
     const { canEdit: canEditPhysical } = useUserAccess('Accomplishment - Physical');
     const { addIpoHistory } = useIpoHistory();
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const isAdmin = currentUser?.role === 'Administrator';
     const canDeleteDriveFiles = currentUser?.role === 'Super Admin' || currentUser?.role === 'Administrator';
 
@@ -153,6 +153,7 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const [editedSubproject, setEditedSubproject] = useState(subproject);
     const [activeTab, setActiveTab] = useState<'details' | 'commodity' | 'budget'>('details');
     const [detailItems, setDetailItems] = useState<SubprojectDetailInput[]>([]);
+    const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Form Inputs
     const [currentDetail, setCurrentDetail] = useState({
@@ -269,25 +270,41 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
     const validateSubprojectActualMonth = async (month?: string) => {
         if (!month) return true;
         const decision = getMonthDecision(month);
-        return ensureDecisionAllowed(decision, {
-            moduleKey: 'subprojects',
-            item: subproject,
-            itemId: subproject.id,
-            itemName: subproject.name,
-            status: subproject.status,
-            action: 'editPhysicalAccomplishment',
-            month,
-            entityType: 'subproject',
-        });
+        if (isMonthSelectionAllowed(decision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(decision));
+        return false;
     };
+
+    const hasMonthChanged = (current?: string | null, original?: string | null) => (
+        normalizePolicyMonth(current) !== normalizePolicyMonth(original)
+    );
+
+    const getChangedRecordMonths = (
+        currentRecords: Array<{ id?: number | string; date?: string | null }> = [],
+        originalRecords: Array<{ id?: number | string; date?: string | null }> = []
+    ) => currentRecords
+        .filter((record, index) => {
+            const originalRecord = record.id !== undefined
+                ? originalRecords.find(item => item.id === record.id)
+                : originalRecords[index];
+            return !!record.date && (!originalRecord || hasMonthChanged(record.date, originalRecord.date));
+        })
+        .map(record => record.date)
+        .filter(Boolean) as string[];
 
     const validateSubprojectAccomplishmentMonthsForSave = async () => {
         if (editMode !== 'accomplishment') return true;
-        const months = detailItems.flatMap(detail => [
-            detail.actualDeliveryDate,
-            ...(detail.obligations || []).map(record => record.date),
-            ...(detail.disbursements || []).map(record => record.date),
-        ]).filter(Boolean);
+        const months = detailItems.flatMap((detail, index) => {
+            const originalDetail = subproject.details?.find(item => item.id === detail.id) || subproject.details?.[index];
+            return [
+                ...(hasMonthChanged(detail.actualDeliveryDate, originalDetail?.actualDeliveryDate) ? [detail.actualDeliveryDate] : []),
+                ...getChangedRecordMonths(detail.obligations || [], originalDetail?.obligations || []),
+                ...getChangedRecordMonths(detail.disbursements || [], originalDetail?.disbursements || []),
+            ];
+        }).filter(Boolean) as string[];
         for (const month of months) {
             if (!(await validateSubprojectActualMonth(month))) return false;
         }
@@ -1223,6 +1240,11 @@ const SubprojectDetail: React.FC<SubprojectDetailProps> = ({ subproject, ipos, o
                 
                 <div className="form-card">
                     <form onSubmit={handleSubmit}>
+                        {monthLockMessage && (
+                            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800" role="status">
+                                {monthLockMessage}
+                            </div>
+                        )}
                         <div className="min-h-[400px]">
                             {/* DETAILS EDIT MODE */}
                             {editMode === 'details' && (

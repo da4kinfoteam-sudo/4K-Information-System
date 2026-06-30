@@ -8,7 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLogAction } from '../../hooks/useLogAction';
 import { getMonetaryChanges } from '../../lib/logUtils';
 import { useUserAccess } from '../mainfunctions/TableHooks';
-import { useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
+import { normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { supabase } from '../../supabaseClient';
 import { ObligationsEditor } from '../accomplishment/ObligationsEditor';
 import { getProgramManagementPhysicalDateBasis, resolvePhysicalAccomplishmentSubmittedAt, valuesDiffer } from '../../lib/physicalAccomplishmentTimestamp';
@@ -48,7 +48,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const { currentUser } = useAuth();
     const { canEdit } = useUserAccess('Program Management');
     const { logAction } = useLogAction();
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const detailsDecision = getStatusDecision({
         moduleKey: 'office_requirements',
         item,
@@ -67,25 +67,38 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     const validateActualMonth = async (month?: string) => {
         if (!month) return true;
         const decision = getMonthDecision(month);
-        return ensureDecisionAllowed(decision, {
-            moduleKey: 'office_requirements',
-            item,
-            itemId: item.id,
-            itemName: item.equipment,
-            status: item.status,
-            action: 'editPhysicalAccomplishment',
-            month,
-            entityType: 'office_requirement',
-        });
+        if (isMonthSelectionAllowed(decision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(decision));
+        return false;
     };
+
+    const hasMonthChanged = (current?: string | null, original?: string | null) => (
+        normalizePolicyMonth(current) !== normalizePolicyMonth(original)
+    );
+
+    const getChangedRecordMonths = (
+        currentRecords: Array<{ id?: number | string; date?: string | null }> = [],
+        originalRecords: Array<{ id?: number | string; date?: string | null }> = []
+    ) => currentRecords
+        .filter((record, index) => {
+            const originalRecord = record.id !== undefined
+                ? originalRecords.find(existing => existing.id === record.id)
+                : originalRecords[index];
+            return !!record.date && (!originalRecord || hasMonthChanged(record.date, originalRecord.date));
+        })
+        .map(record => record.date)
+        .filter(Boolean) as string[];
 
     const validateAccomplishmentMonthsForSave = async () => {
         if (editMode !== 'accomplishment') return true;
         const months = [
-            formData.actualDate,
-            formData.actualDisbursementDate,
-            ...(formData.obligations || []).map(record => record.date),
-        ].filter(Boolean);
+            ...(hasMonthChanged(formData.actualDate, originalFormData.actualDate) ? [formData.actualDate] : []),
+            ...(hasMonthChanged(formData.actualDisbursementDate, originalFormData.actualDisbursementDate) ? [formData.actualDisbursementDate] : []),
+            ...getChangedRecordMonths(formData.obligations || [], originalFormData.obligations || []),
+        ].filter(Boolean) as string[];
         for (const month of months) {
             if (!(await validateActualMonth(month))) return false;
         }
@@ -94,7 +107,9 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
     
     const [editMode, setEditMode] = useState<'none' | 'details' | 'accomplishment'>('none');
     const [formData, setFormData] = useState<OfficeRequirement>(item);
+    const [originalFormData, setOriginalFormData] = useState<OfficeRequirement>(item);
     const [isSaving, setIsSaving] = useState(false);
+    const [monthLockMessage, setMonthLockMessage] = useState('');
     
     // Initial load and whenever the item ID changes
     useEffect(() => {
@@ -102,6 +117,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
 
         // Reset form data to current item
         setFormData(item);
+        setOriginalFormData(item);
 
         const fetchObligations = async () => {
             if (!item?.id || !supabase) return;
@@ -125,6 +141,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     obligations: mappedObligations,
                     actualObligationAmount: totalAmount 
                 }));
+                setOriginalFormData(prev => ({
+                    ...prev,
+                    obligations: mappedObligations,
+                    actualObligationAmount: totalAmount
+                }));
             } else if (item && (!item.obligations || item.obligations.length === 0) && (item.actualObligationAmount || 0) > 0) {
                 const virtualObligations = [{
                     id: Date.now(),
@@ -133,6 +154,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                     remarks: 'Legacy Record'
                 }];
                 setFormData(prev => ({ ...prev, obligations: virtualObligations }));
+                setOriginalFormData(prev => ({ ...prev, obligations: virtualObligations }));
             }
         };
 
@@ -192,6 +214,7 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
             setSelectedParticular(foundParticular);
         } else if (editMode === 'none') {
             setFormData(item);
+            setOriginalFormData(item);
             setValidationErrors([]);
         }
     }, [editMode, item, uacsCodes]);
@@ -406,6 +429,11 @@ const OfficeRequirementDetail: React.FC<OfficeRequirementDetailProps> = ({ item,
                 </div>
                 <div className="form-card">
                     <form onSubmit={handleSubmit} className="space-y-6">
+                        {monthLockMessage && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800" role="status">
+                                {monthLockMessage}
+                            </div>
+                        )}
                         <fieldset className="form-fieldset">
                             <legend className="form-legend">Basic Information</legend>
                             <div className="form-grid">

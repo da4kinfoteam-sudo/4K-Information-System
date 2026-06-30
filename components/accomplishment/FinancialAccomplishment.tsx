@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../supabaseClient';
 import { useUserAccess } from '../mainfunctions/TableHooks';
 import useLocalStorageState from '../../hooks/useLocalStorageState';
-import { getDcfModuleKeyForSourceType, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
+import { getDcfModuleKeyForSourceType, normalizePolicyMonth, useDcfPolicyGuard } from '../../hooks/useDcfPolicyGuard';
 import { MonthYearPicker } from '../ui/MonthYearPicker';
 import { FormattedAmountInput } from '../ui/FormattedAmountInput';
 import { Undo2, Loader2, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown, ListFilter, SlidersHorizontal, ChevronDown } from 'lucide-react';
@@ -200,7 +200,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
 }) => {
     const { currentUser } = useAuth();
     const { canEdit, canViewAll } = useUserAccess('Accomplishment - Financial');
-    const { getStatusDecision, getMonthDecision, ensureDecisionAllowed } = useDcfPolicyGuard();
+    const { getStatusDecision, getMonthDecision, getMonthLockMessage, isMonthSelectionAllowed, ensureDecisionAllowed } = useDcfPolicyGuard();
     const defaultYear = new Date().getFullYear();
 
     // Filter States (Persistent)
@@ -218,6 +218,7 @@ const FinancialAccomplishment: React.FC<Props> = ({
     const [localSavingIds, setLocalSavingIds] = useState<Set<string>>(new Set());
     const [isSaveConfirmOpen, setIsSaveConfirmOpen] = useState(false);
     const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
+    const [monthLockMessage, setMonthLockMessage] = useState('');
     type SortKey = 'targetObligationAmount' | 'targetObligationMonth' | 'actualObligationAmount' | 'actualObligationMonth' | 'targetDisbursementAmount' | 'targetDisbursementMonth' | 'actualDisbursementAmount' | 'actualDisbursementMonth';
     const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
     
@@ -272,24 +273,50 @@ const FinancialAccomplishment: React.FC<Props> = ({
         }
         if (!(await ensureFinancialItemAllowed(item))) return false;
         const monthDecision = getMonthDecision(month);
-        return ensureDecisionAllowed(monthDecision, {
-            moduleKey,
-            item: getPolicySubjectForFinancialItem(item),
-            itemId: item.sourceId,
-            itemName: item.sourceName,
-            status: item.status as any,
-            action: 'editFinancialAccomplishment',
-            month,
-            entityType: item.sourceType.toLowerCase(),
-        });
+        if (isMonthSelectionAllowed(monthDecision)) {
+            setMonthLockMessage('');
+            return true;
+        }
+        setMonthLockMessage(getMonthLockMessage(monthDecision));
+        return false;
     };
+
+    const hasMonthChanged = (current?: string | null, original?: string | null) => (
+        normalizePolicyMonth(current) !== normalizePolicyMonth(original)
+    );
+
+    const getChangedRecordMonths = (
+        currentRecords: Array<{ id?: number | string; date?: string | null }> = [],
+        originalRecords: Array<{ id?: number | string; date?: string | null }> = []
+    ) => currentRecords
+        .filter((record, index) => {
+            const originalRecord = record.id !== undefined
+                ? originalRecords.find(item => item.id === record.id)
+                : originalRecords[index];
+            return !!record.date && (!originalRecord || hasMonthChanged(record.date, originalRecord.date));
+        })
+        .map(record => record.date)
+        .filter(Boolean) as string[];
 
     const validateFinancialItemForSave = async (item: FinancialItem) => {
         if (!(await ensureFinancialItemAllowed(item))) return false;
+        const originalItem = originalItems.find(original => original.uniqueId === item.uniqueId);
         const months = [
-            ...(item.obligations || []).map(record => record.date).filter(Boolean),
-            ...(item.disbursements || []).map(record => record.date).filter(Boolean),
-        ];
+            ...getChangedRecordMonths(item.obligations || [], originalItem?.obligations || []),
+            ...getChangedRecordMonths(item.disbursements || [], originalItem?.disbursements || []),
+            ...SHORT_MONTHS
+                .map((month, index) => {
+                    const field = `actualDisbursement${month}`;
+                    const currentAmount = toFiniteNumber((item as any)[field]);
+                    const originalAmount = toFiniteNumber((originalItem as any)?.[field]);
+                    return currentAmount > 0 && !valuesDiffer(currentAmount, originalAmount)
+                        ? ''
+                        : currentAmount > 0
+                            ? `${selectedYear || defaultYear}-${String(index + 1).padStart(2, '0')}`
+                            : '';
+                })
+                .filter(Boolean),
+        ] as string[];
         for (const month of months) {
             if (!(await validateFinancialActualMonth(item, month))) return false;
         }
@@ -2021,6 +2048,11 @@ const FinancialAccomplishment: React.FC<Props> = ({
                 <div className="fixed bottom-24 right-8 bg-emerald-100 border border-emerald-200 text-emerald-800 dark:bg-emerald-900/50 dark:border-emerald-800 dark:text-emerald-300 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50">
                     <CheckCircle className="w-5 h-5" />
                     <span className="font-medium">{saveSuccessMessage}</span>
+                </div>
+            )}
+            {monthLockMessage && (
+                <div className="fixed bottom-24 right-8 bg-amber-100 border border-amber-200 text-amber-900 dark:bg-amber-900/50 dark:border-amber-800 dark:text-amber-200 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 z-50" role="status">
+                    <span className="font-medium">{monthLockMessage}</span>
                 </div>
             )}
         </div>
